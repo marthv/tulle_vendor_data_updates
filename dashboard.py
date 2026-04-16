@@ -35,7 +35,7 @@ from extract_core import run_extraction
 st.set_page_config(
     page_title="Tulle Admin Dashboard",
     page_icon="tulle.png",
-    layout="centered",
+    layout="wide",
 )
 
 st.logo("tulle.png")
@@ -159,11 +159,14 @@ if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
 # ── Show login screen if not yet authenticated ────────────────────────────────
 if not st.session_state.authenticated:
     st.markdown("""
-        <div style="text-align:center;padding:60px 0 24px">
-            <div style="font-size:36px">🌿</div>
+        <div style="text-align:center;padding:60px 0 8px">
             <div style="font-size:26px;font-weight:700;margin-top:8px">Tulle Admin Dashboard</div>
         </div>
     """, unsafe_allow_html=True)
+
+    _, logo_col, _ = st.columns([2, 3, 2])
+    with logo_col:
+        st.image("tulle.png", width=72)
 
     if _USE_GOOGLE_AUTH:
         auth_url = _build_google_auth_url()
