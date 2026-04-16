@@ -2,31 +2,43 @@
 Tulle Admin Dashboard
 ---------------------
 Streamlit web app for the Tulle Together team.
-Hosted on Railway — accessible to the whole team via a URL + password.
+Hosted on Railway — accessible to the whole team via a URL + Google login.
 
 Required env vars (set in Railway dashboard):
-    DASHBOARD_PASSWORD
+    GOOGLE_CLIENT_ID      — OAuth 2.0 Web client ID from Google Cloud Console
+    GOOGLE_CLIENT_SECRET  — OAuth 2.0 Web client secret
+    APP_URL               — Full public URL of this app (e.g. https://tulle-pipeline.up.railway.app)
+    ALLOWED_EMAILS        — Comma-separated list of allowed Google email addresses
     ANTHROPIC_API_KEY
     GOOGLE_SERVICE_ACCOUNT_JSON
     XANO_SUMMARY_ENDPOINT
     XANO_PRICING_ENDPOINT
     XANO_GET_ENDPOINT
-    XANO_BASE_URL   (base for enrichment endpoints)
+    XANO_BASE_URL         — base for enrichment endpoints
+
+Optional fallback (if GOOGLE_CLIENT_ID is not set, password auth is used):
+    DASHBOARD_PASSWORD
 """
 
 import os
 import datetime
+import json
 import requests
+import pandas as pd
 import streamlit as st
+import google.auth.transport.requests
+import google.oauth2.id_token
 from extract_core import run_extraction
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Tulle Admin Dashboard",
-    page_icon="🌿",
+    page_icon="tulle.png",
     layout="centered",
 )
+
+st.logo("tulle.png")
 
 st.markdown("""
 <style>
@@ -62,38 +74,133 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# ── AUTH CONFIGURATION ────────────────────────────────────────────────────────
+
+_GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+_GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+_APP_URL              = os.environ.get("APP_URL", "http://localhost:8501").rstrip("/")
+_ALLOWED_EMAILS       = [e.strip().lower() for e in os.environ.get("ALLOWED_EMAILS", "").split(",") if e.strip()]
+_USE_GOOGLE_AUTH      = bool(_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET)
+
+_GOOGLE_AUTH_URI  = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+
+
+def _build_google_auth_url() -> str:
+    """Return a Google OAuth2 authorization URL."""
+    from urllib.parse import urlencode
+    params = {
+        "client_id":     _GOOGLE_CLIENT_ID,
+        "redirect_uri":  _APP_URL,
+        "response_type": "code",
+        "scope":         "openid email profile",
+        "access_type":   "online",
+        "prompt":        "select_account",
+    }
+    return f"{_GOOGLE_AUTH_URI}?{urlencode(params)}"
+
+
+def _exchange_google_code(code: str) -> dict:
+    """Exchange an authorization code for user info. Returns id_info dict."""
+    # Step 1: POST code → tokens
+    token_resp = requests.post(
+        _GOOGLE_TOKEN_URI,
+        data={
+            "code":          code,
+            "client_id":     _GOOGLE_CLIENT_ID,
+            "client_secret": _GOOGLE_CLIENT_SECRET,
+            "redirect_uri":  _APP_URL,
+            "grant_type":    "authorization_code",
+        },
+        timeout=30,
+    )
+    if token_resp.status_code != 200:
+        raise ValueError(f"Token exchange failed ({token_resp.status_code}): {token_resp.text[:300]}")
+    tokens = token_resp.json()
+
+    # Step 2: verify ID token via Google's public keys
+    request = google.auth.transport.requests.Request()
+    id_info = google.oauth2.id_token.verify_oauth2_token(
+        tokens["id_token"],
+        request,
+        _GOOGLE_CLIENT_ID,
+        clock_skew_in_seconds=10,
+    )
+    return id_info
+
+
 # ── LOGIN GATE ────────────────────────────────────────────────────────────────
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
+# ── Handle Google OAuth callback (code in URL query params) ──────────────────
+if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
+    qp = st.query_params
+    if "code" in qp:
+        try:
+            id_info = _exchange_google_code(qp["code"])
+            email   = id_info.get("email", "").lower()
+            if _ALLOWED_EMAILS and email not in _ALLOWED_EMAILS:
+                st.error(f"Access denied for **{email}**. Ask your admin to add your email to `ALLOWED_EMAILS`.")
+                st.query_params.clear()
+                st.stop()
+            st.session_state.authenticated  = True
+            st.session_state.user_email     = email
+            st.session_state.user_name      = id_info.get("name", email)
+            st.session_state.user_picture   = id_info.get("picture", "")
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Google sign-in failed: {e}")
+            st.query_params.clear()
+            st.stop()
+
+# ── Show login screen if not yet authenticated ────────────────────────────────
 if not st.session_state.authenticated:
     st.markdown("""
-        <div style="text-align:center;padding:40px 0 16px">
+        <div style="text-align:center;padding:60px 0 24px">
             <div style="font-size:36px">🌿</div>
             <div style="font-size:26px;font-weight:700;margin-top:8px">Tulle Admin Dashboard</div>
         </div>
     """, unsafe_allow_html=True)
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        pwd = st.text_input("Password", type="password", label_visibility="collapsed",
-                            placeholder="Team password")
-    with col2:
-        login = st.button("Login", use_container_width=True)
 
-    if login:
-        expected = os.environ.get("DASHBOARD_PASSWORD", "")
-        if pwd == expected and expected:
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
+    if _USE_GOOGLE_AUTH:
+        auth_url = _build_google_auth_url()
+        # Centre the button with padding columns
+        _, btn_col, _ = st.columns([2, 3, 2])
+        with btn_col:
+            st.link_button(
+                "Sign in with Google",
+                auth_url,
+                use_container_width=True,
+                type="primary",
+            )
+    else:
+        # Fallback: password auth (for local dev when Google OAuth not configured)
+        _, pw_col, _ = st.columns([2, 3, 2])
+        with pw_col:
+            pwd   = st.text_input("Password", type="password", label_visibility="collapsed",
+                                  placeholder="Team password")
+            login = st.button("Login", use_container_width=True)
+        if login:
+            expected = os.environ.get("DASHBOARD_PASSWORD", "")
+            if pwd == expected and expected:
+                st.session_state.authenticated = True
+                st.session_state.user_email    = "local"
+                st.session_state.user_name     = "Local admin"
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
     st.stop()
 
 
 # ── HEADER ────────────────────────────────────────────────────────────────────
 
-col_title, col_logout = st.columns([5, 1])
+user_name  = st.session_state.get("user_name", "")
+user_email = st.session_state.get("user_email", "")
+
+col_title, col_user, col_logout = st.columns([4, 3, 1])
 with col_title:
     st.markdown("""
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
@@ -101,10 +208,18 @@ with col_title:
             <span style="font-size:24px;font-weight:700">Tulle Admin Dashboard</span>
         </div>
     """, unsafe_allow_html=True)
+with col_user:
+    if user_name and user_name != "Local admin":
+        st.markdown(
+            f"<div style='text-align:right;padding-top:14px;font-size:13px;color:#52555C'>"
+            f"Signed in as <strong>{user_name}</strong></div>",
+            unsafe_allow_html=True,
+        )
 with col_logout:
     st.markdown("<div style='padding-top:12px'>", unsafe_allow_html=True)
-    if st.button("Log out", use_container_width=True):
-        st.session_state.authenticated = False
+    if st.button("Sign out", use_container_width=True):
+        for k in ["authenticated", "user_email", "user_name", "user_picture"]:
+            st.session_state.pop(k, None)
         st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -120,25 +235,95 @@ tab0, tab1, tab2, tab3, tab4 = st.tabs(["📊 Admin Dashboard", "📄 PDF Extrac
 
 # ── TAB 0: ADMIN DASHBOARD ────────────────────────────────────────────────────
 
+XANO_WGW = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:WGW_G49d"
+
+EXPLORER_TABLES = {
+    "WPTP Updated Mappings": {
+        "url":      f"{XANO_BASE}/wptp_updated_mappings",
+        "patch":    f"{XANO_BASE}/wptp_updated_mappings",   # + /{id}
+        "id_col":   "id",
+        "editable": True,
+    },
+    "WPTP PDFs": {
+        "url":      f"{XANO_BASE}/wptp_pdfs",
+        "patch":    None,
+        "id_col":   "id",
+        "editable": False,
+    },
+    "Users": {
+        "url":      f"{XANO_WGW}/user",
+        "patch":    f"{XANO_WGW}/user",    # PATCH /user/{id}
+        "id_col":   "id",
+        "editable": True,
+    },
+}
+
+FILTER_OPS = ["contains", "equals", "starts with", "not equals",
+              ">", "<", ">=", "<=", "is blank", "is not blank"]
+
 def _card(color_class, icon, value, label):
-    return f"""
-    <div class="metric-card {color_class}">
+    return f"""<div class="metric-card {color_class}">
         <div class="metric-icon">{icon}</div>
         <div class="metric-value">{value}</div>
         <div class="metric-label">{label}</div>
     </div>"""
 
+def _apply_filters(df, filters):
+    for col, op, val in filters:
+        if col not in df.columns:
+            continue
+        s = df[col].astype(str)
+        if op == "contains":
+            df = df[s.str.contains(str(val), case=False, na=False)]
+        elif op == "equals":
+            df = df[s.str.lower() == str(val).lower()]
+        elif op == "starts with":
+            df = df[s.str.lower().str.startswith(str(val).lower(), na=False)]
+        elif op == "not equals":
+            df = df[s.str.lower() != str(val).lower()]
+        elif op == ">":
+            try:
+                df = df[pd.to_numeric(df[col], errors="coerce") > float(val)]
+            except Exception:
+                pass
+        elif op == "<":
+            try:
+                df = df[pd.to_numeric(df[col], errors="coerce") < float(val)]
+            except Exception:
+                pass
+        elif op == ">=":
+            try:
+                df = df[pd.to_numeric(df[col], errors="coerce") >= float(val)]
+            except Exception:
+                pass
+        elif op == "<=":
+            try:
+                df = df[pd.to_numeric(df[col], errors="coerce") <= float(val)]
+            except Exception:
+                pass
+        elif op == "is blank":
+            df = df[df[col].isna() | (s.str.strip() == "")]
+        elif op == "is not blank":
+            df = df[~(df[col].isna() | (s.str.strip() == ""))]
+    return df
+
+def _to_ms(d: datetime.date, end_of_day=False) -> int:
+    t = datetime.time(23, 59, 59) if end_of_day else datetime.time(0, 0, 0)
+    dt = datetime.datetime.combine(d, t, tzinfo=datetime.timezone.utc)
+    return int(dt.timestamp() * 1000)
+
 with tab0:
+
+    # ── METRICS ───────────────────────────────────────────────────────────────
     st.subheader("Timebound Reporting")
     st.caption("Generate reports for user signups, to-dos created, and payments made within a specific date range.")
 
     col_s, col_e, col_btn = st.columns([2, 2, 1])
     with col_s:
-        start_date = st.date_input("Start Date", value=datetime.date.today() - datetime.timedelta(days=30),
-                                   label_visibility="visible")
+        start_date = st.date_input("Start Date",
+                                   value=datetime.date.today() - datetime.timedelta(days=30))
     with col_e:
-        end_date = st.date_input("End Date", value=datetime.date.today(),
-                                 label_visibility="visible")
+        end_date = st.date_input("End Date", value=datetime.date.today())
     with col_btn:
         st.markdown("<div style='padding-top:28px'>", unsafe_allow_html=True)
         generate = st.button("Generate Report", type="primary", use_container_width=True)
@@ -150,8 +335,8 @@ with tab0:
                 resp = requests.get(
                     f"{XANO_BASE}/admin_metrics",
                     params={
-                        "start_date": start_date.strftime("%Y-%m-%d"),
-                        "end_date":   end_date.strftime("%Y-%m-%d"),
+                        "start_ts": _to_ms(start_date),
+                        "end_ts":   _to_ms(end_date, end_of_day=True),
                     },
                     timeout=60,
                 )
@@ -168,35 +353,144 @@ with tab0:
                     pkg_uniq  = d.get("unique_users_packages", 0)
                     pkg_rate  = d.get("package_rate", 0)
 
-                    # New Signups — full width green
-                    st.markdown(
-                        _card("card-green", "👤", signups, "New Signups"),
-                        unsafe_allow_html=True,
-                    )
-
-                    # Payments row — amber
+                    st.markdown(_card("card-green", "👤", signups, "New Signups"),
+                                unsafe_allow_html=True)
                     c1, c2, c3 = st.columns(3)
-                    c1.markdown(_card("card-amber", "💳", pay_made,  "Payments Made"),   unsafe_allow_html=True)
-                    c2.markdown(_card("card-amber", "💳", pay_uniq,  "Unique Payments"), unsafe_allow_html=True)
-                    c3.markdown(_card("card-amber", "💳", f"{pay_rate:.1f}%", "Payment Rate"), unsafe_allow_html=True)
-
-                    # To-Dos row — green
+                    c1.markdown(_card("card-amber",  "💳", pay_made,  "Payments Made"),    unsafe_allow_html=True)
+                    c2.markdown(_card("card-amber",  "💳", pay_uniq,  "Unique Payments"),  unsafe_allow_html=True)
+                    c3.markdown(_card("card-amber",  "💳", f"{pay_rate:.2f}%", "Payment Rate"), unsafe_allow_html=True)
                     c4, c5, c6 = st.columns(3)
-                    c4.markdown(_card("card-green", "✅", todo_made, "To-Dos Created"),         unsafe_allow_html=True)
-                    c5.markdown(_card("card-green", "✅", todo_uniq, "Unique Users w/ To-Dos"), unsafe_allow_html=True)
-                    c6.markdown(_card("card-green", "✅", f"{todo_rate:.1f}%", "To-Do Creation Rate"), unsafe_allow_html=True)
-
-                    # Packages row — purple
+                    c4.markdown(_card("card-green",  "✅", todo_made, "To-Dos Created"),          unsafe_allow_html=True)
+                    c5.markdown(_card("card-green",  "✅", todo_uniq, "Unique Users w/ To-Dos"),  unsafe_allow_html=True)
+                    c6.markdown(_card("card-green",  "✅", f"{todo_rate:.2f}%", "To-Do Creation Rate"), unsafe_allow_html=True)
                     c7, c8, c9 = st.columns(3)
                     c7.markdown(_card("card-purple", "📦", pkg_made, "Packages Created"),          unsafe_allow_html=True)
                     c8.markdown(_card("card-purple", "📦", pkg_uniq, "Unique Users w/ Packages"),  unsafe_allow_html=True)
-                    c9.markdown(_card("card-purple", "📦", f"{pkg_rate:.1f}%", "Package Creation Rate"), unsafe_allow_html=True)
-
+                    c9.markdown(_card("card-purple", "📦", f"{pkg_rate:.2f}%", "Package Creation Rate"), unsafe_allow_html=True)
                 else:
                     st.error(f"Xano returned {resp.status_code}")
                     st.code(resp.text[:500])
             except Exception as e:
                 st.error(f"Request failed: {e}")
+
+    # ── DATA EXPLORER ─────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("Data Explorer")
+
+    exp_table = st.selectbox("Table", list(EXPLORER_TABLES.keys()), key="exp_table")
+    exp_cfg   = EXPLORER_TABLES[exp_table]
+
+    # Load controls
+    col_lim, col_load, col_clr = st.columns([2, 2, 1])
+    with col_lim:
+        row_limit = st.selectbox("Row limit", [100, 500, 1000, 0], format_func=lambda x: "All" if x == 0 else str(x), key="exp_limit")
+    with col_load:
+        st.markdown("<div style='padding-top:28px'>", unsafe_allow_html=True)
+        load_data = st.button("Load Data", type="primary", use_container_width=True, key="exp_load")
+        st.markdown("</div>", unsafe_allow_html=True)
+    with col_clr:
+        st.markdown("<div style='padding-top:28px'>", unsafe_allow_html=True)
+        if st.button("Clear", use_container_width=True, key="exp_clear"):
+            for k in ["exp_raw", "exp_loaded_table", "exp_filters"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if load_data:
+        with st.spinner(f"Loading {exp_table}..."):
+            try:
+                r = requests.get(exp_cfg["url"], timeout=120)
+                if r.status_code == 200:
+                    raw = r.json()
+                    if isinstance(raw, dict):
+                        raw = raw.get("items") or raw.get("data") or raw.get("result") or []
+                    st.session_state["exp_raw"]          = raw
+                    st.session_state["exp_loaded_table"] = exp_table
+                    st.session_state["exp_filters"]      = []
+                else:
+                    st.error(f"Xano returned {r.status_code}: {r.text[:200]}")
+            except Exception as e:
+                st.error(f"Load failed: {e}")
+
+    if st.session_state.get("exp_loaded_table") == exp_table and st.session_state.get("exp_raw"):
+        raw  = st.session_state["exp_raw"]
+        cols = list(raw[0].keys()) if raw else []
+
+        # ── Filter UI ──────────────────────────────────────────────────────
+        st.markdown("**Filters**")
+        if "exp_filters" not in st.session_state:
+            st.session_state["exp_filters"] = []
+
+        fc1, fc2, fc3, fc4 = st.columns([3, 2, 3, 1])
+        with fc1:
+            f_col = st.selectbox("Column", cols, key="f_col", label_visibility="collapsed")
+        with fc2:
+            f_op  = st.selectbox("Operator", FILTER_OPS, key="f_op", label_visibility="collapsed")
+        with fc3:
+            f_val = st.text_input("Value", key="f_val", label_visibility="collapsed",
+                                  placeholder="value" if f_op not in ("is blank", "is not blank") else "—",
+                                  disabled=f_op in ("is blank", "is not blank"))
+        with fc4:
+            if st.button("Add", use_container_width=True, key="f_add"):
+                st.session_state["exp_filters"].append((f_col, f_op, f_val))
+                st.rerun()
+
+        for i, (fc, fo, fv) in enumerate(st.session_state.get("exp_filters", [])):
+            tag_col, rm_col = st.columns([8, 1])
+            tag_col.markdown(f"`{fc}` **{fo}** `{fv}`")
+            if rm_col.button("✕", key=f"rm_{i}"):
+                st.session_state["exp_filters"].pop(i)
+                st.rerun()
+
+        # ── Build DataFrame ────────────────────────────────────────────────
+        df_all = pd.DataFrame(raw)
+        df     = _apply_filters(df_all.copy(), st.session_state.get("exp_filters", []))
+        if row_limit:
+            df = df.head(row_limit)
+
+        st.caption(f"{len(df):,} of {len(df_all):,} rows — {exp_table}"
+                   + ("" if exp_cfg["editable"] else "  ·  read-only"))
+
+        # ── Display / Edit ─────────────────────────────────────────────────
+        edited = st.data_editor(
+            df,
+            use_container_width=True,
+            num_rows="fixed",
+            disabled=not exp_cfg["editable"],
+            key="exp_editor",
+        )
+
+        if exp_cfg["editable"]:
+            if st.button("💾 Save Changes", type="primary", use_container_width=True, key="exp_save"):
+                id_col   = exp_cfg["id_col"]
+                patch_base = exp_cfg["patch"]
+                orig_map = {str(r[id_col]): r for r in raw}
+                saved = failed = 0
+                for _, row in edited.iterrows():
+                    row_id  = str(row[id_col])
+                    orig    = orig_map.get(row_id, {})
+                    changed = {k: v for k, v in row.to_dict().items()
+                               if str(v) != str(orig.get(k, "")) and k != id_col}
+                    if not changed:
+                        continue
+                    try:
+                        r = requests.patch(
+                            f"{patch_base}/{row_id}",
+                            json=changed,
+                            timeout=15,
+                        )
+                        if r.status_code in (200, 201, 204):
+                            saved += 1
+                        else:
+                            failed += 1
+                    except Exception:
+                        failed += 1
+                if saved + failed == 0:
+                    st.info("No changes detected.")
+                elif failed == 0:
+                    st.success(f"Saved {saved} row(s).")
+                else:
+                    st.warning(f"Saved {saved}, failed {failed}.")
 
 
 # ── TAB 1: PDF EXTRACTION ─────────────────────────────────────────────────────
