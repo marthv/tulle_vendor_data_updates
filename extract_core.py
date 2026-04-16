@@ -382,23 +382,30 @@ def _post_pricing_grid(rows, pdf_id, vendor_id, venue_name, timestamp):
     return ok, fail
 
 
-def _fetch_xano_pages(endpoint, per_page=500, progress_cb=None):
+def _fetch_xano_pages(endpoint, per_page=500):
+    """Fetch all pages from a Xano endpoint. Yields (all_rows_so_far, page_num) tuples for progress."""
     all_rows = []
     page = 1
     while True:
-        resp = requests.get(endpoint, params={"page": page, "per_page": per_page}, timeout=30)
-        resp.raise_for_status()
+        for attempt in range(3):
+            try:
+                resp = requests.get(endpoint, params={"page": page, "per_page": per_page}, timeout=30)
+                resp.raise_for_status()
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(2 * (attempt + 1))
         data  = resp.json()
         batch = data if isinstance(data, list) else (data.get("items") or data.get("data") or data.get("result") or [])
         if not batch:
             break
         all_rows.extend(batch)
-        if progress_cb:
-            progress_cb(len(all_rows))
+        yield all_rows, page
         if len(batch) < per_page:
             break
         page += 1
-    return all_rows
+        time.sleep(0.3)
 
 
 # ── PUBLIC GENERATOR ──────────────────────────────────────────────────────────
@@ -422,7 +429,9 @@ def run_extraction(start_row: int, end_row: int | None):
 
     yield from emit("🔍 Checking already-extracted PDF IDs...")
     try:
-        existing     = _fetch_xano_pages(summary_endpoint, per_page=500)
+        existing = []
+        for existing, pg in _fetch_xano_pages(summary_endpoint):
+            pass  # just drain the generator
         already_done = {str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() for r in existing}
         already_done.discard('')
         yield from emit(f"✓  {len(already_done)} already extracted — will skip")
@@ -431,13 +440,11 @@ def run_extraction(start_row: int, end_row: int | None):
         already_done = set()
 
     yield from emit("")
-    yield from emit("🔄 Fetching PDF list from Xano (this may take ~30s for large tables)...")
-    fetched_count = [0]
-    progress_msgs = []
-    def _progress(n):
-        fetched_count[0] = n
+    yield from emit("🔄 Fetching PDF list from Xano...")
     try:
-        all_rows = _fetch_xano_pages(get_endpoint, progress_cb=_progress)
+        all_rows = []
+        for all_rows, pg in _fetch_xano_pages(get_endpoint):
+            yield from emit(f"   page {pg} — {len(all_rows)} rows fetched so far...")
         rows = [r for r in all_rows if 'drive.google.com' in str(r.get('PDF_Link') or r.get('pdf_link') or '')]
         yield from emit(f"✓  {len(all_rows)} total rows, {len(rows)} with Drive links")
     except Exception as e:
