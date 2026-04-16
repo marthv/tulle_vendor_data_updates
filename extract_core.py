@@ -29,6 +29,12 @@ MONTHS = ["January", "February", "March", "April", "May", "June",
           "July", "August", "September", "October", "November", "December"]
 DAYS   = ["Weekday", "Friday", "Saturday", "Sunday"]
 
+# Claude Sonnet 4 pricing (per token)
+_COST_INPUT       = 3.00  / 1_000_000
+_COST_OUTPUT      = 15.00 / 1_000_000
+_COST_CACHE_WRITE = 3.75  / 1_000_000
+_COST_CACHE_READ  = 0.30  / 1_000_000
+
 
 # ── PROMPTS ───────────────────────────────────────────────────────────────────
 
@@ -212,6 +218,10 @@ def download_pdf(url, drive_service):
 # ── CLAUDE ────────────────────────────────────────────────────────────────────
 
 def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
+    """Returns (parsed_json, cache_note, usage_dict).
+    usage_dict keys: input, output, cache_read, cache_create (all token counts).
+    On error parsed_json is None and usage_dict is {}.
+    """
     try:
         msg = client.messages.create(
             model="claude-sonnet-4-20250514",
@@ -226,8 +236,10 @@ def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
                 {"type": "text", "text": user_text}
             ]}]
         )
-        usage = msg.usage
-        cache_read   = getattr(usage, 'cache_read_input_tokens',   0) or 0
+        usage        = msg.usage
+        input_tok    = getattr(usage, 'input_tokens',                0) or 0
+        output_tok   = getattr(usage, 'output_tokens',               0) or 0
+        cache_read   = getattr(usage, 'cache_read_input_tokens',     0) or 0
         cache_create = getattr(usage, 'cache_creation_input_tokens', 0) or 0
         cache_note = ""
         if cache_read:
@@ -235,64 +247,70 @@ def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
         elif cache_create:
             cache_note = f" (💾 cache miss {cache_create:,} tokens written)"
 
+        usage_dict = {
+            "input":        input_tok,
+            "output":       output_tok,
+            "cache_read":   cache_read,
+            "cache_create": cache_create,
+        }
         raw   = msg.content[0].text.strip()
         clean = re.sub(r'```json|```', '', raw).strip()
-        return json.loads(clean), cache_note
+        return json.loads(clean), cache_note, usage_dict
     except json.JSONDecodeError as e:
-        return None, f"JSON parse error: {e}"
+        return None, f"JSON parse error: {e}", {}
     except Exception as e:
-        return None, f"Claude error: {e}"
+        return None, f"Claude error: {e}", {}
 
 
 # ── EXTRACTION ────────────────────────────────────────────────────────────────
 
 def _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name):
-    parsed, note = call_claude(
+    parsed, note, usage = call_claude(
         client, pdf_b64, SUMMARY_PROMPT,
         f'Extract all venue pricing fields including pricing year and venue type. PDF_ID="{pdf_id}", Vendor_ID="{vendor_id}", venue="{venue_name}". Return only JSON.',
         max_tokens=4000
     )
     if not parsed:
-        return None, note
+        return None, note, usage
     if isinstance(parsed, dict):
         parsed = [parsed]
     for e in parsed:
         e['pdf_id']     = {"value": pdf_id,     "confidence": "high"}
         e['vendor_id']  = {"value": vendor_id,  "confidence": "high"}
         e['venue_name'] = {"value": venue_name, "confidence": "high"}
-    return parsed, note
+    return parsed, note, usage
 
 
 def _extract_grid_structure(client, pdf_b64, venue_name):
-    parsed, note = call_claude(
+    parsed, note, usage = call_claude(
         client, pdf_b64, STRUCTURE_PROMPT,
         f'Map the pricing grid structure for "{venue_name}". Return only JSON.',
         max_tokens=2000
     )
-    return parsed, note
+    return parsed, note, usage
 
 
 def _extract_pricing_grid(client, pdf_b64, pdf_id, venue_name, structure):
     structure_context = ""
     if structure:
         structure_context = f"\n\nPricing grid structure map:\n{json.dumps(structure, indent=2)}\n"
-    parsed, note = call_claude(
+    parsed, note, usage = call_claude(
         client, pdf_b64, PRICING_PROMPT,
         f'Extract all pricing. Venue="{venue_name}", PDF_ID="{pdf_id}".{structure_context}Return only the JSON array.',
         max_tokens=8000
     )
     if parsed and isinstance(parsed, dict):
         parsed = [parsed]
-    return parsed, note
+    return parsed, note, usage
 
 
 def _extract_classification(client, pdf_b64, venue_name):
-    parsed, note = call_claude(
+    parsed, note, usage = call_claude(
         client, pdf_b64, CLASSIFICATION_PROMPT,
         f'Classify venue offering and attributes for "{venue_name}". Return only JSON.',
         max_tokens=1000
     )
-    return parsed, note
+    return parsed, note, usage
 
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -500,7 +518,12 @@ def run_extraction(start_row: int, end_row: int | None):
     yield from emit("✓  Google Drive authenticated")
     yield from emit("")
 
-    results_log = []
+    results_log  = []
+    total_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
+
+    def _add_usage(u):
+        for k in total_tokens:
+            total_tokens[k] += u.get(k, 0)
 
     for i, row in enumerate(batch):
         pdf_id     = str(row.get('PDF_ID')    or row.get('pdf_id')    or '').strip()
@@ -533,7 +556,8 @@ def run_extraction(start_row: int, end_row: int | None):
         timestamp = datetime.now(timezone.utc).isoformat()
 
         yield from emit(f"  🤖 [1/4] Extracting summary + pricing year + venue type...")
-        summary, note = _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name)
+        summary, note, usage = _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name)
+        _add_usage(usage)
         if not summary:
             yield from emit(f"  ❌ Summary failed{': ' + note if note else ''}")
             results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": "summary extraction failed"})
@@ -541,14 +565,16 @@ def run_extraction(start_row: int, end_row: int | None):
         yield from emit(f"  ✓  {len(summary)} space(s){note}")
 
         yield from emit(f"  🤖 [2/4] Mapping pricing grid structure...")
-        structure, note = _extract_grid_structure(client, pdf_b64, venue_name)
+        structure, note, usage = _extract_grid_structure(client, pdf_b64, venue_name)
+        _add_usage(usage)
         if structure:
             yield from emit(f"  ✓  {len(structure.get('spaces', []))} space(s) mapped{note}")
         else:
             yield from emit(f"  ⚠  Structure mapping failed — proceeding without it{note}")
 
         yield from emit(f"  🤖 [3/4] Extracting pricing grid...")
-        pricing, note = _extract_pricing_grid(client, pdf_b64, pdf_id, venue_name, structure)
+        pricing, note, usage = _extract_pricing_grid(client, pdf_b64, pdf_id, venue_name, structure)
+        _add_usage(usage)
         if not pricing:
             yield from emit(f"  ⚠  Pricing grid failed — summary only{note}")
             pricing = []
@@ -556,7 +582,8 @@ def run_extraction(start_row: int, end_row: int | None):
             yield from emit(f"  ✓  {len(pricing)} pricing rows{note}")
 
         yield from emit(f"  🤖 [4/4] Classifying offering + attributes + category...")
-        classification, note = _extract_classification(client, pdf_b64, venue_name)
+        classification, note, usage = _extract_classification(client, pdf_b64, venue_name)
+        _add_usage(usage)
         if classification:
             offering  = classification.get('venue_offering',  {}).get('value', '?')
             attrs     = classification.get('venue_attributes',{}).get('value', '?')
@@ -590,9 +617,21 @@ def run_extraction(start_row: int, end_row: int | None):
     fail_count = sum(1 for r in results_log if r['status'] == 'FAILED')
     part_count = sum(1 for r in results_log if r['status'] == 'PARTIAL')
 
+    cost_usd = (
+        total_tokens["input"]        * _COST_INPUT       +
+        total_tokens["output"]       * _COST_OUTPUT      +
+        total_tokens["cache_create"] * _COST_CACHE_WRITE +
+        total_tokens["cache_read"]   * _COST_CACHE_READ
+    )
+
     yield from emit("")
     yield from emit("─" * 48)
     yield from emit(f"✅ Done — {ok_count} succeeded, {part_count} partial, {fail_count} failed")
+    yield from emit(
+        f"💰 Claude cost: ${cost_usd:.4f}  "
+        f"({total_tokens['input']:,} input · {total_tokens['output']:,} output · "
+        f"{total_tokens['cache_read']:,} cache reads · {total_tokens['cache_create']:,} cache writes)"
+    )
 
     if fail_count:
         yield from emit("Failed:")
@@ -600,4 +639,11 @@ def run_extraction(start_row: int, end_row: int | None):
             if r['status'] == 'FAILED':
                 yield from emit(f"  {r['pdf_id']}: {r.get('reason', '')}")
 
-    yield {"ok": ok_count, "partial": part_count, "failed": fail_count, "log": log}
+    yield {
+        "ok":       ok_count,
+        "partial":  part_count,
+        "failed":   fail_count,
+        "log":      log,
+        "cost_usd": cost_usd,
+        "tokens":   total_tokens,
+    }

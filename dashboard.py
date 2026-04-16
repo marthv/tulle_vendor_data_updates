@@ -629,15 +629,34 @@ with tab1:
         st.session_state.extraction_running = False
 
         if summary_result:
-            ok   = summary_result["ok"]
-            part = summary_result["partial"]
-            fail = summary_result["failed"]
+            ok       = summary_result["ok"]
+            part     = summary_result["partial"]
+            fail     = summary_result["failed"]
+            cost_usd = summary_result.get("cost_usd", 0.0)
+            tokens   = summary_result.get("tokens", {})
             if fail == 0 and part == 0:
                 stat_placeholder.success(f"Done — {ok} succeeded")
             elif fail > 0:
                 stat_placeholder.error(f"Done — {ok} succeeded, {part} partial, {fail} failed")
             else:
                 stat_placeholder.warning(f"Done — {ok} succeeded, {part} partial")
+
+            if cost_usd > 0:
+                tok_in  = tokens.get("input", 0)
+                tok_out = tokens.get("output", 0)
+                tok_cr  = tokens.get("cache_read", 0)
+                tok_cw  = tokens.get("cache_create", 0)
+                st.metric(
+                    "Claude API cost this run",
+                    f"${cost_usd:.4f}",
+                    help=(
+                        f"claude-sonnet-4-20250514 · "
+                        f"{tok_in:,} input · {tok_out:,} output · "
+                        f"{tok_cw:,} cache writes · {tok_cr:,} cache reads\n\n"
+                        f"Rates: $3/M input · $15/M output · $3.75/M cache write · $0.30/M cache read\n"
+                        f"Google Drive downloads: free (service account)"
+                    ),
+                )
 
 
 # ── TAB 2: GOOGLE DATA ────────────────────────────────────────────────────────
