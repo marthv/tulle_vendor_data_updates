@@ -261,36 +261,53 @@ with tab4:
     st.subheader("Sync Collections")
     st.caption(
         "Reads CATEGORY from Extracted PDF Data and writes it into the **Collection** array "
-        "on WPTP Updated Mappings, matched by Vendor ID. Processes up to 500 vendors per run "
-        "(only vendors with an empty Collection). Run repeatedly until it reports **0 updated**."
+        "on WPTP Updated Mappings, matched by Vendor ID. "
+        "Enter the Vendor IDs you want to sync (one per line, or comma-separated)."
+    )
+
+    vendor_ids_input = st.text_area(
+        "Vendor IDs",
+        placeholder="V001\nV002\nV003",
+        height=150,
+        help="Enter Vendor_ID values — one per line or comma-separated.",
     )
 
     if st.button("▶ Run Sync Collections", type="primary", use_container_width=True):
-        with st.spinner("Syncing — querying vendors and updating Collections..."):
-            try:
-                resp = requests.post(
-                    f"{XANO_BASE}/sync_collections",
-                    json={},
-                    timeout=300,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    updated = data.get("updated", 0)
-                    found   = data.get("found",   0)
-                    if updated == 0 and found == 0:
-                        st.success("Done — no vendors with empty Collections found. All caught up.")
-                    elif updated == 0:
-                        st.warning(f"Found {found} vendors with empty Collections but none had a matching category in Extracted PDF Data yet.")
+        # Parse: split on newlines and commas, strip whitespace, drop blanks
+        raw = vendor_ids_input.replace(",", "\n")
+        vendor_ids = [v.strip() for v in raw.splitlines() if v.strip()]
+
+        if not vendor_ids:
+            st.warning("Enter at least one Vendor ID before running.")
+        else:
+            with st.spinner(f"Syncing {len(vendor_ids)} vendor(s)..."):
+                try:
+                    resp = requests.post(
+                        f"{XANO_BASE}/sync_collections",
+                        json={"vendor_ids": vendor_ids},
+                        timeout=300,
+                    )
+                    if resp.status_code == 200:
+                        data    = resp.json()
+                        updated = data.get("updated", 0)
+                        found   = data.get("found",   0)
+                        skipped = data.get("skipped", [])
+                        if found == 0:
+                            st.warning("None of those Vendor IDs were found in WPTP Updated Mappings.")
+                        elif updated == 0:
+                            st.warning(f"Found {found} vendor(s) but none had a matching category in Extracted PDF Data yet.")
+                        else:
+                            st.success(f"Done — {updated} of {found} vendor(s) updated.")
+                        if skipped:
+                            with st.expander(f"{len(skipped)} skipped (no category)", expanded=False):
+                                st.json(skipped)
+                        if data.get("vendors"):
+                            with st.expander("Vendors updated", expanded=True):
+                                st.json(data["vendors"])
                     else:
-                        st.success(f"Done — {updated} of {found} vendors updated.")
-                        if updated == 500:
-                            st.info("500 vendors updated — there may be more. Run again to continue.")
-                    with st.expander("Vendors updated", expanded=False):
-                        st.json(data.get("vendors", []))
-                else:
-                    st.error(f"Xano returned {resp.status_code}")
-                    st.code(resp.text[:500])
-            except requests.exceptions.Timeout:
-                st.warning("Request timed out (Xano may still be processing). Check Xano directly.")
-            except Exception as e:
-                st.error(f"Request failed: {e}")
+                        st.error(f"Xano returned {resp.status_code}")
+                        st.code(resp.text[:500])
+                except requests.exceptions.Timeout:
+                    st.warning("Request timed out (Xano may still be processing). Check Xano directly.")
+                except Exception as e:
+                    st.error(f"Request failed: {e}")
