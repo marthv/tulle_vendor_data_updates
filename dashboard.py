@@ -39,6 +39,8 @@ st.set_page_config(
     layout="wide",
 )
 
+st.logo("tulle.png")
+
 st.markdown("""
 <style>
     .stButton>button { width: 100%; }
@@ -207,8 +209,7 @@ user_email = st.session_state.get("user_email", "")
 col_title, col_user, col_logout = st.columns([4, 3, 1])
 with col_title:
     st.markdown("""
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
-            <span style="font-size:28px">🌿</span>
+        <div style="padding:8px 0">
             <span style="font-size:24px;font-weight:700">Tulle Admin Dashboard</span>
         </div>
     """, unsafe_allow_html=True)
