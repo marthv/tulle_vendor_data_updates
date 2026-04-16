@@ -28,6 +28,7 @@ import pandas as pd
 import streamlit as st
 import google.auth.transport.requests
 import google.oauth2.id_token
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import run_extraction
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
@@ -242,22 +243,42 @@ XANO_WGW = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:WGW_G49d"
 
 EXPLORER_TABLES = {
     "WPTP Updated Mappings": {
-        "url":      f"{XANO_BASE}/wptp_updated_mappings",
-        "patch":    f"{XANO_BASE}/wptp_updated_mappings",   # + /{id}
-        "id_col":   "id",
-        "editable": True,
+        "url":           f"{XANO_BASE}/wptp_updated_mappings",
+        "patch":         f"{XANO_BASE}/wptp_updated_mappings",
+        "id_col":        "id",
+        "editable":      True,
+        # Only these columns can be edited (what the PATCH endpoint accepts)
+        "editable_cols": ["Flags", "Max_Capacity_Seated"],
+        # Rename display column → PATCH input key
+        "patch_field_map": {"Flags": "Flag", "Max_Capacity_Seated": "max_capacity"},
+        # Millisecond timestamp columns → format as readable date
+        "ts_cols":       ["google_data_last_fetched", "Time_of_Submission"],
+        # Array columns → display as comma-separated string
+        "array_cols":    ["Collection", "category_tags"],
+        # Columns to hide entirely (too large / not useful)
+        "hide_cols":     ["google_data_cache", "Coordinates"],
     },
     "WPTP PDFs": {
-        "url":      f"{XANO_BASE}/wptp_pdfs",
-        "patch":    None,
-        "id_col":   "id",
-        "editable": False,
+        "url":           f"{XANO_BASE}/wptp_pdfs",
+        "patch":         None,
+        "id_col":        "id",
+        "editable":      False,
+        "editable_cols": [],
+        "patch_field_map": {},
+        "ts_cols":       [],
+        "array_cols":    [],
+        "hide_cols":     [],
     },
     "Users": {
-        "url":      f"{XANO_WGW}/user",
-        "patch":    f"{XANO_WGW}/user",    # PATCH /user/{id}
-        "id_col":   "id",
-        "editable": True,
+        "url":           f"{XANO_WGW}/user",
+        "patch":         f"{XANO_WGW}/user",
+        "id_col":        "id",
+        "editable":      True,
+        "editable_cols": [],   # edit any field
+        "patch_field_map": {},
+        "ts_cols":       ["created_at"],
+        "array_cols":    ["saved_vendor_ids"],
+        "hide_cols":     [],
     },
 }
 
@@ -417,7 +438,30 @@ with tab0:
 
     if st.session_state.get("exp_loaded_table") == exp_table and st.session_state.get("exp_raw"):
         raw  = st.session_state["exp_raw"]
-        cols = list(raw[0].keys()) if raw else []
+
+        # ── Pre-process raw → display DataFrame ───────────────────────────
+        df_all = pd.DataFrame(raw)
+
+        # Drop hidden columns
+        for col in exp_cfg.get("hide_cols", []):
+            if col in df_all.columns:
+                df_all.drop(columns=[col], inplace=True)
+
+        # Format ms timestamps as readable dates
+        for col in exp_cfg.get("ts_cols", []):
+            if col in df_all.columns:
+                df_all[col] = pd.to_datetime(
+                    df_all[col], unit="ms", utc=True, errors="coerce"
+                ).dt.strftime("%Y-%m-%d %H:%M")
+
+        # Format array columns as comma-separated strings
+        for col in exp_cfg.get("array_cols", []):
+            if col in df_all.columns:
+                df_all[col] = df_all[col].apply(
+                    lambda x: ", ".join(str(i) for i in x) if isinstance(x, list) else (str(x) if x else "")
+                )
+
+        cols = list(df_all.columns)
 
         # ── Filter UI ──────────────────────────────────────────────────────
         st.markdown("**Filters**")
@@ -445,55 +489,75 @@ with tab0:
                 st.session_state["exp_filters"].pop(i)
                 st.rerun()
 
-        # ── Build DataFrame ────────────────────────────────────────────────
-        df_all = pd.DataFrame(raw)
-        df     = _apply_filters(df_all.copy(), st.session_state.get("exp_filters", []))
+        # ── Build display DataFrame ────────────────────────────────────────
+        df = _apply_filters(df_all.copy(), st.session_state.get("exp_filters", []))
         if row_limit:
             df = df.head(row_limit)
 
         st.caption(f"{len(df):,} of {len(df_all):,} rows — {exp_table}"
                    + ("" if exp_cfg["editable"] else "  ·  read-only"))
 
+        # Determine which columns are locked
+        editable_cols = exp_cfg.get("editable_cols", [])
+        if not exp_cfg["editable"]:
+            disabled_arg = True
+        elif editable_cols:
+            disabled_arg = [c for c in df.columns if c not in editable_cols]
+        else:
+            disabled_arg = False
+
         # ── Display / Edit ─────────────────────────────────────────────────
         edited = st.data_editor(
             df,
             use_container_width=True,
             num_rows="fixed",
-            disabled=not exp_cfg["editable"],
+            disabled=disabled_arg,
             key="exp_editor",
         )
 
         if exp_cfg["editable"]:
             if st.button("💾 Save Changes", type="primary", use_container_width=True, key="exp_save"):
-                id_col   = exp_cfg["id_col"]
+                id_col     = exp_cfg["id_col"]
                 patch_base = exp_cfg["patch"]
-                orig_map = {str(r[id_col]): r for r in raw}
-                saved = failed = 0
+                field_map  = exp_cfg.get("patch_field_map", {})
+                orig_map   = {str(r[id_col]): r for r in raw}
+
+                # Collect only changed editable fields
+                changes: list[tuple[str, dict]] = []
                 for _, row in edited.iterrows():
-                    row_id  = str(row[id_col])
-                    orig    = orig_map.get(row_id, {})
-                    changed = {k: v for k, v in row.to_dict().items()
-                               if str(v) != str(orig.get(k, "")) and k != id_col}
-                    if not changed:
-                        continue
-                    try:
-                        r = requests.patch(
-                            f"{patch_base}/{row_id}",
-                            json=changed,
-                            timeout=15,
-                        )
-                        if r.status_code in (200, 201, 204):
-                            saved += 1
-                        else:
-                            failed += 1
-                    except Exception:
-                        failed += 1
-                if saved + failed == 0:
+                    row_id = str(row[id_col])
+                    orig   = orig_map.get(row_id, {})
+                    watch  = editable_cols if editable_cols else [c for c in row.index if c != id_col]
+                    changed = {
+                        field_map.get(k, k): row[k]
+                        for k in watch
+                        if k in row.index and str(row[k]) != str(orig.get(k, ""))
+                    }
+                    if changed:
+                        changes.append((row_id, changed))
+
+                if not changes:
                     st.info("No changes detected.")
-                elif failed == 0:
-                    st.success(f"Saved {saved} row(s).")
                 else:
-                    st.warning(f"Saved {saved}, failed {failed}.")
+                    def _do_patch(row_id, payload):
+                        try:
+                            r = requests.patch(f"{patch_base}/{row_id}", json=payload, timeout=15)
+                            return r.status_code in (200, 201, 204), row_id
+                        except Exception:
+                            return False, row_id
+
+                    with st.spinner(f"Saving {len(changes)} row(s)..."):
+                        with ThreadPoolExecutor(max_workers=10) as pool:
+                            futures = [pool.submit(_do_patch, rid, payload) for rid, payload in changes]
+                            results = [f.result() for f in as_completed(futures)]
+
+                    saved  = sum(1 for ok, _ in results if ok)
+                    failed = len(results) - saved
+
+                    if failed == 0:
+                        st.success(f"Saved {saved} row(s).")
+                    else:
+                        st.warning(f"Saved {saved}, failed {failed}.")
 
 
 # ── TAB 1: PDF EXTRACTION ─────────────────────────────────────────────────────
