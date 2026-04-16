@@ -66,14 +66,14 @@ PRICING FIELDS:
 - F&B Min (Highest/Lowest Sat): F&B minimum spend for Saturday only. Highest = most expensive Saturday season. Lowest = least expensive Saturday season.
 - Guest Min (Highest/Lowest Sat): Minimum guest count for Saturday pricing.
 - Per Person F&B: Combined food + bar per person, Saturday only.
-- Months Highest/Lowest: Which months correspond to highest/lowest Saturday pricing.
+- Months Highest/Lowest: Which months correspond to highest/lowest Saturday pricing. Always list each month individually, comma-separated (e.g. "February, March, April, May"). Never use ranges like "February to May" or "February - May".
 - F&B Spend Min Type: "Per Person Min" or "Overall Min Spend".
 - Base Menu Per Person: Food only, lowest tier available. Exclude cocktail hour add-ons.
 - Base Bar Per Person: Standard/premium open bar with spirits (not beer/wine only packages).
 - Additional_Fees: Short labels for MANDATORY fees only, semicolon-separated.
 - Additional_Fees_Description: Full descriptions, semicolon-separated, matching order of Additional_Fees.
 - MULTIPLE SPACES: Return an ARRAY if multiple distinct bookable spaces exist. Each space gets its own entry with its own capacity, venue fees, and F&B mins. Duplicate all shared fields across every entry.
-- If a value is not present anywhere in the document, return "".
+- If a value is not present anywhere in the document, return "Not listed".
 
 Return this JSON (or array of this JSON for multiple spaces):
 {"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"}}"""
@@ -124,12 +124,12 @@ OUTPUT FIELD RULES:
 - Day_of_Week: exactly one of "Weekday", "Friday", "Saturday", "Sunday"
 - Month: full month name e.g. "January"
 - Meal_Type: "Dinner" unless explicitly stated. Ignore breakfast.
-- Venue_Fee / FB_Min / Per_Person_FB: "" if absent.
+- Venue_Fee / FB_Min / Per_Person_FB: "Not listed" if absent.
 - Venue_Fee_Type: "Flat" or "Per Person"
 - FB_Min_Type: "Overall Min Spend" or "Per Person Min"
-- Admin_Fee_Pct / Tax_Pct / Service_Fee_Pct: number only. "" if absent.
+- Admin_Fee_Pct / Tax_Pct / Service_Fee_Pct: number only. "Not listed" if absent.
 - All repeated fields (fees, ceremony, admin): same value on every row.
-- Use "" for any absent value.
+- Use "Not listed" for any absent value.
 
 Return array with these exact keys:
 [{"Venue_Space_Name":"","Max_Capacity_Seated":"","Day_of_Week":"","Month":"","Meal_Type":"","Guest_Min":"","Guest_Max":"","Venue_Fee":"","Venue_Fee_Type":"","FB_Min":"","FB_Min_Type":"","Per_Person_FB":"","Base_Menu_Per_Person":"","Base_Bar_Per_Person":"","Ceremony_Fee":"","Ceremony_Fee_Type":"","Admin_Fee_Pct":"","Tax_Pct":"","Service_Fee_Pct":"","Additional_Fees":"","Additional_Fees_Description":"","Notes":""}]"""
@@ -146,7 +146,7 @@ VENUE ATTRIBUTES — assign ALL that apply, semicolon-separated:
 "Waterfront", "Garden Setting", "Ballroom", "Industrial / Warehouse", "Greenhouse",
 "Natural Light / Large Windows", "Tall / Vaulted Ceilings", "Vineyard", "Barn", "Tented"
 
-CATEGORY — assign exactly one from this list ONLY if you are at least 95% confident. If not, return "":
+CATEGORY — assign exactly one from this list ONLY if you are at least 90% confident. If not, return "":
 "Museum" — primary identity is a museum or cultural institution.
 "Forest" — primary setting is forested, woodland, or heavily treed natural landscape.
 "Barn & Rustic" — primary structure is a barn, or venue has a distinctly rustic/farm aesthetic.
@@ -158,7 +158,7 @@ CATEGORY — assign exactly one from this list ONLY if you are at least 95% conf
 "Vineyards & Wineries" — venue is a winery, vineyard, or beverage-production estate.
 "Iconic & Expensive" — recognizable landmark venue with pricing at the extreme high end (top 5% nationally).
 "Country Club" — membership-based country club, golf club, or private social club.
-Leave blank ("") if no category fits at 95%+ confidence, or if multiple categories apply equally.
+Leave blank ("") if no category fits at 90%+ confidence, or if multiple categories apply equally.
 
 Return: {"venue_offering":{"value":"","confidence":"high"},"venue_attributes":{"value":"","confidence":"high"},"category":{"value":"","confidence":"high"}}
 venue_attributes: semicolon-separated list, or "Not listed" if none match.
