@@ -353,20 +353,27 @@ with tab0:
     if generate:
         with st.spinner("Fetching metrics..."):
             try:
-                resp = requests.get(
-                    f"{XANO_BASE}/admin_metrics",
-                    params={
-                        "start_ts": _to_ms(start_date),
-                        "end_ts":   _to_ms(end_date, end_of_day=True),
-                    },
-                    timeout=60,
-                )
-                if resp.status_code == 200:
+                start_ts = _to_ms(start_date)
+                end_ts   = _to_ms(end_date, end_of_day=True)
+
+                # Fetch metrics and payment log in parallel
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    f_metrics  = pool.submit(
+                        requests.get, f"{XANO_BASE}/admin_metrics",
+                        params={"start_ts": start_ts, "end_ts": end_ts}, timeout=60
+                    )
+                    f_payments = pool.submit(
+                        requests.get, f"{XANO_BASE}/payment_log", timeout=60
+                    )
+                    resp     = f_metrics.result()
+                    pay_resp = f_payments.result()
+
+                if resp.status_code != 200:
+                    st.error(f"Xano metrics returned {resp.status_code}")
+                    st.code(resp.text[:500])
+                else:
                     d = resp.json()
                     signups   = d.get("new_signups", 0)
-                    pay_made  = d.get("payments_made", 0)
-                    pay_uniq  = d.get("unique_payments", 0)
-                    pay_rate  = d.get("payment_rate", 0)
                     todo_made = d.get("todos_created", 0)
                     todo_uniq = d.get("unique_users_todos", 0)
                     todo_rate = d.get("todo_rate", 0)
@@ -374,23 +381,34 @@ with tab0:
                     pkg_uniq  = d.get("unique_users_packages", 0)
                     pkg_rate  = d.get("package_rate", 0)
 
+                    # Filter payments client-side
+                    pay_made = pay_uniq = 0
+                    pay_rate = 0.0
+                    if pay_resp.status_code == 200:
+                        all_pays = pay_resp.json()
+                        in_range = [
+                            p for p in all_pays
+                            if p.get("Time_of_Payment") is not None
+                            and start_ts <= p["Time_of_Payment"] <= end_ts
+                        ]
+                        pay_made = len(in_range)
+                        pay_uniq = len({p["User"] for p in in_range if p.get("User")})
+                        pay_rate = (pay_uniq * 100 / signups) if signups > 0 else 0.0
+
                     st.markdown(_card("card-green", "👤", signups, "New Signups"),
                                 unsafe_allow_html=True)
                     c1, c2, c3 = st.columns(3)
-                    c1.markdown(_card("card-amber",  "💳", pay_made,  "Payments Made"),    unsafe_allow_html=True)
-                    c2.markdown(_card("card-amber",  "💳", pay_uniq,  "Unique Payments"),  unsafe_allow_html=True)
-                    c3.markdown(_card("card-amber",  "💳", f"{pay_rate:.2f}%", "Payment Rate"), unsafe_allow_html=True)
+                    c1.markdown(_card("card-amber", "💳", pay_made, "Payments Made"),    unsafe_allow_html=True)
+                    c2.markdown(_card("card-amber", "💳", pay_uniq, "Unique Payments"),  unsafe_allow_html=True)
+                    c3.markdown(_card("card-amber", "💳", f"{pay_rate:.2f}%", "Payment Rate"), unsafe_allow_html=True)
                     c4, c5, c6 = st.columns(3)
-                    c4.markdown(_card("card-green",  "✅", todo_made, "To-Dos Created"),          unsafe_allow_html=True)
-                    c5.markdown(_card("card-green",  "✅", todo_uniq, "Unique Users w/ To-Dos"),  unsafe_allow_html=True)
-                    c6.markdown(_card("card-green",  "✅", f"{todo_rate:.2f}%", "To-Do Creation Rate"), unsafe_allow_html=True)
+                    c4.markdown(_card("card-green", "✅", todo_made, "To-Dos Created"),         unsafe_allow_html=True)
+                    c5.markdown(_card("card-green", "✅", todo_uniq, "Unique Users w/ To-Dos"), unsafe_allow_html=True)
+                    c6.markdown(_card("card-green", "✅", f"{todo_rate:.2f}%", "To-Do Creation Rate"), unsafe_allow_html=True)
                     c7, c8, c9 = st.columns(3)
                     c7.markdown(_card("card-purple", "📦", pkg_made, "Packages Created"),          unsafe_allow_html=True)
                     c8.markdown(_card("card-purple", "📦", pkg_uniq, "Unique Users w/ Packages"),  unsafe_allow_html=True)
                     c9.markdown(_card("card-purple", "📦", f"{pkg_rate:.2f}%", "Package Creation Rate"), unsafe_allow_html=True)
-                else:
-                    st.error(f"Xano returned {resp.status_code}")
-                    st.code(resp.text[:500])
             except Exception as e:
                 st.error(f"Request failed: {e}")
 
