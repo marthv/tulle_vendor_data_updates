@@ -39,8 +39,6 @@ st.set_page_config(
     layout="wide",
 )
 
-st.logo("tulle.png")
-
 st.markdown("""
 <style>
     .stButton>button { width: 100%; }
