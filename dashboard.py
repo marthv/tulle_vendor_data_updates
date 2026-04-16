@@ -1,7 +1,7 @@
 """
-Tulle Pipeline Dashboard
-------------------------
-Streamlit web app for running the Tulle data pipeline.
+Tulle Admin Dashboard
+---------------------
+Streamlit web app for the Tulle Together team.
 Hosted on Railway — accessible to the whole team via a URL + password.
 
 Required env vars (set in Railway dashboard):
@@ -15,6 +15,7 @@ Required env vars (set in Railway dashboard):
 """
 
 import os
+import datetime
 import requests
 import streamlit as st
 from extract_core import run_extraction
@@ -22,12 +23,11 @@ from extract_core import run_extraction
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Tulle Pipeline",
+    page_title="Tulle Admin Dashboard",
     page_icon="🌿",
     layout="centered",
 )
 
-# Minimal styling — clean, functional
 st.markdown("""
 <style>
     .stButton>button { width: 100%; }
@@ -46,6 +46,18 @@ st.markdown("""
     .status-ok   { color: #4ade80; font-weight: bold; }
     .status-fail { color: #f87171; font-weight: bold; }
     .status-warn { color: #fbbf24; font-weight: bold; }
+    .metric-card {
+        border-radius: 12px;
+        padding: 20px 16px;
+        text-align: center;
+        margin-bottom: 8px;
+    }
+    .metric-card .metric-icon { font-size: 22px; margin-bottom: 4px; }
+    .metric-card .metric-value { font-size: 32px; font-weight: 700; margin: 4px 0; }
+    .metric-card .metric-label { font-size: 13px; opacity: 0.8; }
+    .card-green  { background: #d1fae5; color: #065f46; border: 1.5px solid #6ee7b7; }
+    .card-amber  { background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; }
+    .card-purple { background: #ede9fe; color: #4c1d95; border: 1.5px solid #c4b5fd; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -56,8 +68,12 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.title("🌿 Tulle Pipeline")
-    st.markdown("Enter your team password to continue.")
+    st.markdown("""
+        <div style="text-align:center;padding:40px 0 16px">
+            <div style="font-size:36px">🌿</div>
+            <div style="font-size:26px;font-weight:700;margin-top:8px">Tulle Admin Dashboard</div>
+        </div>
+    """, unsafe_allow_html=True)
     col1, col2 = st.columns([3, 1])
     with col1:
         pwd = st.text_input("Password", type="password", label_visibility="collapsed",
@@ -79,11 +95,18 @@ if not st.session_state.authenticated:
 
 col_title, col_logout = st.columns([5, 1])
 with col_title:
-    st.title("🌿 Tulle Pipeline")
+    st.markdown("""
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+            <span style="font-size:28px">🌿</span>
+            <span style="font-size:24px;font-weight:700">Tulle Admin Dashboard</span>
+        </div>
+    """, unsafe_allow_html=True)
 with col_logout:
+    st.markdown("<div style='padding-top:12px'>", unsafe_allow_html=True)
     if st.button("Log out", use_container_width=True):
         st.session_state.authenticated = False
         st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -92,7 +115,88 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4 = st.tabs(["📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections"])
+tab0, tab1, tab2, tab3, tab4 = st.tabs(["📊 Admin Dashboard", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections"])
+
+
+# ── TAB 0: ADMIN DASHBOARD ────────────────────────────────────────────────────
+
+def _card(color_class, icon, value, label):
+    return f"""
+    <div class="metric-card {color_class}">
+        <div class="metric-icon">{icon}</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-label">{label}</div>
+    </div>"""
+
+with tab0:
+    st.subheader("Timebound Reporting")
+    st.caption("Generate reports for user signups, to-dos created, and payments made within a specific date range.")
+
+    col_s, col_e, col_btn = st.columns([2, 2, 1])
+    with col_s:
+        start_date = st.date_input("Start Date", value=datetime.date.today() - datetime.timedelta(days=30),
+                                   label_visibility="visible")
+    with col_e:
+        end_date = st.date_input("End Date", value=datetime.date.today(),
+                                 label_visibility="visible")
+    with col_btn:
+        st.markdown("<div style='padding-top:28px'>", unsafe_allow_html=True)
+        generate = st.button("Generate Report", type="primary", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if generate:
+        with st.spinner("Fetching metrics..."):
+            try:
+                resp = requests.get(
+                    f"{XANO_BASE}/admin_metrics",
+                    params={
+                        "start_date": start_date.strftime("%Y-%m-%d"),
+                        "end_date":   end_date.strftime("%Y-%m-%d"),
+                    },
+                    timeout=60,
+                )
+                if resp.status_code == 200:
+                    d = resp.json()
+                    signups   = d.get("new_signups", 0)
+                    pay_made  = d.get("payments_made", 0)
+                    pay_uniq  = d.get("unique_payments", 0)
+                    pay_rate  = d.get("payment_rate", 0)
+                    todo_made = d.get("todos_created", 0)
+                    todo_uniq = d.get("unique_users_todos", 0)
+                    todo_rate = d.get("todo_rate", 0)
+                    pkg_made  = d.get("packages_created", 0)
+                    pkg_uniq  = d.get("unique_users_packages", 0)
+                    pkg_rate  = d.get("package_rate", 0)
+
+                    # New Signups — full width green
+                    st.markdown(
+                        _card("card-green", "👤", signups, "New Signups"),
+                        unsafe_allow_html=True,
+                    )
+
+                    # Payments row — amber
+                    c1, c2, c3 = st.columns(3)
+                    c1.markdown(_card("card-amber", "💳", pay_made,  "Payments Made"),   unsafe_allow_html=True)
+                    c2.markdown(_card("card-amber", "💳", pay_uniq,  "Unique Payments"), unsafe_allow_html=True)
+                    c3.markdown(_card("card-amber", "💳", f"{pay_rate:.1f}%", "Payment Rate"), unsafe_allow_html=True)
+
+                    # To-Dos row — green
+                    c4, c5, c6 = st.columns(3)
+                    c4.markdown(_card("card-green", "✅", todo_made, "To-Dos Created"),         unsafe_allow_html=True)
+                    c5.markdown(_card("card-green", "✅", todo_uniq, "Unique Users w/ To-Dos"), unsafe_allow_html=True)
+                    c6.markdown(_card("card-green", "✅", f"{todo_rate:.1f}%", "To-Do Creation Rate"), unsafe_allow_html=True)
+
+                    # Packages row — purple
+                    c7, c8, c9 = st.columns(3)
+                    c7.markdown(_card("card-purple", "📦", pkg_made, "Packages Created"),          unsafe_allow_html=True)
+                    c8.markdown(_card("card-purple", "📦", pkg_uniq, "Unique Users w/ Packages"),  unsafe_allow_html=True)
+                    c9.markdown(_card("card-purple", "📦", f"{pkg_rate:.1f}%", "Package Creation Rate"), unsafe_allow_html=True)
+
+                else:
+                    st.error(f"Xano returned {resp.status_code}")
+                    st.code(resp.text[:500])
+            except Exception as e:
+                st.error(f"Request failed: {e}")
 
 
 # ── TAB 1: PDF EXTRACTION ─────────────────────────────────────────────────────
