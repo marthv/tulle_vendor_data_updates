@@ -402,7 +402,8 @@ def _fetch_xano_pages(endpoint, per_page=500):
             break
         all_rows.extend(batch)
         yield all_rows, page
-        if len(batch) < per_page:
+        # If Xano returned more than per_page, it ignored pagination — everything is already here
+        if len(batch) >= per_page * 2 or len(batch) < per_page:
             break
         page += 1
         time.sleep(0.3)
