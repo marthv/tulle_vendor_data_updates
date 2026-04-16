@@ -159,19 +159,16 @@ if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
 
 # ── Show login screen if not yet authenticated ────────────────────────────────
 if not st.session_state.authenticated:
-    st.markdown("""
-        <div style="text-align:center;padding:60px 0 8px">
-            <div style="font-size:26px;font-weight:700;margin-top:8px">Tulle Admin Dashboard</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    _, logo_col, _ = st.columns([2, 3, 2])
-    with logo_col:
-        st.image("tulle.png", width=72)
+    _, login_col, _ = st.columns([2, 3, 2])
+    with login_col:
+        st.markdown("""
+            <div style="text-align:center;padding:60px 0 16px">
+                <div style="font-size:26px;font-weight:700">Tulle Admin Dashboard</div>
+            </div>
+        """, unsafe_allow_html=True)
 
     if _USE_GOOGLE_AUTH:
         auth_url = _build_google_auth_url()
-        # Centre the button with padding columns
         _, btn_col, _ = st.columns([2, 3, 2])
         with btn_col:
             st.link_button(
