@@ -356,15 +356,17 @@ with tab0:
                 start_ts = _to_ms(start_date)
                 end_ts   = _to_ms(end_date, end_of_day=True)
 
-                # Fetch metrics and payment log in parallel
+                # Fetch metrics and payment log in parallel via lambdas
                 with ThreadPoolExecutor(max_workers=2) as pool:
-                    f_metrics  = pool.submit(
-                        requests.get, f"{XANO_BASE}/admin_metrics",
-                        params={"start_ts": start_ts, "end_ts": end_ts}, timeout=60
-                    )
-                    f_payments = pool.submit(
-                        requests.get, f"{XANO_BASE}/payment_log", timeout=60
-                    )
+                    f_metrics  = pool.submit(lambda: requests.get(
+                        f"{XANO_BASE}/admin_metrics",
+                        params={"start_ts": start_ts, "end_ts": end_ts},
+                        timeout=60,
+                    ))
+                    f_payments = pool.submit(lambda: requests.get(
+                        f"{XANO_BASE}/payment_log",
+                        timeout=60,
+                    ))
                     resp     = f_metrics.result()
                     pay_resp = f_payments.result()
 
@@ -385,15 +387,20 @@ with tab0:
                     pay_made = pay_uniq = 0
                     pay_rate = 0.0
                     if pay_resp.status_code == 200:
-                        all_pays = pay_resp.json()
+                        raw_pays = pay_resp.json()
+                        # Unwrap if Xano returned a paginated object
+                        if isinstance(raw_pays, dict):
+                            raw_pays = raw_pays.get("items") or raw_pays.get("data") or []
                         in_range = [
-                            p for p in all_pays
+                            p for p in raw_pays
                             if p.get("Time_of_Payment") is not None
                             and start_ts <= p["Time_of_Payment"] <= end_ts
                         ]
                         pay_made = len(in_range)
                         pay_uniq = len({p["User"] for p in in_range if p.get("User")})
                         pay_rate = (pay_uniq * 100 / signups) if signups > 0 else 0.0
+                    else:
+                        st.warning(f"Payment log fetch failed ({pay_resp.status_code}): {pay_resp.text[:200]}")
 
                     st.markdown(_card("card-green", "👤", signups, "New Signups"),
                                 unsafe_allow_html=True)
