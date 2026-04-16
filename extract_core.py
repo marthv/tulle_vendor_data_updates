@@ -73,7 +73,7 @@ PRICING FIELDS:
 - Additional_Fees: Short labels for MANDATORY fees only, semicolon-separated.
 - Additional_Fees_Description: Full descriptions, semicolon-separated, matching order of Additional_Fees.
 - MULTIPLE SPACES: Return an ARRAY if multiple distinct bookable spaces exist. Each space gets its own entry with its own capacity, venue fees, and F&B mins. Duplicate all shared fields across every entry.
-- If a value is not present anywhere in the document, return "Not listed".
+- If a value is not present anywhere in the document, return "".
 
 Return this JSON (or array of this JSON for multiple spaces):
 {"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"}}"""
@@ -124,12 +124,12 @@ OUTPUT FIELD RULES:
 - Day_of_Week: exactly one of "Weekday", "Friday", "Saturday", "Sunday"
 - Month: full month name e.g. "January"
 - Meal_Type: "Dinner" unless explicitly stated. Ignore breakfast.
-- Venue_Fee / FB_Min / Per_Person_FB: "Not listed" if absent.
+- Venue_Fee / FB_Min / Per_Person_FB: "" if absent.
 - Venue_Fee_Type: "Flat" or "Per Person"
 - FB_Min_Type: "Overall Min Spend" or "Per Person Min"
-- Admin_Fee_Pct / Tax_Pct / Service_Fee_Pct: number only. "Not listed" if absent.
+- Admin_Fee_Pct / Tax_Pct / Service_Fee_Pct: number only. "" if absent.
 - All repeated fields (fees, ceremony, admin): same value on every row.
-- Use "Not listed" for any absent value.
+- Use "" for any absent value.
 
 Return array with these exact keys:
 [{"Venue_Space_Name":"","Max_Capacity_Seated":"","Day_of_Week":"","Month":"","Meal_Type":"","Guest_Min":"","Guest_Max":"","Venue_Fee":"","Venue_Fee_Type":"","FB_Min":"","FB_Min_Type":"","Per_Person_FB":"","Base_Menu_Per_Person":"","Base_Bar_Per_Person":"","Ceremony_Fee":"","Ceremony_Fee_Type":"","Admin_Fee_Pct":"","Tax_Pct":"","Service_Fee_Pct":"","Additional_Fees":"","Additional_Fees_Description":"","Notes":""}]"""
@@ -295,6 +295,18 @@ def _extract_classification(client, pdf_b64, venue_name):
     return parsed, note
 
 
+# ── HELPERS ───────────────────────────────────────────────────────────────────
+
+_NOT_LISTED = {"not listed", "n/a", "na", "none", "null", "-"}
+
+def _clean(value):
+    """Return empty string for any 'not listed' / absent sentinel values."""
+    if value is None:
+        return ""
+    s = str(value).strip()
+    return "" if s.lower() in _NOT_LISTED else s
+
+
 # ── XANO POST ─────────────────────────────────────────────────────────────────
 
 def _post_summary(entries, classification, timestamp):
@@ -311,35 +323,38 @@ def _post_summary(entries, classification, timestamp):
     for e in entries:
         raw_fee = e.get("admin_fee_pct", {}).get("value", "")
         fee_m   = re.search(r'(\d+(?:\.\d+)?)', str(raw_fee))
+        def v(key):
+            return _clean(e.get(key, {}).get("value", ""))
+
         payload = {
             "PDF_ID":                                                  e.get("pdf_id",     {}).get("value", ""),
             "VENDOR_ID":                                               e.get("vendor_id",  {}).get("value", ""),
             "VENUE_NAME":                                              e.get("venue_name", {}).get("value", ""),
-            "Pricing_Year":                                            e.get("pricing_year",{}).get("value", ""),
-            "Venue_Type":                                              e.get("venue_type", {}).get("value", ""),
-            "Venue_Offering":                                          venue_offering,
-            "Venue_Attributes":                                        venue_attributes,
-            "CATEGORY":                                                category,
+            "Pricing_Year":                                            v("pricing_year"),
+            "Venue_Type":                                              v("venue_type"),
+            "Venue_Offering":                                          _clean(venue_offering),
+            "Venue_Attributes":                                        _clean(venue_attributes),
+            "CATEGORY":                                                _clean(category),
             "Admin_Service_Fee":                                       fee_m.group(1) if fee_m else "",
-            "Ceremony_Fee":                                            e.get("ceremony_fee",       {}).get("value", ""),
-            "Ceremony_fee_Type":                                       e.get("ceremony_fee_type",  {}).get("value", ""),
-            "Venue_Space_Name":                                        e.get("venue_space",        {}).get("value", ""),
-            "Max_Capacity_Seated":                                     e.get("max_capacity_seated",{}).get("value", ""),
-            "Venue_Fee_on_a_Peak_Season_Saturday":                     e.get("venue_fee_high_sat", {}).get("value", ""),
-            "Food_and_Beverage_Min_on_a_Peak_Season_Saturday":         e.get("fb_min_high_sat",    {}).get("value", ""),
-            "Guest_Min_Highest_Sat":                                   e.get("guest_min_high_sat", {}).get("value", ""),
-            "Per_Person_Food_and_Beverage_on_a_Peak_Season_Saturday":  e.get("per_person_fb_high_sat", {}).get("value", ""),
-            "Months__Highest_Pricing":                                 e.get("months_highest_pricing", {}).get("value", ""),
-            "Venue_Fee_on_Lowest_Saturday":                            e.get("venue_fee_low_sat",  {}).get("value", ""),
-            "Food_and_Beverage_Min_on_Lowest_Saturday":                e.get("fb_min_low_sat",     {}).get("value", ""),
-            "Guest_Min_Lowest_Sat":                                    e.get("guest_min_low_sat",  {}).get("value", ""),
-            "Per_Person_Food_and_Beverage_on_Lowest_Saturday":         e.get("per_person_fb_low_sat", {}).get("value", ""),
-            "Months__Lowest_Pricing":                                  e.get("months_lowest_pricing", {}).get("value", ""),
-            "FB_Spend_Min_Type":                                       e.get("fb_spend_min_type",  {}).get("value", ""),
-            "Base_Menu_Fee_Per_Person":                                e.get("base_menu_per_person",{}).get("value", ""),
-            "Base_Bar_Package_Per_Person":                             e.get("base_bar_per_person", {}).get("value", ""),
-            "Additional_Fees":                                         e.get("additional_fees",    {}).get("value", ""),
-            "Additional_Fees_Description":                             e.get("additional_fees_description", {}).get("value", ""),
+            "Ceremony_Fee":                                            v("ceremony_fee"),
+            "Ceremony_fee_Type":                                       v("ceremony_fee_type"),
+            "Venue_Space_Name":                                        v("venue_space"),
+            "Max_Capacity_Seated":                                     v("max_capacity_seated"),
+            "Venue_Fee_on_a_Peak_Season_Saturday":                     v("venue_fee_high_sat"),
+            "Food_and_Beverage_Min_on_a_Peak_Season_Saturday":         v("fb_min_high_sat"),
+            "Guest_Min_Highest_Sat":                                   v("guest_min_high_sat"),
+            "Per_Person_Food_and_Beverage_on_a_Peak_Season_Saturday":  v("per_person_fb_high_sat"),
+            "Months__Highest_Pricing":                                 v("months_highest_pricing"),
+            "Venue_Fee_on_Lowest_Saturday":                            v("venue_fee_low_sat"),
+            "Food_and_Beverage_Min_on_Lowest_Saturday":                v("fb_min_low_sat"),
+            "Guest_Min_Lowest_Sat":                                    v("guest_min_low_sat"),
+            "Per_Person_Food_and_Beverage_on_Lowest_Saturday":         v("per_person_fb_low_sat"),
+            "Months__Lowest_Pricing":                                  v("months_lowest_pricing"),
+            "FB_Spend_Min_Type":                                       v("fb_spend_min_type"),
+            "Base_Menu_Fee_Per_Person":                                v("base_menu_per_person"),
+            "Base_Bar_Package_Per_Person":                             v("base_bar_per_person"),
+            "Additional_Fees":                                         v("additional_fees"),
+            "Additional_Fees_Description":                             v("additional_fees_description"),
             "last_extracted_at":                                       timestamp[:10],
         }
         try:
@@ -363,30 +378,33 @@ def _post_pricing_grid(rows, pdf_id, vendor_id, venue_name, timestamp):
             day = "Weekday"
         if month not in MONTHS and month != "All":
             month = "All"
+        def r(key, default=""):
+            return _clean(row.get(key, default))
+
         payload = {
             "PDF_ID": pdf_id, "Vendor_ID": vendor_id, "Venue_Name": venue_name,
-            "Venue_Space_Name":            row.get("Venue_Space_Name", ""),
-            "Max_Capacity_Seated":         row.get("Max_Capacity_Seated", ""),
+            "Venue_Space_Name":            r("Venue_Space_Name"),
+            "Max_Capacity_Seated":         r("Max_Capacity_Seated"),
             "Day_of_Week":                 day,
             "Month":                       month,
-            "Meal_Type":                   row.get("Meal_Type", "Dinner"),
-            "Guest_Min":                   row.get("Guest_Min", ""),
-            "Guest_Max":                   row.get("Guest_Max", ""),
-            "Venue_Fee":                   row.get("Venue_Fee", ""),
-            "Venue_Fee_Type":              row.get("Venue_Fee_Type", ""),
-            "FB_Min":                      row.get("FB_Min", ""),
-            "FB_Min_Type":                 row.get("FB_Min_Type", ""),
-            "Per_Person_FB":               row.get("Per_Person_FB", ""),
-            "Base_Menu_Per_Person":        row.get("Base_Menu_Per_Person", ""),
-            "Base_Bar_Per_Person":         row.get("Base_Bar_Per_Person", ""),
-            "Ceremony_Fee":                row.get("Ceremony_Fee", ""),
-            "Ceremony_Fee_Type":           row.get("Ceremony_Fee_Type", ""),
-            "Admin_Fee_Pct":               row.get("Admin_Fee_Pct", ""),
-            "Tax_Pct":                     row.get("Tax_Pct", ""),
-            "Service_Fee_Pct":             row.get("Service_Fee_Pct", ""),
-            "Additional_Fees":             row.get("Additional_Fees", ""),
-            "Additional_Fees_Description": row.get("Additional_Fees_Description", ""),
-            "Notes":                       row.get("Notes", ""),
+            "Meal_Type":                   r("Meal_Type") or "Dinner",
+            "Guest_Min":                   r("Guest_Min"),
+            "Guest_Max":                   r("Guest_Max"),
+            "Venue_Fee":                   r("Venue_Fee"),
+            "Venue_Fee_Type":              r("Venue_Fee_Type"),
+            "FB_Min":                      r("FB_Min"),
+            "FB_Min_Type":                 r("FB_Min_Type"),
+            "Per_Person_FB":               r("Per_Person_FB"),
+            "Base_Menu_Per_Person":        r("Base_Menu_Per_Person"),
+            "Base_Bar_Per_Person":         r("Base_Bar_Per_Person"),
+            "Ceremony_Fee":                r("Ceremony_Fee"),
+            "Ceremony_Fee_Type":           r("Ceremony_Fee_Type"),
+            "Admin_Fee_Pct":               r("Admin_Fee_Pct"),
+            "Tax_Pct":                     r("Tax_Pct"),
+            "Service_Fee_Pct":             r("Service_Fee_Pct"),
+            "Additional_Fees":             r("Additional_Fees"),
+            "Additional_Fees_Description": r("Additional_Fees_Description"),
+            "Notes":                       r("Notes"),
             "last_extracted_at":           timestamp,
         }
         try:
