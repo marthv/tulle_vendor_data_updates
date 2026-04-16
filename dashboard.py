@@ -361,9 +361,12 @@ with tab0:
                 start_ts = _to_ms(start_date)
                 end_ts   = _to_ms(end_date, end_of_day=True)
 
-                def _fetch_all(url):
+                _xano_token = os.environ.get("XANO_API_TOKEN", "")
+                _auth_header = {"Authorization": f"Bearer {_xano_token}"} if _xano_token else {}
+
+                def _fetch_all(url, auth=False):
                     """GET url, unwrap paginated envelope, return (list, status_code)."""
-                    r = requests.get(url, timeout=60)
+                    r = requests.get(url, headers=(_auth_header if auth else {}), timeout=60)
                     if r.status_code != 200:
                         return None, r.status_code
                     data = r.json()
@@ -373,9 +376,9 @@ with tab0:
 
                 with ThreadPoolExecutor(max_workers=4) as pool:
                     f_users    = pool.submit(_fetch_all, f"{XANO_WGW}/user")
-                    f_todos    = pool.submit(_fetch_all, f"{XANO_BASE}/to_do_items")
-                    f_packages = pool.submit(_fetch_all, f"{XANO_BASE}/packages")
-                    f_payments = pool.submit(_fetch_all, f"{XANO_BASE}/donation_payment_log")
+                    f_todos    = pool.submit(_fetch_all, f"{XANO_WGW}/to_do_items", True)
+                    f_packages = pool.submit(_fetch_all, f"{XANO_WGW}/packages")
+                    f_payments = pool.submit(_fetch_all, f"{XANO_WGW}/donation_payment_log")
                     users_data,    users_sc    = f_users.result()
                     todos_data,    todos_sc    = f_todos.result()
                     packages_data, packages_sc = f_packages.result()
