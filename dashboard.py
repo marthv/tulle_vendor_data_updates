@@ -71,6 +71,11 @@ st.markdown("""
     .card-green  { background: #d1fae5; color: #065f46; border: 1.5px solid #6ee7b7; }
     .card-amber  { background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; }
     .card-purple { background: #ede9fe; color: #4c1d95; border: 1.5px solid #c4b5fd; }
+    .block-container {
+        max-width: 90vw !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -351,71 +356,99 @@ with tab0:
         st.markdown("</div>", unsafe_allow_html=True)
 
     if generate:
-        with st.spinner("Fetching metrics..."):
+        with st.spinner("Fetching data from Xano..."):
             try:
                 start_ts = _to_ms(start_date)
                 end_ts   = _to_ms(end_date, end_of_day=True)
 
-                # Fetch metrics and payment log in parallel via lambdas
-                with ThreadPoolExecutor(max_workers=2) as pool:
-                    f_metrics  = pool.submit(lambda: requests.get(
-                        f"{XANO_BASE}/admin_metrics",
-                        params={"start_ts": start_ts, "end_ts": end_ts},
-                        timeout=60,
-                    ))
-                    f_payments = pool.submit(lambda: requests.get(
-                        f"{XANO_BASE}/payment_log",
-                        timeout=60,
-                    ))
-                    resp     = f_metrics.result()
-                    pay_resp = f_payments.result()
+                def _fetch_all(url):
+                    """GET url, unwrap paginated envelope, return (list, status_code)."""
+                    r = requests.get(url, timeout=60)
+                    if r.status_code != 200:
+                        return None, r.status_code
+                    data = r.json()
+                    if isinstance(data, dict):
+                        data = data.get("items") or data.get("data") or data.get("result") or []
+                    return data if isinstance(data, list) else [], 200
 
-                if resp.status_code != 200:
-                    st.error(f"Xano metrics returned {resp.status_code}")
-                    st.code(resp.text[:500])
-                else:
-                    d = resp.json()
-                    signups   = d.get("new_signups", 0)
-                    todo_made = d.get("todos_created", 0)
-                    todo_uniq = d.get("unique_users_todos", 0)
-                    todo_rate = d.get("todo_rate", 0)
-                    pkg_made  = d.get("packages_created", 0)
-                    pkg_uniq  = d.get("unique_users_packages", 0)
-                    pkg_rate  = d.get("package_rate", 0)
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    f_users    = pool.submit(_fetch_all, f"{XANO_WGW}/user")
+                    f_todos    = pool.submit(_fetch_all, f"{XANO_BASE}/to_do_items")
+                    f_packages = pool.submit(_fetch_all, f"{XANO_BASE}/packages")
+                    f_payments = pool.submit(_fetch_all, f"{XANO_BASE}/donation_payment_log")
+                    users_data,    users_sc    = f_users.result()
+                    todos_data,    todos_sc    = f_todos.result()
+                    packages_data, packages_sc = f_packages.result()
+                    payments_data, payments_sc = f_payments.result()
 
-                    # Filter payments client-side
-                    pay_made = pay_uniq = 0
-                    pay_rate = 0.0
-                    if pay_resp.status_code == 200:
-                        raw_pays = pay_resp.json()
-                        # Unwrap if Xano returned a paginated object
-                        if isinstance(raw_pays, dict):
-                            raw_pays = raw_pays.get("items") or raw_pays.get("data") or []
-                        in_range = [
-                            p for p in raw_pays
-                            if p.get("Time_of_Payment") is not None
-                            and start_ts <= p["Time_of_Payment"] <= end_ts
-                        ]
-                        pay_made = len(in_range)
-                        pay_uniq = len({p["User"] for p in in_range if p.get("User")})
-                        pay_rate = (pay_uniq * 100 / signups) if signups > 0 else 0.0
-                    else:
-                        st.warning(f"Payment log fetch failed ({pay_resp.status_code}): {pay_resp.text[:200]}")
+                errors = []
+                if users_sc    != 200: errors.append(f"users ({users_sc})")
+                if todos_sc    != 200: errors.append(f"to_do_items ({todos_sc})")
+                if packages_sc != 200: errors.append(f"packages ({packages_sc})")
+                if payments_sc != 200: errors.append(f"donation_payment_log ({payments_sc})")
+                if errors:
+                    st.error(f"Endpoint(s) failed: {', '.join(errors)}")
 
-                    st.markdown(_card("card-green", "👤", signups, "New Signups"),
-                                unsafe_allow_html=True)
-                    c1, c2, c3 = st.columns(3)
-                    c1.markdown(_card("card-amber", "💳", pay_made, "Payments Made"),    unsafe_allow_html=True)
-                    c2.markdown(_card("card-amber", "💳", pay_uniq, "Unique Payments"),  unsafe_allow_html=True)
-                    c3.markdown(_card("card-amber", "💳", f"{pay_rate:.2f}%", "Payment Rate"), unsafe_allow_html=True)
-                    c4, c5, c6 = st.columns(3)
-                    c4.markdown(_card("card-green", "✅", todo_made, "To-Dos Created"),         unsafe_allow_html=True)
-                    c5.markdown(_card("card-green", "✅", todo_uniq, "Unique Users w/ To-Dos"), unsafe_allow_html=True)
-                    c6.markdown(_card("card-green", "✅", f"{todo_rate:.2f}%", "To-Do Creation Rate"), unsafe_allow_html=True)
-                    c7, c8, c9 = st.columns(3)
-                    c7.markdown(_card("card-purple", "📦", pkg_made, "Packages Created"),          unsafe_allow_html=True)
-                    c8.markdown(_card("card-purple", "📦", pkg_uniq, "Unique Users w/ Packages"),  unsafe_allow_html=True)
-                    c9.markdown(_card("card-purple", "📦", f"{pkg_rate:.2f}%", "Package Creation Rate"), unsafe_allow_html=True)
+                def _in_range(rows, ts_field):
+                    return [
+                        r for r in (rows or [])
+                        if r.get(ts_field) is not None
+                        and start_ts <= r[ts_field] <= end_ts
+                    ]
+
+                def _unique_users(rows):
+                    seen = set()
+                    for r in rows:
+                        uid = (r.get("user_id")
+                               or r.get("User")
+                               or r.get("user")
+                               or (r.get("_user") if isinstance(r.get("_user"), (int, str)) else None))
+                        if uid:
+                            seen.add(str(uid))
+                    return len(seen)
+
+                # Signups — filter by created_at
+                users_range = _in_range(users_data or [], "created_at")
+                signups     = len(users_range)
+
+                # To-Dos
+                todos_range = _in_range(todos_data or [], "created_at")
+                todo_made   = len(todos_range)
+                todo_uniq   = _unique_users(todos_range)
+                todo_rate   = (todo_uniq * 100 / signups) if signups > 0 else 0.0
+
+                # Packages (exclude "Example" vendor names)
+                pkg_range = [
+                    r for r in _in_range(packages_data or [], "created_at")
+                    if "example" not in str(
+                        r.get("vendor_name") or r.get("Vendor_Name") or r.get("name") or ""
+                    ).lower()
+                ]
+                pkg_made  = len(pkg_range)
+                pkg_uniq  = _unique_users(pkg_range)
+                pkg_rate  = (pkg_uniq * 100 / signups) if signups > 0 else 0.0
+
+                # Payments
+                pay_range = _in_range(payments_data or [], "Time_of_Payment")
+                pay_made  = len(pay_range)
+                pay_uniq  = _unique_users(pay_range)
+                pay_rate  = (pay_uniq * 100 / signups) if signups > 0 else 0.0
+
+                st.markdown(_card("card-green", "👤", signups, "New Signups"),
+                            unsafe_allow_html=True)
+                c1, c2, c3 = st.columns(3)
+                c1.markdown(_card("card-amber",  "💳", pay_made,          "Payments Made"),           unsafe_allow_html=True)
+                c2.markdown(_card("card-amber",  "💳", pay_uniq,          "Unique Payers"),            unsafe_allow_html=True)
+                c3.markdown(_card("card-amber",  "💳", f"{pay_rate:.1f}%","Payment Rate"),             unsafe_allow_html=True)
+                c4, c5, c6 = st.columns(3)
+                c4.markdown(_card("card-green",  "✅", todo_made,          "To-Dos Created"),          unsafe_allow_html=True)
+                c5.markdown(_card("card-green",  "✅", todo_uniq,          "Unique Users w/ To-Dos"),  unsafe_allow_html=True)
+                c6.markdown(_card("card-green",  "✅", f"{todo_rate:.1f}%","To-Do Creation Rate"),     unsafe_allow_html=True)
+                c7, c8, c9 = st.columns(3)
+                c7.markdown(_card("card-purple", "📦", pkg_made,           "Packages Created"),        unsafe_allow_html=True)
+                c8.markdown(_card("card-purple", "📦", pkg_uniq,           "Unique Users w/ Packages"),unsafe_allow_html=True)
+                c9.markdown(_card("card-purple", "📦", f"{pkg_rate:.1f}%", "Package Creation Rate"),   unsafe_allow_html=True)
+
             except Exception as e:
                 st.error(f"Request failed: {e}")
 
