@@ -92,7 +92,7 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab1, tab2, tab3 = st.tabs(["📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images"])
+tab1, tab2, tab3, tab4 = st.tabs(["📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections"])
 
 
 # ── TAB 1: PDF EXTRACTION ─────────────────────────────────────────────────────
@@ -253,3 +253,44 @@ with tab3:
                     st.caption(data)
                 st.warning("Stopping — fix image 1 before continuing to 2 and 3.")
                 break
+
+
+# ── TAB 4: SYNC COLLECTIONS ───────────────────────────────────────────────────
+
+with tab4:
+    st.subheader("Sync Collections")
+    st.caption(
+        "Reads CATEGORY from Extracted PDF Data and writes it into the **Collection** array "
+        "on WPTP Updated Mappings, matched by Vendor ID. Processes up to 500 vendors per run "
+        "(only vendors with an empty Collection). Run repeatedly until it reports **0 updated**."
+    )
+
+    if st.button("▶ Run Sync Collections", type="primary", use_container_width=True):
+        with st.spinner("Syncing — querying vendors and updating Collections..."):
+            try:
+                resp = requests.post(
+                    f"{XANO_BASE}/sync_collections",
+                    json={},
+                    timeout=300,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    updated = data.get("updated", 0)
+                    found   = data.get("found",   0)
+                    if updated == 0 and found == 0:
+                        st.success("Done — no vendors with empty Collections found. All caught up.")
+                    elif updated == 0:
+                        st.warning(f"Found {found} vendors with empty Collections but none had a matching category in Extracted PDF Data yet.")
+                    else:
+                        st.success(f"Done — {updated} of {found} vendors updated.")
+                        if updated == 500:
+                            st.info("500 vendors updated — there may be more. Run again to continue.")
+                    with st.expander("Vendors updated", expanded=False):
+                        st.json(data.get("vendors", []))
+                else:
+                    st.error(f"Xano returned {resp.status_code}")
+                    st.code(resp.text[:500])
+            except requests.exceptions.Timeout:
+                st.warning("Request timed out (Xano may still be processing). Check Xano directly.")
+            except Exception as e:
+                st.error(f"Request failed: {e}")
