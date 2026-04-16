@@ -134,7 +134,7 @@ OUTPUT FIELD RULES:
 Return array with these exact keys:
 [{"Venue_Space_Name":"","Max_Capacity_Seated":"","Day_of_Week":"","Month":"","Meal_Type":"","Guest_Min":"","Guest_Max":"","Venue_Fee":"","Venue_Fee_Type":"","FB_Min":"","FB_Min_Type":"","Per_Person_FB":"","Base_Menu_Per_Person":"","Base_Bar_Per_Person":"","Ceremony_Fee":"","Ceremony_Fee_Type":"","Admin_Fee_Pct":"","Tax_Pct":"","Service_Fee_Pct":"","Additional_Fees":"","Additional_Fees_Description":"","Notes":""}]"""
 
-CLASSIFICATION_PROMPT = """You are classifying a wedding venue PDF brochure. Assign exactly one Venue Offering and one or more Venue Attributes. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
+CLASSIFICATION_PROMPT = """You are classifying a wedding venue PDF brochure. Assign exactly one Venue Offering, one or more Venue Attributes, and one Category. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
 
 VENUE OFFERING — assign exactly one:
 "Raw Space" — venue provides just space, zero included services. Negative: any tables, chairs, bar, catering included → not Raw Space.
@@ -146,8 +146,23 @@ VENUE ATTRIBUTES — assign ALL that apply, semicolon-separated:
 "Waterfront", "Garden Setting", "Ballroom", "Industrial / Warehouse", "Greenhouse",
 "Natural Light / Large Windows", "Tall / Vaulted Ceilings", "Vineyard", "Barn", "Tented"
 
-Return: {"venue_offering":{"value":"","confidence":"high"},"venue_attributes":{"value":"","confidence":"high"}}
-venue_attributes: semicolon-separated list, or "Not listed" if none match."""
+CATEGORY — assign exactly one from this list ONLY if you are at least 95% confident. If not, return "":
+"Museum" — primary identity is a museum or cultural institution.
+"Forest" — primary setting is forested, woodland, or heavily treed natural landscape.
+"Barn & Rustic" — primary structure is a barn, or venue has a distinctly rustic/farm aesthetic.
+"Mansions & Estates" — residential-scale mansion, historic estate, villa, or private manor.
+"Botanic Gardens" — primary identity is a botanical garden, arboretum, or conservatory.
+"Coastal" — venue is directly on the ocean, bay, beach, or waterfront with water as the primary setting.
+"Restaurants" — venue is primarily a restaurant or food-service business.
+"Hotel" — venue is primarily a hotel, resort, or lodging property.
+"Vineyards & Wineries" — venue is a winery, vineyard, or beverage-production estate.
+"Iconic & Expensive" — recognizable landmark venue with pricing at the extreme high end (top 5% nationally).
+"Country Club" — membership-based country club, golf club, or private social club.
+Leave blank ("") if no category fits at 95%+ confidence, or if multiple categories apply equally.
+
+Return: {"venue_offering":{"value":"","confidence":"high"},"venue_attributes":{"value":"","confidence":"high"},"category":{"value":"","confidence":"high"}}
+venue_attributes: semicolon-separated list, or "Not listed" if none match.
+category: one of the listed values, or "" if not confident."""
 
 
 # ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
@@ -287,9 +302,11 @@ def _post_summary(entries, classification, timestamp):
     ok = fail = 0
     venue_offering   = ""
     venue_attributes = ""
+    category         = ""
     if classification:
         venue_offering   = classification.get("venue_offering",  {}).get("value", "")
         venue_attributes = classification.get("venue_attributes",{}).get("value", "")
+        category         = classification.get("category",        {}).get("value", "")
 
     for e in entries:
         raw_fee = e.get("admin_fee_pct", {}).get("value", "")
@@ -302,6 +319,7 @@ def _post_summary(entries, classification, timestamp):
             "Venue_Type":                                              e.get("venue_type", {}).get("value", ""),
             "Venue_Offering":                                          venue_offering,
             "Venue_Attributes":                                        venue_attributes,
+            "CATEGORY":                                                category,
             "Admin_Service_Fee":                                       fee_m.group(1) if fee_m else "",
             "Ceremony_Fee":                                            e.get("ceremony_fee",       {}).get("value", ""),
             "Ceremony_fee_Type":                                       e.get("ceremony_fee_type",  {}).get("value", ""),
@@ -519,12 +537,13 @@ def run_extraction(start_row: int, end_row: int | None):
         else:
             yield from emit(f"  ✓  {len(pricing)} pricing rows{note}")
 
-        yield from emit(f"  🤖 [4/4] Classifying offering + attributes...")
+        yield from emit(f"  🤖 [4/4] Classifying offering + attributes + category...")
         classification, note = _extract_classification(client, pdf_b64, venue_name)
         if classification:
-            offering = classification.get('venue_offering', {}).get('value', '?')
-            attrs    = classification.get('venue_attributes', {}).get('value', '?')
-            yield from emit(f"  ✓  {offering} | {attrs}{note}")
+            offering  = classification.get('venue_offering',  {}).get('value', '?')
+            attrs     = classification.get('venue_attributes',{}).get('value', '?')
+            category  = classification.get('category',        {}).get('value', '') or '—'
+            yield from emit(f"  ✓  {offering} | {category} | {attrs}{note}")
         else:
             yield from emit(f"  ⚠  Classification failed{note}")
 
