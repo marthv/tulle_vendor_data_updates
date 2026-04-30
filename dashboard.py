@@ -26,6 +26,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
+import queue as _queue
 import datetime
 import json
 import requests
@@ -283,10 +285,12 @@ def _analyze_script(code: str) -> list:
     return findings
 
 
-def _run_script(script_bytes: bytes, pdf_bytes: bytes):
+def _run_script(script_bytes: bytes, pdf_bytes: bytes, proc_holder: list):
     """
     Generator. Yields log strings while running, then a final result dict:
       {"status": "ok"|"error", "elapsed": float, "output": str, "data": any, "error": str}
+    proc_holder is a single-element list; proc_holder[0] is set to the Popen object
+    so callers can terminate() the process externally (stop button).
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         script_path = os.path.join(tmpdir, "script.py")
@@ -308,6 +312,7 @@ def _run_script(script_bytes: bytes, pdf_bytes: bytes):
                 cwd=tmpdir,
                 env={**os.environ},
             )
+            proc_holder[0] = proc
         except Exception as e:
             yield {"status": "error", "elapsed": 0.0, "output": "", "data": None, "error": f"Failed to start: {e}"}
             return
@@ -323,7 +328,7 @@ def _run_script(script_bytes: bytes, pdf_bytes: bytes):
         stderr_out = proc.stderr.read().decode("utf-8", errors="replace").strip()
         full_out   = "\n".join(accumulated)
 
-        if proc.returncode != 0:
+        if proc.returncode not in (0, -15):  # -15 = SIGTERM (user stopped)
             yield {"status": "error", "elapsed": elapsed, "output": full_out,
                    "data": None, "error": stderr_out or f"Exit code {proc.returncode}"}
             return
@@ -348,6 +353,25 @@ def _run_script(script_bytes: bytes, pdf_bytes: bytes):
                     pass
 
         yield {"status": "ok", "elapsed": elapsed, "output": full_out, "data": data, "error": ""}
+
+
+def _start_runner_thread(script_bytes: bytes, pdf_bytes: bytes):
+    """
+    Starts _run_script in a background thread. Returns (queue, proc_holder).
+    The queue receives log strings and a final result dict, then None as sentinel.
+    proc_holder[0] is set to the Popen object once the process starts.
+    """
+    out_q       = _queue.Queue()
+    proc_holder = [None]
+
+    def _worker():
+        for item in _run_script(script_bytes, pdf_bytes, proc_holder):
+            out_q.put(item)
+        out_q.put(None)  # sentinel
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    return out_q, proc_holder
 
 
 # ── SCHEMA REFERENCE DATA ────────────────────────────────────────────────────
@@ -1123,55 +1147,107 @@ with tab5:
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 )
 
-    # ── Run button ────────────────────────────────────────────────────────────
+    # ── Run / Stop buttons ────────────────────────────────────────────────────
     st.markdown("")
-    _has_syntax_error = py_upload is not None and any(
-        lvl == "ERROR" for lvl, _ in _analyze_script(py_upload.read().decode("utf-8", errors="replace") if py_upload else "")
-    )
-    if py_upload:
-        py_upload.seek(0)
+    _runner_running = st.session_state.get("_runner_running", False)
+    _run_disabled   = not (py_upload and pdf_upload) or _runner_running
 
-    _run_disabled = not (py_upload and pdf_upload)
-    _run_btn = st.button(
-        "▶  Run Script",
-        type="primary",
-        use_container_width=True,
-        disabled=_run_disabled,
-        key="runner_run",
-        help="Upload both a .py script and a PDF to enable." if _run_disabled else None,
-    )
+    _btn_col, _stop_col = st.columns([4, 1])
+    with _btn_col:
+        _run_btn = st.button(
+            "▶  Run Script",
+            type="primary",
+            use_container_width=True,
+            disabled=_run_disabled,
+            key="runner_run",
+            help="Upload both a .py script and a PDF to enable." if not (py_upload and pdf_upload) else None,
+        )
+    with _stop_col:
+        _stop_btn = st.button(
+            "⏹  Stop",
+            use_container_width=True,
+            disabled=not _runner_running,
+            key="runner_stop",
+        )
 
-    # ── Output ────────────────────────────────────────────────────────────────
+    # ── Start a new run ───────────────────────────────────────────────────────
     if _run_btn and py_upload and pdf_upload:
-        st.markdown("---")
-        _log_header = st.empty()
-        _log_area   = st.empty()
-        _stat_area  = st.empty()
-
-        _log_header.markdown("**Running…**")
-        _log_lines  = []
-        _run_result = None
-
         py_upload.seek(0)
         pdf_upload.seek(0)
+        _q, _ph = _start_runner_thread(py_upload.read(), pdf_upload.read())
+        st.session_state["_runner_queue"]       = _q
+        st.session_state["_runner_proc_holder"] = _ph
+        st.session_state["_runner_running"]     = True
+        st.session_state["_runner_lines"]       = []
+        st.session_state["_runner_result"]      = None
+        st.rerun()
 
-        for _item in _run_script(py_upload.read(), pdf_upload.read()):
-            if isinstance(_item, dict):
-                _run_result = _item
-                break
-            _log_lines.append(_item)
-            _log_area.markdown(
-                '<div class="log-box">' + "\n".join(_log_lines) + "</div>",
+    # ── Handle Stop ───────────────────────────────────────────────────────────
+    if _stop_btn:
+        _ph = st.session_state.get("_runner_proc_holder", [None])
+        if _ph[0] is not None:
+            _ph[0].terminate()
+        st.session_state["_runner_running"] = False
+        st.session_state["_runner_result"]  = {
+            "status": "error", "elapsed": 0, "output": "",
+            "data": None, "error": "Stopped by user.",
+        }
+        st.rerun()
+
+    # ── Live output + result display ──────────────────────────────────────────
+    if st.session_state.get("_runner_running") or st.session_state.get("_runner_lines") or st.session_state.get("_runner_result"):
+        st.markdown("---")
+        _log_header_ph = st.empty()
+        _log_area_ph   = st.empty()
+        _stat_ph       = st.empty()
+
+        # Drain new lines from the background thread queue
+        if st.session_state.get("_runner_running"):
+            _q = st.session_state.get("_runner_queue")
+            if _q:
+                import time as _time
+                _deadline = _time.monotonic() + 0.4
+                while _time.monotonic() < _deadline:
+                    try:
+                        _item = _q.get_nowait()
+                        if _item is None:
+                            st.session_state["_runner_running"] = False
+                            break
+                        elif isinstance(_item, dict):
+                            st.session_state["_runner_result"]  = _item
+                            st.session_state["_runner_running"] = False
+                            break
+                        else:
+                            st.session_state["_runner_lines"].append(_item)
+                    except _queue.Empty:
+                        break
+
+        _lines         = st.session_state.get("_runner_lines", [])
+        _still_running = st.session_state.get("_runner_running", False)
+
+        _log_header_ph.markdown(
+            f"**{'Running…' if _still_running else 'Log'}** — {len(_lines)} line(s)"
+        )
+        if _lines:
+            _log_area_ph.markdown(
+                '<div class="log-box">' + "\n".join(_lines) + "</div>",
                 unsafe_allow_html=True,
             )
 
-        _log_header.markdown(f"**Log** — {len(_log_lines)} line(s)")
+        # Keep polling while the script is still running
+        if _still_running:
+            import time as _time
+            _time.sleep(0.3)
+            st.rerun()
 
-        if _run_result:
+        # Show final result once done
+        _run_result = st.session_state.get("_runner_result")
+        if _run_result and not _still_running:
             _elapsed = _run_result.get("elapsed", 0)
-            if _run_result["status"] == "ok":
-                _stat_area.success(f"✓  Completed in {_elapsed:.1f}s")
+            _stopped = "Stopped by user" in _run_result.get("error", "")
 
+            if _run_result["status"] == "ok":
+                _stat_ph.success(f"✓  Completed in {_elapsed:.1f}s")
                 _data = _run_result.get("data")
                 if _data is not None:
                     st.markdown("**Structured Output**")
@@ -1181,19 +1257,17 @@ with tab5:
                         st.dataframe(_df_out, use_container_width=True)
                     else:
                         st.json(_data)
+                    if _run_result.get("output"):
+                        with st.expander("Full stdout", expanded=False):
+                            st.code(_run_result["output"], language="text")
                 else:
                     st.markdown("**Raw Output** *(no JSON detected — showing stdout)*")
                     st.code(_run_result.get("output", ""), language="text")
-
-                if _run_result.get("output") and _data is not None:
-                    with st.expander("Full stdout", expanded=False):
-                        st.code(_run_result["output"], language="text")
             else:
-                _stat_area.error(f"Script failed after {_elapsed:.1f}s")
-                _err = _run_result.get("error", "")
-                if _err:
+                _stat_ph.error("Stopped." if _stopped else f"Script failed after {_elapsed:.1f}s")
+                if _run_result.get("error") and not _stopped:
                     st.markdown("**stderr**")
-                    st.code(_err, language="text")
+                    st.code(_run_result["error"], language="text")
                 if _run_result.get("output"):
                     with st.expander("stdout (partial)", expanded=False):
                         st.code(_run_result["output"], language="text")
