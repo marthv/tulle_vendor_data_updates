@@ -21,6 +21,11 @@ Optional fallback (if GOOGLE_CLIENT_ID is not set, password auth is used):
 """
 
 import os
+import ast
+import re
+import subprocess
+import sys
+import tempfile
 import datetime
 import json
 import requests
@@ -233,9 +238,184 @@ st.markdown("---")
 XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B")
 
 
+# ── SCRIPT RUNNER — RISK PATTERNS ────────────────────────────────────────────
+
+_SCRIPT_RISKS = [
+    (r'\bsubprocess\b',                          "RISK", "Uses subprocess — can execute shell commands on the Railway server"),
+    (r'\bos\.system\s*\(',                       "RISK", "Uses os.system() — executes arbitrary shell commands"),
+    (r'\bos\.popen\s*\(',                        "RISK", "Uses os.popen() — executes arbitrary shell commands"),
+    (r'(?<!\w)exec\s*\(',                        "RISK", "Uses exec() — executes arbitrary Python code at runtime"),
+    (r'\beval\s*\(',                             "RISK", "Uses eval() — evaluates arbitrary expressions"),
+    (r'shutil\.rmtree',                          "RISK", "Uses shutil.rmtree — can delete directories on the server"),
+    (r'\b__import__\s*\(',                       "RISK", "Uses __import__() — dynamic imports can load unexpected code"),
+    (r'pickle\.(load|loads)\b',                  "RISK", "Unpickling from unknown source can execute arbitrary code"),
+    (r'os\.(remove|unlink)\s*\(',                "WARN", "Deletes files — confirm it only cleans up temp files"),
+    (r"open\s*\([^,\n]+,\s*['\"]w",             "WARN", "Writes to files — script creates local output files on the server"),
+    (r'requests\.(post|put|delete|patch)\s*\(',  "INFO", "Makes outbound HTTP write requests — verify endpoints are expected"),
+    (r'ANTHROPIC_API_KEY',                       "INFO", "Uses Claude API — will consume API credits when run"),
+]
+
+
+def _analyze_script(code: str) -> list:
+    """Return list of (level, message) tuples. Levels: ERROR | RISK | WARN | INFO."""
+    findings = []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        findings.append(("ERROR", f"Syntax error on line {e.lineno}: {e.msg}"))
+        return findings
+
+    for pattern, level, msg in _SCRIPT_RISKS:
+        if re.search(pattern, code):
+            findings.append((level, msg))
+
+    fn_names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    known_entry = {"main", "extract", "process", "run", "analyze", "extract_data", "process_pdf"}
+    has_main_guard = any(
+        isinstance(n, ast.If) and isinstance(getattr(n, "test", None), ast.Compare)
+        and any(isinstance(c, ast.Constant) and c.value == "__main__"
+                for c in getattr(n.test, "comparators", []))
+        for n in ast.walk(tree)
+    )
+    if not (fn_names & known_entry) and not has_main_guard:
+        findings.append(("WARN", f"No recognisable entry point — expected one of: {', '.join(sorted(known_entry))}, or an `if __name__ == '__main__'` block"))
+
+    return findings
+
+
+def _run_script(script_bytes: bytes, pdf_bytes: bytes):
+    """
+    Generator. Yields log strings while running, then a final result dict:
+      {"status": "ok"|"error", "elapsed": float, "output": str, "data": any, "error": str}
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        script_path = os.path.join(tmpdir, "script.py")
+        pdf_path    = os.path.join(tmpdir, "input.pdf")
+        with open(script_path, "wb") as f:
+            f.write(script_bytes)
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+
+        yield "⚙️  Launching script..."
+        import time
+        start = time.time()
+
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, script_path, pdf_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=tmpdir,
+                env={**os.environ},
+            )
+        except Exception as e:
+            yield {"status": "error", "elapsed": 0.0, "output": "", "data": None, "error": f"Failed to start: {e}"}
+            return
+
+        accumulated = []
+        for raw in proc.stdout:
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            accumulated.append(line)
+            yield f"[{time.time() - start:.1f}s]  {line}"
+
+        proc.wait()
+        elapsed    = time.time() - start
+        stderr_out = proc.stderr.read().decode("utf-8", errors="replace").strip()
+        full_out   = "\n".join(accumulated)
+
+        if proc.returncode != 0:
+            yield {"status": "error", "elapsed": elapsed, "output": full_out,
+                   "data": None, "error": stderr_out or f"Exit code {proc.returncode}"}
+            return
+
+        data = None
+        candidates = [full_out]
+        last_bracket = max(full_out.rfind("["), full_out.rfind("{"))
+        if last_bracket >= 0:
+            candidates.append(full_out[last_bracket:])
+        for attempt in candidates:
+            try:
+                data = json.loads(attempt)
+                break
+            except Exception:
+                pass
+        if data is None:
+            m = re.search(r'(\[[\s\S]*\]|\{[\s\S]*\})\s*$', full_out)
+            if m:
+                try:
+                    data = json.loads(m.group(1))
+                except Exception:
+                    pass
+
+        yield {"status": "ok", "elapsed": elapsed, "output": full_out, "data": data, "error": ""}
+
+
+# ── SCHEMA REFERENCE DATA ────────────────────────────────────────────────────
+
+_SCHEMA_PDF_DATA = [
+    ("PDF_ID",                  "text",      "Unique ID from wptp_pdfs. Used for dedup check on re-run",                                  "PDF_042"),
+    ("VENDOR_ID",               "text",      "Vendor ID from wptp_pdfs",                                                                   "VND_018"),
+    ("VENUE_NAME",              "text",      "Venue name as extracted from the PDF",                                                        "Inn at Taughannock Falls"),
+    ("Pricing_Year",            "text",      "Year the pricing applies to. 'Not listed' if absent",                                        "2027"),
+    ("Venue_Type",              "text",      "One of: Dedicated Event Venue · Hotel / Resort · Restaurant / Bar · Estate / Mansion · Performing Arts Venue · Museum / Gallery · Zoo / Aquarium · Garden / Botanical Garden · Barn / Ranch · Winery / Brewery / Distillery · Country Club / Private Club · University / College · Religious · Civic / Public", "Hotel / Resort"),
+    ("Admin__Service_Fee",      "text",      "Admin or service fee % — number only, no % sign. 'Not listed' if absent",                   "22"),
+    ("Ceremony_Fee",            "text",      "Flat or per-person ceremony add-on fee. 'Not listed' if absent",                             "$1,500"),
+    ("Ceremony_fee_Type",       "text",      "'Flat rate' or 'Per person'",                                                                "Per person"),
+    ("Venue_Space_Name",        "text",      "Bookable space name. Pipe-separated if multiple on one summary row",                        "Enchantment"),
+    ("Max_Capacity_Seated",     "text",      "Maximum seated dinner guests for this space. 'Not listed' if absent",                       "300"),
+    ("Venue_Fee_Highest_Sat",   "text",      "Saturday venue rental — most expensive season",                                              "$25,000"),
+    ("FB_Min_Highest_Sat",      "text",      "Saturday F&B/bar minimum — most expensive season",                                          "$30,000"),
+    ("Guest_Min_Highest_Sat",   "text",      "Minimum guest count for Saturday highest pricing",                                           "100"),
+    ("Per_Person_FB_Highest_Sat","text",     "Combined food + bar per person, Saturday highest season",                                    "$290"),
+    ("Months__Highest_Pricing", "text",      "Months for highest Saturday pricing — comma-separated, no ranges",                          "May, June, September, October"),
+    ("Venue_Fee_Lowest_Sat",    "text",      "Saturday venue rental — least expensive season",                                             "$17,000"),
+    ("FB_Min_Lowest_Sat",       "text",      "Saturday F&B/bar minimum — least expensive season",                                         "$30,000"),
+    ("Guest_Min_Lowest_Sat",    "text",      "Minimum guest count for Saturday lowest pricing",                                            "Not listed"),
+    ("Per_Person_FB_Lowest_Sat","text",      "Combined food + bar per person, Saturday lowest season",                                     "Not listed"),
+    ("Months__Lowest_Pricing",  "text",      "Months for lowest Saturday pricing — comma-separated",                                      "December, January, February, March"),
+    ("FB_Spend_Min_Type",       "text",      "'Per Person Min' or 'Overall Min Spend'",                                                   "Overall Min Spend"),
+    ("Base_Menu_Per_Person",    "text",      "Food-only per person, lowest available tier. Excludes cocktail hour",                        "$290"),
+    ("Base_Bar_Per_Person",     "text",      "Standard open bar with spirits per person. Not beer/wine-only packages",                    "$78"),
+    ("Additional_Fees",         "text",      "Short labels for mandatory additional fees — semicolon-separated",                           "NY Sales Tax; CC Processing Fee"),
+    ("Additional_Fees_Description","text",   "Full descriptions matching order of Additional_Fees — semicolon-separated",                 "8.875% NY State sales tax; 3.5% CC fee"),
+    ("Venue_Offering ★ NEW",    "text",      "One of: Raw Space · Semi-Inclusive · All-Inclusive",                                        "All-Inclusive"),
+    ("Venue_Attributes ★ NEW",  "text",      "Semicolon-separated: Historic Architecture · Estate / Mansion · Rooftop / Skyline Views · Scenic / Nature Views · Waterfront · Garden Setting · Ballroom · Industrial / Warehouse · Greenhouse · Natural Light / Large Windows · Tall / Vaulted Ceilings · Vineyard · Barn · Tented", "Waterfront; Garden Setting; Tented"),
+    ("last_extracted_at",       "timestamp", "UTC ISO timestamp of when this row was written",                                             "2026-04-08T14:23:01Z"),
+]
+
+_SCHEMA_PRICING = [
+    ("PDF_ID",               "text",      "Links back to extracted_pdf_data and wptp_pdfs",                         "PDF_042"),
+    ("Vendor_ID",            "text",      "Links back to source vendor record",                                      "VND_018"),
+    ("Venue_Name",           "text",      "Venue name (denormalized for querying)",                                  "74 Wythe"),
+    ("Venue_Space_Name",     "text",      "Name of the specific bookable space",                                     "The Barn"),
+    ("Max_Capacity_Seated",  "text",      "Max seated guests for this space",                                        "200"),
+    ("Day_of_Week",          "text",      "Exactly one of: Weekday · Friday · Saturday · Sunday",                   "Saturday"),
+    ("Month",                "text",      "Full month name, or 'All' if no seasonal breakdown",                     "October"),
+    ("Meal_Type",            "text",      "'Dinner' unless explicitly stated otherwise. Breakfast ignored.",         "Dinner"),
+    ("Guest_Min",            "text",      "Minimum guest count for this pricing tier. Blank if not stated",         "100"),
+    ("Guest_Max",            "text",      "Maximum guest count for this pricing tier. Blank if not stated",         "149"),
+    ("Venue_Fee",            "text",      "Room rental for this day/month. 'Not listed' if absent",                 "$9,500"),
+    ("Venue_Fee_Type",       "text",      "'Flat' or 'Per Person'",                                                  "Flat"),
+    ("FB_Min",               "text",      "F&B or bar minimum spend. 'Not listed' if absent",                       "$10,000"),
+    ("FB_Min_Type",          "text",      "'Overall Min Spend' (dollar total) or 'Per Person Min' (per guest)",     "Overall Min Spend"),
+    ("Per_Person_FB",        "text",      "Combined food + bar per person. 'Not listed' if absent",                 "$330"),
+    ("Base_Menu_Per_Person", "text",      "Food-only per person, lowest tier. Same on every row for this venue",    "$290"),
+    ("Base_Bar_Per_Person",  "text",      "Standard open bar with spirits per person. Same on every row",           "$78"),
+    ("Ceremony_Fee",         "text",      "Ceremony add-on fee. Same on every row",                                 "$15"),
+    ("Ceremony_Fee_Type",    "text",      "'Flat' or 'Per Person'. Same on every row",                              "Per Person"),
+    ("Admin_Fee_Pct",        "text",      "Admin/service fee % — number only. Same on every row",                   "23"),
+    ("Tax_Pct",              "text",      "Sales tax % — number only. 'Not listed' if not stated. Same on every row","8.875"),
+    ("Service_Fee_Pct",      "text",      "Only if explicitly separate from admin fee. Otherwise 'Not listed'",     "Not listed"),
+    ("Additional_Fees",      "text",      "Short labels for mandatory fees — semicolon-separated. Same on every row","NY Sales Tax"),
+    ("Additional_Fees_Description","text","Full descriptions — semicolon-separated. Same on every row",             "8.875% NY State sales tax"),
+    ("Notes",                "text",      "Any pricing nuance that doesn't fit the above fields",                   "Operates mid-May to mid-October only"),
+    ("last_extracted_at",    "timestamp", "UTC ISO timestamp of when this row was written",                         "2026-04-08T14:23:01Z"),
+]
+
+
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab1, tab2, tab3, tab4 = st.tabs(["📊 Admin Dashboard", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections"])
+tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Admin Dashboard", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🧪 Script Runner"])
 
 
 # ── TAB 0: ADMIN DASHBOARD ────────────────────────────────────────────────────
@@ -849,3 +1029,171 @@ with tab4:
                     st.warning("Request timed out (Xano may still be processing). Check Xano directly.")
                 except Exception as e:
                     st.error(f"Request failed: {e}")
+
+
+# ── TAB 5: SCRIPT RUNNER ──────────────────────────────────────────────────────
+
+with tab5:
+    st.subheader("Script Runner")
+    st.caption(
+        "Upload a Claude-generated extraction script and a pricing PDF to test the output "
+        "before deploying. The script is run with the PDF path as the first argument."
+    )
+
+    # ── File uploads ─────────────────────────────────────────────────────────
+    col_py, col_pdf = st.columns(2)
+
+    with col_py:
+        st.markdown("**① Extraction Script (.py)**")
+        py_upload = st.file_uploader(
+            "Upload Python script", type=["py"], key="runner_py",
+            label_visibility="collapsed",
+        )
+        if py_upload:
+            _script_bytes = py_upload.read()
+            py_upload.seek(0)
+            _code     = _script_bytes.decode("utf-8", errors="replace")
+            _findings = _analyze_script(_code)
+
+            if not _findings:
+                st.success("✓  No issues detected")
+            else:
+                for _lvl, _msg in _findings:
+                    if _lvl == "ERROR":
+                        st.error(f"**ERROR** — {_msg}")
+                    elif _lvl == "RISK":
+                        st.error(f"**RISK** — {_msg}")
+                    elif _lvl == "WARN":
+                        st.warning(f"⚠  {_msg}")
+                    else:
+                        st.info(f"ℹ  {_msg}")
+
+            with st.expander("View script source", expanded=False):
+                st.code(_code, language="python")
+
+    with col_pdf:
+        st.markdown("**② Pricing PDF**")
+        pdf_upload = st.file_uploader(
+            "Upload PDF", type=["pdf"], key="runner_pdf",
+            label_visibility="collapsed",
+        )
+        if pdf_upload:
+            st.success(f"✓  {pdf_upload.name}  ({pdf_upload.size // 1024} KB)")
+
+    # ── Schema reference ──────────────────────────────────────────────────────
+    st.markdown("---")
+    with st.expander("📋  Xano Schema Reference — v5  (extracted_pdf_data  &  venue_pricing)", expanded=False):
+        _schema_tab1, _schema_tab2 = st.tabs(["Table 1 — extracted_pdf_data", "Table 2 — venue_pricing"])
+
+        with _schema_tab1:
+            st.caption("One row per bookable space per venue. Classification fields (Venue_Offering, Venue_Attributes) are written by Call 3.")
+            st.info(
+                "**v5 notes** — New fields: `Venue_Offering`, `Venue_Attributes`.  "
+                "Barn/Ranch now qualifies on aesthetic (timber frame, rustic, converted) without requiring active agriculture.  "
+                "Vineyard attribute split into 'Vineyard' and 'Barn' separately."
+            )
+            st.dataframe(
+                pd.DataFrame(_SCHEMA_PDF_DATA, columns=["Field", "Type", "Description", "Example"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with _schema_tab2:
+            st.caption(
+                "One row per space × day of week × month. "
+                "Multi-year rule: if the same months appear in multiple years, only the most future year is stored."
+            )
+            st.info(
+                "**v5 notes** — Friday/Sunday combined rows are expanded into two separate rows.  "
+                "'Not listed' = field genuinely absent from PDF. Empty string = script error."
+            )
+            st.dataframe(
+                pd.DataFrame(_SCHEMA_PRICING, columns=["Field", "Type", "Description", "Example"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        _schema_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema", "Xano_Schema_v5_1.docx")
+        if os.path.exists(_schema_file):
+            with open(_schema_file, "rb") as _sf:
+                st.download_button(
+                    "⬇  Download Xano_Schema_v5_1.docx",
+                    _sf.read(),
+                    file_name="Xano_Schema_v5_1.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+
+    # ── Run button ────────────────────────────────────────────────────────────
+    st.markdown("")
+    _has_syntax_error = py_upload is not None and any(
+        lvl == "ERROR" for lvl, _ in _analyze_script(py_upload.read().decode("utf-8", errors="replace") if py_upload else "")
+    )
+    if py_upload:
+        py_upload.seek(0)
+
+    _run_disabled = not (py_upload and pdf_upload)
+    _run_btn = st.button(
+        "▶  Run Script",
+        type="primary",
+        use_container_width=True,
+        disabled=_run_disabled,
+        key="runner_run",
+        help="Upload both a .py script and a PDF to enable." if _run_disabled else None,
+    )
+
+    # ── Output ────────────────────────────────────────────────────────────────
+    if _run_btn and py_upload and pdf_upload:
+        st.markdown("---")
+        _log_header = st.empty()
+        _log_area   = st.empty()
+        _stat_area  = st.empty()
+
+        _log_header.markdown("**Running…**")
+        _log_lines  = []
+        _run_result = None
+
+        py_upload.seek(0)
+        pdf_upload.seek(0)
+
+        for _item in _run_script(py_upload.read(), pdf_upload.read()):
+            if isinstance(_item, dict):
+                _run_result = _item
+                break
+            _log_lines.append(_item)
+            _log_area.markdown(
+                '<div class="log-box">' + "\n".join(_log_lines) + "</div>",
+                unsafe_allow_html=True,
+            )
+
+        _log_header.markdown(f"**Log** — {len(_log_lines)} line(s)")
+
+        if _run_result:
+            _elapsed = _run_result.get("elapsed", 0)
+            if _run_result["status"] == "ok":
+                _stat_area.success(f"✓  Completed in {_elapsed:.1f}s")
+
+                _data = _run_result.get("data")
+                if _data is not None:
+                    st.markdown("**Structured Output**")
+                    if isinstance(_data, list) and all(isinstance(r, dict) for r in _data):
+                        _df_out = pd.DataFrame(_data)
+                        st.caption(f"{len(_df_out):,} rows · {len(_df_out.columns)} columns")
+                        st.dataframe(_df_out, use_container_width=True)
+                    else:
+                        st.json(_data)
+                else:
+                    st.markdown("**Raw Output** *(no JSON detected — showing stdout)*")
+                    st.code(_run_result.get("output", ""), language="text")
+
+                if _run_result.get("output") and _data is not None:
+                    with st.expander("Full stdout", expanded=False):
+                        st.code(_run_result["output"], language="text")
+            else:
+                _stat_area.error(f"Script failed after {_elapsed:.1f}s")
+                _err = _run_result.get("error", "")
+                if _err:
+                    st.markdown("**stderr**")
+                    st.code(_err, language="text")
+                if _run_result.get("output"):
+                    with st.expander("stdout (partial)", expanded=False):
+                        st.code(_run_result["output"], language="text")
