@@ -1236,8 +1236,12 @@ with tab5:
 
         if _last_result and _last_result.get("ok", 0) > 0:
             with st.expander("🔍 View rows written to Xano", expanded=False):
-                run_ts = _last_result.get("run_started_at", "")
-                st.caption("Fetching rows written during this run...")
+                run_pdf_ids = {
+                    str(r.get("pdf_id", "")).strip()
+                    for r in _last_result.get("results", [])
+                    if r.get("status") in ("OK", "PARTIAL") and r.get("pdf_id")
+                }
+                st.caption(f"Fetching rows for: {', '.join(sorted(run_pdf_ids))}")
                 try:
                     ep_resp = requests.get(f"{XANO_BASE}/extracted_pdf_data", timeout=30)
                     vp_resp = requests.get(f"{XANO_BASE}/venue_pricing", timeout=30)
@@ -1246,20 +1250,28 @@ with tab5:
                         ep_rows = ep_resp.json()
                         if isinstance(ep_rows, dict):
                             ep_rows = ep_rows.get("items") or ep_rows.get("result") or []
-                        if run_ts:
-                            ep_rows = [r for r in ep_rows if str(r.get("last_extracted_at","")) >= run_ts[:10]]
+                        ep_rows = [
+                            r for r in ep_rows
+                            if str(r.get("PDF_ID") or r.get("pdf_id") or "").strip() in run_pdf_ids
+                        ]
                         st.markdown(f"**extracted_pdf_data** — {len(ep_rows)} row(s) from this run")
                         if ep_rows:
                             st.dataframe(pd.DataFrame(ep_rows), use_container_width=True, hide_index=True)
+                    else:
+                        st.warning(f"extracted_pdf_data fetch failed ({ep_resp.status_code})")
 
                     if vp_resp.status_code == 200:
                         vp_rows = vp_resp.json()
                         if isinstance(vp_rows, dict):
                             vp_rows = vp_rows.get("items") or vp_rows.get("result") or []
-                        if run_ts:
-                            vp_rows = [r for r in vp_rows if str(r.get("last_extracted_at","")) >= run_ts[:10]]
+                        vp_rows = [
+                            r for r in vp_rows
+                            if str(r.get("PDF_ID") or r.get("pdf_id") or "").strip() in run_pdf_ids
+                        ]
                         st.markdown(f"**venue_pricing** — {len(vp_rows)} row(s) from this run")
                         if vp_rows:
                             st.dataframe(pd.DataFrame(vp_rows), use_container_width=True, hide_index=True)
+                    else:
+                        st.warning(f"venue_pricing fetch failed ({vp_resp.status_code})")
                 except Exception as e:
                     st.warning(f"Could not fetch written rows: {e}")
