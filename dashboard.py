@@ -263,8 +263,8 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab1, tab2, tab3, tab4 = st.tabs([
-    "📊 Admin", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🔁 Pipeline"
+tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📊 Admin", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🔁 Pipeline"
 ])
 
 
@@ -666,9 +666,136 @@ with tab0:
                         st.warning(f"Saved {saved}, failed {failed}.")
 
 
-# ── TAB 1: GOOGLE DATA ────────────────────────────────────────────────────────
+# ── TAB 1: PDF EXTRACTION ────────────────────────────────────────────────────
 
 with tab1:
+    st.subheader("PDF Extraction")
+    st.caption("Downloads PDFs from Google Drive, runs Claude extraction (4 calls/venue with caching), posts to Xano.")
+
+    run_mode_label = st.radio(
+        "Run mode",
+        [
+            "Normal (skip already-extracted)",
+            "Rerun specific Vendor IDs (delete old rows first)",
+            "Rerun specific Vendor IDs (keep old rows — creates duplicates)",
+        ],
+        index=0,
+        help=(
+            "Normal: respects the start/end row range below and skips PDFs already in extracted_pdf_data.\n\n"
+            "Rerun (delete): re-extracts the Vendor IDs you specify. Deletes their existing rows from "
+            "extracted_pdf_data and venue_pricing first. Ignores the start/end row range.\n\n"
+            "Rerun (no delete): re-extracts the Vendor IDs you specify but leaves old rows in place. "
+            "Will produce duplicate rows — useful for A/B comparison."
+        ),
+    )
+
+    if run_mode_label.startswith("Normal"):
+        ex_run_mode = "normal"
+    elif "delete old rows" in run_mode_label:
+        ex_run_mode = "rerun_delete"
+    else:
+        ex_run_mode = "rerun_no_delete"
+
+    rerun_vendor_ids: list[str] = []
+
+    if ex_run_mode == "normal":
+        col_s, col_e = st.columns(2)
+        with col_s:
+            ex_start_row = st.number_input("Start row", min_value=0, value=0, step=1,
+                                           help="0 = beginning of WPTP PDFs list", key="ex_start")
+        with col_e:
+            ex_end_row_input = st.number_input("End row (0 = all)", min_value=0, value=10, step=1,
+                                               help="Set to 0 to process all remaining PDFs", key="ex_end")
+        ex_end_row = None if ex_end_row_input == 0 else int(ex_end_row_input)
+    else:
+        vendor_ids_raw = st.text_input(
+            "Vendor IDs to rerun",
+            placeholder="VND_018, VND_042, VND_103",
+            help="Comma-separated Vendor IDs. The script will pull every PDF in wptp_pdfs that matches.",
+        )
+        rerun_vendor_ids = [v.strip() for v in vendor_ids_raw.split(",") if v.strip()]
+        if rerun_vendor_ids:
+            st.caption(f"Will rerun **{len(rerun_vendor_ids)}** Vendor ID(s): {', '.join(rerun_vendor_ids)}")
+        if ex_run_mode == "rerun_delete":
+            st.warning("⚠ Existing rows in extracted_pdf_data and venue_pricing for these Vendor IDs will be "
+                       "**deleted** before re-extraction. This cannot be undone.")
+        else:
+            st.info("Old rows will be kept — new rows will be added alongside them, creating duplicates.")
+        ex_start_row = 0
+        ex_end_row = None
+
+    if "extraction_running" not in st.session_state:
+        st.session_state.extraction_running = False
+
+    run_disabled = (
+        st.session_state.extraction_running
+        or (ex_run_mode != "normal" and not rerun_vendor_ids)
+    )
+
+    ex_run_btn = st.button(
+        "▶ Run PDF Extraction",
+        disabled=run_disabled,
+        type="primary",
+        use_container_width=True,
+        key="ex_run_btn",
+    )
+
+    log_placeholder  = st.empty()
+    stat_placeholder = st.empty()
+
+    if ex_run_btn:
+        st.session_state.extraction_running = True
+        lines = []
+        summary_result = None
+        for item in run_extraction(
+            int(ex_start_row), ex_end_row,
+            pdf_ids=rerun_vendor_ids if ex_run_mode != "normal" else None,
+        ):
+            if isinstance(item, dict):
+                summary_result = item
+                break
+            lines.append(item)
+            log_placeholder.markdown(
+                '<div class="log-box">' + "\n".join(lines) + "</div>",
+                unsafe_allow_html=True,
+            )
+        st.session_state.extraction_running = False
+
+        if summary_result:
+            ok       = summary_result["ok"]
+            part     = summary_result["partial"]
+            fail     = summary_result["failed"]
+            cost_usd = summary_result.get("cost_usd", 0.0)
+            tokens   = summary_result.get("tokens", {})
+
+            if fail == 0 and part == 0:
+                stat_placeholder.success(f"Done — {ok} succeeded")
+            elif fail > 0:
+                stat_placeholder.error(f"Done — {ok} succeeded, {part} partial, {fail} failed")
+            else:
+                stat_placeholder.warning(f"Done — {ok} succeeded, {part} partial")
+
+            if cost_usd > 0:
+                tok_in  = tokens.get("input", 0)
+                tok_out = tokens.get("output", 0)
+                tok_cr  = tokens.get("cache_read", 0)
+                tok_cw  = tokens.get("cache_create", 0)
+                st.metric(
+                    "Claude API cost this run",
+                    f"${cost_usd:.4f}",
+                    help=(
+                        f"claude-sonnet-4-20250514 · "
+                        f"{tok_in:,} input · {tok_out:,} output · "
+                        f"{tok_cw:,} cache writes · {tok_cr:,} cache reads\n\n"
+                        f"Rates: $3/M input · $15/M output · $3.75/M cache write · $0.30/M cache read\n"
+                        f"Google Drive downloads: free (service account)"
+                    ),
+                )
+
+
+# ── TAB 2: GOOGLE DATA ────────────────────────────────────────────────────────
+
+with tab2:
     st.subheader("Google Data Cache")
     st.caption("Fetches Google Places data for vendors in WPTP Updated Mappings that have a Place ID but no cached data yet.")
 
@@ -701,9 +828,9 @@ with tab1:
                 st.error(f"Request failed: {e}")
 
 
-# ── TAB 2: VENDOR IMAGES ─────────────────────────────────────────────────────
+# ── TAB 3: VENDOR IMAGES ─────────────────────────────────────────────────────
 
-with tab2:
+with tab3:
     st.subheader("Vendor Images")
     st.caption(
         "Pulls photos from Google Places API and saves them into WPTP Updated Mappings. "
@@ -768,9 +895,9 @@ with tab2:
                 break
 
 
-# ── TAB 3: SYNC COLLECTIONS ───────────────────────────────────────────────────
+# ── TAB 4: SYNC COLLECTIONS ───────────────────────────────────────────────────
 
-with tab3:
+with tab4:
     st.subheader("Sync Collections")
     st.caption(
         "Reads CATEGORY from Extracted PDF Data and writes it into the **Collection** array "
@@ -826,9 +953,9 @@ with tab3:
                     st.error(f"Request failed: {e}")
 
 
-# ── TAB 4: PIPELINE ───────────────────────────────────────────────────────────
+# ── TAB 5: PIPELINE ───────────────────────────────────────────────────────────
 
-with tab4:
+with tab5:
     st.subheader("PDF Extraction Pipeline")
     st.caption(
         "Track extraction status across all PDFs in wptp_pdfs. "
