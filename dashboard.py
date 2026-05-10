@@ -21,13 +21,7 @@ Optional fallback (if GOOGLE_CLIENT_ID is not set, password auth is used):
 """
 
 import os
-import ast
 import re
-import subprocess
-import sys
-import tempfile
-import threading
-import queue as _queue
 import datetime
 import json
 import requests
@@ -50,39 +44,74 @@ st.logo("tulle.png")
 
 st.markdown("""
 <style>
-    .stButton>button { width: 100%; }
-    .log-box {
-        background: #0e1117;
-        color: #e0e0e0;
-        font-family: monospace;
-        font-size: 13px;
-        padding: 16px;
-        border-radius: 8px;
-        max-height: 480px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        word-break: break-word;
+    /* ── Global ── */
+    .block-container { max-width: 92vw !important; padding: 1.5rem 2rem !important; }
+    .stApp { background: #f8f9fa; }
+
+    /* ── Header ── */
+    .tulle-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 0 16px; border-bottom: 2px solid #1B7A4A; margin-bottom: 20px;
     }
-    .status-ok   { color: #4ade80; font-weight: bold; }
-    .status-fail { color: #f87171; font-weight: bold; }
-    .status-warn { color: #fbbf24; font-weight: bold; }
+    .tulle-logo { font-size: 22px; font-weight: 700; color: #1B7A4A; letter-spacing: -0.3px; }
+    .tulle-user { font-size: 13px; color: #52555C; }
+
+    /* ── Metric cards ── */
     .metric-card {
-        border-radius: 12px;
-        padding: 20px 16px;
-        text-align: center;
-        margin-bottom: 8px;
+        border-radius: 10px; padding: 18px 14px;
+        text-align: center; margin-bottom: 8px;
     }
-    .metric-card .metric-icon { font-size: 22px; margin-bottom: 4px; }
-    .metric-card .metric-value { font-size: 32px; font-weight: 700; margin: 4px 0; }
-    .metric-card .metric-label { font-size: 13px; opacity: 0.8; }
+    .metric-card .metric-icon { font-size: 20px; margin-bottom: 4px; }
+    .metric-card .metric-value { font-size: 30px; font-weight: 700; margin: 4px 0; }
+    .metric-card .metric-label { font-size: 12px; opacity: 0.75; }
     .card-green  { background: #d1fae5; color: #065f46; border: 1.5px solid #6ee7b7; }
     .card-amber  { background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; }
     .card-purple { background: #ede9fe; color: #4c1d95; border: 1.5px solid #c4b5fd; }
-    .block-container {
-        max-width: 90vw !important;
-        padding-left: 2rem !important;
-        padding-right: 2rem !important;
+    .card-red    { background: #fee2e2; color: #991b1b; border: 1.5px solid #fca5a5; }
+    .card-gray   { background: #f3f4f6; color: #374151; border: 1.5px solid #d1d5db; }
+
+    /* ── Log box ── */
+    .log-box {
+        background: #0f172a; color: #e2e8f0;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12.5px; padding: 16px; border-radius: 8px;
+        max-height: 500px; overflow-y: auto;
+        white-space: pre-wrap; word-break: break-word;
+        border: 1px solid #1e293b;
     }
+
+    /* ── Run result cards ── */
+    .run-card {
+        background: white; border-radius: 10px; padding: 14px 16px;
+        margin-bottom: 10px; border-left: 4px solid #1B7A4A;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .run-card.failed  { border-left-color: #ef4444; }
+    .run-card.partial { border-left-color: #f59e0b; }
+    .run-card-title   { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+    .run-card-meta    { font-size: 12px; color: #6b7280; }
+    .run-card-badge   {
+        display: inline-block; font-size: 11px; font-weight: 600;
+        padding: 2px 8px; border-radius: 99px; margin-right: 6px;
+    }
+    .badge-green  { background: #d1fae5; color: #065f46; }
+    .badge-amber  { background: #fef3c7; color: #92400e; }
+    .badge-red    { background: #fee2e2; color: #991b1b; }
+
+    /* ── Buttons ── */
+    .stButton>button {
+        width: 100%; border-radius: 7px; font-weight: 500;
+        transition: all 0.15s;
+    }
+    .stButton>button[kind="primary"] {
+        background: #1B7A4A !important; border-color: #1B7A4A !important;
+    }
+    .stButton>button[kind="primary"]:hover {
+        background: #155f39 !important; border-color: #155f39 !important;
+    }
+
+    /* ── Tables ── */
+    .stDataFrame { border-radius: 8px; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -213,233 +242,30 @@ if not st.session_state.authenticated:
 user_name  = st.session_state.get("user_name", "")
 user_email = st.session_state.get("user_email", "")
 
-col_title, col_user, col_logout = st.columns([4, 3, 1])
-with col_title:
-    st.markdown("""
-        <div style="padding:8px 0">
-            <span style="font-size:24px;font-weight:700">Tulle Admin Dashboard</span>
-        </div>
-    """, unsafe_allow_html=True)
-with col_user:
-    if user_name and user_name != "Local admin":
-        st.markdown(
-            f"<div style='text-align:right;padding-top:14px;font-size:13px;color:#52555C'>"
-            f"Signed in as <strong>{user_name}</strong></div>",
-            unsafe_allow_html=True,
-        )
-with col_logout:
-    st.markdown("<div style='padding-top:12px'>", unsafe_allow_html=True)
+_user_info = (f"Signed in as <strong>{user_name}</strong>"
+              if user_name and user_name != "Local admin" else "")
+st.markdown(f"""
+<div class="tulle-header">
+    <div class="tulle-logo">🌿 Tulle Admin</div>
+    <div class="tulle-user">{_user_info}</div>
+</div>
+""", unsafe_allow_html=True)
+# Keep the sign out button separately in a right-aligned column
+_, signout_col = st.columns([9, 1])
+with signout_col:
     if st.button("Sign out", use_container_width=True):
         for k in ["authenticated", "user_email", "user_name", "user_picture"]:
             st.session_state.pop(k, None)
         st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("---")
 
 XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B")
 
 
-# ── SCRIPT RUNNER — RISK PATTERNS ────────────────────────────────────────────
-
-_SCRIPT_RISKS = [
-    (r'\bsubprocess\b',                          "RISK", "Uses subprocess — can execute shell commands on the Railway server"),
-    (r'\bos\.system\s*\(',                       "RISK", "Uses os.system() — executes arbitrary shell commands"),
-    (r'\bos\.popen\s*\(',                        "RISK", "Uses os.popen() — executes arbitrary shell commands"),
-    (r'(?<!\w)exec\s*\(',                        "RISK", "Uses exec() — executes arbitrary Python code at runtime"),
-    (r'\beval\s*\(',                             "RISK", "Uses eval() — evaluates arbitrary expressions"),
-    (r'shutil\.rmtree',                          "RISK", "Uses shutil.rmtree — can delete directories on the server"),
-    (r'\b__import__\s*\(',                       "RISK", "Uses __import__() — dynamic imports can load unexpected code"),
-    (r'pickle\.(load|loads)\b',                  "RISK", "Unpickling from unknown source can execute arbitrary code"),
-    (r'os\.(remove|unlink)\s*\(',                "WARN", "Deletes files — confirm it only cleans up temp files"),
-    (r"open\s*\([^,\n]+,\s*['\"]w",             "WARN", "Writes to files — script creates local output files on the server"),
-    (r'requests\.(post|put|delete|patch)\s*\(',  "INFO", "Makes outbound HTTP write requests — verify endpoints are expected"),
-    (r'ANTHROPIC_API_KEY',                       "INFO", "Uses Claude API — will consume API credits when run"),
-]
-
-
-def _analyze_script(code: str) -> list:
-    """Return list of (level, message) tuples. Levels: ERROR | RISK | WARN | INFO."""
-    findings = []
-    try:
-        tree = ast.parse(code)
-    except SyntaxError as e:
-        findings.append(("ERROR", f"Syntax error on line {e.lineno}: {e.msg}"))
-        return findings
-
-    for pattern, level, msg in _SCRIPT_RISKS:
-        if re.search(pattern, code):
-            findings.append((level, msg))
-
-    fn_names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
-    known_entry = {"main", "extract", "process", "run", "analyze", "extract_data", "process_pdf"}
-    has_main_guard = any(
-        isinstance(n, ast.If) and isinstance(getattr(n, "test", None), ast.Compare)
-        and any(isinstance(c, ast.Constant) and c.value == "__main__"
-                for c in getattr(n.test, "comparators", []))
-        for n in ast.walk(tree)
-    )
-    if not (fn_names & known_entry) and not has_main_guard:
-        findings.append(("WARN", f"No recognisable entry point — expected one of: {', '.join(sorted(known_entry))}, or an `if __name__ == '__main__'` block"))
-
-    return findings
-
-
-def _run_script(script_bytes: bytes, pdf_bytes: bytes, proc_holder: list):
-    """
-    Generator. Yields log strings while running, then a final result dict:
-      {"status": "ok"|"error", "elapsed": float, "output": str, "data": any, "error": str}
-    proc_holder is a single-element list; proc_holder[0] is set to the Popen object
-    so callers can terminate() the process externally (stop button).
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        script_path = os.path.join(tmpdir, "script.py")
-        pdf_path    = os.path.join(tmpdir, "input.pdf")
-        with open(script_path, "wb") as f:
-            f.write(script_bytes)
-        with open(pdf_path, "wb") as f:
-            f.write(pdf_bytes)
-
-        yield "⚙️  Launching script..."
-        import time
-        start = time.time()
-
-        try:
-            proc = subprocess.Popen(
-                [sys.executable, script_path, pdf_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=tmpdir,
-                env={**os.environ},
-            )
-            proc_holder[0] = proc
-        except Exception as e:
-            yield {"status": "error", "elapsed": 0.0, "output": "", "data": None, "error": f"Failed to start: {e}"}
-            return
-
-        accumulated = []
-        for raw in proc.stdout:
-            line = raw.decode("utf-8", errors="replace").rstrip()
-            accumulated.append(line)
-            yield f"[{time.time() - start:.1f}s]  {line}"
-
-        proc.wait()
-        elapsed    = time.time() - start
-        stderr_out = proc.stderr.read().decode("utf-8", errors="replace").strip()
-        full_out   = "\n".join(accumulated)
-
-        if proc.returncode not in (0, -15):  # -15 = SIGTERM (user stopped)
-            yield {"status": "error", "elapsed": elapsed, "output": full_out,
-                   "data": None, "error": stderr_out or f"Exit code {proc.returncode}"}
-            return
-
-        data = None
-        candidates = [full_out]
-        last_bracket = max(full_out.rfind("["), full_out.rfind("{"))
-        if last_bracket >= 0:
-            candidates.append(full_out[last_bracket:])
-        for attempt in candidates:
-            try:
-                data = json.loads(attempt)
-                break
-            except Exception:
-                pass
-        if data is None:
-            m = re.search(r'(\[[\s\S]*\]|\{[\s\S]*\})\s*$', full_out)
-            if m:
-                try:
-                    data = json.loads(m.group(1))
-                except Exception:
-                    pass
-
-        yield {"status": "ok", "elapsed": elapsed, "output": full_out, "data": data, "error": ""}
-
-
-def _start_runner_thread(script_bytes: bytes, pdf_bytes: bytes):
-    """
-    Starts _run_script in a background thread. Returns (queue, proc_holder).
-    The queue receives log strings and a final result dict, then None as sentinel.
-    proc_holder[0] is set to the Popen object once the process starts.
-    """
-    out_q       = _queue.Queue()
-    proc_holder = [None]
-
-    def _worker():
-        for item in _run_script(script_bytes, pdf_bytes, proc_holder):
-            out_q.put(item)
-        out_q.put(None)  # sentinel
-
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
-    return out_q, proc_holder
-
-
-# ── SCHEMA REFERENCE DATA ────────────────────────────────────────────────────
-
-_SCHEMA_PDF_DATA = [
-    ("PDF_ID",                  "text",      "Unique ID from wptp_pdfs. Used for dedup check on re-run",                                  "PDF_042"),
-    ("VENDOR_ID",               "text",      "Vendor ID from wptp_pdfs",                                                                   "VND_018"),
-    ("VENUE_NAME",              "text",      "Venue name as extracted from the PDF",                                                        "Inn at Taughannock Falls"),
-    ("Pricing_Year",            "text",      "Year the pricing applies to. 'Not listed' if absent",                                        "2027"),
-    ("Venue_Type",              "text",      "One of: Dedicated Event Venue · Hotel / Resort · Restaurant / Bar · Estate / Mansion · Performing Arts Venue · Museum / Gallery · Zoo / Aquarium · Garden / Botanical Garden · Barn / Ranch · Winery / Brewery / Distillery · Country Club / Private Club · University / College · Religious · Civic / Public", "Hotel / Resort"),
-    ("Admin__Service_Fee",      "text",      "Admin or service fee % — number only, no % sign. 'Not listed' if absent",                   "22"),
-    ("Ceremony_Fee",            "text",      "Flat or per-person ceremony add-on fee. 'Not listed' if absent",                             "$1,500"),
-    ("Ceremony_fee_Type",       "text",      "'Flat rate' or 'Per person'",                                                                "Per person"),
-    ("Venue_Space_Name",        "text",      "Bookable space name. Pipe-separated if multiple on one summary row",                        "Enchantment"),
-    ("Max_Capacity_Seated",     "text",      "Maximum seated dinner guests for this space. 'Not listed' if absent",                       "300"),
-    ("Venue_Fee_Highest_Sat",   "text",      "Saturday venue rental — most expensive season",                                              "$25,000"),
-    ("FB_Min_Highest_Sat",      "text",      "Saturday F&B/bar minimum — most expensive season",                                          "$30,000"),
-    ("Guest_Min_Highest_Sat",   "text",      "Minimum guest count for Saturday highest pricing",                                           "100"),
-    ("Per_Person_FB_Highest_Sat","text",     "Combined food + bar per person, Saturday highest season",                                    "$290"),
-    ("Months__Highest_Pricing", "text",      "Months for highest Saturday pricing — comma-separated, no ranges",                          "May, June, September, October"),
-    ("Venue_Fee_Lowest_Sat",    "text",      "Saturday venue rental — least expensive season",                                             "$17,000"),
-    ("FB_Min_Lowest_Sat",       "text",      "Saturday F&B/bar minimum — least expensive season",                                         "$30,000"),
-    ("Guest_Min_Lowest_Sat",    "text",      "Minimum guest count for Saturday lowest pricing",                                            "Not listed"),
-    ("Per_Person_FB_Lowest_Sat","text",      "Combined food + bar per person, Saturday lowest season",                                     "Not listed"),
-    ("Months__Lowest_Pricing",  "text",      "Months for lowest Saturday pricing — comma-separated",                                      "December, January, February, March"),
-    ("FB_Spend_Min_Type",       "text",      "'Per Person Min' or 'Overall Min Spend'",                                                   "Overall Min Spend"),
-    ("Base_Menu_Per_Person",    "text",      "Food-only per person, lowest available tier. Excludes cocktail hour",                        "$290"),
-    ("Base_Bar_Per_Person",     "text",      "Standard open bar with spirits per person. Not beer/wine-only packages",                    "$78"),
-    ("Additional_Fees",         "text",      "Short labels for mandatory additional fees — semicolon-separated",                           "NY Sales Tax; CC Processing Fee"),
-    ("Additional_Fees_Description","text",   "Full descriptions matching order of Additional_Fees — semicolon-separated",                 "8.875% NY State sales tax; 3.5% CC fee"),
-    ("Venue_Offering ★ NEW",    "text",      "One of: Raw Space · Semi-Inclusive · All-Inclusive",                                        "All-Inclusive"),
-    ("Venue_Attributes ★ NEW",  "text",      "Semicolon-separated: Historic Architecture · Estate / Mansion · Rooftop / Skyline Views · Scenic / Nature Views · Waterfront · Garden Setting · Ballroom · Industrial / Warehouse · Greenhouse · Natural Light / Large Windows · Tall / Vaulted Ceilings · Vineyard · Barn · Tented", "Waterfront; Garden Setting; Tented"),
-    ("last_extracted_at",       "timestamp", "UTC ISO timestamp of when this row was written",                                             "2026-04-08T14:23:01Z"),
-]
-
-_SCHEMA_PRICING = [
-    ("PDF_ID",               "text",      "Links back to extracted_pdf_data and wptp_pdfs",                         "PDF_042"),
-    ("Vendor_ID",            "text",      "Links back to source vendor record",                                      "VND_018"),
-    ("Venue_Name",           "text",      "Venue name (denormalized for querying)",                                  "74 Wythe"),
-    ("Venue_Space_Name",     "text",      "Name of the specific bookable space",                                     "The Barn"),
-    ("Max_Capacity_Seated",  "text",      "Max seated guests for this space",                                        "200"),
-    ("Day_of_Week",          "text",      "Exactly one of: Weekday · Friday · Saturday · Sunday",                   "Saturday"),
-    ("Month",                "text",      "Full month name, or 'All' if no seasonal breakdown",                     "October"),
-    ("Meal_Type",            "text",      "'Dinner' unless explicitly stated otherwise. Breakfast ignored.",         "Dinner"),
-    ("Guest_Min",            "text",      "Minimum guest count for this pricing tier. Blank if not stated",         "100"),
-    ("Guest_Max",            "text",      "Maximum guest count for this pricing tier. Blank if not stated",         "149"),
-    ("Venue_Fee",            "text",      "Room rental for this day/month. 'Not listed' if absent",                 "$9,500"),
-    ("Venue_Fee_Type",       "text",      "'Flat' or 'Per Person'",                                                  "Flat"),
-    ("FB_Min",               "text",      "F&B or bar minimum spend. 'Not listed' if absent",                       "$10,000"),
-    ("FB_Min_Type",          "text",      "'Overall Min Spend' (dollar total) or 'Per Person Min' (per guest)",     "Overall Min Spend"),
-    ("Per_Person_FB",        "text",      "Combined food + bar per person. 'Not listed' if absent",                 "$330"),
-    ("Base_Menu_Per_Person", "text",      "Food-only per person, lowest tier. Same on every row for this venue",    "$290"),
-    ("Base_Bar_Per_Person",  "text",      "Standard open bar with spirits per person. Same on every row",           "$78"),
-    ("Ceremony_Fee",         "text",      "Ceremony add-on fee. Same on every row",                                 "$15"),
-    ("Ceremony_Fee_Type",    "text",      "'Flat' or 'Per Person'. Same on every row",                              "Per Person"),
-    ("Admin_Fee_Pct",        "text",      "Admin/service fee % — number only. Same on every row",                   "23"),
-    ("Tax_Pct",              "text",      "Sales tax % — number only. 'Not listed' if not stated. Same on every row","8.875"),
-    ("Service_Fee_Pct",      "text",      "Only if explicitly separate from admin fee. Otherwise 'Not listed'",     "Not listed"),
-    ("Additional_Fees",      "text",      "Short labels for mandatory fees — semicolon-separated. Same on every row","NY Sales Tax"),
-    ("Additional_Fees_Description","text","Full descriptions — semicolon-separated. Same on every row",             "8.875% NY State sales tax"),
-    ("Notes",                "text",      "Any pricing nuance that doesn't fit the above fields",                   "Operates mid-May to mid-October only"),
-    ("last_extracted_at",    "timestamp", "UTC ISO timestamp of when this row was written",                         "2026-04-08T14:23:01Z"),
-]
-
-
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Admin Dashboard", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🧪 Script Runner", "🔁 Pipeline"])
+tab0, tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Admin", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🔁 Pipeline"
+])
 
 
 # ── TAB 0: ADMIN DASHBOARD ────────────────────────────────────────────────────
@@ -483,6 +309,28 @@ EXPLORER_TABLES = {
         "patch_field_map": {},
         "ts_cols":       ["created_at"],
         "array_cols":    ["saved_vendor_ids"],
+        "hide_cols":     [],
+    },
+    "Extracted PDF Data": {
+        "url":           f"{XANO_BASE}/extracted_pdf_data",
+        "patch":         None,
+        "id_col":        "id",
+        "editable":      False,
+        "editable_cols": [],
+        "patch_field_map": {},
+        "ts_cols":       [],
+        "array_cols":    [],
+        "hide_cols":     [],
+    },
+    "Venue Pricing": {
+        "url":           f"{XANO_BASE}/venue_pricing",
+        "patch":         None,
+        "id_col":        "id",
+        "editable":      False,
+        "editable_cols": [],
+        "patch_field_map": {},
+        "ts_cols":       [],
+        "array_cols":    [],
         "hide_cols":     [],
     },
 }
@@ -818,140 +666,9 @@ with tab0:
                         st.warning(f"Saved {saved}, failed {failed}.")
 
 
-# ── TAB 1: PDF EXTRACTION ─────────────────────────────────────────────────────
+# ── TAB 1: GOOGLE DATA ────────────────────────────────────────────────────────
 
 with tab1:
-    st.subheader("PDF Extraction")
-    st.caption("Downloads PDFs from Google Drive, runs Claude extraction (4 calls/venue with caching), posts to Xano.")
-
-    # ── Run mode selector ────────────────────────────────────────────────
-    run_mode_label = st.radio(
-        "Run mode",
-        [
-            "Normal (skip already-extracted)",
-            "Rerun specific Vendor IDs (delete old rows first)",
-            "Rerun specific Vendor IDs (keep old rows — creates duplicates)",
-        ],
-        index=0,
-        help=(
-            "Normal: respects the start/end row range below and skips PDFs already in extracted_pdf_data.\n\n"
-            "Rerun (delete): re-extracts the Vendor IDs you specify. Deletes their existing rows from "
-            "extracted_pdf_data and venue_pricing first. Ignores the start/end row range.\n\n"
-            "Rerun (no delete): re-extracts the Vendor IDs you specify but leaves old rows in place. "
-            "Will produce duplicate rows — useful for A/B comparison."
-        ),
-    )
-
-    if run_mode_label.startswith("Normal"):
-        run_mode = "normal"
-    elif "delete old rows" in run_mode_label:
-        run_mode = "rerun_delete"
-    else:
-        run_mode = "rerun_no_delete"
-
-    rerun_vendor_ids: list[str] = []
-
-    if run_mode == "normal":
-        col_s, col_e = st.columns(2)
-        with col_s:
-            start_row = st.number_input("Start row", min_value=0, value=0, step=1,
-                                        help="0 = beginning of WPTP PDFs list")
-        with col_e:
-            end_row_input = st.number_input("End row (0 = all)", min_value=0, value=10, step=1,
-                                            help="Set to 0 to process all remaining PDFs")
-        end_row = None if end_row_input == 0 else int(end_row_input)
-    else:
-        # Rerun modes — collect Vendor IDs instead of a row range
-        vendor_ids_raw = st.text_input(
-            "Vendor IDs to rerun",
-            placeholder="VND_018, VND_042, VND_103",
-            help="Comma-separated Vendor IDs. The script will pull every PDF in wptp_pdfs that matches.",
-        )
-        rerun_vendor_ids = [v.strip() for v in vendor_ids_raw.split(",") if v.strip()]
-        if rerun_vendor_ids:
-            st.caption(f"Will rerun **{len(rerun_vendor_ids)}** Vendor ID(s): {', '.join(rerun_vendor_ids)}")
-        if run_mode == "rerun_delete":
-            st.warning("⚠ Existing rows in extracted_pdf_data and venue_pricing for these Vendor IDs will be "
-                       "**deleted** before re-extraction. This cannot be undone.")
-        else:
-            st.info("Old rows will be kept — new rows will be added alongside them, creating duplicates.")
-        # Not used in rerun modes but pass through to satisfy the function signature
-        start_row = 0
-        end_row = None
-
-    if "extraction_running" not in st.session_state:
-        st.session_state.extraction_running = False
-
-    # Disable run button if a rerun mode is selected but no Vendor IDs entered
-    run_disabled = (
-        st.session_state.extraction_running
-        or (run_mode != "normal" and not rerun_vendor_ids)
-    )
-
-    run_btn = st.button(
-        "▶ Run PDF Extraction",
-        disabled=run_disabled,
-        type="primary",
-        use_container_width=True,
-    )
-
-    log_placeholder = st.empty()
-    stat_placeholder = st.empty()
-
-    if run_btn:
-        st.session_state.extraction_running = True
-        lines = []
-        summary_result = None
-        for item in run_extraction(
-            int(start_row), end_row,
-            mode=run_mode,
-            rerun_vendor_ids=rerun_vendor_ids,
-        ):
-            if isinstance(item, dict):
-                summary_result = item
-                break
-            lines.append(item)
-            log_placeholder.markdown(
-                f'<div class="log-box">' + "\n".join(lines) + "</div>",
-                unsafe_allow_html=True,
-            )
-        st.session_state.extraction_running = False
-
-        if summary_result:
-            ok = summary_result["ok"]
-            part = summary_result["partial"]
-            fail = summary_result["failed"]
-            cost_usd = summary_result.get("cost_usd", 0.0)
-            tokens = summary_result.get("tokens", {})
-
-            if fail == 0 and part == 0:
-                stat_placeholder.success(f"Done — {ok} succeeded")
-            elif fail > 0:
-                stat_placeholder.error(f"Done — {ok} succeeded, {part} partial, {fail} failed")
-            else:
-                stat_placeholder.warning(f"Done — {ok} succeeded, {part} partial")
-
-            if cost_usd > 0:
-                tok_in  = tokens.get("input", 0)
-                tok_out = tokens.get("output", 0)
-                tok_cr  = tokens.get("cache_read", 0)
-                tok_cw  = tokens.get("cache_create", 0)
-                st.metric(
-                    "Claude API cost this run",
-                    f"${cost_usd:.4f}",
-                    help=(
-                        f"claude-sonnet-4-20250514 · "
-                        f"{tok_in:,} input · {tok_out:,} output · "
-                        f"{tok_cw:,} cache writes · {tok_cr:,} cache reads\n\n"
-                        f"Rates: $3/M input · $15/M output · $3.75/M cache write · $0.30/M cache read\n"
-                        f"Google Drive downloads: free (service account)"
-                    ),
-                )
-
-
-# ── TAB 2: GOOGLE DATA ────────────────────────────────────────────────────────
-
-with tab2:
     st.subheader("Google Data Cache")
     st.caption("Fetches Google Places data for vendors in WPTP Updated Mappings that have a Place ID but no cached data yet.")
 
@@ -984,9 +701,9 @@ with tab2:
                 st.error(f"Request failed: {e}")
 
 
-# ── TAB 3: VENDOR IMAGES ─────────────────────────────────────────────────────
+# ── TAB 2: VENDOR IMAGES ─────────────────────────────────────────────────────
 
-with tab3:
+with tab2:
     st.subheader("Vendor Images")
     st.caption(
         "Pulls photos from Google Places API and saves them into WPTP Updated Mappings. "
@@ -1051,9 +768,9 @@ with tab3:
                 break
 
 
-# ── TAB 4: SYNC COLLECTIONS ───────────────────────────────────────────────────
+# ── TAB 3: SYNC COLLECTIONS ───────────────────────────────────────────────────
 
-with tab4:
+with tab3:
     st.subheader("Sync Collections")
     st.caption(
         "Reads CATEGORY from Extracted PDF Data and writes it into the **Collection** array "
@@ -1109,227 +826,9 @@ with tab4:
                     st.error(f"Request failed: {e}")
 
 
-# ── TAB 5: SCRIPT RUNNER ──────────────────────────────────────────────────────
+# ── TAB 4: PIPELINE ───────────────────────────────────────────────────────────
 
-with tab5:
-    st.subheader("Script Runner")
-    st.caption(
-        "Upload a Claude-generated extraction script and a pricing PDF to test the output "
-        "before deploying. The script is run with the PDF path as the first argument."
-    )
-
-    # ── File uploads ─────────────────────────────────────────────────────────
-    col_py, col_pdf = st.columns(2)
-
-    with col_py:
-        st.markdown("**① Extraction Script (.py)**")
-        py_upload = st.file_uploader(
-            "Upload Python script", type=["py"], key="runner_py",
-            label_visibility="collapsed",
-        )
-        if py_upload:
-            _script_bytes = py_upload.read()
-            py_upload.seek(0)
-            _code     = _script_bytes.decode("utf-8", errors="replace")
-            _findings = _analyze_script(_code)
-
-            if not _findings:
-                st.success("✓  No issues detected")
-            else:
-                for _lvl, _msg in _findings:
-                    if _lvl == "ERROR":
-                        st.error(f"**ERROR** — {_msg}")
-                    elif _lvl == "RISK":
-                        st.error(f"**RISK** — {_msg}")
-                    elif _lvl == "WARN":
-                        st.warning(f"⚠  {_msg}")
-                    else:
-                        st.info(f"ℹ  {_msg}")
-
-            with st.expander("View script source", expanded=False):
-                st.code(_code, language="python")
-
-    with col_pdf:
-        st.markdown("**② Pricing PDF**")
-        pdf_upload = st.file_uploader(
-            "Upload PDF", type=["pdf"], key="runner_pdf",
-            label_visibility="collapsed",
-        )
-        if pdf_upload:
-            st.success(f"✓  {pdf_upload.name}  ({pdf_upload.size // 1024} KB)")
-
-    # ── Schema reference ──────────────────────────────────────────────────────
-    st.markdown("---")
-    with st.expander("📋  Xano Schema Reference — v5  (extracted_pdf_data  &  venue_pricing)", expanded=False):
-        _schema_tab1, _schema_tab2 = st.tabs(["Table 1 — extracted_pdf_data", "Table 2 — venue_pricing"])
-
-        with _schema_tab1:
-            st.caption("One row per bookable space per venue. Classification fields (Venue_Offering, Venue_Attributes) are written by Call 3.")
-            st.info(
-                "**v5 notes** — New fields: `Venue_Offering`, `Venue_Attributes`.  "
-                "Barn/Ranch now qualifies on aesthetic (timber frame, rustic, converted) without requiring active agriculture.  "
-                "Vineyard attribute split into 'Vineyard' and 'Barn' separately."
-            )
-            st.dataframe(
-                pd.DataFrame(_SCHEMA_PDF_DATA, columns=["Field", "Type", "Description", "Example"]),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        with _schema_tab2:
-            st.caption(
-                "One row per space × day of week × month. "
-                "Multi-year rule: if the same months appear in multiple years, only the most future year is stored."
-            )
-            st.info(
-                "**v5 notes** — Friday/Sunday combined rows are expanded into two separate rows.  "
-                "'Not listed' = field genuinely absent from PDF. Empty string = script error."
-            )
-            st.dataframe(
-                pd.DataFrame(_SCHEMA_PRICING, columns=["Field", "Type", "Description", "Example"]),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        _schema_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema", "Xano_Schema_v5_1.docx")
-        if os.path.exists(_schema_file):
-            with open(_schema_file, "rb") as _sf:
-                st.download_button(
-                    "⬇  Download Xano_Schema_v5_1.docx",
-                    _sf.read(),
-                    file_name="Xano_Schema_v5_1.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                )
-
-    # ── Run / Stop buttons ────────────────────────────────────────────────────
-    st.markdown("")
-    _runner_running = st.session_state.get("_runner_running", False)
-    _run_disabled   = not (py_upload and pdf_upload) or _runner_running
-
-    _btn_col, _stop_col = st.columns([4, 1])
-    with _btn_col:
-        _run_btn = st.button(
-            "▶  Run Script",
-            type="primary",
-            use_container_width=True,
-            disabled=_run_disabled,
-            key="runner_run",
-            help="Upload both a .py script and a PDF to enable." if not (py_upload and pdf_upload) else None,
-        )
-    with _stop_col:
-        _stop_btn = st.button(
-            "⏹  Stop",
-            use_container_width=True,
-            disabled=not _runner_running,
-            key="runner_stop",
-        )
-
-    # ── Start a new run ───────────────────────────────────────────────────────
-    if _run_btn and py_upload and pdf_upload:
-        py_upload.seek(0)
-        pdf_upload.seek(0)
-        _q, _ph = _start_runner_thread(py_upload.read(), pdf_upload.read())
-        st.session_state["_runner_queue"]       = _q
-        st.session_state["_runner_proc_holder"] = _ph
-        st.session_state["_runner_running"]     = True
-        st.session_state["_runner_lines"]       = []
-        st.session_state["_runner_result"]      = None
-        st.rerun()
-
-    # ── Handle Stop ───────────────────────────────────────────────────────────
-    if _stop_btn:
-        _ph = st.session_state.get("_runner_proc_holder", [None])
-        if _ph[0] is not None:
-            _ph[0].terminate()
-        st.session_state["_runner_running"] = False
-        st.session_state["_runner_result"]  = {
-            "status": "error", "elapsed": 0, "output": "",
-            "data": None, "error": "Stopped by user.",
-        }
-        st.rerun()
-
-    # ── Live output + result display ──────────────────────────────────────────
-    if st.session_state.get("_runner_running") or st.session_state.get("_runner_lines") or st.session_state.get("_runner_result"):
-        st.markdown("---")
-        _log_header_ph = st.empty()
-        _log_area_ph   = st.empty()
-        _stat_ph       = st.empty()
-
-        # Drain new lines from the background thread queue
-        if st.session_state.get("_runner_running"):
-            _q = st.session_state.get("_runner_queue")
-            if _q:
-                import time as _time
-                _deadline = _time.monotonic() + 0.4
-                while _time.monotonic() < _deadline:
-                    try:
-                        _item = _q.get_nowait()
-                        if _item is None:
-                            st.session_state["_runner_running"] = False
-                            break
-                        elif isinstance(_item, dict):
-                            st.session_state["_runner_result"]  = _item
-                            st.session_state["_runner_running"] = False
-                            break
-                        else:
-                            st.session_state["_runner_lines"].append(_item)
-                    except _queue.Empty:
-                        break
-
-        _lines         = st.session_state.get("_runner_lines", [])
-        _still_running = st.session_state.get("_runner_running", False)
-
-        _log_header_ph.markdown(
-            f"**{'Running…' if _still_running else 'Log'}** — {len(_lines)} line(s)"
-        )
-        if _lines:
-            _log_area_ph.markdown(
-                '<div class="log-box">' + "\n".join(_lines) + "</div>",
-                unsafe_allow_html=True,
-            )
-
-        # Keep polling while the script is still running
-        if _still_running:
-            import time as _time
-            _time.sleep(0.3)
-            st.rerun()
-
-        # Show final result once done
-        _run_result = st.session_state.get("_runner_result")
-        if _run_result and not _still_running:
-            _elapsed = _run_result.get("elapsed", 0)
-            _stopped = "Stopped by user" in _run_result.get("error", "")
-
-            if _run_result["status"] == "ok":
-                _stat_ph.success(f"✓  Completed in {_elapsed:.1f}s")
-                _data = _run_result.get("data")
-                if _data is not None:
-                    st.markdown("**Structured Output**")
-                    if isinstance(_data, list) and all(isinstance(r, dict) for r in _data):
-                        _df_out = pd.DataFrame(_data)
-                        st.caption(f"{len(_df_out):,} rows · {len(_df_out.columns)} columns")
-                        st.dataframe(_df_out, use_container_width=True)
-                    else:
-                        st.json(_data)
-                    if _run_result.get("output"):
-                        with st.expander("Full stdout", expanded=False):
-                            st.code(_run_result["output"], language="text")
-                else:
-                    st.markdown("**Raw Output** *(no JSON detected — showing stdout)*")
-                    st.code(_run_result.get("output", ""), language="text")
-            else:
-                _stat_ph.error("Stopped." if _stopped else f"Script failed after {_elapsed:.1f}s")
-                if _run_result.get("error") and not _stopped:
-                    st.markdown("**stderr**")
-                    st.code(_run_result["error"], language="text")
-                if _run_result.get("output"):
-                    with st.expander("stdout (partial)", expanded=False):
-                        st.code(_run_result["output"], language="text")
-
-
-# ── TAB 6: PIPELINE ───────────────────────────────────────────────────────────
-
-with tab6:
+with tab4:
     st.subheader("PDF Extraction Pipeline")
     st.caption(
         "Track extraction status across all PDFs in wptp_pdfs. "
@@ -1379,14 +878,14 @@ with tab6:
             </div>""", unsafe_allow_html=True
         )
         c_failed.markdown(
-            f"""<div class="metric-card" style="background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5">
+            f"""<div class="metric-card card-red">
                 <div class="metric-icon">❌</div>
                 <div class="metric-value">{counts.get('failed', 0)}</div>
                 <div class="metric-label">Failed</div>
             </div>""", unsafe_allow_html=True
         )
         c_skipped.markdown(
-            f"""<div class="metric-card" style="background:#f3f4f6;color:#374151;border:1.5px solid #d1d5db">
+            f"""<div class="metric-card card-gray">
                 <div class="metric-icon">⏭️</div>
                 <div class="metric-value">{counts.get('skipped', 0)}</div>
                 <div class="metric-label">Skipped</div>
@@ -1398,9 +897,6 @@ with tab6:
 
         # ── Status table with filters ─────────────────────────────────────────
         st.markdown("#### PDF Status Table")
-
-        # Build display dataframe
-        import pandas as pd
 
         display_cols = [
             'id', 'PDF_ID', 'Vendor_ID', 'Name',
@@ -1534,6 +1030,8 @@ with tab6:
             pl_lines = []
             pl_result = None
 
+            run_started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
             for item in run_extraction(
                 start_row=eff_start,
                 end_row=eff_end,
@@ -1564,6 +1062,77 @@ with tab6:
                 else:
                     pl_stat_ph.warning(f"Done — {ok} succeeded, {part} partial · ${cost:.4f}")
 
+                pl_result["run_started_at"] = run_started_at
+                st.session_state["pl_last_result"] = pl_result
+
                 # Auto-refresh status after run
                 st.session_state["pl_data"] = get_pipeline_status()
                 st.rerun()
+
+        # ── Last run summary (persists after rerun via session_state) ─────────
+        _last_result = st.session_state.get("pl_last_result")
+
+        if _last_result and _last_result.get("results"):
+            st.markdown("#### Run Summary")
+            for r in _last_result["results"]:
+                status   = r.get("status", "")
+                pdf_id   = r.get("pdf_id", "")
+                venue    = r.get("venue_name", pdf_id)
+                s_rows   = r.get("summary_rows", 0)
+                p_rows   = r.get("pricing_rows", 0)
+                cost     = r.get("cost_usd", 0.0)
+                err      = r.get("reason", "")
+                offering = r.get("offering", "")
+                category = r.get("category", "")
+                attrs    = r.get("attributes", "")
+
+                card_class = "run-card" if status == "OK" else ("run-card failed" if status == "FAILED" else "run-card partial")
+                badge      = ('<span class="run-card-badge badge-green">✓ extracted</span>' if status == "OK"
+                              else '<span class="run-card-badge badge-red">✗ failed</span>' if status == "FAILED"
+                              else '<span class="run-card-badge badge-amber">⚠ partial</span>')
+
+                detail_parts = []
+                if s_rows:   detail_parts.append(f"{s_rows} summary row{'s' if s_rows != 1 else ''}")
+                if p_rows:   detail_parts.append(f"{p_rows} pricing rows")
+                if offering: detail_parts.append(offering)
+                if category: detail_parts.append(category)
+                if cost:     detail_parts.append(f"${cost:.4f}")
+                if err:      detail_parts.append(f"<span style='color:#ef4444'>{err}</span>")
+
+                st.markdown(f"""
+                <div class="{card_class}">
+                    <div class="run-card-title">{badge}{venue} <span style="font-weight:400;color:#9ca3af;font-size:12px">({pdf_id})</span></div>
+                    <div class="run-card-meta">{" · ".join(detail_parts)}</div>
+                    {"<div class='run-card-meta' style='margin-top:4px;color:#6b7280'>" + attrs + "</div>" if attrs else ""}
+                </div>
+                """, unsafe_allow_html=True)
+
+        if _last_result and _last_result.get("ok", 0) > 0:
+            with st.expander("🔍 View rows written to Xano", expanded=False):
+                run_ts = _last_result.get("run_started_at", "")
+                st.caption("Fetching rows written during this run...")
+                try:
+                    ep_resp = requests.get(f"{XANO_BASE}/extracted_pdf_data", timeout=30)
+                    vp_resp = requests.get(f"{XANO_BASE}/venue_pricing", timeout=30)
+
+                    if ep_resp.status_code == 200:
+                        ep_rows = ep_resp.json()
+                        if isinstance(ep_rows, dict):
+                            ep_rows = ep_rows.get("items") or ep_rows.get("result") or []
+                        if run_ts:
+                            ep_rows = [r for r in ep_rows if str(r.get("last_extracted_at","")) >= run_ts[:10]]
+                        st.markdown(f"**extracted_pdf_data** — {len(ep_rows)} row(s) from this run")
+                        if ep_rows:
+                            st.dataframe(pd.DataFrame(ep_rows), use_container_width=True, hide_index=True)
+
+                    if vp_resp.status_code == 200:
+                        vp_rows = vp_resp.json()
+                        if isinstance(vp_rows, dict):
+                            vp_rows = vp_rows.get("items") or vp_rows.get("result") or []
+                        if run_ts:
+                            vp_rows = [r for r in vp_rows if str(r.get("last_extracted_at","")) >= run_ts[:10]]
+                        st.markdown(f"**venue_pricing** — {len(vp_rows)} row(s) from this run")
+                        if vp_rows:
+                            st.dataframe(pd.DataFrame(vp_rows), use_container_width=True, hide_index=True)
+                except Exception as e:
+                    st.warning(f"Could not fetch written rows: {e}")

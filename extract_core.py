@@ -626,7 +626,7 @@ def run_extraction(
         if not pdf_bytes:
             msg = f"Download failed: {err}"
             yield from emit(f"  ⚠  {msg}")
-            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": msg})
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
             _update_pdf_status(xano_id, "failed", error=msg)
             continue
         yield from emit(f"  ✓  Downloaded ({len(pdf_bytes)//1024}KB)")
@@ -635,7 +635,7 @@ def run_extraction(
         if len(pdf_b64) / 1024 / 1024 > 30:
             msg = "PDF too large (>30MB base64)"
             yield from emit(f"  ⚠  {msg}, skipping")
-            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": msg})
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
             _update_pdf_status(xano_id, "failed", error=msg)
             continue
 
@@ -654,7 +654,7 @@ def run_extraction(
         if not summary:
             msg = f"Summary extraction failed: {note}"
             yield from emit(f"  ❌ {msg}")
-            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": msg})
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
             _update_pdf_status(xano_id, "failed", error=msg, cost_usd=_compute_cost(run_usage))
             continue
         yield from emit(f"  ✓  {len(summary)} space(s){note}")
@@ -718,11 +718,15 @@ def run_extraction(
 
         results_log.append({
             "pdf_id":       pdf_id,
+            "venue_name":   venue_name,
             "status":       "OK" if all_failed == 0 else "PARTIAL",
             "summary_rows": s_ok,
             "pricing_rows": p_ok,
             "failed":       all_failed,
             "cost_usd":     run_cost,
+            "offering":     classification.get('venue_offering',  {}).get('value', '') if classification else '',
+            "category":     classification.get('category',        {}).get('value', '') if classification else '',
+            "attributes":   classification.get('venue_attributes',{}).get('value', '') if classification else '',
         })
 
         if i < len(batch) - 1:
@@ -762,6 +766,7 @@ def run_extraction(
         "log":      log,
         "cost_usd": cost_usd,
         "tokens":   total_tokens,
+        "results":  results_log,
     }
 
 
