@@ -327,33 +327,30 @@ def _clean(value):
 
 # ── XANO STATUS WRITEBACK ─────────────────────────────────────────────────────
 
-def _update_pdf_status(xano_id, status, error="", cost_usd=0.0, attempts_delta=1):
+def _update_pdf_status(xano_id, status, error="", cost_usd=0.0):
     """
     PATCH wptp_pdfs/{xano_id} with the new extraction status fields.
-    Uses the row's integer `id` (Xano primary key), not PDF_ID string.
-
-    Fields written:
-        extraction_status   — "pending" | "extracted" | "failed" | "skipped"
-        last_extracted_at   — UTC ISO timestamp (always updated on any attempt)
-        last_error          — error message string, or "" on success
-        extraction_cost_usd — Claude API cost for this run (float)
-        extraction_attempts — incremented by attempts_delta (default 1)
+    Returns a status string for logging. Never raises.
     """
     base_url = os.environ.get("XANO_GET_ENDPOINT", "").rstrip("/")
-    if not base_url or not xano_id:
-        return  # silently skip if not configured
+    if not base_url:
+        return "skip: XANO_GET_ENDPOINT not set"
+    if not xano_id:
+        return "skip: xano_id is None"
 
     payload = {
         "extraction_status":   status,
         "last_extracted_at":   datetime.now(timezone.utc).isoformat(),
-        "last_error":          error[:1000] if error else "",  # cap at 1000 chars
-        "extraction_cost_usd": round(cost_usd, 6),
-        "extraction_attempts": attempts_delta,  # Xano Function Stack should increment, not overwrite
+        "last_error":          error[:1000] if error else "",
+        "extraction_cost_usd": round(float(cost_usd), 6),
     }
     try:
-        requests.patch(f"{base_url}/{xano_id}", json=payload, timeout=10)
-    except Exception:
-        pass  # status writeback is best-effort — never block extraction
+        r = requests.patch(f"{base_url}/{xano_id}", json=payload, timeout=10)
+        if r.status_code in (200, 201, 204):
+            return f"ok ({r.status_code})"
+        return f"err {r.status_code}: {r.text[:200]}"
+    except Exception as e:
+        return f"exception: {e}"
 
 
 def _compute_cost(usage_dict):
@@ -627,7 +624,8 @@ def run_extraction(
             msg = f"Download failed: {err}"
             yield from emit(f"  ⚠  {msg}")
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
-            _update_pdf_status(xano_id, "failed", error=msg)
+            patch_result = _update_pdf_status(xano_id, "failed", error=msg)
+            yield from emit(f"  📝 Status writeback: {patch_result}")
             continue
         yield from emit(f"  ✓  Downloaded ({len(pdf_bytes)//1024}KB)")
 
@@ -636,7 +634,8 @@ def run_extraction(
             msg = "PDF too large (>30MB base64)"
             yield from emit(f"  ⚠  {msg}, skipping")
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
-            _update_pdf_status(xano_id, "failed", error=msg)
+            patch_result = _update_pdf_status(xano_id, "failed", error=msg)
+            yield from emit(f"  📝 Status writeback: {patch_result}")
             continue
 
         timestamp    = datetime.now(timezone.utc).isoformat()
@@ -655,7 +654,8 @@ def run_extraction(
             msg = f"Summary extraction failed: {note}"
             yield from emit(f"  ❌ {msg}")
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
-            _update_pdf_status(xano_id, "failed", error=msg, cost_usd=_compute_cost(run_usage))
+            patch_result = _update_pdf_status(xano_id, "failed", error=msg, cost_usd=_compute_cost(run_usage))
+            yield from emit(f"  📝 Status writeback: {patch_result}")
             continue
         yield from emit(f"  ✓  {len(summary)} space(s){note}")
 
@@ -708,13 +708,13 @@ def run_extraction(
         status     = "extracted" if all_failed == 0 else "partial"
         error_msg  = f"{s_fail} summary row(s) failed to post" if s_fail else (
                      f"{p_fail} pricing row(s) failed to post" if p_fail else "")
-        _update_pdf_status(
+        patch_result = _update_pdf_status(
             xano_id,
-            status     = status,
-            error      = error_msg,
-            cost_usd   = run_cost,
+            status   = status,
+            error    = error_msg,
+            cost_usd = run_cost,
         )
-        yield from emit(f"  📝 Status → {status} (${run_cost:.4f})")
+        yield from emit(f"  📝 Status → {status} (${run_cost:.4f}) · writeback: {patch_result}")
 
         results_log.append({
             "pdf_id":       pdf_id,
