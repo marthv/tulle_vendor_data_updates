@@ -312,7 +312,7 @@ EXPLORER_TABLES = {
         "hide_cols":     [],
     },
     "Extracted PDF Data": {
-        "url":           f"{XANO_BASE}/extracted_pdf_data",
+        "url":           f"{XANO_BASE}/all_extracted_pdf_data",
         "patch":         None,
         "id_col":        "id",
         "editable":      False,
@@ -1243,8 +1243,8 @@ with tab5:
                 }
                 st.caption(f"Fetching rows for: {', '.join(sorted(run_pdf_ids))}")
                 try:
-                    ep_resp = requests.get(f"{XANO_BASE}/extracted_pdf_data", timeout=30)
-                    vp_resp = requests.get(f"{XANO_BASE}/venue_pricing", timeout=30)
+                    ep_resp = requests.get(f"{XANO_BASE}/all_extracted_pdf_data", timeout=60)
+                    vp_resp = requests.get(f"{XANO_BASE}/venue_pricing", timeout=60)
 
                     if ep_resp.status_code == 200:
                         ep_rows = ep_resp.json()
