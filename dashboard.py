@@ -391,6 +391,41 @@ def _to_ms(d: datetime.date, end_of_day=False) -> int:
 
 with tab0:
 
+    # ── ABOUT ─────────────────────────────────────────────────────────────────
+    with st.expander("ℹ️ What is this dashboard?", expanded=False):
+        st.markdown("""
+**Tulle Admin** is the internal ops tool for [tulletogether.app](https://tulletogether.app) — a wedding vendor pricing platform where couples pay to access crowdsourced pricing PDFs from real vendors.
+
+The core workflow this dashboard runs:
+
+> Vendors submit pricing PDFs → Claude extracts structured data → rows land in Xano → WeWeb surfaces them to paying users
+
+---
+
+**Tab guide**
+
+| Tab | What it does |
+|---|---|
+| **Admin** | Timebound reports (signups, payments, packages, to-dos) + Data Explorer for browsing/editing Xano tables |
+| **PDF Extraction** | One-off or targeted extraction runs — download PDFs from Drive, run Claude (4 passes), post rows to Xano |
+| **Google Data** | Fetches Google Places data (rating, reviews, address) for vendors with a Place ID but no cached data |
+| **Vendor Images** | Pulls photos from Google Places and saves them into WPTP Updated Mappings |
+| **Sync Collections** | Reads the `CATEGORY` from extracted PDF data and writes it into the `Collection` field on WPTP Updated Mappings |
+| **Pipeline** | Production extraction queue — shows status across all 6,700+ PDFs (Pending / Extracted / Partial / Failed), with run controls and per-venue result cards |
+
+---
+
+**What Claude extracts per PDF (4 passes):**
+1. Summary fields — venue type, pricing year, admin fee, peak/off-peak Saturday fees
+2. Pricing grid structure — spaces, seasons, day columns
+3. Full pricing grid — venue fee + F&B min + per-person by month × day (up to ~96 rows/PDF)
+4. Classification — venue offering (Raw/Semi-Inclusive/All-Inclusive), attributes, category
+
+Typical cost: ~$0.20–0.40 per PDF. Model: `claude-sonnet-4-20250514`.
+        """)
+
+    st.markdown("---")
+
     # ── METRICS ───────────────────────────────────────────────────────────────
     st.subheader("Timebound Reporting")
     st.caption("Generate reports for user signups, to-dos created, and payments made within a specific date range.")
