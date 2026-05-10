@@ -36,7 +36,7 @@ import streamlit as st
 import google.auth.transport.requests
 import google.oauth2.id_token
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from extract_core import run_extraction
+from extract_core import run_extraction, get_pipeline_status
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 
@@ -439,7 +439,7 @@ _SCHEMA_PRICING = [
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Admin Dashboard", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🧪 Script Runner"])
+tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Admin Dashboard", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🧪 Script Runner", "🔁 Pipeline"])
 
 
 # ── TAB 0: ADMIN DASHBOARD ────────────────────────────────────────────────────
@@ -824,35 +824,89 @@ with tab1:
     st.subheader("PDF Extraction")
     st.caption("Downloads PDFs from Google Drive, runs Claude extraction (4 calls/venue with caching), posts to Xano.")
 
-    col_s, col_e = st.columns(2)
-    with col_s:
-        start_row = st.number_input("Start row", min_value=0, value=0, step=1,
-                                    help="0 = beginning of WPTP PDFs list")
-    with col_e:
-        end_row_input = st.number_input("End row (0 = all)", min_value=0, value=10, step=1,
-                                        help="Set to 0 to process all remaining PDFs")
+    # ── Run mode selector ────────────────────────────────────────────────
+    run_mode_label = st.radio(
+        "Run mode",
+        [
+            "Normal (skip already-extracted)",
+            "Rerun specific Vendor IDs (delete old rows first)",
+            "Rerun specific Vendor IDs (keep old rows — creates duplicates)",
+        ],
+        index=0,
+        help=(
+            "Normal: respects the start/end row range below and skips PDFs already in extracted_pdf_data.\n\n"
+            "Rerun (delete): re-extracts the Vendor IDs you specify. Deletes their existing rows from "
+            "extracted_pdf_data and venue_pricing first. Ignores the start/end row range.\n\n"
+            "Rerun (no delete): re-extracts the Vendor IDs you specify but leaves old rows in place. "
+            "Will produce duplicate rows — useful for A/B comparison."
+        ),
+    )
 
-    end_row = None if end_row_input == 0 else int(end_row_input)
+    if run_mode_label.startswith("Normal"):
+        run_mode = "normal"
+    elif "delete old rows" in run_mode_label:
+        run_mode = "rerun_delete"
+    else:
+        run_mode = "rerun_no_delete"
+
+    rerun_vendor_ids: list[str] = []
+
+    if run_mode == "normal":
+        col_s, col_e = st.columns(2)
+        with col_s:
+            start_row = st.number_input("Start row", min_value=0, value=0, step=1,
+                                        help="0 = beginning of WPTP PDFs list")
+        with col_e:
+            end_row_input = st.number_input("End row (0 = all)", min_value=0, value=10, step=1,
+                                            help="Set to 0 to process all remaining PDFs")
+        end_row = None if end_row_input == 0 else int(end_row_input)
+    else:
+        # Rerun modes — collect Vendor IDs instead of a row range
+        vendor_ids_raw = st.text_input(
+            "Vendor IDs to rerun",
+            placeholder="VND_018, VND_042, VND_103",
+            help="Comma-separated Vendor IDs. The script will pull every PDF in wptp_pdfs that matches.",
+        )
+        rerun_vendor_ids = [v.strip() for v in vendor_ids_raw.split(",") if v.strip()]
+        if rerun_vendor_ids:
+            st.caption(f"Will rerun **{len(rerun_vendor_ids)}** Vendor ID(s): {', '.join(rerun_vendor_ids)}")
+        if run_mode == "rerun_delete":
+            st.warning("⚠ Existing rows in extracted_pdf_data and venue_pricing for these Vendor IDs will be "
+                       "**deleted** before re-extraction. This cannot be undone.")
+        else:
+            st.info("Old rows will be kept — new rows will be added alongside them, creating duplicates.")
+        # Not used in rerun modes but pass through to satisfy the function signature
+        start_row = 0
+        end_row = None
 
     if "extraction_running" not in st.session_state:
         st.session_state.extraction_running = False
 
+    # Disable run button if a rerun mode is selected but no Vendor IDs entered
+    run_disabled = (
+        st.session_state.extraction_running
+        or (run_mode != "normal" and not rerun_vendor_ids)
+    )
+
     run_btn = st.button(
         "▶ Run PDF Extraction",
-        disabled=st.session_state.extraction_running,
+        disabled=run_disabled,
         type="primary",
         use_container_width=True,
     )
 
-    log_placeholder  = st.empty()
+    log_placeholder = st.empty()
     stat_placeholder = st.empty()
 
     if run_btn:
         st.session_state.extraction_running = True
         lines = []
         summary_result = None
-
-        for item in run_extraction(int(start_row), end_row):
+        for item in run_extraction(
+            int(start_row), end_row,
+            mode=run_mode,
+            rerun_vendor_ids=rerun_vendor_ids,
+        ):
             if isinstance(item, dict):
                 summary_result = item
                 break
@@ -861,15 +915,15 @@ with tab1:
                 f'<div class="log-box">' + "\n".join(lines) + "</div>",
                 unsafe_allow_html=True,
             )
-
         st.session_state.extraction_running = False
 
         if summary_result:
-            ok       = summary_result["ok"]
-            part     = summary_result["partial"]
-            fail     = summary_result["failed"]
+            ok = summary_result["ok"]
+            part = summary_result["partial"]
+            fail = summary_result["failed"]
             cost_usd = summary_result.get("cost_usd", 0.0)
-            tokens   = summary_result.get("tokens", {})
+            tokens = summary_result.get("tokens", {})
+
             if fail == 0 and part == 0:
                 stat_placeholder.success(f"Done — {ok} succeeded")
             elif fail > 0:
@@ -1271,3 +1325,245 @@ with tab5:
                 if _run_result.get("output"):
                     with st.expander("stdout (partial)", expanded=False):
                         st.code(_run_result["output"], language="text")
+
+
+# ── TAB 6: PIPELINE ───────────────────────────────────────────────────────────
+
+with tab6:
+    st.subheader("PDF Extraction Pipeline")
+    st.caption(
+        "Track extraction status across all PDFs in wptp_pdfs. "
+        "Run pending, failed, or specific PDFs without touching already-extracted records."
+    )
+
+    # ── Status overview ───────────────────────────────────────────────────────
+    refresh_col, _ = st.columns([2, 6])
+    with refresh_col:
+        load_status = st.button("🔄 Load / Refresh Status", type="primary", use_container_width=True, key="pl_refresh")
+
+    if load_status or st.session_state.get("pl_status_loaded"):
+        if load_status:
+            with st.spinner("Fetching pipeline status from Xano..."):
+                st.session_state["pl_data"] = get_pipeline_status()
+            st.session_state["pl_status_loaded"] = True
+
+        pl = st.session_state.get("pl_data", {})
+        counts    = pl.get("counts", {})
+        all_rows  = pl.get("rows", [])
+        total     = pl.get("total", 0)
+        with_link = pl.get("with_link", 0)
+
+        # ── Metric cards ──────────────────────────────────────────────────────
+        st.markdown("#### Status Overview")
+        c_pending, c_extracted, c_partial, c_failed, c_skipped = st.columns(5)
+
+        c_pending.markdown(
+            f"""<div class="metric-card card-amber">
+                <div class="metric-icon">⏳</div>
+                <div class="metric-value">{counts.get('pending', 0)}</div>
+                <div class="metric-label">Pending</div>
+            </div>""", unsafe_allow_html=True
+        )
+        c_extracted.markdown(
+            f"""<div class="metric-card card-green">
+                <div class="metric-icon">✅</div>
+                <div class="metric-value">{counts.get('extracted', 0)}</div>
+                <div class="metric-label">Extracted</div>
+            </div>""", unsafe_allow_html=True
+        )
+        c_partial.markdown(
+            f"""<div class="metric-card card-purple">
+                <div class="metric-icon">⚠️</div>
+                <div class="metric-value">{counts.get('partial', 0)}</div>
+                <div class="metric-label">Partial</div>
+            </div>""", unsafe_allow_html=True
+        )
+        c_failed.markdown(
+            f"""<div class="metric-card" style="background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5">
+                <div class="metric-icon">❌</div>
+                <div class="metric-value">{counts.get('failed', 0)}</div>
+                <div class="metric-label">Failed</div>
+            </div>""", unsafe_allow_html=True
+        )
+        c_skipped.markdown(
+            f"""<div class="metric-card" style="background:#f3f4f6;color:#374151;border:1.5px solid #d1d5db">
+                <div class="metric-icon">⏭️</div>
+                <div class="metric-value">{counts.get('skipped', 0)}</div>
+                <div class="metric-label">Skipped</div>
+            </div>""", unsafe_allow_html=True
+        )
+
+        st.caption(f"{total:,} total rows in wptp_pdfs · {with_link:,} have a Drive link")
+        st.markdown("---")
+
+        # ── Status table with filters ─────────────────────────────────────────
+        st.markdown("#### PDF Status Table")
+
+        # Build display dataframe
+        import pandas as pd
+
+        display_cols = [
+            'id', 'PDF_ID', 'Vendor_ID', 'Name',
+            'extraction_status', 'last_extracted_at',
+            'extraction_cost_usd', 'extraction_attempts', 'last_error',
+        ]
+        df_raw = pd.DataFrame(all_rows)
+
+        # Add missing status columns gracefully
+        for col in display_cols:
+            if col not in df_raw.columns:
+                df_raw[col] = ""
+
+        df_display = df_raw[[c for c in display_cols if c in df_raw.columns]].copy()
+
+        # Normalise status: blank → pending
+        if 'extraction_status' in df_display.columns:
+            df_display['extraction_status'] = df_display['extraction_status'].apply(
+                lambda x: x if str(x).strip().lower() in ('extracted', 'partial', 'failed', 'skipped') else 'pending'
+            )
+
+        # Filter controls
+        filter_status = st.multiselect(
+            "Filter by status",
+            options=['pending', 'extracted', 'partial', 'failed', 'skipped'],
+            default=['pending', 'failed', 'partial'],
+            key="pl_filter_status",
+        )
+        search_term = st.text_input("Search by PDF_ID or venue name", key="pl_search", placeholder="e.g. PDF_042 or Cipriani")
+
+        df_filtered = df_display.copy()
+        if filter_status:
+            df_filtered = df_filtered[df_filtered['extraction_status'].isin(filter_status)]
+        if search_term:
+            mask = (
+                df_filtered.get('PDF_ID', pd.Series(dtype=str)).astype(str).str.contains(search_term, case=False, na=False) |
+                df_filtered.get('Name',   pd.Series(dtype=str)).astype(str).str.contains(search_term, case=False, na=False)
+            )
+            df_filtered = df_filtered[mask]
+
+        st.caption(f"Showing {len(df_filtered):,} of {len(df_display):,} rows")
+        st.dataframe(df_filtered, use_container_width=True, hide_index=True)
+
+        # CSV export
+        csv_bytes = df_filtered.to_csv(index=False).encode()
+        st.download_button(
+            "⬇ Export filtered table as CSV",
+            csv_bytes,
+            file_name="pipeline_status.csv",
+            mime="text/csv",
+            key="pl_csv",
+        )
+
+        st.markdown("---")
+
+        # ── Run controls ──────────────────────────────────────────────────────
+        st.markdown("#### Run Extraction")
+
+        run_mode = st.radio(
+            "Run mode",
+            options=["🆕 All pending", "❌ Re-run all failed", "🎯 Specific PDF IDs", "📏 Row range"],
+            horizontal=True,
+            key="pl_run_mode",
+        )
+
+        specific_ids_input = ""
+        pl_start_row = 0
+        pl_end_row   = 10
+
+        if run_mode == "🎯 Specific PDF IDs":
+            specific_ids_input = st.text_area(
+                "PDF IDs to run (one per line or comma-separated)",
+                height=100,
+                placeholder="PDF_042\nPDF_117\nPDF_203",
+                key="pl_specific_ids",
+            )
+        elif run_mode == "📏 Row range":
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                pl_start_row = st.number_input("Start row", min_value=0, value=0, step=1, key="pl_start")
+            with rc2:
+                pl_end_row = st.number_input("End row (0 = all)", min_value=0, value=10, step=1, key="pl_end")
+
+        # Pending/failed counts for button label
+        n_pending = counts.get('pending', 0)
+        n_failed  = counts.get('failed', 0)
+
+        btn_label = {
+            "🆕 All pending":        f"▶ Run All Pending ({n_pending})",
+            "❌ Re-run all failed":   f"▶ Re-run All Failed ({n_failed})",
+            "🎯 Specific PDF IDs":   "▶ Run Specified PDFs",
+            "📏 Row range":          "▶ Run Row Range",
+        }.get(run_mode, "▶ Run")
+
+        if "pl_running" not in st.session_state:
+            st.session_state["pl_running"] = False
+
+        run_btn = st.button(
+            btn_label,
+            type="primary",
+            use_container_width=True,
+            disabled=st.session_state["pl_running"],
+            key="pl_run_btn",
+        )
+
+        pl_log_ph  = st.empty()
+        pl_stat_ph = st.empty()
+
+        if run_btn:
+            # Parse run mode into run_extraction args
+            pdf_ids_list   = None
+            rerun_failed   = False
+            eff_start      = 0
+            eff_end        = None
+
+            if run_mode == "🎯 Specific PDF IDs":
+                raw = specific_ids_input.replace(",", "\n")
+                pdf_ids_list = [v.strip() for v in raw.splitlines() if v.strip()]
+                if not pdf_ids_list:
+                    st.warning("Enter at least one PDF ID.")
+                    st.stop()
+            elif run_mode == "❌ Re-run all failed":
+                rerun_failed = True
+            elif run_mode == "🆕 All pending":
+                pass  # default mode, dedup handles it
+            elif run_mode == "📏 Row range":
+                eff_start = int(pl_start_row)
+                eff_end   = None if int(pl_end_row) == 0 else int(pl_end_row)
+
+            st.session_state["pl_running"] = True
+            pl_lines = []
+            pl_result = None
+
+            for item in run_extraction(
+                start_row=eff_start,
+                end_row=eff_end,
+                pdf_ids=pdf_ids_list,
+                rerun_failed=rerun_failed,
+            ):
+                if isinstance(item, dict):
+                    pl_result = item
+                    break
+                pl_lines.append(item)
+                pl_log_ph.markdown(
+                    '<div class="log-box">' + "\n".join(pl_lines) + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+            st.session_state["pl_running"] = False
+
+            if pl_result:
+                ok   = pl_result["ok"]
+                part = pl_result["partial"]
+                fail = pl_result["failed"]
+                cost = pl_result.get("cost_usd", 0.0)
+
+                if fail == 0 and part == 0:
+                    pl_stat_ph.success(f"Done — {ok} succeeded · ${cost:.4f}")
+                elif fail > 0:
+                    pl_stat_ph.error(f"Done — {ok} succeeded, {part} partial, {fail} failed · ${cost:.4f}")
+                else:
+                    pl_stat_ph.warning(f"Done — {ok} succeeded, {part} partial · ${cost:.4f}")
+
+                # Auto-refresh status after run
+                st.session_state["pl_data"] = get_pipeline_status()
+                st.rerun()

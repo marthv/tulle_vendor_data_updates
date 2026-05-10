@@ -325,6 +325,47 @@ def _clean(value):
     return "" if s.lower() in _NOT_LISTED else s
 
 
+# ── XANO STATUS WRITEBACK ─────────────────────────────────────────────────────
+
+def _update_pdf_status(xano_id, status, error="", cost_usd=0.0, attempts_delta=1):
+    """
+    PATCH wptp_pdfs/{xano_id} with the new extraction status fields.
+    Uses the row's integer `id` (Xano primary key), not PDF_ID string.
+
+    Fields written:
+        extraction_status   — "pending" | "extracted" | "failed" | "skipped"
+        last_extracted_at   — UTC ISO timestamp (always updated on any attempt)
+        last_error          — error message string, or "" on success
+        extraction_cost_usd — Claude API cost for this run (float)
+        extraction_attempts — incremented by attempts_delta (default 1)
+    """
+    base_url = os.environ.get("XANO_GET_ENDPOINT", "").rstrip("/")
+    if not base_url or not xano_id:
+        return  # silently skip if not configured
+
+    payload = {
+        "extraction_status":   status,
+        "last_extracted_at":   datetime.now(timezone.utc).isoformat(),
+        "last_error":          error[:1000] if error else "",  # cap at 1000 chars
+        "extraction_cost_usd": round(cost_usd, 6),
+        "extraction_attempts": attempts_delta,  # Xano Function Stack should increment, not overwrite
+    }
+    try:
+        requests.patch(f"{base_url}/{xano_id}", json=payload, timeout=10)
+    except Exception:
+        pass  # status writeback is best-effort — never block extraction
+
+
+def _compute_cost(usage_dict):
+    """Convert a usage dict → USD float."""
+    return (
+        usage_dict.get("input",        0) * _COST_INPUT       +
+        usage_dict.get("output",       0) * _COST_OUTPUT       +
+        usage_dict.get("cache_create", 0) * _COST_CACHE_WRITE  +
+        usage_dict.get("cache_read",   0) * _COST_CACHE_READ
+    )
+
+
 # ── XANO POST ─────────────────────────────────────────────────────────────────
 
 def _post_summary(entries, classification, timestamp):
@@ -456,7 +497,6 @@ def _fetch_xano_pages(endpoint, per_page=500):
             break
         all_rows.extend(batch)
         yield all_rows, page
-        # If Xano returned more than per_page, it ignored pagination — everything is already here
         if len(batch) >= per_page * 2 or len(batch) < per_page:
             break
         page += 1
@@ -465,10 +505,20 @@ def _fetch_xano_pages(endpoint, per_page=500):
 
 # ── PUBLIC GENERATOR ──────────────────────────────────────────────────────────
 
-def run_extraction(start_row: int, end_row: int | None):
+def run_extraction(
+    start_row: int,
+    end_row: int | None,
+    pdf_ids: list[str] | None = None,
+    rerun_failed: bool = False,
+):
     """
     Generator — yields log strings as extraction proceeds.
     The dashboard iterates this and displays each line in real time.
+
+    Modes (mutually exclusive, checked in order):
+      pdf_ids      — run only the specified PDF_ID strings
+      rerun_failed — run only rows where extraction_status == "failed"
+      start_row / end_row — original row-range behaviour (default)
 
     Yields strings. Final item is always a dict:
         {"ok": int, "partial": int, "failed": int, "log": [...]}
@@ -479,38 +529,67 @@ def run_extraction(start_row: int, end_row: int | None):
         log.append(msg)
         yield msg
 
-    summary_endpoint = os.environ["XANO_SUMMARY_ENDPOINT"]
-    get_endpoint     = os.environ["XANO_GET_ENDPOINT"]
+    get_endpoint = os.environ["XANO_GET_ENDPOINT"]
 
-    yield from emit("🔍 Checking already-extracted PDF IDs...")
-    try:
-        existing = []
-        for existing, pg in _fetch_xano_pages(summary_endpoint):
-            pass  # just drain the generator
-        already_done = {str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() for r in existing}
-        already_done.discard('')
-        yield from emit(f"✓  {len(already_done)} already extracted — will skip")
-    except Exception as e:
-        yield from emit(f"⚠  Could not fetch existing records: {e}. Proceeding without dedup.")
-        already_done = set()
-
-    yield from emit("")
     yield from emit("🔄 Fetching PDF list from Xano...")
     try:
         all_rows = []
         for all_rows, pg in _fetch_xano_pages(get_endpoint):
             yield from emit(f"   page {pg} — {len(all_rows)} rows fetched so far...")
-        rows = [r for r in all_rows if 'drive.google.com' in str(r.get('PDF_Link') or r.get('pdf_link') or '')]
-        yield from emit(f"✓  {len(all_rows)} total rows, {len(rows)} with Drive links")
+        rows_with_links = [
+            r for r in all_rows
+            if 'drive.google.com' in str(r.get('PDF_Link') or r.get('pdf_link') or '')
+        ]
+        yield from emit(f"✓  {len(all_rows)} total rows, {len(rows_with_links)} with Drive links")
     except Exception as e:
         yield from emit(f"❌ Failed to fetch from Xano: {e}")
         yield {"ok": 0, "partial": 0, "failed": 0, "log": log}
         return
 
-    total = len(rows)
-    end   = end_row if end_row is not None else total
-    batch = rows[start_row:end]
-    yield from emit(f"   Processing rows {start_row + 1} → {min(end, total)} ({len(batch)} venues)")
+    # ── Build the work batch depending on run mode ────────────────────────────
+    if pdf_ids:
+        # Specific PDF IDs requested — look them up regardless of current status
+        pdf_id_set = {str(p).strip() for p in pdf_ids if str(p).strip()}
+        batch = [
+            r for r in rows_with_links
+            if str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() in pdf_id_set
+        ]
+        yield from emit(f"   Mode: specific PDF IDs — {len(batch)} matched of {len(pdf_id_set)} requested")
+        not_found = pdf_id_set - {str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() for r in batch}
+        if not_found:
+            yield from emit(f"   ⚠  Not found: {', '.join(sorted(not_found))}")
+
+    elif rerun_failed:
+        # Re-run anything previously marked failed
+        batch = [
+            r for r in rows_with_links
+            if str(r.get('extraction_status') or '').strip().lower() == 'failed'
+        ]
+        yield from emit(f"   Mode: re-run failed — {len(batch)} rows")
+
+    else:
+        # Default: row-range, skipping already-extracted
+        total = len(rows_with_links)
+        end   = end_row if end_row is not None else total
+        batch = rows_with_links[start_row:end]
+        yield from emit(f"   Mode: rows {start_row + 1} → {min(end, total)} ({len(batch)} venues)")
+
+    # ── For default mode: skip already-extracted (dedup by PDF_ID in summary table) ──
+    already_done: set[str] = set()
+    if not pdf_ids and not rerun_failed:
+        yield from emit("")
+        yield from emit("🔍 Checking already-extracted PDF IDs...")
+        try:
+            summary_endpoint = os.environ["XANO_SUMMARY_ENDPOINT"]
+            existing = []
+            for existing, _ in _fetch_xano_pages(summary_endpoint):
+                pass
+            already_done = {str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() for r in existing}
+            already_done.discard('')
+            yield from emit(f"✓  {len(already_done)} already extracted — will skip")
+        except Exception as e:
+            yield from emit(f"⚠  Could not fetch existing records: {e}. Proceeding without dedup.")
+
     yield from emit("")
 
     client        = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -520,70 +599,89 @@ def run_extraction(start_row: int, end_row: int | None):
 
     results_log  = []
     total_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
+    total_rows   = len(rows_with_links)
 
     def _add_usage(u):
         for k in total_tokens:
             total_tokens[k] += u.get(k, 0)
 
     for i, row in enumerate(batch):
-        pdf_id     = str(row.get('PDF_ID')    or row.get('pdf_id')    or '').strip()
-        vendor_id  = str(row.get('Vendor_ID') or row.get('vendor_id') or '').strip()
-        venue_name = str(row.get('Name')      or row.get('name')      or '').strip()
-        pdf_link   = str(row.get('PDF_Link')  or row.get('pdf_link')  or '').strip()
-        row_num    = start_row + i + 1
+        pdf_id    = str(row.get('PDF_ID')    or row.get('pdf_id')    or '').strip()
+        vendor_id = str(row.get('Vendor_ID') or row.get('vendor_id') or '').strip()
+        venue_name = str(row.get('Name')     or row.get('name')      or '').strip()
+        pdf_link  = str(row.get('PDF_Link')  or row.get('pdf_link')  or '').strip()
+        xano_id   = row.get('id')   # Xano integer primary key — used for PATCH
+        row_num   = (start_row + i + 1) if (not pdf_ids and not rerun_failed) else (i + 1)
 
-        if pdf_id in already_done:
-            yield from emit(f"[{row_num}/{total}] {pdf_id} — {venue_name} — ⏭  skipping")
+        # Default mode dedup
+        if not pdf_ids and not rerun_failed and pdf_id in already_done:
+            yield from emit(f"[{row_num}/{total_rows}] {pdf_id} — {venue_name} — ⏭  skipping (already extracted)")
             continue
 
         yield from emit(f"")
-        yield from emit(f"[{row_num}/{total}] {pdf_id} — {venue_name}")
+        yield from emit(f"[{row_num}] {pdf_id} — {venue_name}")
         yield from emit(f"  ↓  Downloading...")
 
         pdf_bytes, err = download_pdf(pdf_link, drive_service)
         if not pdf_bytes:
-            yield from emit(f"  ⚠  Download failed: {err}")
-            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": err})
+            msg = f"Download failed: {err}"
+            yield from emit(f"  ⚠  {msg}")
+            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": msg})
+            _update_pdf_status(xano_id, "failed", error=msg)
             continue
         yield from emit(f"  ✓  Downloaded ({len(pdf_bytes)//1024}KB)")
 
         pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
         if len(pdf_b64) / 1024 / 1024 > 30:
-            yield from emit(f"  ⚠  PDF too large (>30MB base64), skipping")
-            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": "PDF too large"})
+            msg = "PDF too large (>30MB base64)"
+            yield from emit(f"  ⚠  {msg}, skipping")
+            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": msg})
+            _update_pdf_status(xano_id, "failed", error=msg)
             continue
 
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp    = datetime.now(timezone.utc).isoformat()
+        run_usage    = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
 
+        def _track(u):
+            _add_usage(u)
+            for k in run_usage:
+                run_usage[k] += u.get(k, 0)
+
+        # ── Pass 1: Summary ───────────────────────────────────────────────────
         yield from emit(f"  🤖 [1/4] Extracting summary + pricing year + venue type...")
         summary, note, usage = _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name)
-        _add_usage(usage)
+        _track(usage)
         if not summary:
-            yield from emit(f"  ❌ Summary failed{': ' + note if note else ''}")
-            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": "summary extraction failed"})
+            msg = f"Summary extraction failed: {note}"
+            yield from emit(f"  ❌ {msg}")
+            results_log.append({"pdf_id": pdf_id, "status": "FAILED", "reason": msg})
+            _update_pdf_status(xano_id, "failed", error=msg, cost_usd=_compute_cost(run_usage))
             continue
         yield from emit(f"  ✓  {len(summary)} space(s){note}")
 
+        # ── Pass 2: Grid structure ────────────────────────────────────────────
         yield from emit(f"  🤖 [2/4] Mapping pricing grid structure...")
         structure, note, usage = _extract_grid_structure(client, pdf_b64, venue_name)
-        _add_usage(usage)
+        _track(usage)
         if structure:
             yield from emit(f"  ✓  {len(structure.get('spaces', []))} space(s) mapped{note}")
         else:
             yield from emit(f"  ⚠  Structure mapping failed — proceeding without it{note}")
 
+        # ── Pass 3: Pricing grid ──────────────────────────────────────────────
         yield from emit(f"  🤖 [3/4] Extracting pricing grid...")
         pricing, note, usage = _extract_pricing_grid(client, pdf_b64, pdf_id, venue_name, structure)
-        _add_usage(usage)
+        _track(usage)
         if not pricing:
             yield from emit(f"  ⚠  Pricing grid failed — summary only{note}")
             pricing = []
         else:
             yield from emit(f"  ✓  {len(pricing)} pricing rows{note}")
 
+        # ── Pass 4: Classification ────────────────────────────────────────────
         yield from emit(f"  🤖 [4/4] Classifying offering + attributes + category...")
         classification, note, usage = _extract_classification(client, pdf_b64, venue_name)
-        _add_usage(usage)
+        _track(usage)
         if classification:
             offering  = classification.get('venue_offering',  {}).get('value', '?')
             attrs     = classification.get('venue_attributes',{}).get('value', '?')
@@ -592,6 +690,7 @@ def run_extraction(start_row: int, end_row: int | None):
         else:
             yield from emit(f"  ⚠  Classification failed{note}")
 
+        # ── Post to Xano ──────────────────────────────────────────────────────
         yield from emit(f"  📤 Posting summary ({len(summary)} row(s))...")
         s_ok, s_fail = _post_summary(summary, classification, timestamp)
         yield from emit(f"  {'✓' if s_fail == 0 else '⚠'}  {s_ok} posted, {s_fail} failed")
@@ -603,16 +702,33 @@ def run_extraction(start_row: int, end_row: int | None):
         else:
             p_ok = p_fail = 0
 
-        status = "OK" if (s_fail + p_fail) == 0 else "PARTIAL"
+        # ── Write status back to wptp_pdfs ────────────────────────────────────
+        run_cost   = _compute_cost(run_usage)
+        all_failed = s_fail + p_fail
+        status     = "extracted" if all_failed == 0 else "partial"
+        error_msg  = f"{s_fail} summary row(s) failed to post" if s_fail else (
+                     f"{p_fail} pricing row(s) failed to post" if p_fail else "")
+        _update_pdf_status(
+            xano_id,
+            status     = status,
+            error      = error_msg,
+            cost_usd   = run_cost,
+        )
+        yield from emit(f"  📝 Status → {status} (${run_cost:.4f})")
+
         results_log.append({
-            "pdf_id": pdf_id, "status": status,
-            "summary_rows": s_ok, "pricing_rows": p_ok,
-            "failed": s_fail + p_fail,
+            "pdf_id":       pdf_id,
+            "status":       "OK" if all_failed == 0 else "PARTIAL",
+            "summary_rows": s_ok,
+            "pricing_rows": p_ok,
+            "failed":       all_failed,
+            "cost_usd":     run_cost,
         })
 
         if i < len(batch) - 1:
             time.sleep(2)
 
+    # ── Summary ───────────────────────────────────────────────────────────────
     ok_count   = sum(1 for r in results_log if r['status'] == 'OK')
     fail_count = sum(1 for r in results_log if r['status'] == 'FAILED')
     part_count = sum(1 for r in results_log if r['status'] == 'PARTIAL')
@@ -646,4 +762,46 @@ def run_extraction(start_row: int, end_row: int | None):
         "log":      log,
         "cost_usd": cost_usd,
         "tokens":   total_tokens,
+    }
+
+
+# ── PIPELINE STATUS QUERY ─────────────────────────────────────────────────────
+
+def get_pipeline_status() -> dict:
+    """
+    Fetch all wptp_pdfs rows and return a status summary dict:
+      {
+        "rows":      [...],        # full list of dicts
+        "counts":    {status: n},  # e.g. {"pending": 12, "extracted": 340, ...}
+        "total":     int,
+        "with_link": int,
+      }
+    Statuses: pending | extracted | partial | failed | skipped | (blank → pending)
+    """
+    get_endpoint = os.environ.get("XANO_GET_ENDPOINT", "")
+    if not get_endpoint:
+        return {"rows": [], "counts": {}, "total": 0, "with_link": 0}
+
+    all_rows = []
+    try:
+        for all_rows, _ in _fetch_xano_pages(get_endpoint):
+            pass
+    except Exception as e:
+        return {"rows": [], "counts": {"error": str(e)}, "total": 0, "with_link": 0}
+
+    counts: dict[str, int] = {}
+    with_link = 0
+    for r in all_rows:
+        has_link = 'drive.google.com' in str(r.get('PDF_Link') or r.get('pdf_link') or '')
+        if has_link:
+            with_link += 1
+        raw_status = str(r.get('extraction_status') or '').strip().lower()
+        status = raw_status if raw_status in ('extracted', 'partial', 'failed', 'skipped') else 'pending'
+        counts[status] = counts.get(status, 0) + 1
+
+    return {
+        "rows":      all_rows,
+        "counts":    counts,
+        "total":     len(all_rows),
+        "with_link": with_link,
     }
