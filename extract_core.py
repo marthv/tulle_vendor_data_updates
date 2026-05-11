@@ -159,15 +159,34 @@ assume a grid layout exists.
 - Base Bar Per Person: Standard/premium open bar with spirits per
   person. Return NUMBER ONLY. Return "" if no per-person bar package.
 
-- Additional_Fees: Short labels for MANDATORY fees only,
-  semicolon-separated.
+- Additional_Fees: Short labels for MANDATORY fees only (fees the
+  client MUST pay regardless of choices), semicolon-separated.
+  ALWAYS populate this field if mandatory fees exist — even if those
+  fees are also captured as numeric values in admin_fee_pct or other
+  fields above. This field provides human-readable display labels
+  (e.g. 'Administrative Fee; Sales Tax; Security Fee'), not numeric
+  amounts. Common examples: administrative fees, service charges,
+  gratuity, state tax, mandatory valet, required security. If truly
+  no mandatory fees exist anywhere in the document, return empty string.
 
 - Additional_Fees_Description: Full descriptions, semicolon-separated,
   matching order of Additional_Fees.
 
-- MULTIPLE SPACES: Return an ARRAY if multiple distinct bookable spaces
-  exist. Each space gets its own entry. Duplicate all shared fields
-  across every entry.
+- MULTIPLE SPACES: Before returning, count every distinct bookable event
+  space in this document. A bookable space is any named room, hall,
+  garden, terrace, or area that can be reserved independently and has
+  its own pricing listed.
+  * If exactly 1 bookable space exists: return a single JSON object.
+  * If 2 or more bookable spaces exist: you MUST return a JSON array
+    with one entry per space. Returning a single object when multiple
+    spaces exist is an error — each space is a separate bookable unit
+    with its own pricing and must have its own entry in the array.
+  * Never consolidate multiple spaces into one by picking the largest
+    or most prominent space.
+  * Each entry gets its own Venue_Space_Name, capacity, venue fees,
+    and F&B mins specific to that space.
+  * Duplicate all shared fields (admin_fee_pct, ceremony_fee,
+    additional_fees, pricing_year, venue_type) across every entry.
 
 - NEVER leave any field blank. Numeric fields get "" if absent.
   Text fields get "" if absent.
