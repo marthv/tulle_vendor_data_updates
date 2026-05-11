@@ -27,7 +27,7 @@ import io
 
 MONTHS = ["January", "February", "March", "April", "May", "June",
           "July", "August", "September", "October", "November", "December"]
-DAYS   = ["Weekday", "Friday", "Saturday", "Sunday"]
+DAYS   = ["Weekday", "Everyday", "Friday", "Saturday", "Sunday"]
 
 # Claude Sonnet 4 pricing (per token)
 _COST_INPUT       = 3.00  / 1_000_000
@@ -252,30 +252,52 @@ Return array with these exact keys:
 
 PRICING_PROMPT_DIRECT = """You are an expert at extracting wedding venue pricing data from PDF brochures.
 
-No structure map has been provided. Find ALL pricing data in this document yourself, regardless of how it is formatted — it may be in a table, a list, prose sentences, a header, a footnote, or an image caption.
+No structure map has been provided. Find ALL core pricing data in this document and return ONLY a valid JSON array. No markdown, no explanation, just the JSON array.
 
-Extract every unique price point you can find and return ONLY a valid JSON array. No markdown, no explanation, just the JSON array.
+THE FOUR DIMENSIONS THAT CREATE A NEW ROW:
+Each unique combination of these four things = one row:
+1. Venue Space (which room/area)
+2. Day of Week (Monday-Friday / Friday / Saturday / Sunday / Everyday)
+3. Month (or season)
+4. Meal Type (Dinner / Lunch / Brunch)
 
-WHAT TO LOOK FOR:
-- Room/venue rental fees by day of week and/or season
-- Food & beverage minimums by day of week and/or season
-- Per-person food and bar packages
-- Guest count tiers with different pricing
-- Package-based pricing (named packages × guest counts)
-- Any other pricing structure present in the document
+DO NOT create separate rows for:
+- Menu upgrade options (lobster upgrade, premium entree, etc.)
+- Add-on food stations (taco bar, late night sliders, flatbread, etc.)
+- Additional bar hours or bar upgrades
+- Optional enhancements or display items
+- Chef fees, bartender fees, or staffing add-ons
+- Any item that is optional or supplemental to a base package
 
-For each distinct price point create one row. Expand season groups into individual months. If pricing varies by day of week, create separate rows per day.
+DO create one row per named wedding package if the venue offers tiered
+packages (e.g. Sprouting Love / Blooming Love / Blossom Love), since
+each represents a complete, bookable offering at a different price point.
 
-OUTPUT FIELD RULES:
-- Day_of_Week: exactly one of "Weekday", "Friday", "Saturday", "Sunday"
-- Month: full month name e.g. "January", or "All" only if truly no monthly variation
-- Meal_Type: "Dinner" unless explicitly stated
-- Venue_Fee / FB_Min / Per_Person_FB: leave blank if not applicable for this row
+FIELDS TO EXTRACT per row:
+- Venue_Space_Name: exact name of the bookable space
+- Max_Capacity_Seated: max seated guests for this space
+- Day_of_Week: exactly one of "Weekday", "Friday", "Saturday",
+  "Sunday", "Everyday". Use "Everyday" if the PDF does not specify
+  a particular day or the price applies to all days equally.
+- Month: full month name e.g. "January", or "All" only if pricing
+  truly does not vary by month at all
+- Meal_Type: "Dinner" unless explicitly stated otherwise
+- Guest_Min / Guest_Max: minimum and maximum guest counts if specified
+- Venue_Fee: room rental fee if applicable
 - Venue_Fee_Type: "Flat" or "Per Person"
+- FB_Min: food & beverage minimum spend if applicable
 - FB_Min_Type: "Overall Min Spend" or "Per Person Min"
-- Admin_Fee_Pct / Tax_Pct / Service_Fee_Pct: number only, blank if absent
-- All repeated fields (admin fee, ceremony fee, etc): same value on every row
-- Notes: any important context about this price point
+- Per_Person_FB: combined per-person food + bar cost if applicable
+- Base_Menu_Per_Person: lowest-tier food package per person
+- Base_Bar_Per_Person: standard open bar per person
+- Ceremony_Fee: ceremony add-on fee
+- Ceremony_Fee_Type: "Flat" or "Per person"
+- Admin_Fee_Pct: administrative/service fee percentage (number only)
+- Tax_Pct: tax percentage (number only)
+- Service_Fee_Pct: service charge percentage (number only)
+- Additional_Fees: mandatory fee labels, semicolon-separated
+- Additional_Fees_Description: full descriptions, semicolon-separated
+- Notes: brief note about what this package/tier includes
 
 Return array with these exact keys:
 [{"Venue_Space_Name":"","Max_Capacity_Seated":"","Day_of_Week":"","Month":"","Meal_Type":"","Guest_Min":"","Guest_Max":"","Venue_Fee":"","Venue_Fee_Type":"","FB_Min":"","FB_Min_Type":"","Per_Person_FB":"","Base_Menu_Per_Person":"","Base_Bar_Per_Person":"","Ceremony_Fee":"","Ceremony_Fee_Type":"","Admin_Fee_Pct":"","Tax_Pct":"","Service_Fee_Pct":"","Additional_Fees":"","Additional_Fees_Description":"","Notes":""}]"""
@@ -621,7 +643,9 @@ def _post_pricing_grid(rows, pdf_id, vendor_id, venue_name, timestamp):
     for row in rows:
         day   = row.get("Day_of_Week", "")
         month = row.get("Month", "")
-        if day not in DAYS:
+        if not day or day.lower() in {"all", "any", "everyday", "all days", "any day"}:
+            day = "Everyday"
+        elif day not in DAYS:
             day = "Weekday"
         if month not in MONTHS and month != "All":
             month = "All"
