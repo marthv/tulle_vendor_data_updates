@@ -43,45 +43,136 @@ SUMMARY_PROMPT = """You are an expert at extracting wedding venue pricing data f
 EXTRACTION RULES:
 
 PRICING YEAR:
-- Look in the document title, header, or any pricing list heading for the year the pricing applies to.
-- Return just the 4-digit year e.g. "2027". If not found, return "Not listed".
+- Search the entire document — title, header, footer, copyright line,
+  any pricing list heading — for the year the pricing applies to.
+- Also look for phrases like "2026 Pricing", "Effective January 2027",
+  copyright years, or date stamps.
+- Return just the 4-digit integer e.g. 2027. If not found, return "".
 
-VENUE TYPE — assign exactly one from this list using the decision logic below:
-  "Dedicated Event Venue" — Fallback only. Use ONLY if no other type clearly applies. Do NOT assign based on keywords alone.
-  "Hotel / Resort" — Must be a lodging-first business with guest rooms, accommodations, or a spa. Assign even if it hosts events.
-  "Restaurant / Bar" — Must be food-first. Dining is the core offering. Do NOT assign just because a PDF mentions open bar.
-  "Estate / Mansion" — Residential-style or mansion property, including historic estates and villa-style venues run as businesses.
-  "Performing Arts Venue" — Must be designed for performances: stage, audience seating, productions.
-  "Museum / Gallery" — Must be exhibition-based. "Historic building" alone is not enough.
+VENUE TYPE — assign exactly one:
+  "Dedicated Event Venue" — Fallback only. Use ONLY if no other type fits.
+  "Hotel / Resort" — Lodging-first: guest rooms, accommodations, or spa.
+  "Restaurant / Bar" — Food-first. Dining is the core offering.
+  "Estate / Mansion" — Residential-style or mansion property.
+  "Performing Arts Venue" — Stage, audience seating, productions.
+  "Museum / Gallery" — Exhibition-based.
   "Zoo / Aquarium" — Animals or marine exhibits are a core feature.
-  "Garden / Botanical Garden" — Must be a plant-focused institution, not just a venue with gardens.
-  "Barn / Ranch" — Assign if the venue has a barn as its primary event structure OR a ranch/agricultural setting. Barn aesthetic qualifies: timber frame barns, rustic barns, converted barns, barn-style reception halls. Does NOT require active agricultural production.
-  "Winery / Brewery / Distillery" — Beverage production or tasting must be the core identity.
-  "Country Club / Private Club" — Must be membership-based. Includes yacht clubs, university clubs, social clubs.
-  "University / College" — Must be operated by an academic institution or on campus.
-  "Religious" — Must be a place of worship regardless of event usage.
-  "Civic / Public" — Must be publicly owned or government-operated, not commercial.
+  "Garden / Botanical Garden" — Plant-focused institution.
+  "Barn / Ranch" — Barn as primary structure or ranch/agricultural setting.
+  "Winery / Brewery / Distillery" — Beverage production is core identity.
+  "Country Club / Private Club" — Membership-based.
+  "University / College" — Academic institution or on campus.
+  "Religious" — Place of worship.
+  "Civic / Public" — Publicly owned or government-operated.
+
+PRICING MODEL — determine this first, it affects which fields apply:
+  ROOM RENTAL MODEL: Venue charges a separate room/space rental fee.
+  F&B MINIMUM MODEL: No separate room rental. Revenue from food &
+    beverage minimum spend only.
+  HYBRID: Both a venue fee AND a F&B minimum exist.
+  If F&B MINIMUM MODEL with no room rental: set venue_fee_high_sat
+    and venue_fee_low_sat to "" — do NOT leave them blank.
+
+NUMERIC FIELD RULES — CRITICAL:
+All dollar amounts, percentages, guest counts, and years must be
+returned as plain numbers only. No exceptions.
+- No $ signs, commas, % signs, currency symbols (€ £), or text
+- 55000 not $55,000 — 24.5 not 24.5% — 2027 not "2027 pricing year"
+- For ranges like "$2,500–$5,000": return the higher value for peak,
+  lower for off-peak
+- If a numeric field is not present anywhere in the document: return ""
+- Never return "Not listed", "N/A", or any text for a numeric field
 
 PRICING FIELDS:
-- Admin/Service Fee %: Look in fine print, footnotes, bottom of pages. Return just the number (e.g. "22").
-- Ceremony Fee: Dollar amount for ceremony add-on. If not listed, return "Not listed".
-- Ceremony Fee Type: "Flat rate" or "Per person".
-- Venue Space: Named room/space. Multiple spaces separated by |
-- Max Capacity Seated: Maximum seated dinner guests for the largest space.
-- Venue Fee (Highest/Lowest Sat): Room rental for Saturday only. Highest = most expensive Saturday season. Lowest = least expensive Saturday season.
-- F&B Min (Highest/Lowest Sat): F&B minimum spend for Saturday only. Highest = most expensive Saturday season. Lowest = least expensive Saturday season.
-- Guest Min (Highest/Lowest Sat): Minimum guest count for Saturday pricing.
-- Per Person F&B: Combined food + bar per person, Saturday only.
-- Months Highest/Lowest: Which months correspond to highest/lowest Saturday pricing. Always list each month individually, comma-separated (e.g. "February, March, April, May"). Never use ranges like "February to May" or "February - May".
-- F&B Spend Min Type: "Per Person Min" or "Overall Min Spend".
-- Base Menu Per Person: Food only, lowest tier available. Exclude cocktail hour add-ons.
-- Base Bar Per Person: Standard/premium open bar with spirits (not beer/wine only packages).
-- Additional_Fees: Short labels for MANDATORY fees only, semicolon-separated.
-- Additional_Fees_Description: Full descriptions, semicolon-separated, matching order of Additional_Fees.
-- MULTIPLE SPACES: Return an ARRAY if multiple distinct bookable spaces exist. Each space gets its own entry with its own capacity, venue fees, and F&B mins. Duplicate all shared fields across every entry.
-- If a value is not present anywhere in the document, return "Not listed".
+Search the ENTIRE document for each value — it may appear in a table,
+list, header, footnote, image caption, or inline sentence. Do not
+assume a grid layout exists.
 
-Return this JSON (or array of this JSON for multiple spaces):
+- Admin/Service Fee %: Look everywhere including fine print, footnotes,
+  bottom of pages. May appear as "administrative fee", "service charge",
+  or "gratuity". Return the NUMBER ONLY e.g. 22 or 24.5. Return "" if
+  not found.
+
+- Ceremony Fee: Dollar amount for a ceremony add-on. Search the full
+  document. Return NUMBER ONLY e.g. 4000. Return "" if not found.
+
+- Ceremony Fee Type: "Flat rate" or "Per person". Return "" if no
+  ceremony fee.
+
+- Venue Space: Named room/space. Multiple spaces separated by |
+
+- Max Capacity Seated: Maximum seated dinner guests for the largest
+  space. Return INTEGER ONLY e.g. 230. Look for "seated", "banquet",
+  or "dinner" capacity. Return "" if not found.
+
+- Venue Fee Highest Saturday: The highest Saturday room rental fee
+  in the document. Search everywhere — tables, prose, headers.
+  "Highest" means the most expensive Saturday season or time of year.
+  If only one fee exists, use it for both highest and lowest.
+  Return NUMBER ONLY e.g. 12000. Return "" if venue uses F&B model only.
+
+- Venue Fee Lowest Saturday: The lowest Saturday room rental fee.
+  Return NUMBER ONLY. Return "" if no seasonal variation or F&B model.
+
+- F&B Min Highest Saturday: The highest Saturday food & beverage
+  minimum in the document. Search everywhere. Return NUMBER ONLY
+  e.g. 55000. Return "" if no F&B minimum exists.
+
+- F&B Min Lowest Saturday: The lowest Saturday F&B minimum.
+  Return NUMBER ONLY. Return "" if no F&B minimum or no variation.
+
+- Guest Min Highest Saturday: Minimum guest count required for the
+  highest Saturday pricing. Return INTEGER ONLY. Return "" if not
+  specified.
+
+- Guest Min Lowest Saturday: Minimum guest count for lowest Saturday
+  pricing. Return INTEGER ONLY. Return "" if not specified.
+
+- Per Person F&B Highest Saturday: Combined food + bar per person
+  cost for the highest Saturday season. Return NUMBER ONLY e.g. 225.
+  Return "" if not applicable.
+
+- Per Person F&B Lowest Saturday: Per person F&B for lowest Saturday.
+  Return NUMBER ONLY. Return "" if not applicable.
+
+- Months Highest Pricing: Which months correspond to the HIGHEST
+  Saturday pricing.
+  * If only one pricing tier: list all 12 months individually.
+  * If document labels low season but not high: infer high = remaining
+    months.
+  * If document labels high season explicitly: use those months.
+  * Always list each month individually, comma-separated e.g.
+    "April, May, June, September, October, November"
+  * NEVER use ranges like "April to November". NEVER return "".
+
+- Months Lowest Pricing: Months for the LOWEST Saturday pricing tier.
+  * Return "" if only one pricing tier exists.
+  * List each month individually, comma-separated. No ranges.
+
+- F&B Spend Min Type: "Per Person Min" or "Overall Min Spend".
+  Return "" if no F&B minimum applies.
+
+- Base Menu Per Person: The lowest-tier plated/buffet food package
+  per person. Return NUMBER ONLY. Return "" if venue uses overall
+  min-spend model or no per-person menu pricing exists.
+
+- Base Bar Per Person: Standard/premium open bar with spirits per
+  person. Return NUMBER ONLY. Return "" if no per-person bar package.
+
+- Additional_Fees: Short labels for MANDATORY fees only,
+  semicolon-separated.
+
+- Additional_Fees_Description: Full descriptions, semicolon-separated,
+  matching order of Additional_Fees.
+
+- MULTIPLE SPACES: Return an ARRAY if multiple distinct bookable spaces
+  exist. Each space gets its own entry. Duplicate all shared fields
+  across every entry.
+
+- NEVER leave any field blank. Numeric fields get "" if absent.
+  Text fields get "" if absent.
+
+Return this JSON (or array for multiple spaces):
 {"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"}}"""
 
 STRUCTURE_PROMPT = """You are reading a wedding venue PDF brochure. Your ONLY job is to map out the pricing grid structure — do not extract any dollar amounts.
@@ -325,6 +416,58 @@ def _clean(value):
     return "" if s.lower() in _NOT_LISTED else s
 
 
+NUMERIC_FIELDS = {
+    "admin_fee_pct",
+    "ceremony_fee",
+    "max_capacity_seated",
+    "venue_fee_high_sat",
+    "fb_min_high_sat",
+    "guest_min_high_sat",
+    "per_person_fb_high_sat",
+    "venue_fee_low_sat",
+    "fb_min_low_sat",
+    "guest_min_low_sat",
+    "per_person_fb_low_sat",
+    "base_menu_per_person",
+    "base_bar_per_person",
+    "pricing_year",
+}
+
+def _to_number(value):
+    """
+    Strip currency symbols, commas, percent signs and return a clean
+    numeric string suitable for posting to Xano integer/decimal fields.
+    Returns "" if the value cannot be parsed as a number.
+    Handles:
+      - "$55,000"  -> "55000"
+      - "24.5%"   -> "24.5"
+      - "£8,300"  -> "8300"
+      - "approx 4000" -> "4000"
+      - "2,500-5,000" -> "2500"  (takes first number in a range)
+      - "Not listed" -> ""
+    """
+    if not value:
+        return ""
+    s = str(value).strip()
+    if s.lower() in {"not listed", "n/a", "na", "none", "null", "-", ""}:
+        return ""
+    # Strip currency symbols, percent, spaces
+    s = re.sub(r'[$€£¥%\s]', '', s)
+    # Remove commas used as thousands separators
+    s = s.replace(',', '')
+    # Handle ranges (e.g. "2500-5000" or "2500–5000") — take first value
+    s = re.split(r'[-–—]', s)[0].strip()
+    # Strip any remaining non-numeric prefix/suffix (e.g. "approx")
+    m = re.search(r'\d+(?:\.\d+)?', s)
+    if not m:
+        return ""
+    try:
+        float(m.group())
+        return m.group()
+    except ValueError:
+        return ""
+
+
 # ── XANO STATUS WRITEBACK ─────────────────────────────────────────────────────
 
 def _update_pdf_status(xano_id, status, error="", cost_usd=0.0):
@@ -385,10 +528,11 @@ def _post_summary(entries, classification, timestamp):
         category         = classification.get("category",        {}).get("value", "")
 
     for e in entries:
-        raw_fee = e.get("admin_fee_pct", {}).get("value", "")
-        fee_m   = re.search(r'(\d+(?:\.\d+)?)', str(raw_fee))
         def v(key):
-            return _clean(e.get(key, {}).get("value", ""))
+            raw = _clean(e.get(key, {}).get("value", ""))
+            if key in NUMERIC_FIELDS:
+                return _to_number(raw)
+            return raw
 
         payload = {
             "PDF_ID":                                                  e.get("pdf_id",     {}).get("value", ""),
@@ -399,7 +543,7 @@ def _post_summary(entries, classification, timestamp):
             "Venue_Offering":                                          _clean(venue_offering),
             "Venue_Attributes":                                        _clean(venue_attributes),
             "CATEGORY":                                                _clean(category),
-            "Admin_Service_Fee":                                       fee_m.group(1) if fee_m else "",
+            "Admin_Service_Fee":                                       v("admin_fee_pct"),
             "Ceremony_Fee":                                            v("ceremony_fee"),
             "Ceremony_fee_Type":                                       v("ceremony_fee_type"),
             "Venue_Space_Name":                                        v("venue_space"),
