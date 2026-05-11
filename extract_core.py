@@ -231,6 +231,36 @@ OUTPUT FIELD RULES:
 Return array with these exact keys:
 [{"Venue_Space_Name":"","Max_Capacity_Seated":"","Day_of_Week":"","Month":"","Meal_Type":"","Guest_Min":"","Guest_Max":"","Venue_Fee":"","Venue_Fee_Type":"","FB_Min":"","FB_Min_Type":"","Per_Person_FB":"","Base_Menu_Per_Person":"","Base_Bar_Per_Person":"","Ceremony_Fee":"","Ceremony_Fee_Type":"","Admin_Fee_Pct":"","Tax_Pct":"","Service_Fee_Pct":"","Additional_Fees":"","Additional_Fees_Description":"","Notes":""}]"""
 
+PRICING_PROMPT_DIRECT = """You are an expert at extracting wedding venue pricing data from PDF brochures.
+
+No structure map has been provided. Find ALL pricing data in this document yourself, regardless of how it is formatted — it may be in a table, a list, prose sentences, a header, a footnote, or an image caption.
+
+Extract every unique price point you can find and return ONLY a valid JSON array. No markdown, no explanation, just the JSON array.
+
+WHAT TO LOOK FOR:
+- Room/venue rental fees by day of week and/or season
+- Food & beverage minimums by day of week and/or season
+- Per-person food and bar packages
+- Guest count tiers with different pricing
+- Package-based pricing (named packages × guest counts)
+- Any other pricing structure present in the document
+
+For each distinct price point create one row. Expand season groups into individual months. If pricing varies by day of week, create separate rows per day.
+
+OUTPUT FIELD RULES:
+- Day_of_Week: exactly one of "Weekday", "Friday", "Saturday", "Sunday"
+- Month: full month name e.g. "January", or "All" only if truly no monthly variation
+- Meal_Type: "Dinner" unless explicitly stated
+- Venue_Fee / FB_Min / Per_Person_FB: leave blank if not applicable for this row
+- Venue_Fee_Type: "Flat" or "Per Person"
+- FB_Min_Type: "Overall Min Spend" or "Per Person Min"
+- Admin_Fee_Pct / Tax_Pct / Service_Fee_Pct: number only, blank if absent
+- All repeated fields (admin fee, ceremony fee, etc): same value on every row
+- Notes: any important context about this price point
+
+Return array with these exact keys:
+[{"Venue_Space_Name":"","Max_Capacity_Seated":"","Day_of_Week":"","Month":"","Meal_Type":"","Guest_Min":"","Guest_Max":"","Venue_Fee":"","Venue_Fee_Type":"","FB_Min":"","FB_Min_Type":"","Per_Person_FB":"","Base_Menu_Per_Person":"","Base_Bar_Per_Person":"","Ceremony_Fee":"","Ceremony_Fee_Type":"","Admin_Fee_Pct":"","Tax_Pct":"","Service_Fee_Pct":"","Additional_Fees":"","Additional_Fees_Description":"","Notes":""}]"""
+
 CLASSIFICATION_PROMPT = """You are classifying a wedding venue PDF brochure. Assign exactly one Venue Offering, one or more Venue Attributes, and one Category. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
 
 VENUE OFFERING — assign exactly one:
@@ -437,35 +467,25 @@ def _to_number(value):
     """
     Strip currency symbols, commas, percent signs and return a clean
     numeric string suitable for posting to Xano integer/decimal fields.
-    Returns "" if the value cannot be parsed as a number.
-    Handles:
-      - "$55,000"  -> "55000"
-      - "24.5%"   -> "24.5"
-      - "£8,300"  -> "8300"
-      - "approx 4000" -> "4000"
-      - "2,500-5,000" -> "2500"  (takes first number in a range)
-      - "Not listed" -> ""
+    Returns None if the value cannot be parsed as a number, so Xano
+    stores NULL instead of coercing "" → 0.
     """
     if not value:
-        return ""
+        return None
     s = str(value).strip()
     if s.lower() in {"not listed", "n/a", "na", "none", "null", "-", ""}:
-        return ""
-    # Strip currency symbols, percent, spaces
+        return None
     s = re.sub(r'[$€£¥%\s]', '', s)
-    # Remove commas used as thousands separators
     s = s.replace(',', '')
-    # Handle ranges (e.g. "2500-5000" or "2500–5000") — take first value
     s = re.split(r'[-–—]', s)[0].strip()
-    # Strip any remaining non-numeric prefix/suffix (e.g. "approx")
     m = re.search(r'\d+(?:\.\d+)?', s)
     if not m:
-        return ""
+        return None
     try:
         float(m.group())
         return m.group()
     except ValueError:
-        return ""
+        return None
 
 
 # ── XANO STATUS WRITEBACK ─────────────────────────────────────────────────────
@@ -825,8 +845,43 @@ def run_extraction(
         pricing, note, usage = _extract_pricing_grid(client, pdf_b64, pdf_id, venue_name, structure)
         _track(usage)
         if not pricing:
-            yield from emit(f"  ⚠  Pricing grid failed — summary only{note}")
-            pricing = []
+            yield from emit(f"  ⚠  Pricing grid with structure failed{note} — trying direct extraction...")
+            # Fallback: attempt extraction without structure map using format-agnostic prompt
+            try:
+                msg = client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=8000,
+                    system=PRICING_PROMPT_DIRECT,
+                    messages=[{"role": "user", "content": [
+                        {
+                            "type": "document",
+                            "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+                            "cache_control": {"type": "ephemeral"}
+                        },
+                        {"type": "text", "text": f'Extract all pricing data from this venue PDF. Venue="{venue_name}", PDF_ID="{pdf_id}". Return only the JSON array.'}
+                    ]}]
+                )
+                fb_usage = msg.usage
+                fb_usage_dict = {
+                    "input":        getattr(fb_usage, 'input_tokens',                0) or 0,
+                    "output":       getattr(fb_usage, 'output_tokens',               0) or 0,
+                    "cache_read":   getattr(fb_usage, 'cache_read_input_tokens',     0) or 0,
+                    "cache_create": getattr(fb_usage, 'cache_creation_input_tokens', 0) or 0,
+                }
+                _track(fb_usage_dict)
+                raw   = msg.content[0].text.strip()
+                clean = re.sub(r'```json|```', '', raw).strip()
+                pricing = json.loads(clean)
+                if isinstance(pricing, dict):
+                    pricing = [pricing]
+                if pricing:
+                    yield from emit(f"  ✓  Direct extraction: {len(pricing)} pricing rows (💾 cache hit)" if fb_usage_dict['cache_read'] else f"  ✓  Direct extraction: {len(pricing)} pricing rows")
+                else:
+                    yield from emit(f"  ⚠  Direct extraction returned empty — summary only")
+                    pricing = []
+            except Exception as fb_err:
+                yield from emit(f"  ⚠  Direct extraction failed: {fb_err} — summary only")
+                pricing = []
         else:
             yield from emit(f"  ✓  {len(pricing)} pricing rows{note}")
 
