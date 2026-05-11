@@ -254,24 +254,42 @@ PRICING_PROMPT_DIRECT = """You are an expert at extracting wedding venue pricing
 
 No structure map has been provided. Find ALL core pricing data in this document and return ONLY a valid JSON array. No markdown, no explanation, just the JSON array.
 
-THE FOUR DIMENSIONS THAT CREATE A NEW ROW:
-Each unique combination of these four things = one row:
-1. Venue Space (which room/area)
-2. Day of Week (Monday-Friday / Friday / Saturday / Sunday / Everyday)
-3. Month (or season)
-4. Meal Type (Dinner / Lunch / Brunch)
+THE ONLY REASON TO CREATE A NEW ROW:
+A new row is created ONLY when at least one of these four dimensions
+differs from an existing row:
+  1. Venue Space (which room/area)
+  2. Day of Week
+  3. Month / Season
+  4. Meal Type (Dinner / Lunch / Brunch)
 
-DO NOT create separate rows for:
-- Menu upgrade options (lobster upgrade, premium entree, etc.)
-- Add-on food stations (taco bar, late night sliders, flatbread, etc.)
-- Additional bar hours or bar upgrades
-- Optional enhancements or display items
-- Chef fees, bartender fees, or staffing add-ons
-- Any item that is optional or supplemental to a base package
+If the only thing that differs between two items is the Notes field,
+they are NOT separate rows — they are the same row. Do not create
+duplicate rows that share the same Space + Day + Month + Meal Type.
 
-DO create one row per named wedding package if the venue offers tiered
-packages (e.g. Sprouting Love / Blooming Love / Blossom Love), since
-each represents a complete, bookable offering at a different price point.
+A SINGLE-SPACE VENUE with no seasonal variation and no day-of-week
+variation should produce AT MOST 3-5 rows (one per named package
+tier if tiered packages exist, otherwise just 1 row). If you are
+producing 10+ rows for a single space, you are extracting menu
+items — stop and reconsider.
+
+WHAT COUNTS AS A ROW:
+✓ A named wedding package at a specific price point (e.g. Sprouting
+  Love Package at $450/pp = 1 row)
+✓ A room rental fee that varies by day (Saturday vs Friday = 2 rows)
+✓ A room rental fee that varies by season (peak vs off-peak = 2 rows)
+✓ A F&B minimum that varies by day or month
+✓ A per-person price that varies by guest count tier
+
+WHAT DOES NOT COUNT AS A ROW — ignore these entirely:
+✗ Menu upgrades (lobster upgrade, premium entrée selection)
+✗ Add-on food stations (taco bar, flatbread, gyro bar, bao-bun bar)
+✗ Late night stations or snacks (sliders, NY stop, cookie shop)
+✗ Bar add-ons or extra bar hours (wine & beer bar, kids bar)
+✗ Display items or décor add-ons
+✗ Staffing fees (chef attendant, bartender fee)
+✗ Anything described as "additional", "optional", "upgrade", or
+  "enhancement"
+✗ Any item where the only unique information would go in Notes
 
 FIELDS TO EXTRACT per row:
 - Venue_Space_Name: exact name of the bookable space
