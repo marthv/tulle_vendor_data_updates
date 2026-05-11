@@ -331,23 +331,31 @@ def _update_pdf_status(xano_id, status, error="", cost_usd=0.0):
     """
     PATCH wptp_pdfs/{xano_id} with the new extraction status fields.
     Returns a status string for logging. Never raises.
+
+    Uses XANO_PATCH_PDF_ENDPOINT if set (preferred — dedicated PATCH route).
+    Falls back to XANO_GET_ENDPOINT for backwards compatibility.
     """
-    base_url = os.environ.get("XANO_GET_ENDPOINT", "").rstrip("/")
-    if not base_url:
-        return "skip: XANO_GET_ENDPOINT not set"
+    patch_base = (
+        os.environ.get("XANO_PATCH_PDF_ENDPOINT", "").rstrip("/")
+        or os.environ.get("XANO_GET_ENDPOINT", "").rstrip("/")
+    )
+    if not patch_base:
+        return "skip: neither XANO_PATCH_PDF_ENDPOINT nor XANO_GET_ENDPOINT is set"
     if not xano_id:
         return "skip: xano_id is None"
 
+    url = f"{patch_base}/{xano_id}"
     payload = {
         "extraction_status":   status,
         "last_extracted_at":   datetime.now(timezone.utc).isoformat(),
         "last_error":          error[:1000] if error else "",
         "extraction_cost_usd": round(float(cost_usd), 6),
+        "extraction_attempts": 1,  # Xano increments server-side (current value + 1)
     }
     try:
-        r = requests.patch(f"{base_url}/{xano_id}", json=payload, timeout=10)
+        r = requests.patch(url, json=payload, timeout=10)
         if r.status_code in (200, 201, 204):
-            return f"ok ({r.status_code})"
+            return f"ok ({r.status_code}) → {url}"
         return f"err {r.status_code}: {r.text[:200]}"
     except Exception as e:
         return f"exception: {e}"
