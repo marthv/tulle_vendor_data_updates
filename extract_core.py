@@ -42,6 +42,22 @@ SUMMARY_PROMPT = """You are an expert at extracting wedding venue pricing data f
 
 EXTRACTION RULES:
 
+VENDOR TYPE — determine this FIRST, before extracting any other field:
+- "venue": the business rents PHYSICAL EVENT SPACE the couple occupies for their wedding (mansion, hotel, restaurant private room, garden, museum, ballroom, barn, vineyard, club, catering hall, estate, etc.). The pricing in the PDF is for renting a space and/or hosting an event there (room fees, F&B minimums, per-person dinner pricing, seasonal Saturday rates, capacity-based pricing).
+- "non-venue": the business provides a SERVICE OR PRODUCT, not space. Categories include: planner, photographer, videographer, florist, DJ, band, musician, caterer (mobile/off-site), baker, stationery, transportation, hair/makeup, officiant, rentals, lighting, calligraphy, etc. The pricing is for service packages, hourly rates, package tiers, or per-product fees — NOT room rental or per-person dinner.
+
+Boundary rules:
+- Hotels and restaurants that rent rooms/private dining for weddings → "venue".
+- A catering company that operates only off-site (no venue space of its own) → "non-venue".
+- An all-inclusive estate or planning service tied to a specific physical property → "venue".
+- A wedding planner with no physical venue → "non-venue".
+- If the PDF shows package tiers like "Day-Of Coordination $2,800" or "Full Planning $8,500" with NO room rental fees and NO F&B minimums → "non-venue" (planner).
+
+IF "non-venue": return ONLY this JSON and STOP. Do NOT extract any other fields:
+{"vendor_type":{"value":"non-venue","confidence":"high"},"non_venue_category":{"value":"<one-word category like planner/photographer/florist/dj/band/caterer/baker/stationery/transportation/hair-makeup/officiant/rentals/other>","confidence":"high"}}
+
+IF "venue": include "vendor_type":{"value":"venue","confidence":"high"} at the top of the response and continue with ALL the rules and fields below.
+
 PRICING YEAR:
 - Search the entire document — title, header, footer, copyright line,
   any pricing list heading — for the year the pricing applies to.
@@ -191,8 +207,8 @@ assume a grid layout exists.
 - NEVER leave any field blank. Numeric fields get "" if absent.
   Text fields get "" if absent.
 
-Return this JSON (or array for multiple spaces):
-{"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"}}"""
+Return this JSON for VENUES (or array of these for multiple spaces). For non-venues, return only the 2-field short-circuit shape described above.
+{"vendor_type":{"value":"venue","confidence":"high"},"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"}}"""
 
 STRUCTURE_PROMPT = """You are reading a wedding venue PDF brochure. Your ONLY job is to map out the pricing grid structure — do not extract any dollar amounts.
 
@@ -320,7 +336,7 @@ FIELDS TO EXTRACT per row:
 Return array with these exact keys:
 [{"Venue_Space_Name":"","Max_Capacity_Seated":"","Day_of_Week":"","Month":"","Meal_Type":"","Guest_Min":"","Guest_Max":"","Venue_Fee":"","Venue_Fee_Type":"","FB_Min":"","FB_Min_Type":"","Per_Person_FB":"","Base_Menu_Per_Person":"","Base_Bar_Per_Person":"","Ceremony_Fee":"","Ceremony_Fee_Type":"","Admin_Fee_Pct":"","Tax_Pct":"","Service_Fee_Pct":"","Additional_Fees":"","Additional_Fees_Description":"","Notes":""}]"""
 
-CLASSIFICATION_PROMPT = """You are classifying a wedding venue PDF brochure. Assign exactly one Venue Offering, one or more Venue Attributes, and one Category. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
+CLASSIFICATION_PROMPT = """You are classifying a wedding venue PDF brochure. Assign exactly one Venue Offering, one or more Venue Attributes, one Category, a brief Description, and any Preferred Vendors listed. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
 
 VENUE OFFERING — assign exactly one:
 "Raw Space" — venue provides just space, zero included services. Negative: any tables, chairs, bar, catering included → not Raw Space.
@@ -346,9 +362,26 @@ CATEGORY — assign exactly one from this list ONLY if you are at least 90% conf
 "Country Club" — membership-based country club, golf club, or private social club.
 Leave blank ("") if no category fits at 90%+ confidence, or if multiple categories apply equally.
 
-Return: {"venue_offering":{"value":"","confidence":"high"},"venue_attributes":{"value":"","confidence":"high"},"category":{"value":"","confidence":"high"}}
+DESCRIPTION — one sentence (~25 words max) describing the venue for a couple shopping for wedding vendors.
+- Focus on: style + setting + 1 distinguishing feature (e.g. capacity, all-inclusive vs flexible, an unusual restriction, a signature offering).
+- Plain factual prose. No marketing fluff, no exclamation points, no "perfect" / "stunning" / "dream".
+- Do not repeat the venue name in the sentence.
+- Example: "Waterfront mansion in Newport with sweeping ocean views, indoor ballroom, and manicured gardens — hosts up to 200 with required in-house catering."
+- Return "" if the PDF lacks enough information to describe the venue.
+
+PREFERRED VENDORS — extract any preferred, recommended, approved, or "vendors we love" partners the venue lists in the PDF.
+- Look for sections labeled "Preferred Vendors", "Recommended Vendors", "Approved Vendors", "Our Partners", "Vendor List", "Vendors We Love", "Trusted Partners", or similar.
+- Include any category: florists, DJs, bands, photographers, videographers, planners, caterers, bakeries, officiants, rental companies, hair/makeup, lighting, transportation, etc.
+- Return as a single comma-separated string of vendor business names exactly as written in the PDF (e.g. "Stems Florist, DJ Mike Events, Sweet Cakes Bakery").
+- Do NOT include vendor category labels — just the business names.
+- Do NOT invent or guess vendors; only list what is explicitly named in the PDF.
+- Return "" if no preferred vendor list is present.
+
+Return: {"venue_offering":{"value":"","confidence":"high"},"venue_attributes":{"value":"","confidence":"high"},"category":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"preferred_vendors":{"value":"","confidence":"high"}}
 venue_attributes: semicolon-separated list, or "Not listed" if none match.
-category: one of the listed values, or "" if not confident."""
+category: one of the listed values, or "" if not confident.
+description: one sentence, or "" if insufficient info.
+preferred_vendors: comma-separated business names, or "" if none listed."""
 
 
 # ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
@@ -447,13 +480,22 @@ def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
 def _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name):
     parsed, note, usage = call_claude(
         client, pdf_b64, SUMMARY_PROMPT,
-        f'Extract all venue pricing fields including pricing year and venue type. PDF_ID="{pdf_id}", Vendor_ID="{vendor_id}", venue="{venue_name}". Return only JSON.',
+        f'First determine vendor_type (venue vs non-venue). If non-venue, return only the 2-field short-circuit. If venue, extract all pricing fields. PDF_ID="{pdf_id}", Vendor_ID="{vendor_id}", venue="{venue_name}". Return only JSON.',
         max_tokens=4000
     )
     if not parsed:
         return None, note, usage
     if isinstance(parsed, dict):
         parsed = [parsed]
+
+    first = parsed[0] if parsed else {}
+    vtype_field = first.get('vendor_type', {})
+    vtype_val = vtype_field.get('value', '') if isinstance(vtype_field, dict) else str(vtype_field or '')
+    if vtype_val.strip().lower() == 'non-venue':
+        cat_field = first.get('non_venue_category', {})
+        cat_val = cat_field.get('value', '') if isinstance(cat_field, dict) else str(cat_field or '')
+        return {"__non_venue__": True, "category": cat_val.strip() or 'unknown'}, note, usage
+
     for e in parsed:
         e['pdf_id']     = {"value": pdf_id,     "confidence": "high"}
         e['vendor_id']  = {"value": vendor_id,  "confidence": "high"}
@@ -598,13 +640,17 @@ def _compute_cost(usage_dict):
 def _post_summary(entries, classification, timestamp):
     summary_endpoint = os.environ["XANO_SUMMARY_ENDPOINT"]
     ok = fail = 0
-    venue_offering   = ""
-    venue_attributes = ""
-    category         = ""
+    venue_offering    = ""
+    venue_attributes  = ""
+    category          = ""
+    description       = ""
+    preferred_vendors = ""
     if classification:
-        venue_offering   = classification.get("venue_offering",  {}).get("value", "")
-        venue_attributes = classification.get("venue_attributes",{}).get("value", "")
-        category         = classification.get("category",        {}).get("value", "")
+        venue_offering    = classification.get("venue_offering",    {}).get("value", "")
+        venue_attributes  = classification.get("venue_attributes",  {}).get("value", "")
+        category          = classification.get("category",          {}).get("value", "")
+        description       = classification.get("description",       {}).get("value", "")
+        preferred_vendors = classification.get("preferred_vendors", {}).get("value", "")
 
     for e in entries:
         def v(key):
@@ -622,6 +668,8 @@ def _post_summary(entries, classification, timestamp):
             "Venue_Offering":                                          _clean(venue_offering),
             "Venue_Attributes":                                        _clean(venue_attributes),
             "CATEGORY":                                                _clean(category),
+            "Description":                                             _clean(description),
+            "Preferred_Vendors":                                       _clean(preferred_vendors),
             "Admin_Service_Fee":                                       v("admin_fee_pct"),
             "Ceremony_Fee":                                            v("ceremony_fee"),
             "Ceremony_fee_Type":                                       v("ceremony_fee_type"),
@@ -890,6 +938,19 @@ def run_extraction(
             patch_result = _update_pdf_status(xano_id, "failed", error=msg, cost_usd=_compute_cost(run_usage))
             yield from emit(f"  📝 Status writeback: {patch_result}")
             continue
+
+        # ── Non-venue short-circuit ───────────────────────────────────────────
+        if isinstance(summary, dict) and summary.get('__non_venue__'):
+            cat = summary.get('category', 'unknown')
+            run_cost = _compute_cost(run_usage)
+            yield from emit(f"  ⏭  Non-venue vendor detected ({cat}) — skipping pricing extraction{note}")
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "SKIPPED", "reason": f"non-venue: {cat}", "cost_usd": run_cost})
+            patch_result = _update_pdf_status(xano_id, "skipped_non_venue", error=f"non-venue: {cat}", cost_usd=run_cost)
+            yield from emit(f"  📝 Status → skipped_non_venue (${run_cost:.4f}) · writeback: {patch_result}")
+            if i < len(batch) - 1:
+                time.sleep(1)
+            continue
+
         yield from emit(f"  ✓  {len(summary)} space(s){note}")
 
         # ── Pass 2: Grid structure ────────────────────────────────────────────
@@ -954,7 +1015,11 @@ def run_extraction(
             offering  = classification.get('venue_offering',  {}).get('value', '?')
             attrs     = classification.get('venue_attributes',{}).get('value', '?')
             category  = classification.get('category',        {}).get('value', '') or '—'
+            desc_val  = classification.get('description',     {}).get('value', '') or ''
+            prefs_val = classification.get('preferred_vendors',{}).get('value', '') or ''
+            n_prefs   = len([p for p in prefs_val.split(',') if p.strip()]) if prefs_val else 0
             yield from emit(f"  ✓  {offering} | {category} | {attrs}{note}")
+            yield from emit(f"  ✓  desc {len(desc_val)} chars · {n_prefs} preferred vendor(s)")
         else:
             yield from emit(f"  ⚠  Classification failed{note}")
 
@@ -1004,6 +1069,7 @@ def run_extraction(
     ok_count   = sum(1 for r in results_log if r['status'] == 'OK')
     fail_count = sum(1 for r in results_log if r['status'] == 'FAILED')
     part_count = sum(1 for r in results_log if r['status'] == 'PARTIAL')
+    skip_count = sum(1 for r in results_log if r['status'] == 'SKIPPED')
 
     cost_usd = (
         total_tokens["input"]        * _COST_INPUT       +
@@ -1014,7 +1080,7 @@ def run_extraction(
 
     yield from emit("")
     yield from emit("─" * 48)
-    yield from emit(f"✅ Done — {ok_count} succeeded, {part_count} partial, {fail_count} failed")
+    yield from emit(f"✅ Done — {ok_count} succeeded, {part_count} partial, {skip_count} skipped (non-venue), {fail_count} failed")
     yield from emit(
         f"💰 Claude cost: ${cost_usd:.4f}  "
         f"({total_tokens['input']:,} input · {total_tokens['output']:,} output · "
@@ -1028,13 +1094,14 @@ def run_extraction(
                 yield from emit(f"  {r['pdf_id']}: {r.get('reason', '')}")
 
     yield {
-        "ok":       ok_count,
-        "partial":  part_count,
-        "failed":   fail_count,
-        "log":      log,
-        "cost_usd": cost_usd,
-        "tokens":   total_tokens,
-        "results":  results_log,
+        "ok":                 ok_count,
+        "partial":            part_count,
+        "skipped_non_venue":  skip_count,
+        "failed":             fail_count,
+        "log":                log,
+        "cost_usd":           cost_usd,
+        "tokens":             total_tokens,
+        "results":            results_log,
     }
 
 
@@ -1049,7 +1116,7 @@ def get_pipeline_status() -> dict:
         "total":     int,
         "with_link": int,
       }
-    Statuses: pending | extracted | partial | failed | skipped | (blank → pending)
+    Statuses: pending | extracted | partial | failed | skipped | skipped_non_venue | (blank → pending)
     """
     get_endpoint = os.environ.get("XANO_GET_ENDPOINT", "")
     if not get_endpoint:
@@ -1069,7 +1136,7 @@ def get_pipeline_status() -> dict:
         if has_link:
             with_link += 1
         raw_status = str(r.get('extraction_status') or '').strip().lower()
-        status = raw_status if raw_status in ('extracted', 'partial', 'failed', 'skipped') else 'pending'
+        status = raw_status if raw_status in ('extracted', 'partial', 'failed', 'skipped', 'skipped_non_venue') else 'pending'
         counts[status] = counts.get(status, 0) + 1
 
     return {
