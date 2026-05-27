@@ -380,13 +380,52 @@ DESCRIPTION — one sentence (~25 words max) describing the venue for a couple s
 - Example: "Waterfront mansion in Newport with sweeping ocean views, indoor ballroom, and manicured gardens — hosts up to 200 with required in-house catering."
 - Return "" if the PDF lacks enough information to describe the venue.
 
-PREFERRED VENDORS — extract any preferred, recommended, approved, or "vendors we love" partners the venue lists in the PDF.
-- Look for sections labeled "Preferred Vendors", "Recommended Vendors", "Approved Vendors", "Our Partners", "Vendor List", "Vendors We Love", "Trusted Partners", or similar.
-- Include any category: florists, DJs, bands, photographers, videographers, planners, caterers, bakeries, officiants, rental companies, hair/makeup, lighting, transportation, etc.
-- Return as a single comma-separated string of vendor business names exactly as written in the PDF (e.g. "Stems Florist, DJ Mike Events, Sweet Cakes Bakery").
-- Do NOT include vendor category labels — just the business names.
-- Do NOT invent or guess vendors; only list what is explicitly named in the PDF.
-- Return "" if no preferred vendor list is present.
+PREFERRED VENDORS — extract EVERY third-party business name that the venue partners with, recommends, requires, or includes as part of a package. Be EXHAUSTIVE, not conservative — for a couples-facing filter, capturing every named vendor matters more than being selective.
+
+SCAN EVERY PAGE of the PDF, including the cover, body, appendix/back matter, fine print, captions, and any list-style sections. Wedding venue PDFs frequently bury vendor names in non-obvious places.
+
+INCLUDE business names that appear in ANY of the following contexts:
+
+1. **Dedicated vendor-list sections**, regardless of exact section title:
+   "Preferred Vendors", "Recommended Vendors", "Approved Vendors", "Our Partners",
+   "Vendor List", "Vendors We Love", "Trusted Partners", "Vendor Directory",
+   "Preferred Partners", "Vendors We Recommend", "Approved Vendor List",
+   "Frequently Used Vendors", "Our Curated Vendors", "Suggested Vendors",
+   "Partner Network", and any synonymous heading.
+
+2. **Package-inclusion lines** that name a vendor delivering the service:
+   "Wedding cake by [X]", "Floral arrangements by [Y]", "Bar service provided by [Z]",
+   "Photography included from [W]", "DJ services by [V]". The vendor is named because
+   they ARE the vendor for that included service — capture them.
+
+3. **Required / in-house / sole-source vendors** that the venue mandates:
+   "Use of [X] catering required", "All food must come from our partner [Y]",
+   "[Z] is our exclusive caterer", "Bar service through [W]". Even though these
+   are required rather than "preferred", they are still named venue partners
+   that couples filtering on "venue requires Catering X" would want to find.
+
+4. **"We work with" / "frequently work with" / "have worked with" mentions** that name specific businesses, even outside a formal list.
+
+5. **Photo captions and styled-shoot credits** that name vendors:
+   "Photo: [Studio Name]", "Florals: [Florist Name]", "Cake: [Bakery Name]".
+   These are typically the venue's go-to vendors for marketing material and are
+   reliable indicators of partnership.
+
+EXCLUDE:
+- The venue itself, its parent hotel/restaurant chain, its in-house event team, or any name that is clearly the venue's own brand.
+- Generic category labels without a business name ("our florist", "the DJ", "the bakery").
+- Pricing-PDF design credits (e.g. "Designed by Studio X" at the bottom of a layout-design page — that's the graphic designer, not a wedding vendor).
+- Couples / clients named in testimonials or "Mr. & Mrs. Smith" wedding stories.
+
+FORMATTING:
+- Return as a single comma-separated string of business names EXACTLY as written in the PDF (preserve capitalization, punctuation, ampersands, "&", "LLC", "Inc.", etc.).
+  Example: "Stems Florist, DJ Mike Events, Sweet Cakes Bakery, Le Basque Catering, Ron Ben-Israel Cakes"
+- Deduplicate — if the same business name appears multiple times, include it only once.
+- Do NOT include vendor category labels in the string — just the business names.
+- Do NOT invent, guess, or hallucinate vendors. Only list what is literally named in the PDF.
+- If you find 0-2 vendors in a multi-page PDF for a major venue (hotel, mansion, country club), pause and re-scan the entire document including the appendix and back pages — luxury venues almost always partner with multiple vendors. Missing them is a more common error than over-including.
+
+Return "" only if the PDF truly names no third-party vendors anywhere in any of the contexts above.
 
 Return: {"venue_offering":{"value":"","confidence":"high"},"venue_attributes":{"value":"","confidence":"high"},"category":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"preferred_vendors":{"value":"","confidence":"high"}}
 venue_attributes: semicolon-separated list, or "Not listed" if none match.
