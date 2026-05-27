@@ -188,6 +188,17 @@ assume a grid layout exists.
 - Additional_Fees_Description: Full descriptions, semicolon-separated,
   matching order of Additional_Fees.
 
+- Outside Ceremony Space: "yes" if the PDF describes a named bookable
+  outdoor area (garden, terrace, lawn, rooftop, beach, courtyard, patio,
+  veranda, pergola, etc.) that supports a wedding ceremony — either
+  explicitly priced as a ceremony space or explicitly mentioned as
+  available for ceremonies.
+  "no" if the PDF says ceremonies are indoor-only or makes clear that no
+  outdoor space exists at the property.
+  "" (empty string) if the PDF does not address outdoor ceremony space
+  at all.
+  Lowercase only — return exactly "yes", "no", or "".
+
 - MULTIPLE SPACES: Before returning, count every distinct bookable event
   space in this document. A bookable space is any named room, hall,
   garden, terrace, or area that can be reserved independently and has
@@ -208,7 +219,7 @@ assume a grid layout exists.
   Text fields get "" if absent.
 
 Return this JSON for VENUES (or array of these for multiple spaces). For non-venues, return only the 2-field short-circuit shape described above.
-{"vendor_type":{"value":"venue","confidence":"high"},"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"}}"""
+{"vendor_type":{"value":"venue","confidence":"high"},"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"},"outside_ceremony_space":{"value":"","confidence":"high"}}"""
 
 STRUCTURE_PROMPT = """You are reading a wedding venue PDF brochure. Your ONLY job is to map out the pricing grid structure — do not extract any dollar amounts.
 
@@ -338,10 +349,10 @@ Return array with these exact keys:
 
 CLASSIFICATION_PROMPT = """You are classifying a wedding venue PDF brochure. Assign exactly one Venue Offering, one or more Venue Attributes, one Category, a brief Description, and any Preferred Vendors listed. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
 
-VENUE OFFERING — assign exactly one:
-"Raw Space" — venue provides just space, zero included services. Negative: any tables, chairs, bar, catering included → not Raw Space.
-"Semi-Inclusive" — some services included but outside catering/vendors allowed. DEFAULT for partial services.
-"All-Inclusive" — all food/beverage must go through venue. Key test: can client bring outside catering? If NO → All-Inclusive.
+VENUE OFFERING — assign exactly one. This field is used as the proxy for "outside catering allowed" on the consumer front-end, so the test below MUST be applied rigorously.
+"Raw Space" — venue provides just space, zero included services. Negative test: if the venue includes ANY of tables, chairs, bar, catering, then it is NOT Raw Space.
+"Semi-Inclusive" — some services included AND the couple CAN bring outside catering or outside vendors (possibly subject to a fee, an approved-vendor / preferred-vendor list, or a licensed-caterer requirement). DEFAULT when the PDF allows outside vendors OR is silent on whether outside catering is permitted.
+"All-Inclusive" — all food and beverage MUST go through the venue. Key test: outside catering is EXPLICITLY prohibited, OR the PDF makes clear that food and beverage cannot be brought in from outside. If you cannot confirm this restriction from the PDF text, choose Semi-Inclusive instead (do not default to All-Inclusive just because the venue offers in-house catering).
 
 VENUE ATTRIBUTES — assign ALL that apply, semicolon-separated:
 "Historic Architecture", "Estate / Mansion", "Rooftop / Skyline Views", "Scenic / Nature Views",
@@ -690,6 +701,7 @@ def _post_summary(entries, classification, timestamp):
             "Base_Bar_Package_Per_Person":                             v("base_bar_per_person"),
             "Additional_Fees":                                         v("additional_fees"),
             "Additional_Fees_Description":                             v("additional_fees_description"),
+            "Outside_Ceremony_Space":                                  v("outside_ceremony_space"),
             "last_extracted_at":                                       timestamp[:10],
         }
         try:
