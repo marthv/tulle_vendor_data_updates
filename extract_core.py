@@ -199,6 +199,27 @@ assume a grid layout exists.
   at all.
   Lowercase only — return exactly "yes", "no", or "".
 
+- Contact Information: The VENUE BUSINESS's own official email address that a
+  couple would use to inquire about booking an event (typically an events,
+  sales, catering, or info inbox on the venue's OWN company domain, e.g.
+  events@thevenuename.com).
+  CRITICAL — this is a couples-facing contact, so be extremely conservative:
+  * Return an email ONLY if it clearly belongs to the venue itself, on the
+    venue's own business/company domain.
+  * NEVER return a personal or free-provider email. If the only email in the
+    PDF is on a consumer provider — gmail, googlemail, yahoo (any country),
+    hotmail/outlook/live/msn, aol, icloud/me/mac, proton/protonmail/pm.me,
+    gmx, mail.com, yandex, or any ISP domain (comcast, verizon, att,
+    sbcglobal, cox, btinternet, orange.fr, etc.) — return "". A personal
+    address is worse than no address.
+  * NEVER return an email belonging to a couple/client, a testimonial, a
+    photographer/designer credit, or any third-party / preferred vendor —
+    only the venue's own inquiry contact.
+  * If several venue emails exist, prefer a general events/sales/info inbox
+    over a specific person's address.
+  * Lowercase the address. Return "" if no suitable venue business email is
+    found anywhere in the document.
+
 - MULTIPLE SPACES: Before returning, count every distinct bookable event
   space in this document. A bookable space is any named room, hall,
   garden, terrace, or area that can be reserved independently and has
@@ -213,13 +234,14 @@ assume a grid layout exists.
   * Each entry gets its own Venue_Space_Name, capacity, venue fees,
     and F&B mins specific to that space.
   * Duplicate all shared fields (admin_fee_pct, ceremony_fee,
-    additional_fees, pricing_year, venue_type) across every entry.
+    additional_fees, pricing_year, venue_type, contact_information)
+    across every entry.
 
 - NEVER leave any field blank. Numeric fields get "" if absent.
   Text fields get "" if absent.
 
 Return this JSON for VENUES (or array of these for multiple spaces). For non-venues, return only the 2-field short-circuit shape described above.
-{"vendor_type":{"value":"venue","confidence":"high"},"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"},"outside_ceremony_space":{"value":"","confidence":"high"}}"""
+{"vendor_type":{"value":"venue","confidence":"high"},"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"},"outside_ceremony_space":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"}}"""
 
 STRUCTURE_PROMPT = """You are reading a wedding venue PDF brochure. Your ONLY job is to map out the pricing grid structure — do not extract any dollar amounts.
 
@@ -639,6 +661,74 @@ def _to_number(value):
         return None
 
 
+# ── VENDOR EMAIL GATE ─────────────────────────────────────────────────────────
+# A vendor contact on a free / personal provider is almost certainly an
+# individual's address, not the business — we must never store or surface those.
+# This denylist is a hard safety net behind the prompt: even if Claude returns a
+# personal address, _to_vendor_email() drops it before it reaches Xano.
+
+_FREEMAIL_DOMAINS = {
+    "gmail.com", "googlemail.com",
+    "yahoo.com", "yahoo.co.uk", "yahoo.ca", "yahoo.com.au", "yahoo.fr",
+    "yahoo.de", "yahoo.es", "yahoo.it", "ymail.com", "rocketmail.com",
+    "hotmail.com", "hotmail.co.uk", "hotmail.fr", "hotmail.it", "hotmail.es",
+    "outlook.com", "outlook.fr", "outlook.es", "outlook.com.br",
+    "live.com", "live.co.uk", "live.nl", "msn.com",
+    "aol.com", "aim.com",
+    "icloud.com", "me.com", "mac.com",
+    "proton.me", "protonmail.com", "pm.me",
+    "gmx.com", "gmx.net", "gmx.de",
+    "mail.com", "email.com", "usa.com",
+    "yandex.com", "yandex.ru",
+    "zoho.com",
+    "tutanota.com", "tuta.com", "tutanota.de",
+    "hey.com", "fastmail.com",
+    # Consumer ISP / telco mailboxes
+    "comcast.net", "verizon.net", "att.net", "sbcglobal.net", "bellsouth.net",
+    "cox.net", "charter.net", "earthlink.net", "frontier.com", "windstream.net",
+    "optonline.net", "roadrunner.com", "rcn.com", "juno.com", "netzero.net",
+    "btinternet.com", "sky.com", "talktalk.net", "virginmedia.com", "ntlworld.com",
+    "orange.fr", "free.fr", "wanadoo.fr", "laposte.net", "sfr.fr", "neuf.fr",
+    "web.de", "t-online.de", "freenet.de",
+    "libero.it", "virgilio.it", "alice.it", "tin.it",
+}
+
+# Country-TLD variants of the big consumer hosts (hotmail.com.mx, yahoo.com.ph,
+# outlook.de, live.com.au, …) — match the family by domain prefix.
+_FREEMAIL_PREFIXES = (
+    "gmail.", "yahoo.", "hotmail.", "outlook.", "live.",
+    "msn.", "gmx.", "yandex.", "ymail.",
+)
+
+_EMAIL_RE = re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}')
+
+
+def _to_vendor_email(value):
+    """
+    Validate and gate a candidate VENDOR contact email.
+
+    Returns a lowercased email string ONLY if it is well-formed AND its domain
+    is not a known free / personal / ISP provider. Returns None otherwise, so
+    Xano stores NULL rather than a personal address we must never expose to
+    users. This is the hard backstop to the prompt-level instruction.
+    """
+    if not value:
+        return None
+    s = str(value).strip().strip("<>").strip()
+    if s.lower() in _NOT_LISTED:
+        return None
+    m = _EMAIL_RE.search(s)
+    if not m:
+        return None
+    email  = m.group(0).lower()
+    domain = email.rsplit("@", 1)[-1]
+    if domain in _FREEMAIL_DOMAINS:
+        return None
+    if any(domain.startswith(p) for p in _FREEMAIL_PREFIXES):
+        return None
+    return email
+
+
 # ── XANO STATUS WRITEBACK ─────────────────────────────────────────────────────
 
 def _update_pdf_status(xano_id, status, error="", cost_usd=0.0):
@@ -741,6 +831,7 @@ def _post_summary(entries, classification, timestamp):
             "Additional_Fees":                                         v("additional_fees"),
             "Additional_Fees_Description":                             v("additional_fees_description"),
             "Outside_Ceremony_Space":                                  v("outside_ceremony_space"),
+            "Contact_Information":                                     _to_vendor_email(e.get("contact_information", {}).get("value", "")),
             "last_extracted_at":                                       timestamp[:10],
         }
         try:
