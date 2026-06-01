@@ -376,10 +376,10 @@ VENUE OFFERING — assign exactly one. This field is used as the proxy for "outs
 "Semi-Inclusive" — some services included AND the couple CAN bring outside catering or outside vendors (possibly subject to a fee, an approved-vendor / preferred-vendor list, or a licensed-caterer requirement). DEFAULT when the PDF allows outside vendors OR is silent on whether outside catering is permitted.
 "All-Inclusive" — all food and beverage MUST go through the venue. Key test: outside catering is EXPLICITLY prohibited, OR the PDF makes clear that food and beverage cannot be brought in from outside. If you cannot confirm this restriction from the PDF text, choose Semi-Inclusive instead (do not default to All-Inclusive just because the venue offers in-house catering).
 
-VENUE ATTRIBUTES — assign ALL that apply, semicolon-separated:
-"Historic Architecture", "Estate / Mansion", "Rooftop / Skyline Views", "Scenic / Nature Views",
-"Waterfront", "Garden Setting", "Ballroom", "Industrial / Warehouse", "Greenhouse",
-"Natural Light / Large Windows", "Tall / Vaulted Ceilings", "Vineyard", "Barn", "Tented"
+VENUE ATTRIBUTES — assign ALL that apply, semicolon-separated. These describe aesthetic / architectural FEATURES only — never the venue's structural identity, which is already captured by VENUE TYPE above. Do NOT emit an attribute that merely restates the venue type: an estate/mansion, a garden/botanical venue, a vineyard/winery, or a barn must NOT be tagged here (use VENUE TYPE for those). Choose only from this list:
+"Historic Architecture", "Rooftop / Skyline Views", "Scenic / Nature Views",
+"Waterfront", "Ballroom", "Industrial / Warehouse", "Greenhouse",
+"Natural Light / Large Windows", "Tall / Vaulted Ceilings", "Tented"
 
 CATEGORY — assign exactly one from this list ONLY if you are at least 90% confident. If not, return "":
 "Museum" — primary identity is a museum or cultural institution.
