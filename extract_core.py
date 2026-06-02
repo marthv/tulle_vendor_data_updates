@@ -396,10 +396,11 @@ CATEGORY — assign exactly one from this list ONLY if you are at least 90% conf
 Leave blank ("") if no category fits at 90%+ confidence, or if multiple categories apply equally.
 
 DESCRIPTION — one sentence (~25 words max) describing the venue for a couple shopping for wedding vendors.
-- Focus on: style + setting + 1 distinguishing feature (e.g. capacity, all-inclusive vs flexible, an unusual restriction, a signature offering).
+- Focus on: style + setting + 1 distinguishing feature (e.g. all-inclusive vs flexible, an unusual restriction, a signature offering).
+- NEVER mention guest count, capacity, or how many guests the venue hosts/seats/accommodates. Do not include any number of guests, even if the PDF states it.
 - Plain factual prose. No marketing fluff, no exclamation points, no "perfect" / "stunning" / "dream".
 - Do not repeat the venue name in the sentence.
-- Example: "Waterfront mansion in Newport with sweeping ocean views, indoor ballroom, and manicured gardens — hosts up to 200 with required in-house catering."
+- Example: "Waterfront mansion in Newport with sweeping ocean views, indoor ballroom, and manicured gardens, with required in-house catering."
 - Return "" if the PDF lacks enough information to describe the venue.
 
 PREFERRED VENDORS — extract EVERY third-party business name that the venue partners with, recommends, requires, or includes as part of a package. Be EXHAUSTIVE, not conservative — for a couples-facing filter, capturing every named vendor matters more than being selective.
