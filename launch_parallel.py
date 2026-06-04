@@ -40,6 +40,54 @@ def _env_flag(name):
 
 
 def main():
+    # ── Targeted IDs mode: rerun an explicit PDF_ID set in parallel. ──
+    # Source: --ids-file <path> (CLI) or BATCH_PDF_IDS env (comma/newline list).
+    ids_src = ""
+    if "--ids-file" in sys.argv:
+        i = sys.argv.index("--ids-file")
+        if i + 1 < len(sys.argv):
+            ids_src = open(sys.argv[i + 1], encoding="utf-8").read()
+    if not ids_src:
+        ids_src = os.environ.get("BATCH_PDF_IDS", "")
+    ids = [s.strip() for s in ids_src.replace("\n", ",").split(",") if s.strip()]
+    if ids:
+        workers = int(os.environ.get("BATCH_WORKERS", "12"))
+        os.makedirs(os.path.join(HERE, "logs"), exist_ok=True)
+        size = -(-len(ids) // workers)  # ceil → even-ish chunks
+        print(f"[ids mode] {len(ids)} PDF_IDs across {workers} workers "
+              f"(staggered {STAGGER_SECONDS}s)", flush=True)
+        procs = []
+        for w in range(workers):
+            chunk = ids[w * size:(w + 1) * size]
+            if not chunk:
+                break
+            log_path = os.path.join(HERE, "logs", f"ids_{w}.log")
+            logf = open(log_path, "w", encoding="utf-8")
+            print(f"▶ worker {w}: {len(chunk)} ids → {log_path}")
+            p = subprocess.Popen(
+                [PYTHON, os.path.join(HERE, "run_chunk.py"), "--ids", ",".join(chunk)],
+                stdout=logf, stderr=subprocess.STDOUT, cwd=HERE)
+            procs.append((p, logf, w))
+            if STAGGER_SECONDS > 0 and (w + 1) * size < len(ids):
+                time.sleep(STAGGER_SECONDS)
+        print(f"\n{len(procs)} ids-workers launched. Waiting...\n", flush=True)
+        for p, logf, w in procs:
+            code = p.wait()
+            logf.close()
+            print(f"✓ ids worker {w} exited (code {code})")
+        import glob, re
+        tot = {"ok": 0, "partial": 0, "failed": 0, "cost": 0.0}
+        for f in glob.glob(os.path.join(HERE, "logs", "ids_*.log")):
+            txt = open(f, encoding="utf-8", errors="replace").read()
+            m = re.search(r"DONE — ok=(\d+) partial=(\d+) \S+ failed=(\d+) cost=\$([\d.]+)", txt)
+            if m:
+                tot["ok"] += int(m.group(1)); tot["partial"] += int(m.group(2))
+                tot["failed"] += int(m.group(3)); tot["cost"] += float(m.group(4))
+        print(f"BATCH SUMMARY (ids mode) — {len(ids)} requested — "
+              f"ok={tot['ok']} partial={tot['partial']} failed={tot['failed']} "
+              f"cost=${tot['cost']:.2f}", flush=True)
+        return
+
     force_all = "--all" in sys.argv or _env_flag("FORCE_ALL")
     pos = [a for a in sys.argv[1:] if a != "--all"]
 

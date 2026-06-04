@@ -546,6 +546,37 @@ def download_pdf(url, drive_service):
         return None, str(e)
 
 
+def _downsample_pdf(pdf_bytes, target_b64_mb=25):
+    """Shrink an oversized PDF under Anthropic's ~32MB inline limit by rasterizing
+    each page to a JPEG at progressively lower DPI. Lossy (text → image) so only
+    used when a PDF is otherwise too large to send. Returns smaller bytes, or
+    None if PyMuPDF is unavailable / it can't be shrunk."""
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        return None
+    target_raw = int(target_b64_mb * 1024 * 1024 * 0.74)  # raw ≈ 74% of its base64
+    best = None
+    for dpi in (120, 100, 80, 60):
+        try:
+            src = fitz.open(stream=pdf_bytes, filetype="pdf")
+            out = fitz.open()
+            for page in src:
+                pix = page.get_pixmap(dpi=dpi)
+                img = pix.tobytes(output="jpeg", jpg_quality=70)
+                newp = out.new_page(width=page.rect.width, height=page.rect.height)
+                newp.insert_image(newp.rect, stream=img)
+            data = out.tobytes(deflate=True, garbage=4)
+            src.close()
+            out.close()
+            best = data
+            if len(data) <= target_raw:
+                return data
+        except Exception:
+            return best
+    return best
+
+
 # ── CLAUDE ────────────────────────────────────────────────────────────────────
 
 def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
@@ -1191,13 +1222,22 @@ def run_extraction(
         yield from emit(f"  ✓  Downloaded ({len(pdf_bytes)//1024}KB)")
 
         pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
-        if len(pdf_b64) / 1024 / 1024 > 50:
+        b64_mb = len(pdf_b64) / 1024 / 1024
+        if b64_mb > 50:
             msg = "PDF too large (>50MB base64)"
             yield from emit(f"  ⚠  {msg}, skipping")
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
             patch_result = _update_pdf_status(xano_id, "failed", error=msg)
             yield from emit(f"  📝 Status writeback: {patch_result}")
             continue
+        if b64_mb > 30:
+            # Over Anthropic's ~32MB inline request limit — downsample to fit.
+            smaller = _downsample_pdf(pdf_bytes, target_b64_mb=25)
+            if smaller and len(smaller) < len(pdf_bytes):
+                pdf_b64 = base64.standard_b64encode(smaller).decode("utf-8")
+                yield from emit(f"  ⬇  Downsampled {b64_mb:.1f}MB → {len(pdf_b64)/1024/1024:.1f}MB base64 to fit API limit")
+            else:
+                yield from emit(f"  ⚠  {b64_mb:.1f}MB over API inline limit, downsample unavailable — may fail")
 
         timestamp    = datetime.now(timezone.utc).isoformat()
         run_usage    = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}

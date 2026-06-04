@@ -26,17 +26,32 @@ from extract_core import run_extraction
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a != "--all"]
-    force_all = "--all" in sys.argv
-    if len(args) < 1:
-        print("usage: python run_chunk.py <start_row> [end_row] [--all]")
-        sys.exit(1)
+    argv = sys.argv[1:]
+    force_all = "--all" in argv
 
-    start_row = int(args[0])
-    end_row = int(args[1]) if len(args) > 1 and int(args[1]) > 0 else None
+    # Targeted mode: --ids "P1,P2,..." runs exactly those PDF_IDs (bypasses dedup,
+    # ignores start/end). Used to re-run a specific failed set in parallel.
+    pdf_ids = None
+    if "--ids" in argv:
+        idx = argv.index("--ids")
+        if idx + 1 < len(argv):
+            pdf_ids = [s.strip() for s in argv[idx + 1].replace("\n", ",").split(",") if s.strip()]
+
+    if pdf_ids:
+        label = f"IDS[{len(pdf_ids)}]"
+        gen = run_extraction(start_row=0, end_row=None, pdf_ids=pdf_ids)
+    else:
+        pos = [a for a in argv if a != "--all"]
+        if not pos:
+            print("usage: python run_chunk.py <start_row> [end_row] [--all]  |  --ids \"P1,P2,...\"")
+            sys.exit(1)
+        start_row = int(pos[0])
+        end_row = int(pos[1]) if len(pos) > 1 and int(pos[1]) > 0 else None
+        label = f"{start_row}:{end_row}"
+        gen = run_extraction(start_row=start_row, end_row=end_row, force_all=force_all)
 
     final = None
-    for item in run_extraction(start_row=start_row, end_row=end_row, force_all=force_all):
+    for item in gen:
         if isinstance(item, dict):
             final = item            # last yield is the summary dict
         else:
@@ -45,7 +60,7 @@ def main():
     if final:
         print("─" * 48, flush=True)
         print(
-            f"CHUNK {start_row}:{end_row} DONE — "
+            f"CHUNK {label} DONE — "
             f"ok={final.get('ok')} partial={final.get('partial')} "
             f"skipped_non_venue={final.get('skipped_non_venue')} "
             f"failed={final.get('failed')} "
