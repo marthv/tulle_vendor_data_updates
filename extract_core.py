@@ -17,6 +17,7 @@ import os
 import json
 import base64
 import time
+import random
 import requests
 import anthropic
 from datetime import datetime, timezone
@@ -936,15 +937,17 @@ def _fetch_xano_pages(endpoint, per_page=500):
     all_rows = []
     page = 1
     while True:
-        for attempt in range(3):
+        # Retry with jittered backoff: under parallel load Xano can return
+        # transient 502/503s, and a single bad page must not abort the whole run.
+        for attempt in range(6):
             try:
                 resp = requests.get(endpoint, params={"page": page, "per_page": per_page}, timeout=30)
                 resp.raise_for_status()
                 break
             except Exception:
-                if attempt == 2:
+                if attempt == 5:
                     raise
-                time.sleep(2 * (attempt + 1))
+                time.sleep(min(20, 2 * (attempt + 1)) + random.uniform(0, 2))
         data  = resp.json()
         batch = data if isinstance(data, list) else (data.get("items") or data.get("data") or data.get("result") or [])
         if not batch:
