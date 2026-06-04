@@ -1,0 +1,3 @@
+[deploy]
+startCommand = "python launch_parallel.py"
+restartPolicyType = "NEVER"
