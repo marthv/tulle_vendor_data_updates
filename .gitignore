@@ -4,3 +4,5 @@ __pycache__/
 *.pyo
 extraction_log.json
 .DS_Store
+logs/
+_*.py

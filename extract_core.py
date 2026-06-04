@@ -220,6 +220,23 @@ assume a grid layout exists.
   * Lowercase the address. Return "" if no suitable venue business email is
     found anywhere in the document.
 
+- Confidentiality / Sharing Restrictions: Scan the ENTIRE document — cover,
+  headers, footers, fine print, watermarks, and back matter — for any language
+  indicating the PDF is confidential or not meant to be shared publicly.
+  Triggers include: "confidential", "proprietary and confidential",
+  "do not distribute", "not for distribution", "not for public release",
+  "for internal use only", "private and confidential", "do not reproduce/share",
+  an explicit NDA / non-disclosure reference, or a stated prohibition on sharing
+  pricing with third parties.
+  * If ANY such language exists: set confidentiality_risk to "yes" and copy the
+    exact triggering phrase (verbatim, trimmed to ~200 chars) into
+    confidentiality_evidence.
+  * If NONE exists: set confidentiality_risk to "no" and
+    confidentiality_evidence to "".
+  * A generic copyright line alone (e.g. "© 2026 Venue Name") is NOT a
+    confidentiality restriction — do not flag on copyright by itself.
+  * Lowercase exactly "yes" or "no" for confidentiality_risk.
+
 - MULTIPLE SPACES: Before returning, count every distinct bookable event
   space in this document. A bookable space is any named room, hall,
   garden, terrace, or area that can be reserved independently and has
@@ -241,7 +258,7 @@ assume a grid layout exists.
   Text fields get "" if absent.
 
 Return this JSON for VENUES (or array of these for multiple spaces). For non-venues, return only the 2-field short-circuit shape described above.
-{"vendor_type":{"value":"venue","confidence":"high"},"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"},"outside_ceremony_space":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"}}"""
+{"vendor_type":{"value":"venue","confidence":"high"},"venue_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"venue_type":{"value":"","confidence":"high"},"admin_fee_pct":{"value":"","confidence":"high"},"ceremony_fee":{"value":"","confidence":"high"},"ceremony_fee_type":{"value":"","confidence":"high"},"venue_space":{"value":"","confidence":"high"},"max_capacity_seated":{"value":"","confidence":"high"},"venue_fee_high_sat":{"value":"","confidence":"high"},"fb_min_high_sat":{"value":"","confidence":"high"},"guest_min_high_sat":{"value":"","confidence":"high"},"per_person_fb_high_sat":{"value":"","confidence":"high"},"months_highest_pricing":{"value":"","confidence":"high"},"venue_fee_low_sat":{"value":"","confidence":"high"},"fb_min_low_sat":{"value":"","confidence":"high"},"guest_min_low_sat":{"value":"","confidence":"high"},"per_person_fb_low_sat":{"value":"","confidence":"high"},"months_lowest_pricing":{"value":"","confidence":"high"},"fb_spend_min_type":{"value":"","confidence":"high"},"base_menu_per_person":{"value":"","confidence":"high"},"base_bar_per_person":{"value":"","confidence":"high"},"additional_fees":{"value":"","confidence":"high"},"additional_fees_description":{"value":"","confidence":"high"},"outside_ceremony_space":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"}}"""
 
 STRUCTURE_PROMPT = """You are reading a wedding venue PDF brochure. Your ONLY job is to map out the pricing grid structure — do not extract any dollar amounts.
 
@@ -620,6 +637,13 @@ def _clean(value):
     return "" if s.lower() in _NOT_LISTED else s
 
 
+def _is_yes(value):
+    """True only for an explicit affirmative ('yes'/'true'/'1'/'y'); else False.
+    Used for the confidentiality_risk flag — anything ambiguous defaults to False
+    so we never flag a venue on a malformed value."""
+    return str(value or "").strip().lower() in {"yes", "true", "1", "y"}
+
+
 NUMERIC_FIELDS = {
     "admin_fee_pct",
     "ceremony_fee",
@@ -732,13 +756,19 @@ def _to_vendor_email(value):
 
 # ── XANO STATUS WRITEBACK ─────────────────────────────────────────────────────
 
-def _update_pdf_status(xano_id, status, error="", cost_usd=0.0):
+def _update_pdf_status(xano_id, status, error="", cost_usd=0.0,
+                       confidentiality_flag=False, confidentiality_evidence=""):
     """
     PATCH wptp_pdfs/{xano_id} with the new extraction status fields.
     Returns a status string for logging. Never raises.
 
     Uses XANO_PATCH_PDF_ENDPOINT if set (preferred — dedicated PATCH route).
     Falls back to XANO_GET_ENDPOINT for backwards compatibility.
+
+    confidentiality_flag/evidence are written for the human triage queue. They
+    do NOT hide anything from the front-end — flagged venues stay live until
+    someone reviews the list. Early-exit callers (download fail, non-venue, etc.)
+    leave these at their False/"" defaults since detection happens in Pass 1.
     """
     patch_base = (
         os.environ.get("XANO_PATCH_PDF_ENDPOINT", "").rstrip("/")
@@ -751,11 +781,13 @@ def _update_pdf_status(xano_id, status, error="", cost_usd=0.0):
 
     url = f"{patch_base}/{xano_id}"
     payload = {
-        "extraction_status":   status,
-        "last_extracted_at":   datetime.now(timezone.utc).isoformat(),
-        "last_error":          error[:1000] if error else "",
-        "extraction_cost_usd": round(float(cost_usd), 6),
-        "extraction_attempts": 1,  # Xano increments server-side (current value + 1)
+        "extraction_status":        status,
+        "last_extracted_at":        datetime.now(timezone.utc).isoformat(),
+        "last_error":               error[:1000] if error else "",
+        "extraction_cost_usd":      round(float(cost_usd), 6),
+        "extraction_attempts":      1,  # Xano increments server-side (current value + 1)
+        "confidentiality_flag":     bool(confidentiality_flag),
+        "confidentiality_evidence": (confidentiality_evidence or "")[:1000],
     }
     try:
         r = requests.patch(url, json=payload, timeout=10)
@@ -833,6 +865,7 @@ def _post_summary(entries, classification, timestamp):
             "Additional_Fees_Description":                             v("additional_fees_description"),
             "Outside_Ceremony_Space":                                  v("outside_ceremony_space"),
             "Contact_Information":                                     _to_vendor_email(e.get("contact_information", {}).get("value", "")),
+            "confidentiality_flag":                                    _is_yes(e.get("confidentiality_risk", {}).get("value", "")),
             "last_extracted_at":                                       timestamp[:10],
         }
         try:
@@ -924,6 +957,33 @@ def _fetch_xano_pages(endpoint, per_page=500):
         time.sleep(0.3)
 
 
+def _fetch_venue_vendor_ids():
+    """Return the set of Vendor_IDs whose mapping Category == 'Venue'.
+
+    Reads the slim XANO_VENUE_CATEGORIES_ENDPOINT (Vendor_ID + Category only).
+    Returns an EMPTY set if the endpoint is unset or the fetch fails — callers
+    MUST treat an empty set as "filter unavailable, do not skip anything"
+    (otherwise a bad fetch would skip every PDF). Non-venue vendors are still
+    caught downstream by the LLM non-venue short-circuit, so the empty-set
+    fallback is safe, just less cost-efficient.
+    """
+    endpoint = os.environ.get("XANO_VENUE_CATEGORIES_ENDPOINT", "").strip()
+    if not endpoint:
+        return set()
+    try:
+        all_rows = []
+        for all_rows, _ in _fetch_xano_pages(endpoint):
+            pass
+        return {
+            str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip()
+            for r in all_rows
+            if str(r.get('Category') or r.get('category') or '').strip().lower() == 'venue'
+            and str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip()
+        }
+    except Exception:
+        return set()
+
+
 # ── PUBLIC GENERATOR ──────────────────────────────────────────────────────────
 
 def run_extraction(
@@ -931,6 +991,7 @@ def run_extraction(
     end_row: int | None,
     pdf_ids: list[str] | None = None,
     rerun_failed: bool = False,
+    force_all: bool = False,
 ):
     """
     Generator — yields log strings as extraction proceeds.
@@ -940,6 +1001,13 @@ def run_extraction(
       pdf_ids      — run only the specified PDF_ID strings
       rerun_failed — run only rows where extraction_status == "failed"
       start_row / end_row — original row-range behaviour (default)
+
+    force_all — within the default row-range mode, re-extract every row even if
+      it is already present in table 36 (skips the dedup check). Used for a full
+      refresh. The venue pre-filter still applies (non-venues are skipped). NOTE:
+      table 36 / 37 posts APPEND, so a forced re-run leaves a fresh generation of
+      rows behind older ones — clear table 37 beforehand and prune table 36's
+      stale rows afterward (see the run runbook).
 
     Yields strings. Final item is always a dict:
         {"ok": int, "partial": int, "failed": int, "log": [...]}
@@ -997,7 +1065,10 @@ def run_extraction(
 
     # ── For default mode: skip already-extracted (dedup by PDF_ID in summary table) ──
     already_done: set[str] = set()
-    if not pdf_ids and not rerun_failed:
+    if force_all and not pdf_ids and not rerun_failed:
+        yield from emit("")
+        yield from emit("♻️  FORCE-ALL mode — dedup disabled; every venue row will be re-extracted (table 36/37 posts append)")
+    if not pdf_ids and not rerun_failed and not force_all:
         yield from emit("")
         yield from emit("🔍 Checking already-extracted PDF IDs...")
         try:
@@ -1011,6 +1082,15 @@ def run_extraction(
         except Exception as e:
             yield from emit(f"⚠  Could not fetch existing records: {e}. Proceeding without dedup.")
 
+    yield from emit("")
+
+    # ── Venue pre-filter: load Vendor_IDs categorized 'Venue' in wptp_updated_mappings ──
+    # Non-venue vendors are skipped BEFORE any download or model call (cost saver).
+    venue_vendor_ids = _fetch_venue_vendor_ids()
+    if venue_vendor_ids:
+        yield from emit(f"✓  Venue filter active — {len(venue_vendor_ids)} venue vendors loaded; non-venue PDFs skip download + extraction")
+    else:
+        yield from emit("⚠  Venue filter inactive (XANO_VENUE_CATEGORIES_ENDPOINT unset or fetch failed) — relying on LLM non-venue detection only")
     yield from emit("")
 
     client        = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -1037,6 +1117,14 @@ def run_extraction(
         # Default mode dedup
         if not pdf_ids and not rerun_failed and pdf_id in already_done:
             yield from emit(f"[{row_num}/{total_rows}] {pdf_id} — {venue_name} — ⏭  skipping (already extracted)")
+            continue
+
+        # Venue pre-filter: skip non-venue vendors entirely (no download, no model calls).
+        # Only fires when the venue set loaded successfully; an empty set disables the gate.
+        if venue_vendor_ids and vendor_id and vendor_id not in venue_vendor_ids:
+            yield from emit(f"[{row_num}/{total_rows}] {pdf_id} — {venue_name} — ⏭  skipping (vendor not categorized 'Venue')")
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "SKIPPED", "reason": "non-venue: mapping category != Venue", "cost_usd": 0})
+            _update_pdf_status(xano_id, "skipped_non_venue", error="non-venue: mapping category != Venue")
             continue
 
         yield from emit(f"")
@@ -1095,6 +1183,17 @@ def run_extraction(
             continue
 
         yield from emit(f"  ✓  {len(summary)} space(s){note}")
+
+        # ── Confidentiality flag (PDF-level; any space flagging = PDF flagged) ──
+        conf_flag = any(_is_yes(e.get("confidentiality_risk", {}).get("value", "")) for e in summary)
+        conf_evidence = next(
+            (str(e.get("confidentiality_evidence", {}).get("value", "")).strip()
+             for e in summary
+             if str(e.get("confidentiality_evidence", {}).get("value", "")).strip()),
+            "",
+        )
+        if conf_flag:
+            yield from emit(f"  🚩 Confidentiality risk flagged — for review (stays live): \"{conf_evidence[:140]}\"")
 
         # ── Pass 2: Grid structure ────────────────────────────────────────────
         yield from emit(f"  🤖 [2/4] Mapping pricing grid structure...")
@@ -1186,11 +1285,13 @@ def run_extraction(
                      f"{p_fail} pricing row(s) failed to post" if p_fail else "")
         patch_result = _update_pdf_status(
             xano_id,
-            status   = status,
-            error    = error_msg,
-            cost_usd = run_cost,
+            status                   = status,
+            error                    = error_msg,
+            cost_usd                 = run_cost,
+            confidentiality_flag     = conf_flag,
+            confidentiality_evidence = conf_evidence,
         )
-        yield from emit(f"  📝 Status → {status} (${run_cost:.4f}) · writeback: {patch_result}")
+        yield from emit(f"  📝 Status → {status} (${run_cost:.4f}){' · 🚩 confidential' if conf_flag else ''} · writeback: {patch_result}")
 
         results_log.append({
             "pdf_id":       pdf_id,
@@ -1200,6 +1301,8 @@ def run_extraction(
             "pricing_rows": p_ok,
             "failed":       all_failed,
             "cost_usd":     run_cost,
+            "confidentiality_flag":     conf_flag,
+            "confidentiality_evidence": conf_evidence,
             "offering":     classification.get('venue_offering',  {}).get('value', '') if classification else '',
             "category":     classification.get('category',        {}).get('value', '') if classification else '',
             "attributes":   classification.get('venue_attributes',{}).get('value', '') if classification else '',
