@@ -37,6 +37,33 @@ _COST_CACHE_WRITE = 3.75  / 1_000_000
 _COST_CACHE_READ  = 0.30  / 1_000_000
 
 
+class CreditExhausted(Exception):
+    """Raised when Anthropic reports the credit balance is too low. Signals the
+    run to HALT immediately rather than marking every remaining PDF 'failed'
+    (which is what torched the 2026-06-04 run — ~761 false failures)."""
+    pass
+
+
+# Substrings that mark a transient API error worth retrying with backoff.
+_TRANSIENT_HINTS = (
+    "overloaded", "rate_limit", "rate limit", "429", "529", "500", "502", "503",
+    "timeout", "timed out", "connection", "temporarily", "getaddrinfo",
+    "unable to find the server", "service unavailable",
+)
+
+
+def _slack_alert(text):
+    """Best-effort Slack post (run-level alerts like credit-halt). Never raises.
+    Uses SLACK_WEBHOOK_URL / slack_webhook_url env var if present; else no-ops."""
+    url = os.environ.get("SLACK_WEBHOOK_URL") or os.environ.get("slack_webhook_url") or ""
+    if not url:
+        return
+    try:
+        requests.post(url, json={"text": text}, timeout=10)
+    except Exception:
+        pass
+
+
 # ── PROMPTS ───────────────────────────────────────────────────────────────────
 
 SUMMARY_PROMPT = """You are an expert at extracting wedding venue pricing data from PDF brochures. Extract exactly the fields listed below and return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
@@ -525,45 +552,64 @@ def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
     """Returns (parsed_json, cache_note, usage_dict).
     usage_dict keys: input, output, cache_read, cache_create (all token counts).
     On error parsed_json is None and usage_dict is {}.
-    """
-    try:
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": [
-                {
-                    "type": "document",
-                    "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
-                    "cache_control": {"type": "ephemeral"}
-                },
-                {"type": "text", "text": user_text}
-            ]}]
-        )
-        usage        = msg.usage
-        input_tok    = getattr(usage, 'input_tokens',                0) or 0
-        output_tok   = getattr(usage, 'output_tokens',               0) or 0
-        cache_read   = getattr(usage, 'cache_read_input_tokens',     0) or 0
-        cache_create = getattr(usage, 'cache_creation_input_tokens', 0) or 0
-        cache_note = ""
-        if cache_read:
-            cache_note = f" (💾 cache hit {cache_read:,} tokens)"
-        elif cache_create:
-            cache_note = f" (💾 cache miss {cache_create:,} tokens written)"
 
-        usage_dict = {
-            "input":        input_tok,
-            "output":       output_tok,
-            "cache_read":   cache_read,
-            "cache_create": cache_create,
-        }
-        raw   = msg.content[0].text.strip()
-        clean = re.sub(r'```json|```', '', raw).strip()
-        return json.loads(clean), cache_note, usage_dict
-    except json.JSONDecodeError as e:
-        return None, f"JSON parse error: {e}", {}
-    except Exception as e:
-        return None, f"Claude error: {e}", {}
+    Retries transient API errors (overload / rate-limit / 5xx / network) and
+    empty/garbled JSON with jittered backoff. Raises CreditExhausted on an
+    out-of-credits error so the caller can halt the whole run.
+    """
+    last_err = ""
+    for attempt in range(5):
+        try:
+            msg = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": [
+                    {
+                        "type": "document",
+                        "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {"type": "text", "text": user_text}
+                ]}]
+            )
+            usage        = msg.usage
+            input_tok    = getattr(usage, 'input_tokens',                0) or 0
+            output_tok   = getattr(usage, 'output_tokens',               0) or 0
+            cache_read   = getattr(usage, 'cache_read_input_tokens',     0) or 0
+            cache_create = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+            cache_note = ""
+            if cache_read:
+                cache_note = f" (💾 cache hit {cache_read:,} tokens)"
+            elif cache_create:
+                cache_note = f" (💾 cache miss {cache_create:,} tokens written)"
+
+            usage_dict = {
+                "input":        input_tok,
+                "output":       output_tok,
+                "cache_read":   cache_read,
+                "cache_create": cache_create,
+            }
+            raw   = msg.content[0].text.strip()
+            clean = re.sub(r'```json|```', '', raw).strip()
+            return json.loads(clean), cache_note, usage_dict
+        except json.JSONDecodeError as e:
+            # Empty/garbled response — often transient; retry a couple times.
+            last_err = f"JSON parse error: {e}"
+            if attempt < 2:
+                time.sleep(2 + random.uniform(0, 1.5))
+                continue
+            return None, last_err, {}
+        except Exception as e:
+            last_err = str(e)
+            low = last_err.lower()
+            if "credit balance is too low" in low:
+                raise CreditExhausted(last_err)
+            if attempt < 4 and any(h in low for h in _TRANSIENT_HINTS):
+                time.sleep(min(30, 4 * (attempt + 1)) + random.uniform(0, 2))
+                continue
+            return None, f"Claude error: {e}", {}
+    return None, f"Claude error: {last_err}", {}
 
 
 # ── EXTRACTION ────────────────────────────────────────────────────────────────
@@ -1145,8 +1191,8 @@ def run_extraction(
         yield from emit(f"  ✓  Downloaded ({len(pdf_bytes)//1024}KB)")
 
         pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
-        if len(pdf_b64) / 1024 / 1024 > 30:
-            msg = "PDF too large (>30MB base64)"
+        if len(pdf_b64) / 1024 / 1024 > 50:
+            msg = "PDF too large (>50MB base64)"
             yield from emit(f"  ⚠  {msg}, skipping")
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
             patch_result = _update_pdf_status(xano_id, "failed", error=msg)
@@ -1163,7 +1209,14 @@ def run_extraction(
 
         # ── Pass 1: Summary ───────────────────────────────────────────────────
         yield from emit(f"  🤖 [1/4] Extracting summary + pricing year + venue type...")
-        summary, note, usage = _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name)
+        try:
+            summary, note, usage = _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name)
+        except CreditExhausted as ce:
+            yield from emit(f"  🛑 CREDIT BALANCE EXHAUSTED at [{row_num}] — halting this worker to avoid mass false-failures.")
+            yield from emit(f"     ({ce})")
+            yield from emit("  ℹ  Remaining rows left PENDING (not marked failed) — add credits, then rerun_failed / re-run the range.")
+            _slack_alert(f"🛑 Tulle extraction HALTED — Anthropic credit balance too low (stopped near row {row_num}/{total_rows}, pdf {pdf_id}). Add credits + re-run.")
+            break
         _track(usage)
         if not summary:
             msg = f"Summary extraction failed: {note}"
