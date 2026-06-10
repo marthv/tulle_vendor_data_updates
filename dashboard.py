@@ -16,6 +16,15 @@ Required env vars (set in Railway dashboard):
     XANO_GET_ENDPOINT
     XANO_BASE_URL         — base for enrichment endpoints
 
+Usage/quota trackers (optional — widgets degrade gracefully if unset):
+    ANTHROPIC_ADMIN_KEY   — Admin key (sk-ant-admin…) for the Cost Report API. Distinct from
+                            ANTHROPIC_API_KEY. Create at platform.claude.com → Settings → Admin keys.
+                            Powers the "Claude spend" strip under the header.
+    GCP_PROJECT_ID        — GCP project for Places API quota reads (default "tulle-technologies").
+                            Requires the GOOGLE_SERVICE_ACCOUNT_JSON service account to hold the
+                            "Monitoring Viewer" role on that project. Powers the Vendor Images
+                            quota panel.
+
 Optional fallback (if GOOGLE_CLIENT_ID is not set, password auth is used):
     DASHBOARD_PASSWORD
 """
@@ -29,6 +38,8 @@ import pandas as pd
 import streamlit as st
 import google.auth.transport.requests
 import google.oauth2.id_token
+from decimal import Decimal
+from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import run_extraction, get_pipeline_status
 
@@ -258,6 +269,34 @@ with signout_col:
             st.session_state.pop(k, None)
         st.rerun()
 
+# ── CLAUDE SPEND STATUS STRIP (shown on every tab, under the header) ───────────
+_mtd, _last30, _spend_err = _fetch_anthropic_spend()
+_strip_left, _strip_btn, _strip_refresh = st.columns([7, 1.4, 1])
+with _strip_left:
+    if _spend_err == "no_key":
+        st.markdown(
+            _card("card-gray", "💳",
+                  "Set ANTHROPIC_ADMIN_KEY",
+                  "to track Claude spend"),
+            unsafe_allow_html=True)
+    elif _spend_err:
+        st.markdown(
+            _card("card-amber", "💳", "Spend unavailable", _spend_err[:80]),
+            unsafe_allow_html=True)
+    else:
+        _tier = "card-green" if (_last30 or 0) < 250 else ("card-amber" if (_last30 or 0) < 750 else "card-red")
+        st.markdown(
+            _card(_tier, "💳",
+                  f"${_mtd:,.2f} this month",
+                  f"${_last30:,.2f} in the last 30 days · Anthropic API spend"),
+            unsafe_allow_html=True)
+with _strip_btn:
+    st.link_button("Add credits ↗", ANTHROPIC_BILLING_URL, use_container_width=True)
+with _strip_refresh:
+    if st.button("↻", help="Refresh Claude spend", use_container_width=True, key="refresh_spend"):
+        _fetch_anthropic_spend.clear()
+        st.rerun()
+
 XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B")
 
 
@@ -344,6 +383,158 @@ def _card(color_class, icon, value, label):
         <div class="metric-value">{value}</div>
         <div class="metric-label">{label}</div>
     </div>"""
+
+
+# ── USAGE / QUOTA TRACKERS ────────────────────────────────────────────────────
+# Two read-only widgets: Anthropic spend (header strip) + Google Places quota
+# (Vendor Images tab). Both are cached 10 min and degrade gracefully when their
+# credentials/permissions are missing — they never raise into the page.
+
+ANTHROPIC_BILLING_URL = "https://platform.claude.com/settings/billing"
+GCP_PROJECT_ID        = os.environ.get("GCP_PROJECT_ID", "tulle-technologies")
+PLACES_SERVICE        = "places-backend.googleapis.com"
+GCP_QUOTAS_URL = (
+    "https://console.cloud.google.com/google/maps-apis/quotas"
+    f"?project={GCP_PROJECT_ID}&api={PLACES_SERVICE}"
+)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _fetch_anthropic_spend():
+    """Total USD spend (month-to-date, rolling 30d) via the Admin Cost Report API.
+
+    Returns (mtd_usd, last30_usd, error). error is "" on success, "no_key" when
+    ANTHROPIC_ADMIN_KEY is unset, or an "error: …" string on failure.
+    """
+    key = os.environ.get("ANTHROPIC_ADMIN_KEY", "")
+    if not key:
+        return None, None, "no_key"
+
+    now      = datetime.datetime.now(datetime.timezone.utc)
+    mtd_from = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    d30_from = now - datetime.timedelta(days=30)
+    headers  = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+
+    def _sum_since(starting_at):
+        total, page, guard = Decimal("0"), None, 0
+        while guard < 50:                       # hard stop against runaway pagination
+            guard += 1
+            params = {"starting_at": starting_at.strftime("%Y-%m-%dT%H:%M:%SZ"), "limit": 31}
+            if page:
+                params["page"] = page
+            r = requests.get(
+                "https://api.anthropic.com/v1/organizations/cost_report",
+                headers=headers, params=params, timeout=30,
+            )
+            if r.status_code != 200:
+                raise RuntimeError(f"cost_report {r.status_code}: {r.text[:160]}")
+            body = r.json()
+            for bucket in body.get("data", []):
+                for res in bucket.get("results", []):
+                    amt = res.get("amount")
+                    if amt is not None:
+                        total += Decimal(str(amt))
+            if body.get("has_more") and body.get("next_page"):
+                page = body["next_page"]
+            else:
+                break
+        return float(total)
+
+    try:
+        return _sum_since(mtd_from), _sum_since(d30_from), ""
+    except Exception as e:
+        return None, None, f"error: {e}"
+
+
+def _monitoring_timeseries(token, filter_str, start, end, aligner, reducer=None, period="86400s"):
+    """GET Cloud Monitoring timeSeries for the project. Returns the raw `timeSeries` list."""
+    params = {
+        "filter": filter_str,
+        "interval.startTime": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "interval.endTime":   end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "aggregation.alignmentPeriod":  period,
+        "aggregation.perSeriesAligner": aligner,
+    }
+    if reducer:
+        params["aggregation.crossSeriesReducer"] = reducer
+    r = requests.get(
+        f"https://monitoring.googleapis.com/v3/projects/{GCP_PROJECT_ID}/timeSeries",
+        headers={"Authorization": f"Bearer {token}"}, params=params, timeout=30,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"monitoring {r.status_code}: {r.text[:200]}")
+    return r.json().get("timeSeries", [])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _fetch_places_quota():
+    """Google Places API quota limit + daily request usage via Cloud Monitoring.
+
+    Returns dict with keys: daily_limit (int|None), limit_label (str), today_usage (int),
+    daily_series (list[(date_str, count)]), error (str — "" on success).
+    """
+    out = {"daily_limit": None, "limit_label": "", "today_usage": 0, "daily_series": [], "error": ""}
+    creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if not creds_json:
+        out["error"] = "no_creds"
+        return out
+    try:
+        creds = service_account.Credentials.from_service_account_info(
+            json.loads(creds_json),
+            scopes=["https://www.googleapis.com/auth/monitoring.read"],
+        )
+        creds.refresh(google.auth.transport.requests.Request())
+        token = creds.token
+
+        now   = datetime.datetime.now(datetime.timezone.utc)
+        start = now - datetime.timedelta(days=30)
+
+        # ── Daily request usage (DELTA metric → ALIGN_SUM per day, summed across methods) ──
+        usage_filter = (
+            'metric.type="serviceruntime.googleapis.com/api/request_count" '
+            f'AND resource.label.service="{PLACES_SERVICE}"'
+        )
+        series = _monitoring_timeseries(
+            token, usage_filter, start, now,
+            aligner="ALIGN_SUM", reducer="REDUCE_SUM",
+        )
+        daily = {}
+        for ts in series:
+            for pt in ts.get("points", []):
+                day = pt["interval"]["endTime"][:10]
+                val = pt.get("value", {})
+                num = val.get("int64Value") or val.get("doubleValue") or 0
+                daily[day] = daily.get(day, 0) + int(float(num))
+        out["daily_series"] = sorted(daily.items())
+        if out["daily_series"]:
+            out["today_usage"] = out["daily_series"][-1][1]
+
+        # ── Quota limit — prefer a per-day limit, else fall back to whatever exists ──
+        limit_filter = (
+            'metric.type="serviceruntime.googleapis.com/quota/limit" '
+            f'AND resource.label.service="{PLACES_SERVICE}"'
+        )
+        limits = _monitoring_timeseries(
+            token, limit_filter, now - datetime.timedelta(days=1), now,
+            aligner="ALIGN_MAX", period="3600s",
+        )
+        candidates = []  # (is_daily, limit_name, value)
+        for ts in limits:
+            name = ts.get("metric", {}).get("labels", {}).get("limit_name", "")
+            pts  = ts.get("points", [])
+            if not pts:
+                continue
+            v   = pts[0].get("value", {})
+            val = int(float(v.get("int64Value") or v.get("doubleValue") or 0))
+            candidates.append(("day" in name.lower(), name, val))
+        if candidates:
+            daily_ones = [c for c in candidates if c[0]]
+            chosen = max(daily_ones or candidates, key=lambda c: c[2])
+            out["daily_limit"]  = chosen[2]
+            out["limit_label"]  = chosen[1] or ("Per day" if chosen[0] else "Limit")
+    except Exception as e:
+        out["error"] = f"error: {e}"
+    return out
 
 def _apply_filters(df, filters):
     for col, op, val in filters:
@@ -872,6 +1063,56 @@ with tab3:
         "Run **Google Data** first — images require cached Google data. "
         "Run all 3 in order, or individually."
     )
+
+    # ── Places API quota tracker ──────────────────────────────────────────────
+    _q = _fetch_places_quota()
+    _q_head, _q_link, _q_refresh = st.columns([6, 1.6, 1])
+    with _q_head:
+        st.markdown("**Google Places API — quota & usage**")
+    with _q_link:
+        st.link_button("GCP quotas ↗", GCP_QUOTAS_URL, use_container_width=True)
+    with _q_refresh:
+        if st.button("↻", help="Refresh quota", use_container_width=True, key="refresh_quota"):
+            _fetch_places_quota.clear()
+            st.rerun()
+
+    if _q["error"] == "no_creds":
+        st.info("Set GOOGLE_SERVICE_ACCOUNT_JSON to read Places API quota.")
+    elif _q["error"]:
+        st.warning(
+            f"Couldn't read Places quota — {_q['error']}. "
+            "Grant the service account the **Monitoring Viewer** role on "
+            f"`{GCP_PROJECT_ID}`, then refresh."
+        )
+    else:
+        _limit  = _q["daily_limit"]
+        _used   = _q["today_usage"]
+        _pct    = (_used / _limit * 100) if _limit else 0
+        _used_class = "card-green"
+        if _limit and _pct >= 100:   _used_class = "card-red"
+        elif _limit and _pct >= 80:  _used_class = "card-amber"
+        _total30 = sum(c for _, c in _q["daily_series"])
+        qc1, qc2, qc3 = st.columns(3)
+        qc1.markdown(
+            _card("card-gray", "📊",
+                  f"{_limit:,}" if _limit else "—",
+                  f"Quota limit · {_q['limit_label'] or 'n/a'}"),
+            unsafe_allow_html=True)
+        qc2.markdown(
+            _card(_used_class, "✅",
+                  f"{_used:,}",
+                  f"Requests today{f' · {_pct:.0f}% of limit' if _limit else ''}"),
+            unsafe_allow_html=True)
+        qc3.markdown(
+            _card("card-gray", "📈", f"{_total30:,}", "Requests · last 30 days"),
+            unsafe_allow_html=True)
+        if _q["daily_series"]:
+            _df = pd.DataFrame(_q["daily_series"], columns=["date", "requests"]).set_index("date")
+            st.bar_chart(_df, height=180)
+        else:
+            st.caption("No Places API requests recorded in the last 30 days.")
+
+    st.markdown("---")
 
     col_s3, col_e3 = st.columns(2)
     with col_s3:
