@@ -396,7 +396,10 @@ def _update_scrape_status(vendor_xano_id, status, *, error="", cost_usd=0.0):
 
 
 def _fetch_photographers():
-    """All photographer rows from the worklist endpoint (paginated)."""
+    """Photographer rows from the worklist endpoint. The endpoint returns all
+    vendor mappings (slim fields); we filter Category ~ "Photography" here — the
+    vendor master labels photographers "Photography" (incl. combos like
+    "Entertainment, Photography")."""
     endpoint = os.environ.get("XANO_PHOTOGRAPHERS_ENDPOINT", "").strip()
     if not endpoint:
         return []
@@ -406,7 +409,10 @@ def _fetch_photographers():
             pass
     except Exception:
         return all_rows
-    return all_rows
+    return [
+        r for r in all_rows
+        if "photograph" in str(_g(r, "Category", "category")).strip().lower()
+    ]
 
 
 def _g(row, *keys):
