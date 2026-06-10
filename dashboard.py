@@ -48,15 +48,16 @@ st.set_page_config(
     layout="wide",
 )
 
-st.logo("tulle.png")
-
 st.markdown("""
 <style>
     /* ── Global ── */
-    .block-container { max-width: 92vw !important; padding: 0.6rem 2rem 1.5rem !important; }
+    .block-container { max-width: 92vw !important; padding: 0.75rem 2rem 1.5rem !important; }
     .stApp { background: #f8f9fa; }
-    /* Pull the whole app up under Streamlit's top chrome */
-    header[data-testid="stHeader"] { height: 0; }
+    /* Remove Streamlit's fixed top chrome bar — it was floating over and
+       clipping our own header. We render the Tulle logo/title ourselves. */
+    [data-testid="stHeader"]     { display: none !important; }
+    [data-testid="stDecoration"] { display: none !important; }
+    [data-testid="stToolbar"]    { display: none !important; }
 
     /* ── Header ── */
     .tulle-logo { font-size: 22px; font-weight: 700; color: #1B7A4A; letter-spacing: -0.3px; }
