@@ -19,8 +19,8 @@ Required env vars (set in Railway dashboard):
 Usage/quota trackers (optional — widgets degrade gracefully if unset):
     GCP_PROJECT_ID        — GCP project for Places API quota reads (default "tulle-technologies").
                             Requires the GOOGLE_SERVICE_ACCOUNT_JSON service account to hold the
-                            "Monitoring Viewer" role on that project. Powers the Vendor Images
-                            quota panel.
+                            "Monitoring Viewer" role on that project. Powers the
+                            "Google Data & Images" tab quota panel.
 
 Optional fallback (if GOOGLE_CLIENT_ID is not set, password auth is used):
     DASHBOARD_PASSWORD
@@ -245,7 +245,7 @@ if not st.session_state.authenticated:
 
 
 # ── USAGE / QUOTA TRACKER HELPERS ─────────────────────────────────────────────
-# Read-only Google Places quota widget for the Vendor Images tab. Cached 10 min;
+# Read-only Google Places quota widget for the Google Data & Images tab. Cached 10 min;
 # degrades gracefully when credentials/permissions are missing — never raises
 # into the page.
 
@@ -382,8 +382,8 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab2, tab3, tab5 = st.tabs([
-    "📊 Admin", "🔍 Google Data", "🖼️ Vendor Images", "🔁 Pipeline"
+tab0, tab2, tab5 = st.tabs([
+    "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction"
 ])
 
 
@@ -519,11 +519,8 @@ The core workflow this dashboard runs:
 | Tab | What it does |
 |---|---|
 | **Admin** | Timebound reports (signups, payments, packages, to-dos) + Data Explorer for browsing/editing Xano tables |
-| **PDF Extraction** | One-off or targeted extraction runs — download PDFs from Drive, run Claude (4 passes), post rows to Xano |
-| **Google Data** | Fetches Google Places data (rating, reviews, address) for vendors with a Place ID but no cached data |
-| **Vendor Images** | Pulls photos from Google Places and saves them into WPTP Updated Mappings |
-| **Sync Collections** | Reads the `CATEGORY` from extracted PDF data and writes it into the `Collection` field on WPTP Updated Mappings |
-| **Pipeline** | Production extraction queue — shows status across all 6,700+ PDFs (Pending / Extracted / Partial / Failed), with run controls and per-venue result cards |
+| **Google Data & Images** | Two Google Places operations sharing one daily quota (shown at the top): **Google Data** caches Places info (rating, reviews, address) for vendors with a Place ID, and **Vendor Images** pulls photos into WPTP Updated Mappings |
+| **PDF Extraction** | Production extraction queue — shows status across all 6,700+ PDFs (Pending / Extracted / Partial / Failed), with run controls (pending, failed, specific IDs, row range) and per-venue result cards. Downloads PDFs from Drive, runs Claude (4 passes), posts rows to Xano |
 
 ---
 
@@ -813,52 +810,19 @@ Typical cost: ~$0.20–0.40 per PDF. Model: `claude-sonnet-4-20250514`.
                         st.warning(f"Saved {saved}, failed {failed}.")
 
 
-# ── TAB 2: GOOGLE DATA ────────────────────────────────────────────────────────
+# ── TAB 2: GOOGLE DATA & IMAGES ───────────────────────────────────────────────
+# Google Data and Vendor Images both call the Google Places API and draw from the
+# same daily quota, so they live in one tab with the quota panel shown once.
 
 with tab2:
-    st.subheader("Google Data Cache")
-    st.caption("Fetches Google Places data for vendors in WPTP Updated Mappings that have a Place ID but no cached data yet.")
-
-    col_s2, col_e2 = st.columns(2)
-    with col_s2:
-        gd_start = st.number_input("Starting index (vendor ID)", min_value=1, value=1, step=1, key="gd_start")
-    with col_e2:
-        gd_end = st.number_input("Ending index (vendor ID)", min_value=1, value=500, step=1, key="gd_end")
-
-    if st.button("▶ Run Google Data Batch", type="primary", use_container_width=True):
-        with st.spinner("Running — Xano is fetching Google Places data for each vendor..."):
-            try:
-                resp = requests.get(
-                    f"{XANO_BASE}/google_data_batch",
-                    params={"starting_index": int(gd_start), "ending_index": int(gd_end)},
-                    timeout=300,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    count = len(data) if isinstance(data, list) else "?"
-                    st.success(f"Done — {count} vendors processed")
-                    with st.expander("Xano response", expanded=False):
-                        st.json(data)
-                else:
-                    st.error(f"Xano returned {resp.status_code}")
-                    st.code(resp.text[:500])
-            except requests.exceptions.Timeout:
-                st.warning("Request timed out (Xano may still be processing). Check Xano directly.")
-            except Exception as e:
-                st.error(f"Request failed: {e}")
-
-
-# ── TAB 3: VENDOR IMAGES ─────────────────────────────────────────────────────
-
-with tab3:
-    st.subheader("Vendor Images")
+    st.subheader("Google Data & Images")
     st.caption(
-        "Pulls photos from Google Places API and saves them into WPTP Updated Mappings. "
-        "Run **Google Data** first — images require cached Google data. "
-        "Run all 3 in order, or individually."
+        "Both sections below call the **Google Places API** and share the daily quota shown here. "
+        "Run **Google Data** first to cache Places data, then **Vendor Images** to pull photos "
+        "(images require cached Google data)."
     )
 
-    # ── Places API quota tracker ──────────────────────────────────────────────
+    # ── Places API quota tracker (shared by both sections) ────────────────────
     _q = _fetch_places_quota()
     _q_head, _q_link, _q_refresh = st.columns([6, 1.6, 1])
     with _q_head:
@@ -907,6 +871,48 @@ with tab3:
             st.caption("No Places API requests recorded in the last 30 days.")
 
     st.markdown("---")
+
+    # ── Section 1: Google Data Cache ──────────────────────────────────────────
+    st.markdown("### 🔍 Google Data Cache")
+    st.caption("Fetches Google Places data for vendors in WPTP Updated Mappings that have a Place ID but no cached data yet.")
+
+    col_s2, col_e2 = st.columns(2)
+    with col_s2:
+        gd_start = st.number_input("Starting index (vendor ID)", min_value=1, value=1, step=1, key="gd_start")
+    with col_e2:
+        gd_end = st.number_input("Ending index (vendor ID)", min_value=1, value=500, step=1, key="gd_end")
+
+    if st.button("▶ Run Google Data Batch", type="primary", use_container_width=True):
+        with st.spinner("Running — Xano is fetching Google Places data for each vendor..."):
+            try:
+                resp = requests.get(
+                    f"{XANO_BASE}/google_data_batch",
+                    params={"starting_index": int(gd_start), "ending_index": int(gd_end)},
+                    timeout=300,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    count = len(data) if isinstance(data, list) else "?"
+                    st.success(f"Done — {count} vendors processed")
+                    with st.expander("Xano response", expanded=False):
+                        st.json(data)
+                else:
+                    st.error(f"Xano returned {resp.status_code}")
+                    st.code(resp.text[:500])
+            except requests.exceptions.Timeout:
+                st.warning("Request timed out (Xano may still be processing). Check Xano directly.")
+            except Exception as e:
+                st.error(f"Request failed: {e}")
+
+    st.markdown("---")
+
+    # ── Section 2: Vendor Images ──────────────────────────────────────────────
+    st.markdown("### 🖼️ Vendor Images")
+    st.caption(
+        "Pulls photos from Google Places and saves them into WPTP Updated Mappings. "
+        "Run **Google Data** above first — images require cached Google data. "
+        "Run all 3 in order, or individually."
+    )
 
     col_s3, col_e3 = st.columns(2)
     with col_s3:
