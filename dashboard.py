@@ -248,134 +248,11 @@ if not st.session_state.authenticated:
     st.stop()
 
 
-# ── HEADER ────────────────────────────────────────────────────────────────────
-
-user_name  = st.session_state.get("user_name", "")
-user_email = st.session_state.get("user_email", "")
-
-_user_info = (f"Signed in as <strong>{user_name}</strong>"
-              if user_name and user_name != "Local admin" else "")
-st.markdown(f"""
-<div class="tulle-header">
-    <div class="tulle-logo">🌿 Tulle Admin</div>
-    <div class="tulle-user">{_user_info}</div>
-</div>
-""", unsafe_allow_html=True)
-# Keep the sign out button separately in a right-aligned column
-_, signout_col = st.columns([9, 1])
-with signout_col:
-    if st.button("Sign out", use_container_width=True):
-        for k in ["authenticated", "user_email", "user_name", "user_picture"]:
-            st.session_state.pop(k, None)
-        st.rerun()
-
-# ── CLAUDE SPEND STATUS STRIP (shown on every tab, under the header) ───────────
-_mtd, _last30, _spend_err = _fetch_anthropic_spend()
-_strip_left, _strip_btn, _strip_refresh = st.columns([7, 1.4, 1])
-with _strip_left:
-    if _spend_err == "no_key":
-        st.markdown(
-            _card("card-gray", "💳",
-                  "Set ANTHROPIC_ADMIN_KEY",
-                  "to track Claude spend"),
-            unsafe_allow_html=True)
-    elif _spend_err:
-        st.markdown(
-            _card("card-amber", "💳", "Spend unavailable", _spend_err[:80]),
-            unsafe_allow_html=True)
-    else:
-        _tier = "card-green" if (_last30 or 0) < 250 else ("card-amber" if (_last30 or 0) < 750 else "card-red")
-        st.markdown(
-            _card(_tier, "💳",
-                  f"${_mtd:,.2f} this month",
-                  f"${_last30:,.2f} in the last 30 days · Anthropic API spend"),
-            unsafe_allow_html=True)
-with _strip_btn:
-    st.link_button("Add credits ↗", ANTHROPIC_BILLING_URL, use_container_width=True)
-with _strip_refresh:
-    if st.button("↻", help="Refresh Claude spend", use_container_width=True, key="refresh_spend"):
-        _fetch_anthropic_spend.clear()
-        st.rerun()
-
-XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B")
-
-
-# ── TABS ──────────────────────────────────────────────────────────────────────
-
-tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Admin", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🔁 Pipeline"
-])
-
-
-# ── TAB 0: ADMIN DASHBOARD ────────────────────────────────────────────────────
-
-XANO_WGW = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:WGW_G49d"
-
-EXPLORER_TABLES = {
-    "WPTP Updated Mappings": {
-        "url":           f"{XANO_BASE}/wptp_updated_mappings",
-        "patch":         f"{XANO_BASE}/wptp_updated_mappings",
-        "id_col":        "id",
-        "editable":      True,
-        # Only these columns can be edited (what the PATCH endpoint accepts)
-        "editable_cols": ["Flags", "Max_Capacity_Seated"],
-        # Rename display column → PATCH input key
-        "patch_field_map": {"Flags": "Flag", "Max_Capacity_Seated": "max_capacity"},
-        # Millisecond timestamp columns → format as readable date
-        "ts_cols":       ["google_data_last_fetched", "Time_of_Submission"],
-        # Array columns → display as comma-separated string
-        "array_cols":    ["Collection", "category_tags"],
-        # Columns to hide entirely (too large / not useful)
-        "hide_cols":     ["google_data_cache", "Coordinates"],
-    },
-    "WPTP PDFs": {
-        "url":           f"{XANO_BASE}/wptp_pdfs",
-        "patch":         None,
-        "id_col":        "id",
-        "editable":      False,
-        "editable_cols": [],
-        "patch_field_map": {},
-        "ts_cols":       [],
-        "array_cols":    [],
-        "hide_cols":     [],
-    },
-    "Users": {
-        "url":           f"{XANO_WGW}/user",
-        "patch":         f"{XANO_WGW}/user",
-        "id_col":        "id",
-        "editable":      True,
-        "editable_cols": [],   # edit any field
-        "patch_field_map": {},
-        "ts_cols":       ["created_at"],
-        "array_cols":    ["saved_vendor_ids"],
-        "hide_cols":     [],
-    },
-    "Extracted PDF Data": {
-        "url":           f"{XANO_BASE}/all_extracted_pdf_data",
-        "patch":         None,
-        "id_col":        "id",
-        "editable":      False,
-        "editable_cols": [],
-        "patch_field_map": {},
-        "ts_cols":       [],
-        "array_cols":    [],
-        "hide_cols":     [],
-    },
-    "Venue Pricing": {
-        "url":           f"{XANO_BASE}/venue_pricing",
-        "patch":         None,
-        "id_col":        "id",
-        "editable":      False,
-        "editable_cols": [],
-        "patch_field_map": {},
-        "ts_cols":       [],
-        "array_cols":    [],
-        "hide_cols":     [],
-    },
-}
-
-FILTER_OPS = ["contains", "equals", "starts with", "not equals",
-              ">", "<", ">=", "<=", "is blank", "is not blank"]
+# ── USAGE / QUOTA TRACKER HELPERS ─────────────────────────────────────────────
+# Defined before the header because the Claude-spend strip renders inside the
+# header. Two read-only widgets: Anthropic spend (header strip) + Google Places
+# quota (Vendor Images tab). Both are cached 10 min and degrade gracefully when
+# their credentials/permissions are missing — they never raise into the page.
 
 def _card(color_class, icon, value, label):
     return f"""<div class="metric-card {color_class}">
@@ -384,11 +261,6 @@ def _card(color_class, icon, value, label):
         <div class="metric-label">{label}</div>
     </div>"""
 
-
-# ── USAGE / QUOTA TRACKERS ────────────────────────────────────────────────────
-# Two read-only widgets: Anthropic spend (header strip) + Google Places quota
-# (Vendor Images tab). Both are cached 10 min and degrade gracefully when their
-# credentials/permissions are missing — they never raise into the page.
 
 ANTHROPIC_BILLING_URL = "https://platform.claude.com/settings/billing"
 GCP_PROJECT_ID        = os.environ.get("GCP_PROJECT_ID", "tulle-technologies")
@@ -535,6 +407,136 @@ def _fetch_places_quota():
     except Exception as e:
         out["error"] = f"error: {e}"
     return out
+
+
+# ── HEADER ────────────────────────────────────────────────────────────────────
+
+user_name  = st.session_state.get("user_name", "")
+user_email = st.session_state.get("user_email", "")
+
+_user_info = (f"Signed in as <strong>{user_name}</strong>"
+              if user_name and user_name != "Local admin" else "")
+st.markdown(f"""
+<div class="tulle-header">
+    <div class="tulle-logo">🌿 Tulle Admin</div>
+    <div class="tulle-user">{_user_info}</div>
+</div>
+""", unsafe_allow_html=True)
+# Keep the sign out button separately in a right-aligned column
+_, signout_col = st.columns([9, 1])
+with signout_col:
+    if st.button("Sign out", use_container_width=True):
+        for k in ["authenticated", "user_email", "user_name", "user_picture"]:
+            st.session_state.pop(k, None)
+        st.rerun()
+
+# ── CLAUDE SPEND STATUS STRIP (shown on every tab, under the header) ───────────
+_mtd, _last30, _spend_err = _fetch_anthropic_spend()
+_strip_left, _strip_btn, _strip_refresh = st.columns([7, 1.4, 1])
+with _strip_left:
+    if _spend_err == "no_key":
+        st.markdown(
+            _card("card-gray", "💳",
+                  "Set ANTHROPIC_ADMIN_KEY",
+                  "to track Claude spend"),
+            unsafe_allow_html=True)
+    elif _spend_err:
+        st.markdown(
+            _card("card-amber", "💳", "Spend unavailable", _spend_err[:80]),
+            unsafe_allow_html=True)
+    else:
+        _tier = "card-green" if (_last30 or 0) < 250 else ("card-amber" if (_last30 or 0) < 750 else "card-red")
+        st.markdown(
+            _card(_tier, "💳",
+                  f"${_mtd:,.2f} this month",
+                  f"${_last30:,.2f} in the last 30 days · Anthropic API spend"),
+            unsafe_allow_html=True)
+with _strip_btn:
+    st.link_button("Add credits ↗", ANTHROPIC_BILLING_URL, use_container_width=True)
+with _strip_refresh:
+    if st.button("↻", help="Refresh Claude spend", use_container_width=True, key="refresh_spend"):
+        _fetch_anthropic_spend.clear()
+        st.rerun()
+
+XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B")
+
+
+# ── TABS ──────────────────────────────────────────────────────────────────────
+
+tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📊 Admin", "📄 PDF Extraction", "🔍 Google Data", "🖼️ Vendor Images", "🗂️ Sync Collections", "🔁 Pipeline"
+])
+
+
+# ── TAB 0: ADMIN DASHBOARD ────────────────────────────────────────────────────
+
+XANO_WGW = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:WGW_G49d"
+
+EXPLORER_TABLES = {
+    "WPTP Updated Mappings": {
+        "url":           f"{XANO_BASE}/wptp_updated_mappings",
+        "patch":         f"{XANO_BASE}/wptp_updated_mappings",
+        "id_col":        "id",
+        "editable":      True,
+        # Only these columns can be edited (what the PATCH endpoint accepts)
+        "editable_cols": ["Flags", "Max_Capacity_Seated"],
+        # Rename display column → PATCH input key
+        "patch_field_map": {"Flags": "Flag", "Max_Capacity_Seated": "max_capacity"},
+        # Millisecond timestamp columns → format as readable date
+        "ts_cols":       ["google_data_last_fetched", "Time_of_Submission"],
+        # Array columns → display as comma-separated string
+        "array_cols":    ["Collection", "category_tags"],
+        # Columns to hide entirely (too large / not useful)
+        "hide_cols":     ["google_data_cache", "Coordinates"],
+    },
+    "WPTP PDFs": {
+        "url":           f"{XANO_BASE}/wptp_pdfs",
+        "patch":         None,
+        "id_col":        "id",
+        "editable":      False,
+        "editable_cols": [],
+        "patch_field_map": {},
+        "ts_cols":       [],
+        "array_cols":    [],
+        "hide_cols":     [],
+    },
+    "Users": {
+        "url":           f"{XANO_WGW}/user",
+        "patch":         f"{XANO_WGW}/user",
+        "id_col":        "id",
+        "editable":      True,
+        "editable_cols": [],   # edit any field
+        "patch_field_map": {},
+        "ts_cols":       ["created_at"],
+        "array_cols":    ["saved_vendor_ids"],
+        "hide_cols":     [],
+    },
+    "Extracted PDF Data": {
+        "url":           f"{XANO_BASE}/all_extracted_pdf_data",
+        "patch":         None,
+        "id_col":        "id",
+        "editable":      False,
+        "editable_cols": [],
+        "patch_field_map": {},
+        "ts_cols":       [],
+        "array_cols":    [],
+        "hide_cols":     [],
+    },
+    "Venue Pricing": {
+        "url":           f"{XANO_BASE}/venue_pricing",
+        "patch":         None,
+        "id_col":        "id",
+        "editable":      False,
+        "editable_cols": [],
+        "patch_field_map": {},
+        "ts_cols":       [],
+        "array_cols":    [],
+        "hide_cols":     [],
+    },
+}
+
+FILTER_OPS = ["contains", "equals", "starts with", "not equals",
+              ">", "<", ">=", "<=", "is blank", "is not blank"]
 
 def _apply_filters(df, filters):
     for col, op, val in filters:
