@@ -557,23 +557,28 @@ def _downsample_pdf(pdf_bytes, target_b64_mb=25):
         return None
     target_raw = int(target_b64_mb * 1024 * 1024 * 0.74)  # raw ≈ 74% of its base64
     best = None
-    for dpi in (120, 100, 80, 60):
+    # Lower DPI + free each pixmap immediately to bound memory — at 120 DPI with
+    # many concurrent workers this OOM-killed the container (exit -9).
+    for dpi in (72, 60, 50):
+        src = out = None
         try:
             src = fitz.open(stream=pdf_bytes, filetype="pdf")
             out = fitz.open()
             for page in src:
                 pix = page.get_pixmap(dpi=dpi)
-                img = pix.tobytes(output="jpeg", jpg_quality=70)
+                img = pix.tobytes(output="jpeg", jpg_quality=60)
+                pix = None  # release the raster immediately
                 newp = out.new_page(width=page.rect.width, height=page.rect.height)
                 newp.insert_image(newp.rect, stream=img)
             data = out.tobytes(deflate=True, garbage=4)
-            src.close()
-            out.close()
             best = data
             if len(data) <= target_raw:
                 return data
         except Exception:
             return best
+        finally:
+            if src is not None: src.close()
+            if out is not None: out.close()
     return best
 
 
@@ -1179,6 +1184,7 @@ def run_extraction(
     yield from emit("")
 
     results_log  = []
+    credit_halted = False   # set True if Anthropic reports the credit balance is too low
     total_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
     total_rows   = len(rows_with_links)
 
@@ -1252,6 +1258,7 @@ def run_extraction(
         try:
             summary, note, usage = _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name)
         except CreditExhausted as ce:
+            credit_halted = True
             yield from emit(f"  🛑 CREDIT BALANCE EXHAUSTED at [{row_num}] — halting this worker to avoid mass false-failures.")
             yield from emit(f"     ({ce})")
             yield from emit("  ℹ  Remaining rows left PENDING (not marked failed) — add credits, then rerun_failed / re-run the range.")
@@ -1422,6 +1429,8 @@ def run_extraction(
 
     yield from emit("")
     yield from emit("─" * 48)
+    if credit_halted:
+        yield from emit("🛑 HALTED — Anthropic credit balance too low. Add credits, then re-run.")
     yield from emit(f"✅ Done — {ok_count} succeeded, {part_count} partial, {skip_count} skipped (non-venue), {fail_count} failed")
     yield from emit(
         f"💰 Claude cost: ${cost_usd:.4f}  "
@@ -1444,6 +1453,7 @@ def run_extraction(
         "cost_usd":           cost_usd,
         "tokens":             total_tokens,
         "results":            results_log,
+        "credit_exhausted":   credit_halted,
     }
 
 

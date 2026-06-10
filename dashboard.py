@@ -28,6 +28,7 @@ Optional fallback (if GOOGLE_CLIENT_ID is not set, password auth is used):
 
 import os
 import re
+import base64
 import datetime
 import json
 import requests
@@ -52,16 +53,15 @@ st.logo("tulle.png")
 st.markdown("""
 <style>
     /* ── Global ── */
-    .block-container { max-width: 92vw !important; padding: 1.5rem 2rem !important; }
+    .block-container { max-width: 92vw !important; padding: 0.6rem 2rem 1.5rem !important; }
     .stApp { background: #f8f9fa; }
+    /* Pull the whole app up under Streamlit's top chrome */
+    header[data-testid="stHeader"] { height: 0; }
 
     /* ── Header ── */
-    .tulle-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 12px 0 16px; border-bottom: 2px solid #1B7A4A; margin-bottom: 20px;
-    }
     .tulle-logo { font-size: 22px; font-weight: 700; color: #1B7A4A; letter-spacing: -0.3px; }
     .tulle-user { font-size: 13px; color: #52555C; }
+    .tulle-rule { border: none; border-top: 2px solid #1B7A4A; margin: 4px 0 16px; }
 
     /* ── Metric cards ── */
     .metric-card {
@@ -363,19 +363,40 @@ user_email = st.session_state.get("user_email", "")
 
 _user_info = (f"Signed in as <strong>{user_name}</strong>"
               if user_name and user_name != "Local admin" else "")
-st.markdown(f"""
-<div class="tulle-header">
-    <div class="tulle-logo">🌿 Tulle Admin</div>
-    <div class="tulle-user">{_user_info}</div>
-</div>
-""", unsafe_allow_html=True)
-# Keep the sign out button separately in a right-aligned column
-_, signout_col = st.columns([9, 1])
-with signout_col:
+
+
+@st.cache_data(show_spinner=False)
+def _logo_data_uri():
+    """Base64 data-URI for the Tulle logo, read once and cached."""
+    try:
+        with open("tulle.png", "rb") as f:
+            return "data:image/png;base64," + base64.b64encode(f.read()).decode()
+    except Exception:
+        return ""
+
+
+# Single-row header: [logo + title] ............ [signed in as · Sign out]
+_h_title, _h_user, _h_btn = st.columns([6, 3, 1.2], vertical_alignment="center")
+with _h_title:
+    _logo = _logo_data_uri()
+    _logo_img = f'<img src="{_logo}" style="height:30px;width:auto" />' if _logo else "🌿"
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:10px">'
+        f'{_logo_img}<span class="tulle-logo">Tulle Admin</span></div>',
+        unsafe_allow_html=True,
+    )
+with _h_user:
+    st.markdown(
+        f'<div class="tulle-user" style="text-align:right">{_user_info}</div>',
+        unsafe_allow_html=True,
+    )
+with _h_btn:
     if st.button("Sign out", use_container_width=True):
         for k in ["authenticated", "user_email", "user_name", "user_picture"]:
             st.session_state.pop(k, None)
         st.rerun()
+
+st.markdown('<hr class="tulle-rule" />', unsafe_allow_html=True)
 
 XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B")
 
@@ -1200,7 +1221,12 @@ with tab5:
                 fail = pl_result["failed"]
                 cost = pl_result.get("cost_usd", 0.0)
 
-                if fail == 0 and part == 0:
+                if pl_result.get("credit_exhausted"):
+                    st.toast("🛑 Anthropic credits exhausted — extraction halted.", icon="🛑")
+                    pl_stat_ph.error(
+                        f"🛑 Halted — ran out of Anthropic credits after {ok} succeeded · ${cost:.4f}"
+                    )
+                elif fail == 0 and part == 0:
                     pl_stat_ph.success(f"Done — {ok} succeeded · ${cost:.4f}")
                 elif fail > 0:
                     pl_stat_ph.error(f"Done — {ok} succeeded, {part} partial, {fail} failed · ${cost:.4f}")
@@ -1216,6 +1242,22 @@ with tab5:
 
         # ── Last run summary (persists after rerun via session_state) ─────────
         _last_result = st.session_state.get("pl_last_result")
+
+        # Credit-exhaustion banner — extraction was halted because the Anthropic
+        # balance ran out. Remaining PDFs were left pending (not failed).
+        if _last_result and _last_result.get("credit_exhausted"):
+            st.error(
+                "🛑 **Out of Anthropic credits — extraction was halted.**  \n"
+                "The run stopped to avoid mass false-failures; remaining PDFs were left "
+                "**pending** (not marked failed). Add credits, then re-run "
+                "**All pending** (or **Re-run failed**) to resume where it stopped."
+            )
+            st.link_button(
+                "💳 Add credits → platform.claude.com/settings/billing",
+                "https://platform.claude.com/settings/billing",
+                type="primary",
+            )
+            st.markdown("---")
 
         if _last_result and _last_result.get("results"):
             st.markdown("#### Run Summary")
