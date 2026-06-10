@@ -17,9 +17,6 @@ Required env vars (set in Railway dashboard):
     XANO_BASE_URL         — base for enrichment endpoints
 
 Usage/quota trackers (optional — widgets degrade gracefully if unset):
-    ANTHROPIC_ADMIN_KEY   — Admin key (sk-ant-admin…) for the Cost Report API. Distinct from
-                            ANTHROPIC_API_KEY. Create at platform.claude.com → Settings → Admin keys.
-                            Powers the "Claude spend" strip under the header.
     GCP_PROJECT_ID        — GCP project for Places API quota reads (default "tulle-technologies").
                             Requires the GOOGLE_SERVICE_ACCOUNT_JSON service account to hold the
                             "Monitoring Viewer" role on that project. Powers the Vendor Images
@@ -38,7 +35,6 @@ import pandas as pd
 import streamlit as st
 import google.auth.transport.requests
 import google.oauth2.id_token
-from decimal import Decimal
 from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import run_extraction, get_pipeline_status
@@ -249,10 +245,9 @@ if not st.session_state.authenticated:
 
 
 # ── USAGE / QUOTA TRACKER HELPERS ─────────────────────────────────────────────
-# Defined before the header because the Claude-spend strip renders inside the
-# header. Two read-only widgets: Anthropic spend (header strip) + Google Places
-# quota (Vendor Images tab). Both are cached 10 min and degrade gracefully when
-# their credentials/permissions are missing — they never raise into the page.
+# Read-only Google Places quota widget for the Vendor Images tab. Cached 10 min;
+# degrades gracefully when credentials/permissions are missing — never raises
+# into the page.
 
 def _card(color_class, icon, value, label):
     return f"""<div class="metric-card {color_class}">
@@ -262,60 +257,12 @@ def _card(color_class, icon, value, label):
     </div>"""
 
 
-ANTHROPIC_BILLING_URL = "https://platform.claude.com/settings/billing"
 GCP_PROJECT_ID        = os.environ.get("GCP_PROJECT_ID", "tulle-technologies")
 PLACES_SERVICE        = "places-backend.googleapis.com"
 GCP_QUOTAS_URL = (
     "https://console.cloud.google.com/google/maps-apis/quotas"
     f"?project={GCP_PROJECT_ID}&api={PLACES_SERVICE}"
 )
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def _fetch_anthropic_spend():
-    """Total USD spend (month-to-date, rolling 30d) via the Admin Cost Report API.
-
-    Returns (mtd_usd, last30_usd, error). error is "" on success, "no_key" when
-    ANTHROPIC_ADMIN_KEY is unset, or an "error: …" string on failure.
-    """
-    key = os.environ.get("ANTHROPIC_ADMIN_KEY", "")
-    if not key:
-        return None, None, "no_key"
-
-    now      = datetime.datetime.now(datetime.timezone.utc)
-    mtd_from = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    d30_from = now - datetime.timedelta(days=30)
-    headers  = {"x-api-key": key, "anthropic-version": "2023-06-01"}
-
-    def _sum_since(starting_at):
-        total, page, guard = Decimal("0"), None, 0
-        while guard < 50:                       # hard stop against runaway pagination
-            guard += 1
-            params = {"starting_at": starting_at.strftime("%Y-%m-%dT%H:%M:%SZ"), "limit": 31}
-            if page:
-                params["page"] = page
-            r = requests.get(
-                "https://api.anthropic.com/v1/organizations/cost_report",
-                headers=headers, params=params, timeout=30,
-            )
-            if r.status_code != 200:
-                raise RuntimeError(f"cost_report {r.status_code}: {r.text[:160]}")
-            body = r.json()
-            for bucket in body.get("data", []):
-                for res in bucket.get("results", []):
-                    amt = res.get("amount")
-                    if amt is not None:
-                        total += Decimal(str(amt))
-            if body.get("has_more") and body.get("next_page"):
-                page = body["next_page"]
-            else:
-                break
-        return float(total)
-
-    try:
-        return _sum_since(mtd_from), _sum_since(d30_from), ""
-    except Exception as e:
-        return None, None, f"error: {e}"
 
 
 def _monitoring_timeseries(token, filter_str, start, end, aligner, reducer=None, period="86400s"):
@@ -428,34 +375,6 @@ with signout_col:
     if st.button("Sign out", use_container_width=True):
         for k in ["authenticated", "user_email", "user_name", "user_picture"]:
             st.session_state.pop(k, None)
-        st.rerun()
-
-# ── CLAUDE SPEND STATUS STRIP (shown on every tab, under the header) ───────────
-_mtd, _last30, _spend_err = _fetch_anthropic_spend()
-_strip_left, _strip_btn, _strip_refresh = st.columns([7, 1.4, 1])
-with _strip_left:
-    if _spend_err == "no_key":
-        st.markdown(
-            _card("card-gray", "💳",
-                  "Set ANTHROPIC_ADMIN_KEY",
-                  "to track Claude spend"),
-            unsafe_allow_html=True)
-    elif _spend_err:
-        st.markdown(
-            _card("card-amber", "💳", "Spend unavailable", _spend_err[:80]),
-            unsafe_allow_html=True)
-    else:
-        _tier = "card-green" if (_last30 or 0) < 250 else ("card-amber" if (_last30 or 0) < 750 else "card-red")
-        st.markdown(
-            _card(_tier, "💳",
-                  f"${_mtd:,.2f} this month",
-                  f"${_last30:,.2f} in the last 30 days · Anthropic API spend"),
-            unsafe_allow_html=True)
-with _strip_btn:
-    st.link_button("Add credits ↗", ANTHROPIC_BILLING_URL, use_container_width=True)
-with _strip_refresh:
-    if st.button("↻", help="Refresh Claude spend", use_container_width=True, key="refresh_spend"):
-        _fetch_anthropic_spend.clear()
         st.rerun()
 
 XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B")
