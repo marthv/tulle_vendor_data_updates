@@ -227,9 +227,40 @@ def discover_pricing_urls(html, base_url, limit=_MAX_PRICING_PAGES):
     return found
 
 
-# ── REDDIT (Phase 2 — no-ops until praw + REDDIT_* env are present) ────────────
+# ── REDDIT ────────────────────────────────────────────────────────────────────
+# praw-based ingester for wedding subreddits + city subs.
+# No-ops gracefully when REDDIT_CLIENT_ID/SECRET/USER_AGENT are unset.
+#
+# DATA API TERMS: We store only *derived pricing facts* + permalink (source_url)
+# + a short verbatim quote. Full thread text is only held in memory for one
+# Claude call and is not persisted. Reddit = trust_tier 1 (lowest), always
+# needs_review=True. At commercial scale, revisit Reddit's licensed Data API.
 
 _SUBS_DEFAULT = ["weddingphotography", "weddingplanning", "wedding"]
+
+# State → active wedding/local subreddits for regional price signals.
+_STATE_SUBS: dict = {
+    "New York":      ["AskNYC", "nyc"],
+    "California":    ["LosAngeles", "bayarea", "sandiego"],
+    "Texas":         ["Austin", "Dallas", "houston"],
+    "Florida":       ["orlando", "tampa", "miami"],
+    "Illinois":      ["chicago"],
+    "Washington":    ["Seattle"],
+    "Georgia":       ["Atlanta"],
+    "Massachusetts": ["boston"],
+    "Colorado":      ["Denver"],
+    "Pennsylvania":  ["philadelphia"],
+    "Virginia":      ["nova"],
+    "Ohio":          ["Columbus"],
+    "North Carolina":["Charlotte", "raleigh"],
+    "Michigan":      ["Detroit"],
+    "Arizona":       ["phoenix"],
+    "Tennessee":     ["Nashville"],
+    "Oregon":        ["Portland"],
+    "Minnesota":     ["Minneapolis"],
+    "Missouri":      ["StLouis"],
+    "Wisconsin":     ["milwaukee"],
+}
 
 
 def _reddit_client():
@@ -246,23 +277,54 @@ def _reddit_client():
 
 
 def reddit_search(name, state, limit=25):
-    """Return [{text, permalink}] of threads mentioning the vendor + a price word.
-    praw auto-throttles the OAuth rate limit. Stores only derived text for one-shot
-    extraction — see README for the Reddit Data API terms caveat."""
+    """Return [{text, permalink}] for threads mentioning the vendor + a price keyword.
+
+    Searches national wedding subs + state city subs. Includes post body and
+    top-5 comments (more pricing signal). Deduplicates by permalink across subs.
+    praw auto-throttles to Reddit's ~60 req/min OAuth budget.
+    """
     reddit = _reddit_client()
     if reddit is None:
         return []
-    query = f'"{name}" (price OR cost OR package OR paid OR quote OR $)'
+
+    subs = list(_SUBS_DEFAULT) + _STATE_SUBS.get(state or "", [])
+    query = f'"{name}" (price OR cost OR package OR "$" OR paid OR quote)'
+    seen: set = set()
     out = []
+
     try:
-        for sub in _SUBS_DEFAULT:
-            for post in reddit.subreddit(sub).search(query, sort="relevance", time_filter="all", limit=limit):
-                body = ((post.title or "") + "\n\n" + (getattr(post, "selftext", "") or "")).strip()
-                if body:
-                    out.append({"text": body[:_MAX_TEXT_CHARS],
-                                "permalink": "https://www.reddit.com" + post.permalink})
+        for sub_name in subs:
+            try:
+                for post in reddit.subreddit(sub_name).search(
+                    query, sort="relevance", time_filter="all", limit=limit
+                ):
+                    permalink = "https://www.reddit.com" + post.permalink
+                    if permalink in seen:
+                        continue
+                    seen.add(permalink)
+
+                    parts = [post.title or ""]
+                    selftext = (getattr(post, "selftext", "") or "").strip()
+                    if selftext and selftext not in ("[removed]", "[deleted]"):
+                        parts.append(selftext)
+
+                    try:
+                        post.comments.replace_more(limit=0)
+                        for comment in list(post.comments)[:5]:
+                            body = (getattr(comment, "body", "") or "").strip()
+                            if body and body not in ("[removed]", "[deleted]"):
+                                parts.append(body)
+                    except Exception:
+                        pass
+
+                    corpus = "\n\n".join(parts).strip()
+                    if corpus:
+                        out.append({"text": corpus[:_MAX_TEXT_CHARS], "permalink": permalink})
+            except Exception:
+                continue  # unknown sub or rate error — skip and continue
     except Exception:
-        return out
+        pass
+
     return out
 
 
