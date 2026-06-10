@@ -42,7 +42,8 @@ import google.auth.transport.requests
 import google.oauth2.id_token
 from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from extract_core import run_extraction, get_pipeline_status
+from extract_core import (run_extraction, get_pipeline_status,
+                          run_extraction_batch, process_batch_results)
 from scrape_core import run_scrape, get_scrape_status
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
@@ -1127,6 +1128,28 @@ with tab5:
         # ── Run controls ──────────────────────────────────────────────────────
         st.markdown("#### Run Extraction")
 
+        # Batch mode toggle — 50% cost reduction via async Batch API
+        _batch_col, _info_col = st.columns([3, 5])
+        with _batch_col:
+            batch_mode = st.toggle(
+                "⚡ Batch mode (50% cheaper)",
+                value=st.session_state.get("pl_batch_mode", False),
+                key="pl_batch_mode",
+                help=(
+                    "Submits all Claude requests via the Batch API (50% discount). "
+                    "Downloads happen live; Claude processing takes up to 24 hrs. "
+                    "Pass 4 (classification) uses Haiku in all modes.\n\n"
+                    "Normal mode: live streaming log, results in minutes.\n"
+                    "Batch mode: downloads now, Claude processes overnight, "
+                    "check results with the button below."
+                ),
+            )
+        with _info_col:
+            if batch_mode:
+                st.info("Batch mode on — downloads PDFs now, submits to Batch API (~24hr). Pass 4 uses Haiku. ~55% cheaper total.")
+            else:
+                st.caption("Normal mode — live extraction. Pass 4 uses Haiku (~3% cheaper).")
+
         run_mode = st.radio(
             "Run mode",
             options=["🆕 All pending", "❌ Re-run all failed", "🎯 Specific PDF IDs", "📏 Row range"],
@@ -1152,16 +1175,16 @@ with tab5:
             with rc2:
                 pl_end_row = st.number_input("End row (0 = all)", min_value=0, value=10, step=1, key="pl_end")
 
-        # Pending/failed counts for button label
         n_pending = counts.get('pending', 0)
         n_failed  = counts.get('failed', 0)
+        _mode_verb = "Submit Batch" if batch_mode else "Run"
 
         btn_label = {
-            "🆕 All pending":        f"▶ Run All Pending ({n_pending})",
-            "❌ Re-run all failed":   f"▶ Re-run All Failed ({n_failed})",
-            "🎯 Specific PDF IDs":   "▶ Run Specified PDFs",
-            "📏 Row range":          "▶ Run Row Range",
-        }.get(run_mode, "▶ Run")
+            "🆕 All pending":        f"▶ {_mode_verb} All Pending ({n_pending})",
+            "❌ Re-run all failed":   f"▶ {_mode_verb} All Failed ({n_failed})",
+            "🎯 Specific PDF IDs":   f"▶ {_mode_verb} Specified PDFs",
+            "📏 Row range":          f"▶ {_mode_verb} Row Range",
+        }.get(run_mode, f"▶ {_mode_verb}")
 
         if "pl_running" not in st.session_state:
             st.session_state["pl_running"] = False
@@ -1177,74 +1200,128 @@ with tab5:
         pl_log_ph  = st.empty()
         pl_stat_ph = st.empty()
 
-        if run_btn:
-            # Parse run mode into run_extraction args
-            pdf_ids_list   = None
-            rerun_failed   = False
-            eff_start      = 0
-            eff_end        = None
-
+        # ── Parse run mode args (shared by both normal + batch) ───────────────
+        def _parse_run_args():
+            pdf_ids_list = None; rerun_failed = False; eff_start = 0; eff_end = None
             if run_mode == "🎯 Specific PDF IDs":
                 raw = specific_ids_input.replace(",", "\n")
                 pdf_ids_list = [v.strip() for v in raw.splitlines() if v.strip()]
                 if not pdf_ids_list:
-                    st.warning("Enter at least one PDF ID.")
-                    st.stop()
+                    st.warning("Enter at least one PDF ID."); st.stop()
             elif run_mode == "❌ Re-run all failed":
                 rerun_failed = True
-            elif run_mode == "🆕 All pending":
-                pass  # default mode, dedup handles it
             elif run_mode == "📏 Row range":
                 eff_start = int(pl_start_row)
                 eff_end   = None if int(pl_end_row) == 0 else int(pl_end_row)
+            return pdf_ids_list, rerun_failed, eff_start, eff_end
 
+        if run_btn:
+            pdf_ids_list, rerun_failed, eff_start, eff_end = _parse_run_args()
             st.session_state["pl_running"] = True
-            pl_lines = []
-            pl_result = None
-
+            pl_lines = []; pl_result = None
             run_started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-            for item in run_extraction(
-                start_row=eff_start,
-                end_row=eff_end,
-                pdf_ids=pdf_ids_list,
-                rerun_failed=rerun_failed,
-            ):
-                if isinstance(item, dict):
-                    pl_result = item
-                    break
-                pl_lines.append(item)
-                pl_log_ph.markdown(
-                    '<div class="log-box">' + "\n".join(pl_lines) + "</div>",
-                    unsafe_allow_html=True,
-                )
-
-            st.session_state["pl_running"] = False
-
-            if pl_result:
-                ok   = pl_result["ok"]
-                part = pl_result["partial"]
-                fail = pl_result["failed"]
-                cost = pl_result.get("cost_usd", 0.0)
-
-                if pl_result.get("credit_exhausted"):
-                    st.toast("🛑 Anthropic credits exhausted — extraction halted.", icon="🛑")
-                    pl_stat_ph.error(
-                        f"🛑 Halted — ran out of Anthropic credits after {ok} succeeded · ${cost:.4f}"
+            if batch_mode:
+                # ── Batch path ────────────────────────────────────────────────
+                for item in run_extraction_batch(
+                    start_row=eff_start, end_row=eff_end,
+                    pdf_ids=pdf_ids_list, rerun_failed=rerun_failed,
+                ):
+                    if isinstance(item, dict):
+                        pl_result = item
+                        break
+                    pl_lines.append(item)
+                    pl_log_ph.markdown(
+                        '<div class="log-box">' + "\n".join(pl_lines) + "</div>",
+                        unsafe_allow_html=True,
                     )
-                elif fail == 0 and part == 0:
-                    pl_stat_ph.success(f"Done — {ok} succeeded · ${cost:.4f}")
-                elif fail > 0:
-                    pl_stat_ph.error(f"Done — {ok} succeeded, {part} partial, {fail} failed · ${cost:.4f}")
-                else:
-                    pl_stat_ph.warning(f"Done — {ok} succeeded, {part} partial · ${cost:.4f}")
+                st.session_state["pl_running"] = False
+                if pl_result and pl_result.get("batch_submitted"):
+                    bid = pl_result["batch_id"]
+                    st.session_state["pl_batch_id"]   = bid
+                    st.session_state["pl_batch_map"]  = pl_result["pdf_map"]
+                    pl_stat_ph.success(
+                        f"Batch submitted ({pl_result['pdf_count']} PDFs) · ID: `{bid}`  \n"
+                        "Processing takes up to 24 hrs — use **Check Batch Results** below."
+                    )
+                elif pl_result:
+                    pl_stat_ph.error(f"Batch submission failed: {pl_result.get('error', '?')}")
+            else:
+                # ── Normal (live) path ────────────────────────────────────────
+                for item in run_extraction(
+                    start_row=eff_start, end_row=eff_end,
+                    pdf_ids=pdf_ids_list, rerun_failed=rerun_failed,
+                ):
+                    if isinstance(item, dict):
+                        pl_result = item
+                        break
+                    pl_lines.append(item)
+                    pl_log_ph.markdown(
+                        '<div class="log-box">' + "\n".join(pl_lines) + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                st.session_state["pl_running"] = False
 
-                pl_result["run_started_at"] = run_started_at
-                st.session_state["pl_last_result"] = pl_result
+                if pl_result:
+                    ok   = pl_result["ok"]
+                    part = pl_result["partial"]
+                    fail = pl_result["failed"]
+                    cost = pl_result.get("cost_usd", 0.0)
 
-                # Auto-refresh status after run
-                st.session_state["pl_data"] = get_pipeline_status()
-                st.rerun()
+                    if pl_result.get("credit_exhausted"):
+                        st.toast("🛑 Anthropic credits exhausted — extraction halted.", icon="🛑")
+                        pl_stat_ph.error(
+                            f"🛑 Halted — ran out of Anthropic credits after {ok} succeeded · ${cost:.4f}"
+                        )
+                    elif fail == 0 and part == 0:
+                        pl_stat_ph.success(f"Done — {ok} succeeded · ${cost:.4f}")
+                    elif fail > 0:
+                        pl_stat_ph.error(f"Done — {ok} succeeded, {part} partial, {fail} failed · ${cost:.4f}")
+                    else:
+                        pl_stat_ph.warning(f"Done — {ok} succeeded, {part} partial · ${cost:.4f}")
+
+                    pl_result["run_started_at"] = run_started_at
+                    st.session_state["pl_last_result"] = pl_result
+                    st.session_state["pl_data"] = get_pipeline_status()
+                    st.rerun()
+
+        # ── Batch results checker (shown when a batch_id is stored) ───────────
+        _bid = st.session_state.get("pl_batch_id")
+        if _bid:
+            st.info(f"Pending batch: `{_bid}`")
+            _chk_col, _clr_col = st.columns([3, 1])
+            with _chk_col:
+                check_btn = st.button("📊 Check Batch Results", use_container_width=True, key="pl_check_batch")
+            with _clr_col:
+                if st.button("✕ Clear", use_container_width=True, key="pl_clear_batch"):
+                    st.session_state.pop("pl_batch_id", None)
+                    st.session_state.pop("pl_batch_map", None)
+                    st.rerun()
+
+            if check_btn:
+                _bmap = st.session_state.get("pl_batch_map", {})
+                batch_lines = []; batch_result = None
+                batch_log_ph = st.empty()
+                for item in process_batch_results(_bid, _bmap, wait_secs=30):
+                    if isinstance(item, dict):
+                        batch_result = item
+                        break
+                    batch_lines.append(item)
+                    batch_log_ph.markdown(
+                        '<div class="log-box">' + "\n".join(batch_lines) + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                if batch_result:
+                    if batch_result.get("batch_done"):
+                        ok = batch_result.get("ok", 0); fail = batch_result.get("failed", 0)
+                        st.success(f"Batch complete — {ok} extracted, {fail} failed")
+                        st.session_state.pop("pl_batch_id", None)
+                        st.session_state.pop("pl_batch_map", None)
+                        st.session_state["pl_last_result"] = batch_result
+                        st.session_state["pl_data"] = get_pipeline_status()
+                        st.rerun()
+                    else:
+                        st.info("Still processing — check again later.")
 
         # ── Last run summary (persists after rerun via session_state) ─────────
         _last_result = st.session_state.get("pl_last_result")

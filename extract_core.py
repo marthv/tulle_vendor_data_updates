@@ -584,10 +584,16 @@ def _downsample_pdf(pdf_bytes, target_b64_mb=25):
 
 # ── CLAUDE ────────────────────────────────────────────────────────────────────
 
-def _call_claude_messages(client, content_blocks, system_prompt, max_tokens=6000):
+_MODEL_SONNET = "claude-sonnet-4-20250514"
+_MODEL_HAIKU  = "claude-haiku-4-5-20251001"
+
+
+def _call_claude_messages(client, content_blocks, system_prompt, max_tokens=6000,
+                          model=None):
     """Content-agnostic core of the Claude call. `content_blocks` is the full
     messages[0]['content'] list — the caller decides whether it holds a PDF
     `document` block (call_claude) or a `text` block (call_claude_text).
+    Pass `model` to override the default (e.g. _MODEL_HAIKU for classification).
 
     Returns (parsed_json, cache_note, usage_dict). usage_dict keys: input, output,
     cache_read, cache_create. On error parsed_json is None and usage_dict is {}.
@@ -595,11 +601,12 @@ def _call_claude_messages(client, content_blocks, system_prompt, max_tokens=6000
     empty/garbled JSON with jittered backoff. Raises CreditExhausted on an
     out-of-credits error so the caller can halt the whole run.
     """
+    model = model or _MODEL_SONNET
     last_err = ""
     for attempt in range(5):
         try:
             msg = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=model,
                 max_tokens=max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": content_blocks}]
@@ -643,9 +650,9 @@ def _call_claude_messages(client, content_blocks, system_prompt, max_tokens=6000
     return None, f"Claude error: {last_err}", {}
 
 
-def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
-    """PDF extraction call (unchanged public contract). Sends a cached PDF document
-    block + the instruction text. See _call_claude_messages for return shape."""
+def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000, model=None):
+    """PDF extraction call. Sends a cached PDF document block + the instruction text.
+    Pass model=_MODEL_HAIKU for cheaper passes (e.g. classification)."""
     blocks = [
         {
             "type": "document",
@@ -654,19 +661,17 @@ def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
         },
         {"type": "text", "text": user_text}
     ]
-    return _call_claude_messages(client, blocks, system_prompt, max_tokens)
+    return _call_claude_messages(client, blocks, system_prompt, max_tokens, model=model)
 
 
-def call_claude_text(client, source_text, system_prompt, user_text, max_tokens=6000):
+def call_claude_text(client, source_text, system_prompt, user_text, max_tokens=6000, model=None):
     """Text variant for scraped web pages / Reddit threads. Same retry / credit /
-    return contract as call_claude. `source_text` (the scraped corpus) goes first
-    with ephemeral cache_control so repeated passes over the same page are cheap;
-    `user_text` is the extraction instruction."""
+    return contract as call_claude."""
     blocks = [
         {"type": "text", "text": source_text, "cache_control": {"type": "ephemeral"}},
         {"type": "text", "text": user_text}
     ]
-    return _call_claude_messages(client, blocks, system_prompt, max_tokens)
+    return _call_claude_messages(client, blocks, system_prompt, max_tokens, model=model)
 
 
 # ── EXTRACTION ────────────────────────────────────────────────────────────────
@@ -721,10 +726,11 @@ def _extract_pricing_grid(client, pdf_b64, pdf_id, venue_name, structure):
 
 
 def _extract_classification(client, pdf_b64, venue_name):
+    # Classification is 4 categorical fields — Haiku handles this reliably at 3x lower cost.
     parsed, note, usage = call_claude(
         client, pdf_b64, CLASSIFICATION_PROMPT,
         f'Classify venue offering and attributes for "{venue_name}". Return only JSON.',
-        max_tokens=1000
+        max_tokens=1000, model=_MODEL_HAIKU
     )
     return parsed, note, usage
 
@@ -1088,6 +1094,309 @@ def _fetch_venue_vendor_ids():
         }
     except Exception:
         return set()
+
+
+# ── BATCH API HELPERS ────────────────────────────────────────────────────────
+# 50% cost reduction by submitting via the Batch API (async, up to 24hr).
+# Pass 4 (classification) uses Haiku. Pass 2 (grid structure) is skipped —
+# PRICING_PROMPT_DIRECT handles it directly. Net: ~55-60% cheaper.
+
+def _parse_batch_text(text):
+    """JSON-parse a raw Claude batch response text (same cleanup as _call_claude_messages)."""
+    if not text:
+        return None
+    try:
+        return json.loads(re.sub(r'```json|```', '', text.strip()).strip())
+    except Exception:
+        return None
+
+
+def _build_batch_requests(pdf_b64, pdf_id, vendor_id, venue_name):
+    """Return 3 batch request dicts for one PDF: Pass 1 (summary/Sonnet),
+    Pass 3 direct (pricing/Sonnet), Pass 4 (classification/Haiku)."""
+    doc_block = {
+        "type": "document",
+        "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+        "cache_control": {"type": "ephemeral"},
+    }
+    return [
+        {
+            "custom_id": f"{pdf_id}__p1",
+            "params": {
+                "model": _MODEL_SONNET, "max_tokens": 4000, "system": SUMMARY_PROMPT,
+                "messages": [{"role": "user", "content": [
+                    doc_block,
+                    {"type": "text", "text": (
+                        f'PDF_ID="{pdf_id}", Vendor_ID="{vendor_id}", venue="{venue_name}". '
+                        'Return only JSON.')},
+                ]}],
+            },
+        },
+        {
+            "custom_id": f"{pdf_id}__p3",
+            "params": {
+                "model": _MODEL_SONNET, "max_tokens": 8000, "system": PRICING_PROMPT_DIRECT,
+                "messages": [{"role": "user", "content": [
+                    doc_block,
+                    {"type": "text", "text": (
+                        f'Extract all pricing. Venue="{venue_name}", PDF_ID="{pdf_id}". '
+                        'Return only the JSON array.')},
+                ]}],
+            },
+        },
+        {
+            "custom_id": f"{pdf_id}__p4",
+            "params": {
+                "model": _MODEL_HAIKU, "max_tokens": 1000, "system": CLASSIFICATION_PROMPT,
+                "messages": [{"role": "user", "content": [
+                    doc_block,
+                    {"type": "text", "text": (
+                        f'Classify venue offering and attributes for "{venue_name}". '
+                        'Return only JSON.')},
+                ]}],
+            },
+        },
+    ]
+
+
+def run_extraction_batch(
+    start_row: int = 0,
+    end_row: int | None = None,
+    pdf_ids: list | None = None,
+    rerun_failed: bool = False,
+):
+    """Submit a Batch API job for PDF extraction (50% cost discount, async).
+    Downloads PDFs sequentially with a streaming log, then submits all Claude
+    requests in one batch. Yields log strings; final item is a dict:
+      {batch_submitted: True, batch_id, pdf_count, pdf_map}  — on success
+      {batch_submitted: False, error}                         — on failure
+    """
+    log = []
+
+    def emit(line):
+        log.append(line)
+        return (line,)
+
+    yield from emit("Fetching PDF work list...")
+    try:
+        rows_raw = []
+        for rows_raw, _ in _fetch_xano_pages(os.environ.get("XANO_GET_ENDPOINT", "")):
+            pass
+    except Exception as e:
+        yield from emit(f"Failed to fetch PDF list: {e}")
+        yield {"batch_submitted": False, "error": str(e)}
+        return
+
+    rows_with_links = [r for r in rows_raw
+                       if str(r.get('PDF_Link') or r.get('pdf_link') or '').strip()]
+
+    if pdf_ids:
+        want = {p.strip() for p in pdf_ids}
+        batch = [r for r in rows_with_links
+                 if str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() in want]
+    elif rerun_failed:
+        batch = [r for r in rows_with_links
+                 if str(r.get('extraction_status') or '').strip().lower() == 'failed']
+    else:
+        batch = rows_with_links[start_row:(None if end_row is None else end_row)]
+        try:
+            done_rows = []
+            for done_rows, _ in _fetch_xano_pages(os.environ.get("XANO_SUMMARY_ENDPOINT", "")):
+                pass
+            already = {str(r.get('PDF_ID') or r.get('pdf_id') or '').strip()
+                       for r in done_rows if r.get('PDF_ID') or r.get('pdf_id')}
+            batch = [r for r in batch
+                     if str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() not in already]
+        except Exception:
+            pass
+
+    venue_vendor_ids = _fetch_venue_vendor_ids()
+    if venue_vendor_ids:
+        batch = [r for r in batch
+                 if str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip() in venue_vendor_ids]
+
+    yield from emit(f"{len(batch)} PDF(s) to submit (Batch API — 50% discount)")
+    if not batch:
+        yield from emit("Nothing to do.")
+        yield {"batch_submitted": False, "error": "empty_batch"}
+        return
+
+    # Download all PDFs and build requests
+    drive_service = get_drive_service()
+    all_requests, pdf_map = [], {}
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    for i, row in enumerate(batch):
+        pdf_id    = str(row.get('PDF_ID')    or row.get('pdf_id')    or '').strip()
+        vendor_id = str(row.get('Vendor_ID') or row.get('vendor_id') or '').strip()
+        venue_name = str(row.get('Name')     or row.get('name')      or '').strip()
+        pdf_link  = str(row.get('PDF_Link')  or row.get('pdf_link')  or '').strip()
+        xano_id   = row.get('id')
+
+        yield from emit(f"  [{i+1}/{len(batch)}] {pdf_id} — {venue_name}")
+        pdf_bytes, err = download_pdf(pdf_link, drive_service)
+        if not pdf_bytes:
+            yield from emit(f"    Download failed: {err} — skipping")
+            continue
+        pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+        b64_mb = len(pdf_b64) / 1024 / 1024
+        if b64_mb > 50:
+            yield from emit(f"    Too large — skipping")
+            continue
+        if b64_mb > 30:
+            smaller = _downsample_pdf(pdf_bytes, target_b64_mb=25)
+            if smaller and len(smaller) < len(pdf_bytes):
+                pdf_b64 = base64.standard_b64encode(smaller).decode("utf-8")
+
+        all_requests.extend(_build_batch_requests(pdf_b64, pdf_id, vendor_id, venue_name))
+        pdf_map[pdf_id] = {"vendor_id": vendor_id, "venue_name": venue_name,
+                           "xano_id": xano_id, "timestamp": timestamp}
+
+    if not all_requests:
+        yield from emit("No valid PDFs to submit.")
+        yield {"batch_submitted": False, "error": "no_valid_pdfs"}
+        return
+
+    yield from emit(f"Submitting {len(all_requests)} requests ({len(pdf_map)} PDFs)...")
+    try:
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        batch_obj = client.messages.batches.create(requests=all_requests)
+        batch_id = batch_obj.id
+    except Exception as e:
+        yield from emit(f"Batch submission failed: {e}")
+        yield {"batch_submitted": False, "error": str(e)}
+        return
+
+    yield from emit(f"Batch submitted — ID: {batch_id}")
+    yield from emit("Processing takes up to 24 hours. Use 'Check Batch Results' to poll status.")
+    yield {"batch_submitted": True, "batch_id": batch_id,
+           "pdf_count": len(pdf_map), "pdf_map": pdf_map}
+
+
+def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
+    """Poll a submitted batch and post results to Xano when complete.
+    Yields log strings; final item is the same contract as run_extraction:
+      {batch_done, ok, partial, failed, skipped, cost_usd, results, credit_exhausted, log}
+    If still in_progress after wait_secs, yields {batch_done: False} — try again later.
+    """
+    log = []
+
+    def emit(line):
+        log.append(line)
+        return (line,)
+
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    yield from emit(f"Checking batch {batch_id}...")
+
+    try:
+        batch_obj = client.messages.batches.retrieve(batch_id)
+        status = getattr(batch_obj, "processing_status", "")
+    except Exception as e:
+        yield from emit(f"Could not retrieve batch: {e}")
+        yield {"batch_done": False, "error": str(e)}
+        return
+
+    yield from emit(f"Status: {status}")
+    waited = 0
+    while status != "ended" and waited < wait_secs:
+        time.sleep(5); waited += 5
+        try:
+            batch_obj = client.messages.batches.retrieve(batch_id)
+            status = getattr(batch_obj, "processing_status", "")
+            yield from emit(f"  Still {status} ({waited}s)...")
+        except Exception:
+            break
+
+    if status != "ended":
+        yield from emit("Still processing — check again later.")
+        yield {"batch_done": False, "batch_id": batch_id}
+        return
+
+    # Collect results grouped by pdf_id
+    yield from emit("Batch complete — posting results to Xano...")
+    p1: dict = {}; p3: dict = {}; p4: dict = {}; errors: dict = {}
+    try:
+        for result in client.messages.batches.results(batch_id):
+            cid = result.custom_id or ""
+            if "__" not in cid:
+                continue
+            pdf_id_key, pass_tag = cid.rsplit("__", 1)
+            if result.result.type != "succeeded":
+                errors.setdefault(pdf_id_key, []).append(f"{pass_tag}:{result.result.type}")
+                continue
+            raw_content = (result.result.message.content or [None])[0]
+            text = getattr(raw_content, "text", "") if raw_content else ""
+            parsed = _parse_batch_text(text)
+            if pass_tag == "p1":   p1[pdf_id_key] = parsed
+            elif pass_tag == "p3": p3[pdf_id_key] = parsed
+            elif pass_tag == "p4": p4[pdf_id_key] = parsed
+    except Exception as e:
+        yield from emit(f"Failed to iterate results: {e}")
+        yield {"batch_done": False, "error": str(e)}
+        return
+
+    results_log = []
+    for pdf_id, meta in pdf_map.items():
+        vendor_id  = meta["vendor_id"]
+        venue_name = meta["venue_name"]
+        xano_id    = meta["xano_id"]
+        timestamp  = meta["timestamp"]
+
+        summary_data = p1.get(pdf_id)
+        pricing_data = p3.get(pdf_id)
+        classif_data = p4.get(pdf_id)
+        errs         = errors.get(pdf_id, [])
+
+        yield from emit(f"  {pdf_id} — {venue_name}")
+
+        if not summary_data:
+            reason = "; ".join(errs) or "p1 missing"
+            yield from emit(f"    Failed: {reason}")
+            _update_pdf_status(xano_id, "failed", error=reason)
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                 "status": "FAILED", "reason": reason, "cost_usd": 0})
+            continue
+
+        if isinstance(summary_data, dict) and summary_data.get('__non_venue__'):
+            cat = summary_data.get('category', 'unknown')
+            yield from emit(f"    non-venue ({cat})")
+            _update_pdf_status(xano_id, "skipped_non_venue", error=f"non-venue: {cat}")
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                 "status": "SKIPPED", "reason": f"non-venue: {cat}", "cost_usd": 0})
+            continue
+
+        if isinstance(summary_data, dict):
+            summary_data = [summary_data]
+        for e in summary_data:
+            e.setdefault('pdf_id',     {"value": pdf_id,    "confidence": "high"})
+            e.setdefault('vendor_id',  {"value": vendor_id, "confidence": "high"})
+            e.setdefault('venue_name', {"value": venue_name,"confidence": "high"})
+
+        ok_s, fail_s = _post_summary(summary_data, classif_data, timestamp)
+        ok_p = fail_p = 0
+        if pricing_data:
+            if isinstance(pricing_data, dict):
+                pricing_data = [pricing_data]
+            ok_p, fail_p = _post_pricing_grid(pricing_data, pdf_id, vendor_id, venue_name, timestamp)
+
+        status = ("extracted" if (ok_s and not fail_s and not fail_p)
+                  else ("partial" if ok_s else "failed"))
+        _update_pdf_status(xano_id, status, cost_usd=0)
+        result_status = "OK" if status == "extracted" else ("PARTIAL" if status == "partial" else "FAILED")
+        yield from emit(f"    {ok_s} summary rows, {ok_p} pricing rows -> {status}")
+        results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                             "status": result_status, "summary_rows": ok_s,
+                             "pricing_rows": ok_p, "cost_usd": 0, "category": "Venue"})
+
+    ok_c   = sum(1 for r in results_log if r["status"] == "OK")
+    part_c = sum(1 for r in results_log if r["status"] == "PARTIAL")
+    fail_c = sum(1 for r in results_log if r["status"] == "FAILED")
+    skip_c = sum(1 for r in results_log if r["status"] == "SKIPPED")
+    yield from emit(f"Done — {ok_c} extracted, {part_c} partial, {skip_c} skipped, {fail_c} failed")
+    yield from emit("Cost: ~50% of sequential rate (Batch API discount)")
+    yield {"batch_done": True, "ok": ok_c, "partial": part_c, "failed": fail_c,
+           "skipped": skip_c, "cost_usd": 0.0, "tokens": {},
+           "results": results_log, "credit_exhausted": False, "log": log}
 
 
 # ── PUBLIC GENERATOR ──────────────────────────────────────────────────────────
