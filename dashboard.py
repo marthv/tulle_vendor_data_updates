@@ -16,6 +16,10 @@ Required env vars (set in Railway dashboard):
     XANO_GET_ENDPOINT
     XANO_BASE_URL         — base for enrichment endpoints
 
+Vendor Scraper tab (optional — see scrape_core.py / .env.example for the full list):
+    XANO_PHOTOGRAPHERS_ENDPOINT, XANO_OBSERVATION_ENDPOINT, XANO_PATCH_VENDOR_ENDPOINT
+    REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT (Phase 2 — Reddit source)
+
 Usage/quota trackers (optional — widgets degrade gracefully if unset):
     GCP_PROJECT_ID        — GCP project for Places API quota reads (default "tulle-technologies").
                             Requires the GOOGLE_SERVICE_ACCOUNT_JSON service account to hold the
@@ -39,6 +43,7 @@ import google.oauth2.id_token
 from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import run_extraction, get_pipeline_status
+from scrape_core import run_scrape, get_scrape_status
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 
@@ -404,8 +409,8 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab2, tab5 = st.tabs([
-    "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction"
+tab0, tab2, tab5, tab6 = st.tabs([
+    "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction", "🔎 Vendor Scraper"
 ])
 
 
@@ -1336,3 +1341,171 @@ with tab5:
                         st.warning(f"venue_pricing fetch failed ({vp_resp.status_code})")
                 except Exception as e:
                     st.warning(f"Could not fetch written rows: {e}")
+
+
+# ── TAB 6: VENDOR SCRAPER ─────────────────────────────────────────────────────
+
+with tab6:
+    st.subheader("Vendor Scraper — Photographer Pricing")
+    st.caption(
+        "Politely scrapes photographer **websites** (and Reddit, once configured) → Claude extracts "
+        "package pricing → Xano `photographer_pricing` with source provenance. Same Claude credit guard "
+        "as PDF Extraction. Photographers come from WPTP Updated Mappings (Category = Photographer)."
+    )
+
+    sc_refresh_col, _sc_sp = st.columns([2, 6])
+    with sc_refresh_col:
+        sc_load = st.button("🔄 Load / Refresh Status", type="primary", use_container_width=True, key="sc_refresh")
+
+    if sc_load or st.session_state.get("sc_status_loaded"):
+        if sc_load:
+            st.session_state["sc_data"] = get_scrape_status()
+            st.session_state["sc_status_loaded"] = True
+        sc_data = st.session_state.get("sc_data") or {"rows": [], "counts": {}, "total": 0, "with_website": 0}
+        counts  = sc_data.get("counts", {})
+
+        if not sc_data.get("rows"):
+            st.info(
+                "No photographers loaded. Set **XANO_PHOTOGRAPHERS_ENDPOINT** (GET worklist for "
+                "Category = Photographer) in Railway, then Refresh."
+            )
+        else:
+            sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+            sc1.markdown(_card("card-gray",  "📷", f"{sc_data.get('total', 0):,}",       "Photographers"),  unsafe_allow_html=True)
+            sc2.markdown(_card("card-amber", "⏳", f"{counts.get('pending', 0):,}",       "Pending"),        unsafe_allow_html=True)
+            sc3.markdown(_card("card-green", "✅", f"{counts.get('scraped', 0):,}",       "Scraped"),        unsafe_allow_html=True)
+            sc4.markdown(_card("card-red",   "✗",  f"{counts.get('failed', 0):,}",        "Failed"),         unsafe_allow_html=True)
+            sc5.markdown(_card("card-gray",  "🌐", f"{sc_data.get('with_website', 0):,}", "Have a Website"), unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ── Run controls ──────────────────────────────────────────────────────
+        st.markdown("#### Run Scraper")
+        sc_sources = st.multiselect(
+            "Sources", options=["website", "reddit"], default=["website"],
+            help="Reddit requires REDDIT_CLIENT_ID / SECRET / USER_AGENT; until those are set it is skipped.",
+            key="sc_sources",
+        )
+        sc_run_mode = st.radio(
+            "Run mode",
+            options=["🆕 All pending", "❌ Re-run all failed", "🎯 Specific Vendor IDs", "📏 Row range"],
+            horizontal=True, key="sc_run_mode",
+        )
+        sc_specific = ""
+        sc_start_row, sc_end_row = 0, 10
+        if sc_run_mode == "🎯 Specific Vendor IDs":
+            sc_specific = st.text_area("Vendor IDs (one per line or comma-separated)", height=100,
+                                       placeholder="VND_018\nVND_042", key="sc_specific")
+        elif sc_run_mode == "📏 Row range":
+            scc1, scc2 = st.columns(2)
+            with scc1:
+                sc_start_row = st.number_input("Start row", min_value=0, value=0, step=1, key="sc_start")
+            with scc2:
+                sc_end_row = st.number_input("End row (0 = all)", min_value=0, value=10, step=1, key="sc_end")
+
+        n_pending = counts.get("pending", 0)
+        n_failed  = counts.get("failed", 0)
+        sc_btn_label = {
+            "🆕 All pending":         f"▶ Scrape All Pending ({n_pending})",
+            "❌ Re-run all failed":    f"▶ Re-scrape Failed ({n_failed})",
+            "🎯 Specific Vendor IDs":  "▶ Scrape Specified Vendors",
+            "📏 Row range":            "▶ Scrape Row Range",
+        }.get(sc_run_mode, "▶ Run")
+
+        if "sc_running" not in st.session_state:
+            st.session_state["sc_running"] = False
+        sc_run_btn = st.button(
+            sc_btn_label, type="primary", use_container_width=True,
+            disabled=st.session_state["sc_running"] or not sc_sources, key="sc_run_btn",
+        )
+
+        sc_log_ph  = st.empty()
+        sc_stat_ph = st.empty()
+
+        if sc_run_btn:
+            sc_vendor_ids   = None
+            sc_rerun_failed = False
+            sc_eff_start, sc_eff_end = 0, None
+            if sc_run_mode == "🎯 Specific Vendor IDs":
+                raw = sc_specific.replace(",", "\n")
+                sc_vendor_ids = [v.strip() for v in raw.splitlines() if v.strip()]
+                if not sc_vendor_ids:
+                    st.warning("Enter at least one Vendor ID.")
+                    st.stop()
+            elif sc_run_mode == "❌ Re-run all failed":
+                sc_rerun_failed = True
+            elif sc_run_mode == "📏 Row range":
+                sc_eff_start = int(sc_start_row)
+                sc_eff_end   = None if int(sc_end_row) == 0 else int(sc_end_row)
+
+            st.session_state["sc_running"] = True
+            sc_lines, sc_result = [], None
+            for item in run_scrape(
+                start_row=sc_eff_start, end_row=sc_eff_end,
+                vendor_ids=sc_vendor_ids, rerun_failed=sc_rerun_failed,
+                sources=tuple(sc_sources),
+            ):
+                if isinstance(item, dict):
+                    sc_result = item
+                    break
+                sc_lines.append(item)
+                sc_log_ph.markdown('<div class="log-box">' + "\n".join(sc_lines) + "</div>", unsafe_allow_html=True)
+            st.session_state["sc_running"] = False
+
+            if sc_result:
+                ok   = sc_result["ok"]
+                part = sc_result["partial"]
+                fail = sc_result["failed"]
+                cost = sc_result.get("cost_usd", 0.0)
+                if sc_result.get("credit_exhausted"):
+                    st.toast("🛑 Anthropic credits exhausted — scraping halted.", icon="🛑")
+                    sc_stat_ph.error(f"🛑 Halted — ran out of Anthropic credits after {ok} scraped · ${cost:.4f}")
+                elif fail:
+                    sc_stat_ph.error(f"Done — {ok} scraped, {part} partial, {fail} failed · ${cost:.4f}")
+                elif part:
+                    sc_stat_ph.warning(f"Done — {ok} scraped, {part} partial · ${cost:.4f}")
+                else:
+                    sc_stat_ph.success(f"Done — {ok} scraped · ${cost:.4f}")
+                st.session_state["sc_last_result"]   = sc_result
+                st.session_state["sc_status_loaded"] = True
+                st.session_state["sc_data"]          = get_scrape_status()
+                st.rerun()
+
+        # ── Persistent last-run output (survives the auto-refresh rerun) ──────
+        _sc_last = st.session_state.get("sc_last_result")
+        if _sc_last and _sc_last.get("credit_exhausted"):
+            st.error(
+                "🛑 **Out of Anthropic credits — scraping was halted.**  \n"
+                "Remaining photographers were left **pending** (not failed). Add credits, then re-run."
+            )
+            st.link_button(
+                "💳 Add credits → platform.claude.com/settings/billing",
+                "https://platform.claude.com/settings/billing", type="primary",
+            )
+            st.markdown("---")
+
+        if _sc_last and _sc_last.get("results"):
+            st.markdown("#### Run Summary")
+            for r in _sc_last["results"]:
+                status   = r.get("status", "")
+                vid      = r.get("pdf_id", "")
+                vname    = r.get("venue_name", vid)
+                posted   = r.get("summary_rows", 0)
+                cost     = r.get("cost_usd", 0.0)
+                offering = r.get("offering", "")
+                reason   = r.get("reason", "")
+                card_class = "run-card" if status == "OK" else ("run-card failed" if status == "FAILED" else "run-card partial")
+                badge = ('<span class="run-card-badge badge-green">✓ scraped</span>' if status == "OK"
+                         else '<span class="run-card-badge badge-red">✗ failed</span>' if status == "FAILED"
+                         else f'<span class="run-card-badge badge-amber">⚠ {status.lower()}</span>')
+                parts = []
+                if posted:   parts.append(f"{posted} observation{'s' if posted != 1 else ''}")
+                if offering: parts.append(offering)
+                if cost:     parts.append(f"${cost:.4f}")
+                if reason:   parts.append(f"<span style='color:#ef4444'>{reason}</span>")
+                st.markdown(f"""
+                <div class="{card_class}">
+                    <div class="run-card-title">{badge}{vname} <span style="font-weight:400;color:#9ca3af;font-size:12px">({vid})</span></div>
+                    <div class="run-card-meta">{" · ".join(parts)}</div>
+                </div>
+                """, unsafe_allow_html=True)

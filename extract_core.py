@@ -584,11 +584,13 @@ def _downsample_pdf(pdf_bytes, target_b64_mb=25):
 
 # ── CLAUDE ────────────────────────────────────────────────────────────────────
 
-def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
-    """Returns (parsed_json, cache_note, usage_dict).
-    usage_dict keys: input, output, cache_read, cache_create (all token counts).
-    On error parsed_json is None and usage_dict is {}.
+def _call_claude_messages(client, content_blocks, system_prompt, max_tokens=6000):
+    """Content-agnostic core of the Claude call. `content_blocks` is the full
+    messages[0]['content'] list — the caller decides whether it holds a PDF
+    `document` block (call_claude) or a `text` block (call_claude_text).
 
+    Returns (parsed_json, cache_note, usage_dict). usage_dict keys: input, output,
+    cache_read, cache_create. On error parsed_json is None and usage_dict is {}.
     Retries transient API errors (overload / rate-limit / 5xx / network) and
     empty/garbled JSON with jittered backoff. Raises CreditExhausted on an
     out-of-credits error so the caller can halt the whole run.
@@ -600,14 +602,7 @@ def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
                 model="claude-sonnet-4-20250514",
                 max_tokens=max_tokens,
                 system=system_prompt,
-                messages=[{"role": "user", "content": [
-                    {
-                        "type": "document",
-                        "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
-                        "cache_control": {"type": "ephemeral"}
-                    },
-                    {"type": "text", "text": user_text}
-                ]}]
+                messages=[{"role": "user", "content": content_blocks}]
             )
             usage        = msg.usage
             input_tok    = getattr(usage, 'input_tokens',                0) or 0
@@ -646,6 +641,32 @@ def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
                 continue
             return None, f"Claude error: {e}", {}
     return None, f"Claude error: {last_err}", {}
+
+
+def call_claude(client, pdf_b64, system_prompt, user_text, max_tokens=6000):
+    """PDF extraction call (unchanged public contract). Sends a cached PDF document
+    block + the instruction text. See _call_claude_messages for return shape."""
+    blocks = [
+        {
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+            "cache_control": {"type": "ephemeral"}
+        },
+        {"type": "text", "text": user_text}
+    ]
+    return _call_claude_messages(client, blocks, system_prompt, max_tokens)
+
+
+def call_claude_text(client, source_text, system_prompt, user_text, max_tokens=6000):
+    """Text variant for scraped web pages / Reddit threads. Same retry / credit /
+    return contract as call_claude. `source_text` (the scraped corpus) goes first
+    with ephemeral cache_control so repeated passes over the same page are cheap;
+    `user_text` is the extraction instruction."""
+    blocks = [
+        {"type": "text", "text": source_text, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": user_text}
+    ]
+    return _call_claude_messages(client, blocks, system_prompt, max_tokens)
 
 
 # ── EXTRACTION ────────────────────────────────────────────────────────────────
