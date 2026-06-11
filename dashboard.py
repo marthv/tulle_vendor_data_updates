@@ -1225,9 +1225,31 @@ with tab5:
             st.info(_format_job_display(active_job))
         with job_btn_col:
             st.markdown("")  # spacing
-            if st.button("🔄", key="refresh_extraction_job", help="Refresh job status"):
-                st.session_state["pl_refresh_job"] = True
-                st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄", key="refresh_extraction_job", help="Refresh job status"):
+                    st.session_state["pl_refresh_job"] = True
+                    st.rerun()
+            with col2:
+                if st.button("❌", key="clear_extraction_job", help="Mark as failed (stuck job)"):
+                    try:
+                        endpoint = os.environ.get("XANO_JOB_STATUS_ENDPOINT", "")
+                        if endpoint:
+                            requests.post(
+                                endpoint,
+                                json={
+                                    "job_type": "extraction",
+                                    "status": "failed",
+                                    "user_email": active_job.get("user_email", "unknown"),
+                                    "result_summary": {"reason": "manually marked failed (stuck)"},
+                                    "is_active": False,
+                                    "id": active_job.get("id"),
+                                },
+                                timeout=10
+                            )
+                            st.success("✅ Job marked as failed. Refresh page.")
+                    except Exception as e:
+                        st.error(f"Failed to clear: {e}")
 
     # ── Status overview ───────────────────────────────────────────────────────
     refresh_col, _ = st.columns([2, 6])
