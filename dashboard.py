@@ -897,6 +897,24 @@ with tab2:
         "(images require cached Google data)."
     )
 
+    # ── Display active jobs ───────────────────────────────────────────────────
+    active_google = _get_active_job("google_data")
+    active_images = _get_active_job("vendor_images")
+    if active_google or active_images:
+        job_col1, job_col2 = st.columns(2)
+        if active_google:
+            with job_col1:
+                st.info(f"🔄 **Active Google Data Job**  \n"
+                       f"Started: {active_google.get('started_at', 'unknown')}  \n"
+                       f"User: {active_google.get('user_email', 'unknown')}  \n"
+                       f"Status: {active_google.get('status', 'unknown').upper()}")
+        if active_images:
+            with job_col2:
+                st.info(f"🔄 **Active Vendor Images Job**  \n"
+                       f"Started: {active_images.get('started_at', 'unknown')}  \n"
+                       f"User: {active_images.get('user_email', 'unknown')}  \n"
+                       f"Status: {active_images.get('status', 'unknown').upper()}")
+
     # ── Places API quota tracker (shared by both sections) ────────────────────
     _q = _fetch_places_quota()
     _q_head, _q_link, _q_refresh = st.columns([6, 1.6, 1])
@@ -1494,6 +1512,14 @@ with tab6:
         "package pricing → Xano `photographer_pricing` with source provenance. Same Claude credit guard "
         "as PDF Extraction. Photographers come from WPTP Updated Mappings (Category = Photographer)."
     )
+
+    # ── Display active jobs ───────────────────────────────────────────────────
+    active_scrape = _get_active_job("scrape")
+    if active_scrape:
+        st.info(f"🔄 **Active Scraper Job**  \n"
+               f"Started: {active_scrape.get('started_at', 'unknown')}  \n"
+               f"User: {active_scrape.get('user_email', 'unknown')}  \n"
+               f"Status: {active_scrape.get('status', 'unknown').upper()}")
 
     sc_refresh_col, _sc_sp = st.columns([2, 6])
     with sc_refresh_col:
