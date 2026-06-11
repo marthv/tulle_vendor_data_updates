@@ -74,7 +74,7 @@ def _post_job_status(job_type: str, status: str, user_email: str,
         return False
 
 
-def _get_active_job(job_type: str) -> dict | None:
+def _get_active_job(job_type: str):
     """
     Get the currently active job of a given type from Xano.
     Returns job dict or None if no active job.
