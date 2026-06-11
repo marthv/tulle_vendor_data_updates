@@ -26,6 +26,25 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
 
+# Job progress tracking helper
+def _post_extraction_progress(job_type: str = "extraction", current_pdf: str = "", ok: int = 0,
+                              failed: int = 0, pending: int = 0, total: int = 0) -> dict:
+    """
+    Post extraction progress to the job status endpoint.
+    Returns the result summary dict for dashboard display.
+    Called periodically from the extraction loop to show live progress.
+    """
+    result_summary = {
+        "current_pdf": current_pdf,
+        "ok": ok,
+        "failed": failed,
+        "pending": pending,
+        "total": total,
+    }
+    # Note: Dashboard calls _post_job_status which persists this to Xano
+    # This is just a helper to build the summary structure
+    return result_summary
+
 MONTHS = ["January", "February", "March", "April", "May", "June",
           "July", "August", "September", "October", "November", "December"]
 DAYS   = ["Weekday", "Everyday", "Friday", "Saturday", "Sunday"]
@@ -1518,9 +1537,39 @@ def run_extraction(
     total_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
     total_rows   = len(rows_with_links)
 
+    # Progress tracking for job status updates
+    processed_count = 0
+    current_pdf  = ""
+    last_progress_update = time.time()
+    progress_update_interval = 30  # seconds between progress updates
+
     def _add_usage(u):
         for k in total_tokens:
             total_tokens[k] += u.get(k, 0)
+
+    def _maybe_post_progress():
+        """Post progress update if enough time has passed."""
+        nonlocal last_progress_update
+        now = time.time()
+        if now - last_progress_update >= progress_update_interval:
+            try:
+                from dashboard import _post_job_status
+                user_email = os.environ.get("LOGGED_IN_USER", "extraction-batch")
+                # Count current results by status
+                ok = sum(1 for r in results_log if r.get('status') == 'OK')
+                failed = sum(1 for r in results_log if r.get('status') == 'FAILED')
+                pending = len(batch) - len(results_log)
+                progress = _post_extraction_progress(
+                    current_pdf=current_pdf,
+                    ok=ok,
+                    failed=failed,
+                    pending=pending,
+                    total=len(batch)
+                )
+                _post_job_status("extraction", "running", user_email, progress)
+            except Exception:
+                pass  # Fail silently — don't interrupt extraction
+            last_progress_update = now
 
     for i, row in enumerate(batch):
         pdf_id    = str(row.get('PDF_ID')    or row.get('pdf_id')    or '').strip()
@@ -1529,6 +1578,11 @@ def run_extraction(
         pdf_link  = str(row.get('PDF_Link')  or row.get('pdf_link')  or '').strip()
         xano_id   = row.get('id')   # Xano integer primary key — used for PATCH
         row_num   = (start_row + i + 1) if (not pdf_ids and not rerun_failed) else (i + 1)
+
+        # Update progress tracking
+        current_pdf = pdf_id
+        pending_count = len(batch) - i
+        _maybe_post_progress()
 
         # Default mode dedup
         if not pdf_ids and not rerun_failed and pdf_id in already_done:
@@ -1541,6 +1595,7 @@ def run_extraction(
             yield from emit(f"[{row_num}/{total_rows}] {pdf_id} — {venue_name} — ⏭  skipping (vendor not categorized 'Venue')")
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "SKIPPED", "reason": "non-venue: mapping category != Venue", "cost_usd": 0})
             _update_pdf_status(xano_id, "skipped_non_venue", error="non-venue: mapping category != Venue")
+            _maybe_post_progress()
             continue
 
         yield from emit(f"")
@@ -1554,6 +1609,7 @@ def run_extraction(
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
             patch_result = _update_pdf_status(xano_id, "failed", error=msg)
             yield from emit(f"  📝 Status writeback: {patch_result}")
+            _maybe_post_progress()
             continue
         yield from emit(f"  ✓  Downloaded ({len(pdf_bytes)//1024}KB)")
 
@@ -1565,6 +1621,7 @@ def run_extraction(
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "FAILED", "reason": msg})
             patch_result = _update_pdf_status(xano_id, "failed", error=msg)
             yield from emit(f"  📝 Status writeback: {patch_result}")
+            _maybe_post_progress()
             continue
         if b64_mb > 30:
             # Over Anthropic's ~32MB inline request limit — downsample to fit.
@@ -1741,8 +1798,14 @@ def run_extraction(
             "attributes":   classification.get('venue_attributes',{}).get('value', '') if classification else '',
         })
 
+        _maybe_post_progress()
+
         if i < len(batch) - 1:
             time.sleep(2)
+
+    # Final progress update
+    current_pdf = ""
+    _maybe_post_progress()
 
     # ── Summary ───────────────────────────────────────────────────────────────
     ok_count   = sum(1 for r in results_log if r['status'] == 'OK')

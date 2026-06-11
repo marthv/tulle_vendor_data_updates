@@ -93,8 +93,35 @@ def _get_active_job(job_type: str):
         return None
 
 
+def _parse_timestamp(ts_value) -> float | None:
+    """Parse a timestamp (ISO string, epoch seconds, or epoch milliseconds) to float seconds."""
+    if not ts_value or ts_value == 'unknown':
+        return None
+    try:
+        if isinstance(ts_value, (int, float)):
+            ts = float(ts_value)
+        elif isinstance(ts_value, str):
+            if ts_value.isdigit():
+                ts = float(ts_value)
+            else:
+                from datetime import datetime
+                ts = datetime.fromisoformat(ts_value.replace('Z', '+00:00')).timestamp()
+        else:
+            return None
+
+        # If value > epoch 2025 in seconds, it's probably already in seconds
+        # If value looks like milliseconds (> 1e12), convert to seconds
+        if ts > 1000000000000:  # definitely milliseconds
+            ts = ts / 1000
+        elif ts > 1e11:  # ambiguous but likely milliseconds
+            ts = ts / 1000
+        return ts
+    except Exception:
+        return None
+
+
 def _format_job_display(job: dict) -> str:
-    """Format job info with elapsed time and last update."""
+    """Format job info with elapsed time, progress, and stuck detection."""
     if not job:
         return ""
 
@@ -102,31 +129,63 @@ def _format_job_display(job: dict) -> str:
     updated = job.get('updated_at', 'unknown')
     status = job.get('status', 'unknown').upper()
     user = job.get('user_email', 'unknown')
+    result_summary = job.get('result_summary') or {}
 
-    # Try to calculate elapsed time if we have a timestamp
+    # Parse result summary if it's a string
+    if isinstance(result_summary, str):
+        try:
+            result_summary = json.loads(result_summary)
+        except (json.JSONDecodeError, TypeError):
+            result_summary = {}
+
+    # Extract progress data
+    current_pdf = result_summary.get('current_pdf', '')
+    ok_count = result_summary.get('ok', 0)
+    failed_count = result_summary.get('failed', 0)
+    pending_count = result_summary.get('pending', 0)
+    total_count = result_summary.get('total', 0)
+
+    # Calculate elapsed time
     elapsed = ""
+    stuck_warning = ""
     try:
-        if isinstance(started, str) and started != 'unknown':
-            # Parse timestamp - try both ISO and epoch formats
-            if started.isdigit():
-                started_ts = int(started) / 1000  # milliseconds to seconds
-            else:
-                from datetime import datetime
-                started_ts = datetime.fromisoformat(started.replace('Z', '+00:00')).timestamp()
-            elapsed_secs = int(datetime.now(datetime.timezone.utc).timestamp() - started_ts)
+        started_ts = _parse_timestamp(started)
+        updated_ts = _parse_timestamp(updated)
+        now_ts = datetime.now(datetime.timezone.utc).timestamp()
+
+        if started_ts:
+            elapsed_secs = int(now_ts - started_ts)
             hours = elapsed_secs // 3600
             mins = (elapsed_secs % 3600) // 60
             secs = elapsed_secs % 60
             if hours > 0:
-                elapsed = f" | ⏱️ {hours}h {mins}m elapsed"
+                elapsed = f" | ⏱️ {hours}h {mins}m {secs}s elapsed"
             elif mins > 0:
                 elapsed = f" | ⏱️ {mins}m {secs}s elapsed"
             else:
                 elapsed = f" | ⏱️ {secs}s elapsed"
+
+        # Detect stuck jobs (last update > 2 hours ago)
+        if updated_ts and status == "RUNNING":
+            time_since_update = int(now_ts - updated_ts)
+            if time_since_update > 7200:  # 2 hours
+                update_mins = time_since_update // 60
+                stuck_warning = f"\n⚠️  **Warning**: No progress update in {update_mins}m — job may be stuck"
     except Exception:
         pass
 
-    return f"🔄 **Active Job**  \nStarted: {started}  \nUser: {user}  \nStatus: {status}{elapsed}  \nLast updated: {updated}"
+    # Build progress line
+    progress = ""
+    if ok_count or failed_count or pending_count:
+        progress = f"\n📊 Progress: ✅ {ok_count} extracted · ❌ {failed_count} failed · ⏳ {pending_count} pending"
+        if total_count:
+            pct = int((ok_count + failed_count) / total_count * 100) if total_count > 0 else 0
+            progress += f" ({pct}%)"
+
+    if current_pdf:
+        progress += f"\n🔍 Processing: {current_pdf}"
+
+    return f"🔄 **Active Job**  \nStarted: {started}  \nUser: {user}  \nStatus: {status}{elapsed}  \nLast updated: {updated}{progress}{stuck_warning}"
 
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
