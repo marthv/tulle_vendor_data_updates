@@ -1055,6 +1055,15 @@ with tab5:
         "Run pending, failed, or specific PDFs without touching already-extracted records."
     )
 
+    # ── Display active jobs ───────────────────────────────────────────────────
+    active_job = _get_active_job("extraction")
+    if active_job:
+        with st.info(f"🔄 **Active Extraction Job**  \n"
+                    f"Started: {active_job.get('started_at', 'unknown')}  \n"
+                    f"User: {active_job.get('user_email', 'unknown')}  \n"
+                    f"Status: {active_job.get('status', 'unknown').upper()}"):
+            pass
+
     # ── Status overview ───────────────────────────────────────────────────────
     refresh_col, _ = st.columns([2, 6])
     with refresh_col:
