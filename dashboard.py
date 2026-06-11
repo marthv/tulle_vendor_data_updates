@@ -15,6 +15,8 @@ Required env vars (set in Railway dashboard):
     XANO_PRICING_ENDPOINT
     XANO_GET_ENDPOINT
     XANO_BASE_URL         — base for enrichment endpoints
+    XANO_JOB_STATUS_ENDPOINT  — POST endpoint to track persistent job status (survives logouts)
+    XANO_JOBS_ENDPOINT    — GET endpoint to fetch active jobs
 
 Vendor Scraper tab (optional — see scrape_core.py / .env.example for the full list):
     XANO_PHOTOGRAPHERS_ENDPOINT, XANO_OBSERVATION_ENDPOINT, XANO_PATCH_VENDOR_ENDPOINT
@@ -45,6 +47,51 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import (run_extraction, get_pipeline_status,
                           run_extraction_batch, process_batch_results)
 from scrape_core import run_scrape, get_scrape_status
+
+
+# ── JOB STATUS TRACKING (persistent across logouts) ──────────────────────────
+
+def _post_job_status(job_type: str, status: str, user_email: str,
+                     result_summary: dict = None, batch_id: str = None) -> bool:
+    """
+    Post job status to Xano for persistence across logouts.
+    Returns True if successful, False otherwise.
+    """
+    job_endpoint = os.environ.get("XANO_JOB_STATUS_ENDPOINT", "")
+    if not job_endpoint:
+        return False
+    try:
+        payload = {
+            "job_type": job_type,
+            "status": status,
+            "user_email": user_email,
+            "result_summary": result_summary,
+            "batch_id": batch_id,
+        }
+        r = requests.post(job_endpoint, json=payload, timeout=10)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+def _get_active_job(job_type: str) -> dict | None:
+    """
+    Get the currently active job of a given type from Xano.
+    Returns job dict or None if no active job.
+    """
+    jobs_endpoint = os.environ.get("XANO_JOBS_ENDPOINT", "")
+    if not jobs_endpoint:
+        return None
+    try:
+        r = requests.get(f"{jobs_endpoint}?job_type={job_type}&is_active=true", timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, list) and len(data) > 0:
+                return data[0]
+        return None
+    except Exception:
+        return None
+
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 
@@ -1095,7 +1142,7 @@ with tab5:
         filter_status = st.multiselect(
             "Filter by status",
             options=['pending', 'extracted', 'partial', 'failed', 'skipped'],
-            default=['pending', 'failed', 'partial'],
+            default=['pending'],
             key="pl_filter_status",
         )
         search_term = st.text_input("Search by PDF_ID or venue name", key="pl_search", placeholder="e.g. PDF_042 or Cipriani")
@@ -1218,6 +1265,8 @@ with tab5:
         if run_btn:
             pdf_ids_list, rerun_failed, eff_start, eff_end = _parse_run_args()
             st.session_state["pl_running"] = True
+            # Track job persistently (survives logouts)
+            _post_job_status("extraction", "running", st.session_state.get("user_email", "unknown"))
             pl_lines = []; pl_result = None
             run_started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -1236,6 +1285,10 @@ with tab5:
                         unsafe_allow_html=True,
                     )
                 st.session_state["pl_running"] = False
+                # Track job completion persistently
+                job_status = "completed" if (pl_result and pl_result.get("batch_submitted")) else "failed"
+                _post_job_status("extraction", job_status, st.session_state.get("user_email", "unknown"),
+                                 result_summary=pl_result)
                 if pl_result and pl_result.get("batch_submitted"):
                     bid = pl_result["batch_id"]
                     st.session_state["pl_batch_id"]   = bid
@@ -1261,6 +1314,9 @@ with tab5:
                         unsafe_allow_html=True,
                     )
                 st.session_state["pl_running"] = False
+                # Track job completion persistently
+                _post_job_status("extraction", "completed", st.session_state.get("user_email", "unknown"),
+                                 result_summary=pl_result)
 
                 if pl_result:
                     ok   = pl_result["ok"]
@@ -1516,6 +1572,8 @@ with tab6:
                 sc_eff_end   = None if int(sc_end_row) == 0 else int(sc_end_row)
 
             st.session_state["sc_running"] = True
+            # Track job persistently (survives logouts)
+            _post_job_status("scrape", "running", st.session_state.get("user_email", "unknown"))
             sc_lines, sc_result = [], None
             for item in run_scrape(
                 start_row=sc_eff_start, end_row=sc_eff_end,
@@ -1528,6 +1586,9 @@ with tab6:
                 sc_lines.append(item)
                 sc_log_ph.markdown('<div class="log-box">' + "\n".join(sc_lines) + "</div>", unsafe_allow_html=True)
             st.session_state["sc_running"] = False
+            # Track job completion persistently
+            _post_job_status("scrape", "completed", st.session_state.get("user_email", "unknown"),
+                             result_summary=sc_result)
 
             if sc_result:
                 ok   = sc_result["ok"]
