@@ -28,7 +28,9 @@ import io
 
 # Job progress tracking helper
 def _post_extraction_progress(job_type: str = "extraction", current_pdf: str = "", ok: int = 0,
-                              failed: int = 0, pending: int = 0, total: int = 0) -> dict:
+                              failed: int = 0, pending: int = 0, total: int = 0,
+                              start_row: int = 0, end_row: int = 0, pdf_ids: list = None,
+                              vendor_ids: list = None) -> dict:
     """
     Post extraction progress to the job status endpoint.
     Returns the result summary dict for dashboard display.
@@ -40,9 +42,12 @@ def _post_extraction_progress(job_type: str = "extraction", current_pdf: str = "
         "failed": failed,
         "pending": pending,
         "total": total,
+        "start_row": start_row,
+        "end_row": end_row,
+        "pdf_count": len(pdf_ids) if pdf_ids else 0,
+        "vendor_sample": pdf_ids[:3] if pdf_ids else [],  # First 3 PDFs in job
+        "vendor_ids": vendor_ids[:5] if vendor_ids else [],  # First 5 vendors
     }
-    # Note: Dashboard calls _post_job_status which persists this to Xano
-    # This is just a helper to build the summary structure
     return result_summary
 
 MONTHS = ["January", "February", "March", "April", "May", "June",
@@ -1559,12 +1564,19 @@ def run_extraction(
                 ok = sum(1 for r in results_log if r.get('status') == 'OK')
                 failed = sum(1 for r in results_log if r.get('status') == 'FAILED')
                 pending = len(batch) - len(results_log)
+                # Extract job params
+                batch_pdfs = [str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() for r in batch[:5]]
+                batch_vendors = [str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip() for r in batch[:5]]
                 progress = _post_extraction_progress(
                     current_pdf=current_pdf,
                     ok=ok,
                     failed=failed,
                     pending=pending,
-                    total=len(batch)
+                    total=len(batch),
+                    start_row=start_row,
+                    end_row=min(start_row + len(batch), total_rows),
+                    pdf_ids=batch_pdfs,
+                    vendor_ids=batch_vendors
                 )
                 _post_job_status("extraction", "running", user_email, progress)
             except Exception:

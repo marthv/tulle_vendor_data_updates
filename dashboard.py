@@ -93,6 +93,25 @@ def _get_active_job(job_type: str):
         return None
 
 
+def _get_job_history(job_type: str, limit: int = 20):
+    """
+    Get completed jobs of a given type from Xano.
+    Returns list of job dicts, newest first.
+    """
+    jobs_endpoint = os.environ.get("XANO_JOBS_ENDPOINT", "")
+    if not jobs_endpoint:
+        return []
+    try:
+        r = requests.get(f"{jobs_endpoint}?job_type={job_type}&is_active=false&limit={limit}", timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, list):
+                return data
+        return []
+    except Exception:
+        return []
+
+
 def _parse_timestamp(ts_value) -> float | None:
     """Parse a timestamp (ISO string, epoch seconds, or epoch milliseconds) to float seconds."""
     if not ts_value or ts_value == 'unknown':
@@ -1629,6 +1648,46 @@ with tab5:
                         st.warning(f"venue_pricing fetch failed ({vp_resp.status_code})")
                 except Exception as e:
                     st.warning(f"Could not fetch written rows: {e}")
+
+        st.markdown("---")
+
+        # ── Job History ───────────────────────────────────────────────────────
+        st.markdown("#### Job History")
+        st.caption("Recent extraction jobs with their row ranges, PDFs, and vendors")
+
+        history = _get_job_history("extraction", limit=15)
+        if history:
+            history_rows = []
+            for job in history:
+                summary = job.get('result_summary') or {}
+                if isinstance(summary, str):
+                    try:
+                        summary = json.loads(summary)
+                    except (json.JSONDecodeError, TypeError):
+                        summary = {}
+
+                status = job.get('status', 'unknown')
+                started = job.get('started_at', '')
+                user = job.get('user_email', '')
+                start_row = summary.get('start_row', '-')
+                end_row = summary.get('end_row', '-')
+                pdf_count = summary.get('total', 0)
+                vendors = summary.get('vendor_ids', [])
+                vendor_str = ', '.join(vendors[:3]) + ('...' if len(vendors) > 3 else '')
+
+                history_rows.append({
+                    'Status': status.upper(),
+                    'User': user,
+                    'Started': str(started)[:19],
+                    'Rows': f"{start_row}–{end_row}",
+                    'PDFs': pdf_count,
+                    'Vendors': vendor_str,
+                })
+
+            df_hist = pd.DataFrame(history_rows)
+            st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        else:
+            st.info("No completed jobs yet")
 
 
 # ── TAB 6: VENDOR SCRAPER ─────────────────────────────────────────────────────
