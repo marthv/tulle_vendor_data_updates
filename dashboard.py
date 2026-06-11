@@ -901,19 +901,44 @@ with tab2:
     active_google = _get_active_job("google_data")
     active_images = _get_active_job("vendor_images")
     if active_google or active_images:
-        job_col1, job_col2 = st.columns(2)
-        if active_google:
-            with job_col1:
+        if active_google and active_images:
+            g_col1, g_col2, g_btn = st.columns([2.4, 2.4, 0.2])
+            with g_col1:
                 st.info(f"🔄 **Active Google Data Job**  \n"
                        f"Started: {active_google.get('started_at', 'unknown')}  \n"
                        f"User: {active_google.get('user_email', 'unknown')}  \n"
                        f"Status: {active_google.get('status', 'unknown').upper()}")
-        if active_images:
-            with job_col2:
+            with g_col2:
                 st.info(f"🔄 **Active Vendor Images Job**  \n"
                        f"Started: {active_images.get('started_at', 'unknown')}  \n"
                        f"User: {active_images.get('user_email', 'unknown')}  \n"
                        f"Status: {active_images.get('status', 'unknown').upper()}")
+            with g_btn:
+                st.markdown("")
+                if st.button("🔄", key="refresh_google_jobs", help="Refresh job status"):
+                    st.rerun()
+        elif active_google:
+            g_col1, g_btn = st.columns([5, 1])
+            with g_col1:
+                st.info(f"🔄 **Active Google Data Job**  \n"
+                       f"Started: {active_google.get('started_at', 'unknown')}  \n"
+                       f"User: {active_google.get('user_email', 'unknown')}  \n"
+                       f"Status: {active_google.get('status', 'unknown').upper()}")
+            with g_btn:
+                st.markdown("")
+                if st.button("🔄", key="refresh_google_data_job", help="Refresh job status"):
+                    st.rerun()
+        else:
+            g_col1, g_btn = st.columns([5, 1])
+            with g_col1:
+                st.info(f"🔄 **Active Vendor Images Job**  \n"
+                       f"Started: {active_images.get('started_at', 'unknown')}  \n"
+                       f"User: {active_images.get('user_email', 'unknown')}  \n"
+                       f"Status: {active_images.get('status', 'unknown').upper()}")
+            with g_btn:
+                st.markdown("")
+                if st.button("🔄", key="refresh_vendor_images_job", help="Refresh job status"):
+                    st.rerun()
 
     # ── Places API quota tracker (shared by both sections) ────────────────────
     _q = _fetch_places_quota()
@@ -1076,11 +1101,16 @@ with tab5:
     # ── Display active jobs ───────────────────────────────────────────────────
     active_job = _get_active_job("extraction")
     if active_job:
-        with st.info(f"🔄 **Active Extraction Job**  \n"
-                    f"Started: {active_job.get('started_at', 'unknown')}  \n"
-                    f"User: {active_job.get('user_email', 'unknown')}  \n"
-                    f"Status: {active_job.get('status', 'unknown').upper()}"):
-            pass
+        job_info_col, job_btn_col = st.columns([5, 1])
+        with job_info_col:
+            st.info(f"🔄 **Active Extraction Job**  \n"
+                   f"Started: {active_job.get('started_at', 'unknown')}  \n"
+                   f"User: {active_job.get('user_email', 'unknown')}  \n"
+                   f"Status: {active_job.get('status', 'unknown').upper()}")
+        with job_btn_col:
+            st.markdown("")  # spacing
+            if st.button("🔄", key="refresh_extraction_job", help="Refresh job status"):
+                st.rerun()
 
     # ── Status overview ───────────────────────────────────────────────────────
     refresh_col, _ = st.columns([2, 6])
@@ -1516,10 +1546,16 @@ with tab6:
     # ── Display active jobs ───────────────────────────────────────────────────
     active_scrape = _get_active_job("scrape")
     if active_scrape:
-        st.info(f"🔄 **Active Scraper Job**  \n"
-               f"Started: {active_scrape.get('started_at', 'unknown')}  \n"
-               f"User: {active_scrape.get('user_email', 'unknown')}  \n"
-               f"Status: {active_scrape.get('status', 'unknown').upper()}")
+        scrape_info_col, scrape_btn_col = st.columns([5, 1])
+        with scrape_info_col:
+            st.info(f"🔄 **Active Scraper Job**  \n"
+                   f"Started: {active_scrape.get('started_at', 'unknown')}  \n"
+                   f"User: {active_scrape.get('user_email', 'unknown')}  \n"
+                   f"Status: {active_scrape.get('status', 'unknown').upper()}")
+        with scrape_btn_col:
+            st.markdown("")  # spacing
+            if st.button("🔄", key="refresh_scrape_job", help="Refresh job status"):
+                st.rerun()
 
     sc_refresh_col, _sc_sp = st.columns([2, 6])
     with sc_refresh_col:
