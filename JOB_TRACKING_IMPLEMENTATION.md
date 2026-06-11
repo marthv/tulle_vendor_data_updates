@@ -123,13 +123,37 @@ Display with refresh button & elapsed time
 4. Dashboard fetches via `_get_active_job()` and displays with timestamp parsing
 5. Stuck job detection triggers if `updated_at > 2 hours old`
 
+## Phase 3: Job History with Row Ranges & Vendor Info ✅ COMPLETE
+
+**Commit:** `94e5047`  
+**Date:** June 11, 2026
+**Tokens used:** ~20k (minimal)
+**Cost:** ~$0.15
+
+### Changes
+- ✅ Enhanced `_post_extraction_progress()` to capture job parameters:
+  - `start_row` / `end_row` — row range for this job
+  - `pdf_ids` — first 3 PDFs in the batch
+  - `vendor_ids` — first 5 vendor IDs in the batch
+  - `pdf_count` — total PDFs processed
+- ✅ Added `_get_job_history(job_type, limit=20)` to fetch completed jobs from Xano
+- ✅ Dashboard "Job History" table in extraction tab showing:
+  - Status, User, Started, Row range, PDF count, Vendor sample
+
+### Sample Display
+```
+Status    User              Started            Rows      PDFs  Vendors
+COMPLETED user@example.com  2026-06-11 12:15   100-150   50    Venue-1, Venue-2...
+RUNNING   admin@example.com 2026-06-11 13:30   200-250   50    Caterer-1, Caterer-2...
+```
+
 ### What Still Needs Work
 
-### Phase 3: Job History & Performance Metrics
-- Store completed job results in separate table (job_history)
-- Dashboard "Last 10 extraction jobs" with timing and cost
-- Performance metrics: avg extraction time per PDF, failure rate by vendor category
-- Manual "Mark as failed" button for genuinely stuck jobs (override 2h timeout)
+### Phase 4: Performance Metrics & Advanced Features
+- Performance dashboard: avg time per PDF, cost breakdown, failure rate by category
+- Manual "Mark as Failed" override button for stuck jobs
+- Filtering by vendor category, status, date range
+- Job re-run button (restart with same parameters)
 
 ## Testing Checklist
 
