@@ -93,6 +93,42 @@ def _get_active_job(job_type: str):
         return None
 
 
+def _format_job_display(job: dict) -> str:
+    """Format job info with elapsed time and last update."""
+    if not job:
+        return ""
+
+    started = job.get('started_at', 'unknown')
+    updated = job.get('updated_at', 'unknown')
+    status = job.get('status', 'unknown').upper()
+    user = job.get('user_email', 'unknown')
+
+    # Try to calculate elapsed time if we have a timestamp
+    elapsed = ""
+    try:
+        if isinstance(started, str) and started != 'unknown':
+            # Parse timestamp - try both ISO and epoch formats
+            if started.isdigit():
+                started_ts = int(started) / 1000  # milliseconds to seconds
+            else:
+                from datetime import datetime
+                started_ts = datetime.fromisoformat(started.replace('Z', '+00:00')).timestamp()
+            elapsed_secs = int(datetime.now(datetime.timezone.utc).timestamp() - started_ts)
+            hours = elapsed_secs // 3600
+            mins = (elapsed_secs % 3600) // 60
+            secs = elapsed_secs % 60
+            if hours > 0:
+                elapsed = f" | ⏱️ {hours}h {mins}m elapsed"
+            elif mins > 0:
+                elapsed = f" | ⏱️ {mins}m {secs}s elapsed"
+            else:
+                elapsed = f" | ⏱️ {secs}s elapsed"
+    except Exception:
+        pass
+
+    return f"🔄 **Active Job**  \nStarted: {started}  \nUser: {user}  \nStatus: {status}{elapsed}  \nLast updated: {updated}"
+
+
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -898,46 +934,44 @@ with tab2:
     )
 
     # ── Display active jobs ───────────────────────────────────────────────────
-    active_google = _get_active_job("google_data")
-    active_images = _get_active_job("vendor_images")
+    if st.session_state.get("gg_refresh_jobs"):
+        with st.spinner("Fetching latest job status..."):
+            active_google = _get_active_job("google_data")
+            active_images = _get_active_job("vendor_images")
+        st.session_state["gg_refresh_jobs"] = False
+    else:
+        active_google = _get_active_job("google_data")
+        active_images = _get_active_job("vendor_images")
+
     if active_google or active_images:
         if active_google and active_images:
             g_col1, g_col2, g_btn = st.columns([2.4, 2.4, 0.2])
             with g_col1:
-                st.info(f"🔄 **Active Google Data Job**  \n"
-                       f"Started: {active_google.get('started_at', 'unknown')}  \n"
-                       f"User: {active_google.get('user_email', 'unknown')}  \n"
-                       f"Status: {active_google.get('status', 'unknown').upper()}")
+                st.info(_format_job_display(active_google))
             with g_col2:
-                st.info(f"🔄 **Active Vendor Images Job**  \n"
-                       f"Started: {active_images.get('started_at', 'unknown')}  \n"
-                       f"User: {active_images.get('user_email', 'unknown')}  \n"
-                       f"Status: {active_images.get('status', 'unknown').upper()}")
+                st.info(_format_job_display(active_images))
             with g_btn:
                 st.markdown("")
                 if st.button("🔄", key="refresh_google_jobs", help="Refresh job status"):
+                    st.session_state["gg_refresh_jobs"] = True
                     st.rerun()
         elif active_google:
             g_col1, g_btn = st.columns([5, 1])
             with g_col1:
-                st.info(f"🔄 **Active Google Data Job**  \n"
-                       f"Started: {active_google.get('started_at', 'unknown')}  \n"
-                       f"User: {active_google.get('user_email', 'unknown')}  \n"
-                       f"Status: {active_google.get('status', 'unknown').upper()}")
+                st.info(_format_job_display(active_google))
             with g_btn:
                 st.markdown("")
                 if st.button("🔄", key="refresh_google_data_job", help="Refresh job status"):
+                    st.session_state["gg_refresh_jobs"] = True
                     st.rerun()
         else:
             g_col1, g_btn = st.columns([5, 1])
             with g_col1:
-                st.info(f"🔄 **Active Vendor Images Job**  \n"
-                       f"Started: {active_images.get('started_at', 'unknown')}  \n"
-                       f"User: {active_images.get('user_email', 'unknown')}  \n"
-                       f"Status: {active_images.get('status', 'unknown').upper()}")
+                st.info(_format_job_display(active_images))
             with g_btn:
                 st.markdown("")
                 if st.button("🔄", key="refresh_vendor_images_job", help="Refresh job status"):
+                    st.session_state["gg_refresh_jobs"] = True
                     st.rerun()
 
     # ── Places API quota tracker (shared by both sections) ────────────────────
@@ -1099,17 +1133,22 @@ with tab5:
     )
 
     # ── Display active jobs ───────────────────────────────────────────────────
-    active_job = _get_active_job("extraction")
+    job_info_col, job_btn_col = st.columns([5, 1])
+
+    if st.session_state.get("pl_refresh_job"):
+        with st.spinner("Fetching latest job status..."):
+            active_job = _get_active_job("extraction")
+        st.session_state["pl_refresh_job"] = False
+    else:
+        active_job = _get_active_job("extraction")
+
     if active_job:
-        job_info_col, job_btn_col = st.columns([5, 1])
         with job_info_col:
-            st.info(f"🔄 **Active Extraction Job**  \n"
-                   f"Started: {active_job.get('started_at', 'unknown')}  \n"
-                   f"User: {active_job.get('user_email', 'unknown')}  \n"
-                   f"Status: {active_job.get('status', 'unknown').upper()}")
+            st.info(_format_job_display(active_job))
         with job_btn_col:
             st.markdown("")  # spacing
             if st.button("🔄", key="refresh_extraction_job", help="Refresh job status"):
+                st.session_state["pl_refresh_job"] = True
                 st.rerun()
 
     # ── Status overview ───────────────────────────────────────────────────────
@@ -1544,17 +1583,21 @@ with tab6:
     )
 
     # ── Display active jobs ───────────────────────────────────────────────────
-    active_scrape = _get_active_job("scrape")
+    if st.session_state.get("sc_refresh_job"):
+        with st.spinner("Fetching latest job status..."):
+            active_scrape = _get_active_job("scrape")
+        st.session_state["sc_refresh_job"] = False
+    else:
+        active_scrape = _get_active_job("scrape")
+
     if active_scrape:
         scrape_info_col, scrape_btn_col = st.columns([5, 1])
         with scrape_info_col:
-            st.info(f"🔄 **Active Scraper Job**  \n"
-                   f"Started: {active_scrape.get('started_at', 'unknown')}  \n"
-                   f"User: {active_scrape.get('user_email', 'unknown')}  \n"
-                   f"Status: {active_scrape.get('status', 'unknown').upper()}")
+            st.info(_format_job_display(active_scrape))
         with scrape_btn_col:
             st.markdown("")  # spacing
             if st.button("🔄", key="refresh_scrape_job", help="Refresh job status"):
+                st.session_state["sc_refresh_job"] = True
                 st.rerun()
 
     sc_refresh_col, _sc_sp = st.columns([2, 6])
