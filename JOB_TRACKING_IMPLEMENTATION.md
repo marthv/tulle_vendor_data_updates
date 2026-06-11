@@ -101,21 +101,35 @@ Display with refresh button & elapsed time
 9. Xano sets is_active=false
 10. Display auto-hides when query returns no active jobs
 
-## What Still Needs Work
+## Phase 2: Detailed Progress Tracking ✅ COMPLETE
 
-### Phase 2: Detailed Progress Tracking
-- **Problem:** Currently only shows "RUNNING" with start time. Need: current PDF, success/failure counts
-- **Solution:** Modify `extract_core.py` to send granular updates
-- **Requires:**
-  - Periodic `_post_job_status()` calls during extraction
-  - Store in `result_summary`: `{current_pdf: "PDF_042", ok: 12, failed: 2, pending: 50}`
-  - Display this detail in dashboard
-  - Add "stuck job" detection: if `updated_at` too old, flag it
-  
-### Phase 3: Job History
-- Store completed job results in separate table
-- Dashboard can show "Last 10 extraction jobs"
-- Performance metrics: average time, failure rate by PDF type
+**Commit:** `43e556a`  
+**Date:** June 11, 2026
+
+### Changes
+- ✅ Fixed timestamp parsing in `_format_job_display()` — handles epoch ms, seconds, and ISO
+- ✅ Added `_post_extraction_progress()` helper to extract_core.py
+- ✅ Periodic progress updates every 30 seconds during extraction loop
+- ✅ Tracks: current PDF, ok count, failed count, pending count
+- ✅ Dashboard now shows:
+  - Progress bar: `📊 Progress: ✅ N extracted · ❌ M failed · ⏳ P pending (X%)`
+  - Currently processing: `🔍 Processing: PDF_042`
+  - Stuck job detection: `⚠️ Warning: No progress update in Nm — job may be stuck`
+
+### How It Works
+1. Extraction loop calls `_maybe_post_progress()` after each PDF completes
+2. Function calculates counts from `results_log` (real data, not estimates)
+3. If 30+ seconds since last update, posts to Xano via `_post_job_status()`
+4. Dashboard fetches via `_get_active_job()` and displays with timestamp parsing
+5. Stuck job detection triggers if `updated_at > 2 hours old`
+
+### What Still Needs Work
+
+### Phase 3: Job History & Performance Metrics
+- Store completed job results in separate table (job_history)
+- Dashboard "Last 10 extraction jobs" with timing and cost
+- Performance metrics: avg extraction time per PDF, failure rate by vendor category
+- Manual "Mark as failed" button for genuinely stuck jobs (override 2h timeout)
 
 ## Testing Checklist
 
