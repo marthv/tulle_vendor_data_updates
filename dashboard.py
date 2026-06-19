@@ -1994,21 +1994,32 @@ def _vp_is_venue(category):
     return str(category or "").strip().lower() == "venue"
 
 
-def _vp_build_index(t11_rows):
-    """{Vendor_ID: {name, state, max_cap}} for venue rows only."""
-    idx = {}
-    for r in t11_rows:
-        if not _vp_is_venue(r.get("Category")):
-            continue
-        vid = str(r.get("Vendor_ID") or r.get("vendor_id") or "").strip()
-        if not vid:
-            continue
-        idx[vid] = {
-            "name":    str(r.get("Name") or r.get("name") or "").strip(),
-            "state":   str(r.get("State") or "").strip().upper(),
-            "max_cap": _vp_num(r.get("Max_Capacity_Seated")),
-        }
-    return idx
+# Longitude bands spanning the continental US. map_light caps at 2,500 rows/call, so we
+# pull in bands narrow enough that none truncates, then union. (The /wptp_*_search and
+# /wptp_updated_mappings endpoints default State_Input to "New York" and only return 574
+# NY venues — map_light is geo-filtered, not state-filtered, so it sees every state.)
+_VP_MAP_BANDS = [(-125, -100), (-100, -87), (-87, -78), (-78, -71), (-71, -66)]
+
+
+def _vp_fetch_venue_index():
+    """{Vendor_ID: {name, state}} for ALL venues nationwide, via map_light geo bands.
+    Returns (idx, error_str)."""
+    idx, err = {}, ""
+    for w, e in _VP_MAP_BANDS:
+        rows, ee = _vp_fetch_all(f"{XANO_BASE}/wptp_map_light?north=50&south=24&east={e}&west={w}")
+        if ee:
+            err = ee
+        for r in rows:
+            if not _vp_is_venue(r.get("Category")):
+                continue
+            vid = str(r.get("Vendor_ID") or "").strip()
+            if not vid:
+                continue
+            idx[vid] = {
+                "name":  str(r.get("Name") or "").strip(),
+                "state": str(r.get("State") or "").strip(),
+            }
+    return idx, err
 
 
 def _vp_join(t36_dedup, vendor_idx):
@@ -2029,7 +2040,7 @@ def _vp_join(t36_dedup, vendor_idx):
             "space":      (r.get("Venue_Space_Name") or "").strip(),
             "pdf_id":     r.get("PDF_ID"),
             "guest_min":  _vp_num(r.get("Guest_Min_Highest_Sat")),
-            "max_cap":    _vp_num(r.get("Max_Capacity_Seated")) or v["max_cap"],
+            "max_cap":    _vp_num(r.get("Max_Capacity_Seated")),
             "venue_fee":  _vp_num(r.get("Venue_Fee_on_a_Peak_Season_Saturday")),
             "pp_fb":      _vp_num(r.get("Per_Person_Food_and_Beverage_on_a_Peak_Season_Saturday")),
             "fb_min":     _vp_num(r.get("Food_and_Beverage_Min_on_a_Peak_Season_Saturday")),
@@ -2096,18 +2107,17 @@ def _vp_load():
     """Pull + dedup + join (venues only) + PDF links. Cached 10 min; _vp_load.clear() to refresh.
     Returns (joined_rows, pdf_map, meta)."""
     t36, e36 = _vp_fetch_all(f"{XANO_BASE}/all_extracted_pdf_data")
-    t11, e11 = _vp_fetch_all(f"{XANO_BASE}/wptp_updated_mappings")
     pdfs, ep = _vp_fetch_all(f"{XANO_BASE}/wptp_pdfs")
+    idx, ei  = _vp_fetch_venue_index()
     t36d = _vp_dedup_latest(t36)
-    idx  = _vp_build_index(t11)
     joined = _vp_join(t36d, idx)
     pdf_map = _vp_build_pdf_map(pdfs)
     meta = {
         "errors": [x for x in (f"table36:{e36}" if e36 else "",
-                               f"table11:{e11}" if e11 else "",
+                               f"map_light:{ei}" if ei else "",
                                f"wptp_pdfs:{ep}" if ep else "") if x],
         "counts": {"t36_raw": len(t36), "t36_deduped": len(t36d),
-                   "t11_venues": len(idx), "joined": len(joined),
+                   "venues": len(idx), "joined": len(joined),
                    "pdf_vendors": len(pdf_map)},
         "states":      sorted({r["state"] for r in joined if r["state"]}),
         "venue_types": sorted({r["venue_type"] for r in joined if r["venue_type"]}),
@@ -2317,6 +2327,6 @@ numbers and the venue's pricing PDFs.
 
             cnt = vp_meta["counts"]
             st.caption(
-                f"Data: {cnt['joined']:,} priced venue rows · {cnt['t11_venues']:,} venues · "
+                f"Data: {cnt['joined']:,} priced venue rows · {cnt['venues']:,} venues (all states) · "
                 f"deduped {cnt['t36_deduped']:,}/{cnt['t36_raw']:,} table-36 rows"
             )
