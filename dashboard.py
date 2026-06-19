@@ -2026,6 +2026,7 @@ def _vp_join(t36_dedup, vendor_idx):
             "state":      v["state"],
             "venue_type": (r.get("Venue_Type") or "").strip(),
             "year":       str(r.get("Pricing_Year") or "").strip(),
+            "space":      (r.get("Venue_Space_Name") or "").strip(),
             "pdf_id":     r.get("PDF_ID"),
             "guest_min":  _vp_num(r.get("Guest_Min_Highest_Sat")),
             "max_cap":    _vp_num(r.get("Max_Capacity_Seated")) or v["max_cap"],
@@ -2071,24 +2072,48 @@ def _vp_money(n):
     return "$%d" % round(n)
 
 
+def _vp_build_pdf_map(pdf_rows):
+    """{Vendor_ID: [{name, link, year}]} from wptp_pdfs, skipping hidden / link-less."""
+    m = {}
+    for r in pdf_rows:
+        vid  = str(r.get("Vendor_ID") or "").strip()
+        link = str(r.get("PDF_Link") or "").strip()
+        if not vid or not link:
+            continue
+        show = r.get("Show_PDF")
+        if show is False or str(show).strip() in ("0", "false", "False"):
+            continue
+        m.setdefault(vid, []).append({
+            "name": (str(r.get("Name") or r.get("Current_Assignment") or "PDF")).strip() or "PDF",
+            "link": link,
+            "year": str(r.get("Year_of_Pricing") or "").strip(),
+        })
+    return m
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def _vp_load():
-    """Pull + dedup + join (venues only). Cached 10 min; ._vp_load.clear() to refresh."""
+    """Pull + dedup + join (venues only) + PDF links. Cached 10 min; _vp_load.clear() to refresh.
+    Returns (joined_rows, pdf_map, meta)."""
     t36, e36 = _vp_fetch_all(f"{XANO_BASE}/all_extracted_pdf_data")
     t11, e11 = _vp_fetch_all(f"{XANO_BASE}/wptp_updated_mappings")
+    pdfs, ep = _vp_fetch_all(f"{XANO_BASE}/wptp_pdfs")
     t36d = _vp_dedup_latest(t36)
     idx  = _vp_build_index(t11)
     joined = _vp_join(t36d, idx)
+    pdf_map = _vp_build_pdf_map(pdfs)
     meta = {
         "errors": [x for x in (f"table36:{e36}" if e36 else "",
-                               f"table11:{e11}" if e11 else "") if x],
+                               f"table11:{e11}" if e11 else "",
+                               f"wptp_pdfs:{ep}" if ep else "") if x],
         "counts": {"t36_raw": len(t36), "t36_deduped": len(t36d),
-                   "t11_venues": len(idx), "joined": len(joined)},
+                   "t11_venues": len(idx), "joined": len(joined),
+                   "pdf_vendors": len(pdf_map)},
         "states":      sorted({r["state"] for r in joined if r["state"]}),
         "venue_types": sorted({r["venue_type"] for r in joined if r["venue_type"]}),
         "years":       sorted({r["year"] for r in joined if r["year"]}),
     }
-    return joined, meta
+    return joined, pdf_map, meta
 
 
 def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
@@ -2110,13 +2135,13 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
         cand = qualify or rows
         # Representative = cheapest qualifying space; keep ITS breakdown so the
         # components shown sum to the displayed estimate.
-        best_est, best_parts = None, None
+        best_est, best_parts, best_row = None, None, None
         for r in cand:
             est, parts = _vp_estimate_parts(r, G)
             if est <= 0:
                 continue
             if best_est is None or est < best_est:
-                best_est, best_parts = est, parts
+                best_est, best_parts, best_row = est, parts, r
         if best_est is None:
             continue
         n_quotes = len({r["pdf_id"] for r in rows})
@@ -2139,6 +2164,13 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
             "Admin":    round(best_parts["admin"]),
             "Ceremony": round(best_parts["ceremony"]),
             "Estimate": round(best_est),                  # "from" price — tunable
+            # detail-only (underscore keys are dropped from the displayed table):
+            "_vid":       vid,
+            "_space":     best_row.get("space", ""),
+            "_per_head":  best_row["pp_fb"],
+            "_fb_min":    best_row["fb_min"],
+            "_admin_pct": best_row["admin_pct"],
+            "_cer_type":  best_row["cer_type"],
         })
     vendors.sort(key=lambda v: v["Estimate"], reverse=True)
     return vendors
@@ -2157,7 +2189,7 @@ with tab_vp:
             _vp_load.clear()
 
     with st.spinner("Loading venue pricing from Xano…"):
-        vp_joined, vp_meta = _vp_load()
+        vp_joined, vp_pdf_map, vp_meta = _vp_load()
 
     if vp_meta["errors"]:
         st.error("Xano fetch issue — " + ", ".join(vp_meta["errors"]))
@@ -2192,12 +2224,30 @@ with tab_vp:
             m5.metric("Venues",       len(vendors))
             m6.metric("Total quotes", sum(v["Quotes"] for v in vendors))
 
+            with st.expander("ℹ️ How the estimate is calculated"):
+                st.markdown(
+                    f"""
+For each venue we take its **cheapest qualifying space** (one that can host **{guests} guests**)
+and add up, using peak-season-Saturday pricing:
+
+- **Base fee** — the venue rental.
+- **F&B** = `max(per-person F&B × {guests} guests, F&B minimum)` — so it **scales with the guest
+  count** you pick above; the minimum only kicks in when {guests} guests don't reach it.
+- **Admin** = `(Base fee + F&B) × admin/service %`.
+- **Ceremony** — flat, or `× {guests}` when the venue charges ceremony per person.
+
+There is **no tax** in the data, so tax is not included. Click any row below to see the exact
+numbers and the venue's pricing PDFs.
+                    """
+                )
+
             df = pd.DataFrame(vendors)
             _vp_order = ["Venue", "State", "Type", "Capacity", "Quotes", "Year",
                          "Base fee", "F&B", "Admin", "Ceremony", "Estimate"]
-            df = df[[c for c in _vp_order if c in df.columns]]
-            st.dataframe(
+            df = df[[c for c in _vp_order if c in df.columns]].reset_index(drop=True)
+            _vp_event = st.dataframe(
                 df, use_container_width=True, hide_index=True,
+                on_select="rerun", selection_mode="single-row", key="vp_table",
                 column_config={
                     "Capacity": st.column_config.NumberColumn("Capacity", format="%.0f"),
                     "Quotes":   st.column_config.NumberColumn("Quotes",   format="%.0f"),
@@ -2209,6 +2259,36 @@ with tab_vp:
                     "Estimate": st.column_config.NumberColumn("Estimate", format="$%.0f"),
                 },
             )
+
+            # ── Detail panel for the selected venue (F&B math + PDFs) ──────────
+            _sel = (_vp_event.selection.rows if _vp_event and _vp_event.selection else [])
+            if _sel:
+                v = vendors[_sel[0]]
+                st.markdown(f"#### {v['Venue']} — breakdown @ {guests} guests")
+                per_head, fb_min = v["_per_head"], v["_fb_min"]
+                by_head = per_head * guests
+                which = "per-head applies" if by_head >= fb_min else "F&B minimum applies"
+                cer_pp = any(s in v["_cer_type"].lower() for s in ("per person", "per head", "pp"))
+                d1, d2 = st.columns([3, 2])
+                with d1:
+                    st.markdown(
+                        f"- **Base fee:** {_vp_money(v['Base fee'])}"
+                        + (f"  ·  space: {v['_space']}" if v["_space"] else "") + "\n"
+                        f"- **F&B:** max( ${per_head:,.0f}/guest × {guests} = ${by_head:,.0f} ,  "
+                        f"min ${fb_min:,.0f} ) → **{_vp_money(v['F&B'])}**  _({which})_\n"
+                        f"- **Admin:** (base + F&B) × {v['_admin_pct']:.0f}% → {_vp_money(v['Admin'])}\n"
+                        f"- **Ceremony:** {_vp_money(v['Ceremony'])}  _({'per person × ' + str(guests) if cer_pp else 'flat'})_\n"
+                        f"- **Estimate (from):** {_vp_money(v['Estimate'])}"
+                    )
+                with d2:
+                    pdfs = vp_pdf_map.get(v["_vid"], [])
+                    if pdfs:
+                        st.markdown("**Pricing PDFs**")
+                        for p in pdfs:
+                            lbl = p["name"] + (f" · {p['year']}" if p["year"] else "")
+                            st.markdown(f"- [{lbl}]({p['link']})")
+                    else:
+                        st.caption("No pricing PDFs linked for this venue.")
 
             st.markdown("#### Average estimate · State × Venue type")
             st.caption("Each cell = average estimate for the current guest count & filters · greener = cheaper")
