@@ -2039,15 +2039,24 @@ def _vp_join(t36_dedup, vendor_idx):
     return out
 
 
-def _vp_estimate(row, G):
-    """All-in estimate: base + max(per-head*G, F&B min) + admin% + ceremony. No tax."""
+def _vp_estimate_parts(row, G):
+    """All-in estimate for one pricing row. Returns (total, parts) where parts holds
+    the components that roll up to the total: base + max(per-head*G, F&B min) +
+    admin% + ceremony. No tax (none in Xano)."""
     fb = max(row["pp_fb"] * G, row["fb_min"])
     subtotal = row["venue_fee"] + fb
     admin = subtotal * (row["admin_pct"] / 100.0)
     t = row["cer_type"].lower()
     per_person = ("per person" in t) or ("per head" in t) or (t == "pp")
     ceremony = row["cer_fee"] * G if per_person else row["cer_fee"]
-    return subtotal + admin + ceremony
+    total = subtotal + admin + ceremony
+    return total, {"base": row["venue_fee"], "fb": fb, "admin": admin, "ceremony": ceremony}
+
+
+def _vp_year_int(s):
+    """Pull a 4-digit year out of Pricing_Year text → int (None if absent)."""
+    m = re.search(r"\d{4}", str(s or ""))
+    return int(m.group()) if m else None
 
 
 def _vp_money(n):
@@ -2099,8 +2108,16 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
     for vid, rows in by_vendor.items():
         qualify = [r for r in rows if r["guest_min"] <= G and (r["max_cap"] == 0 or G <= r["max_cap"])]
         cand = qualify or rows
-        ests = [e for e in (_vp_estimate(r, G) for r in cand) if e > 0]
-        if not ests:
+        # Representative = cheapest qualifying space; keep ITS breakdown so the
+        # components shown sum to the displayed estimate.
+        best_est, best_parts = None, None
+        for r in cand:
+            est, parts = _vp_estimate_parts(r, G)
+            if est <= 0:
+                continue
+            if best_est is None or est < best_est:
+                best_est, best_parts = est, parts
+        if best_est is None:
             continue
         n_quotes = len({r["pdf_id"] for r in rows})
         if n_quotes < min_quotes:
@@ -2108,16 +2125,20 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
         name = rows[0]["name"] or ""
         if q and q not in name.lower():
             continue
-        cap = int(max((r["max_cap"] for r in rows), default=0))
-        years = [r["year"] for r in rows if r["year"]]
+        cap = int(max((r["max_cap"] for r in rows), default=0)) or None
+        years = [y for y in (_vp_year_int(r["year"]) for r in rows) if y]
         vendors.append({
             "Venue":    name,
             "State":    rows[0]["state"] or "—",
             "Type":     rows[0]["venue_type"] or "—",
-            "Capacity": cap or None,
-            "Quotes":   n_quotes,
-            "Year":     max(years) if years else "—",
-            "Estimate": min(ests),   # "from" price — tunable
+            "Capacity": cap,                              # numeric (sortable)
+            "Quotes":   n_quotes,                         # numeric
+            "Year":     max(years) if years else None,    # numeric
+            "Base fee": round(best_parts["base"]),
+            "F&B":      round(best_parts["fb"]),
+            "Admin":    round(best_parts["admin"]),
+            "Ceremony": round(best_parts["ceremony"]),
+            "Estimate": round(best_est),                  # "from" price — tunable
         })
     vendors.sort(key=lambda v: v["Estimate"], reverse=True)
     return vendors
@@ -2172,9 +2193,22 @@ with tab_vp:
             m6.metric("Total quotes", sum(v["Quotes"] for v in vendors))
 
             df = pd.DataFrame(vendors)
-            df_show = df.copy()
-            df_show["Estimate"] = df_show["Estimate"].map(_vp_money)
-            st.dataframe(df_show, use_container_width=True, hide_index=True)
+            _vp_order = ["Venue", "State", "Type", "Capacity", "Quotes", "Year",
+                         "Base fee", "F&B", "Admin", "Ceremony", "Estimate"]
+            df = df[[c for c in _vp_order if c in df.columns]]
+            st.dataframe(
+                df, use_container_width=True, hide_index=True,
+                column_config={
+                    "Capacity": st.column_config.NumberColumn("Capacity", format="%.0f"),
+                    "Quotes":   st.column_config.NumberColumn("Quotes",   format="%.0f"),
+                    "Year":     st.column_config.NumberColumn("Year",     format="%.0f"),
+                    "Base fee": st.column_config.NumberColumn("Base fee", format="$%.0f"),
+                    "F&B":      st.column_config.NumberColumn("F&B",      format="$%.0f"),
+                    "Admin":    st.column_config.NumberColumn("Admin",    format="$%.0f"),
+                    "Ceremony": st.column_config.NumberColumn("Ceremony", format="$%.0f"),
+                    "Estimate": st.column_config.NumberColumn("Estimate", format="$%.0f"),
+                },
+            )
 
             st.markdown("#### Average estimate · State × Venue type")
             st.caption("Each cell = average estimate for the current guest count & filters · greener = cheaper")
@@ -2191,9 +2225,12 @@ with tab_vp:
                     c = tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
                     return f"background-color: rgb({c[0]},{c[1]},{c[2]})"
 
-                styled = (pivot.style
-                          .applymap(_vp_cell_style)
-                          .format(lambda v: "" if pd.isna(v) else _vp_money(v)))
+                # pandas >= 2.1 renamed Styler.applymap -> Styler.map (applymap removed
+                # in newer versions); pick whichever exists.
+                _sty = pivot.style
+                _elementwise = getattr(_sty, "map", None) or _sty.applymap
+                styled = _elementwise(_vp_cell_style).format(
+                    lambda v: "" if pd.isna(v) else _vp_money(v))
                 st.dataframe(styled, use_container_width=True)
             else:
                 st.caption("Not enough venue-type data to build the matrix.")
