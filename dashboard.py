@@ -387,11 +387,26 @@ if not st.session_state.authenticated:
         auth_url = _build_google_auth_url()
         _, btn_col, _ = st.columns([2, 3, 2])
         with btn_col:
-            st.link_button(
-                "Sign in with Google",
-                auth_url,
-                use_container_width=True,
-                type="primary",
+            # Same-tab sign-in: st.link_button always renders target="_blank", which
+            # sends the Google OAuth flow to a NEW tab and strands the user on the login
+            # screen in the original tab. A plain anchor with target="_self" navigates the
+            # current tab, so the redirect back to the app lands where the user started.
+            st.markdown(
+                f"""
+                <style>
+                .tulle-gsignin {{
+                    display:block; width:100%; box-sizing:border-box;
+                    text-align:center; text-decoration:none;
+                    background:#1B7A4A; color:#fff !important; font-weight:500;
+                    padding:0.55rem 1rem; border-radius:7px;
+                    font-family:'Source Sans Pro', sans-serif; font-size:1rem;
+                    transition:background .15s;
+                }}
+                .tulle-gsignin:hover {{ background:#155f39; }}
+                </style>
+                <a class="tulle-gsignin" href="{auth_url}" target="_self">Sign in with Google</a>
+                """,
+                unsafe_allow_html=True,
             )
     else:
         # Fallback: password auth (for local dev when Google OAuth not configured)
@@ -571,8 +586,9 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab2, tab5, tab6 = st.tabs([
-    "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction", "🔎 Vendor Scraper"
+tab0, tab2, tab5, tab6, tab_vp = st.tabs([
+    "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction", "🔎 Vendor Scraper",
+    "💰 Venue Pricing"
 ])
 
 
@@ -1901,3 +1917,286 @@ with tab6:
                     <div class="run-card-meta">{" · ".join(parts)}</div>
                 </div>
                 """, unsafe_allow_html=True)
+
+
+# ══ VENUE PRICING TAB ══════════════════════════════════════════════════════════
+# Approximates an all-in venue cost for a chosen guest count from raw Xano pricing
+# (table 36 all_extracted_pdf_data) joined to the vendor master (table 11
+# wptp_updated_mappings), then aggregates across a filtered grid. Venues only.
+# No tax field exists in Xano, so tax is not included.
+
+def _vp_num(x):
+    """Coerce None / '' / '$1,200' / decimal-strings to float (default 0.0)."""
+    if x is None:
+        return 0.0
+    if isinstance(x, (int, float)):
+        return float(x)
+    s = str(x).replace("$", "").replace(",", "").strip()
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _vp_ts(v):
+    """last_extracted_at -> comparable number (epoch int/ms or ISO string; 0 if missing)."""
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        return datetime.datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def _vp_fetch_all(url, per_page=500):
+    """Pull every page from a Xano list endpoint (unauthenticated, matching the
+    app's other reads). Returns (rows, error_str)."""
+    items, page = [], 1
+    while True:
+        try:
+            r = requests.get(url, params={"page": page, "per_page": per_page}, timeout=60)
+        except Exception as e:
+            return items, str(e)
+        if r.status_code != 200:
+            return items, str(r.status_code)
+        data = r.json()
+        if isinstance(data, dict):
+            data = data.get("items") or data.get("data") or data.get("result") or []
+        if not isinstance(data, list) or not data:
+            break
+        items.extend(data)
+        if len(data) < per_page:
+            break
+        page += 1
+    return items, ""
+
+
+def _vp_dedup_latest(rows):
+    """Table 36 appends a new row per extraction; keep the latest per PDF_ID."""
+    best, passthrough = {}, []
+    for r in rows:
+        pid = r.get("PDF_ID")
+        if not pid:
+            passthrough.append(r)
+            continue
+        prev = best.get(pid)
+        if prev is None or _vp_ts(r.get("last_extracted_at")) >= _vp_ts(prev.get("last_extracted_at")):
+            best[pid] = r
+    return list(best.values()) + passthrough
+
+
+def _vp_is_venue(category):
+    return str(category or "").strip().lower() == "venue"
+
+
+def _vp_build_index(t11_rows):
+    """{Vendor_ID: {name, state, max_cap}} for venue rows only."""
+    idx = {}
+    for r in t11_rows:
+        if not _vp_is_venue(r.get("Category")):
+            continue
+        vid = str(r.get("Vendor_ID") or r.get("vendor_id") or "").strip()
+        if not vid:
+            continue
+        idx[vid] = {
+            "name":    str(r.get("Name") or r.get("name") or "").strip(),
+            "state":   str(r.get("State") or "").strip().upper(),
+            "max_cap": _vp_num(r.get("Max_Capacity_Seated")),
+        }
+    return idx
+
+
+def _vp_join(t36_dedup, vendor_idx):
+    """Inner-join deduped pricing rows to the venue master on VENDOR_ID. Drops
+    non-venue / unmatched rows."""
+    out = []
+    for r in t36_dedup:
+        vid = str(r.get("VENDOR_ID") or "").strip()
+        v = vendor_idx.get(vid)
+        if v is None:
+            continue
+        out.append({
+            "vendor_id":  vid,
+            "name":       v["name"] or (r.get("VENUE_NAME") or "").strip(),
+            "state":      v["state"],
+            "venue_type": (r.get("Venue_Type") or "").strip(),
+            "year":       str(r.get("Pricing_Year") or "").strip(),
+            "pdf_id":     r.get("PDF_ID"),
+            "guest_min":  _vp_num(r.get("Guest_Min_Highest_Sat")),
+            "max_cap":    _vp_num(r.get("Max_Capacity_Seated")) or v["max_cap"],
+            "venue_fee":  _vp_num(r.get("Venue_Fee_on_a_Peak_Season_Saturday")),
+            "pp_fb":      _vp_num(r.get("Per_Person_Food_and_Beverage_on_a_Peak_Season_Saturday")),
+            "fb_min":     _vp_num(r.get("Food_and_Beverage_Min_on_a_Peak_Season_Saturday")),
+            "admin_pct":  _vp_num(r.get("Admin_Service_Fee")),
+            "cer_fee":    _vp_num(r.get("Ceremony_Fee")),
+            "cer_type":   (r.get("Ceremony_fee_Type") or "").strip(),
+        })
+    return out
+
+
+def _vp_estimate(row, G):
+    """All-in estimate: base + max(per-head*G, F&B min) + admin% + ceremony. No tax."""
+    fb = max(row["pp_fb"] * G, row["fb_min"])
+    subtotal = row["venue_fee"] + fb
+    admin = subtotal * (row["admin_pct"] / 100.0)
+    t = row["cer_type"].lower()
+    per_person = ("per person" in t) or ("per head" in t) or (t == "pp")
+    ceremony = row["cer_fee"] * G if per_person else row["cer_fee"]
+    return subtotal + admin + ceremony
+
+
+def _vp_money(n):
+    try:
+        n = float(n)
+    except (TypeError, ValueError):
+        return "—"
+    if n <= 0:
+        return "—"
+    if n >= 1000:
+        return "$%.*fK" % (0 if n >= 100000 else 1, n / 1000.0)
+    return "$%d" % round(n)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _vp_load():
+    """Pull + dedup + join (venues only). Cached 10 min; ._vp_load.clear() to refresh."""
+    t36, e36 = _vp_fetch_all(f"{XANO_BASE}/all_extracted_pdf_data")
+    t11, e11 = _vp_fetch_all(f"{XANO_BASE}/wptp_updated_mappings")
+    t36d = _vp_dedup_latest(t36)
+    idx  = _vp_build_index(t11)
+    joined = _vp_join(t36d, idx)
+    meta = {
+        "errors": [x for x in (f"table36:{e36}" if e36 else "",
+                               f"table11:{e11}" if e11 else "") if x],
+        "counts": {"t36_raw": len(t36), "t36_deduped": len(t36d),
+                   "t11_venues": len(idx), "joined": len(joined)},
+        "states":      sorted({r["state"] for r in joined if r["state"]}),
+        "venue_types": sorted({r["venue_type"] for r in joined if r["venue_type"]}),
+        "years":       sorted({r["year"] for r in joined if r["year"]}),
+    }
+    return joined, meta
+
+
+def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
+    """One representative ('from') estimate per venue + quote count, after filters."""
+    by_vendor = {}
+    for r in joined:
+        if f_state != "All" and r["state"] != f_state:
+            continue
+        if f_type != "All" and r["venue_type"] != f_type:
+            continue
+        if f_year != "All" and r["year"] != f_year:
+            continue
+        by_vendor.setdefault(r["vendor_id"], []).append(r)
+
+    q = (search or "").strip().lower()
+    vendors = []
+    for vid, rows in by_vendor.items():
+        qualify = [r for r in rows if r["guest_min"] <= G and (r["max_cap"] == 0 or G <= r["max_cap"])]
+        cand = qualify or rows
+        ests = [e for e in (_vp_estimate(r, G) for r in cand) if e > 0]
+        if not ests:
+            continue
+        n_quotes = len({r["pdf_id"] for r in rows})
+        if n_quotes < min_quotes:
+            continue
+        name = rows[0]["name"] or ""
+        if q and q not in name.lower():
+            continue
+        cap = int(max((r["max_cap"] for r in rows), default=0))
+        years = [r["year"] for r in rows if r["year"]]
+        vendors.append({
+            "Venue":    name,
+            "State":    rows[0]["state"] or "—",
+            "Type":     rows[0]["venue_type"] or "—",
+            "Capacity": cap or None,
+            "Quotes":   n_quotes,
+            "Year":     max(years) if years else "—",
+            "Estimate": min(ests),   # "from" price — tunable
+        })
+    vendors.sort(key=lambda v: v["Estimate"], reverse=True)
+    return vendors
+
+
+with tab_vp:
+    st.markdown("### 💰 Venue Pricing — approximate all-in cost")
+    st.caption(
+        "Peak-season Saturday estimate · base fee + F&B (with minimum) + admin% + ceremony "
+        "· no tax (none in Xano). Venues only. Estimate per venue is the cheapest qualifying space."
+    )
+
+    _vp_rc, _ = st.columns([2, 6])
+    with _vp_rc:
+        if st.button("🔄 Load / Refresh", type="primary", use_container_width=True, key="vp_refresh"):
+            _vp_load.clear()
+
+    with st.spinner("Loading venue pricing from Xano…"):
+        vp_joined, vp_meta = _vp_load()
+
+    if vp_meta["errors"]:
+        st.error("Xano fetch issue — " + ", ".join(vp_meta["errors"]))
+
+    if not vp_joined:
+        st.info("No venue pricing data available. Click Load / Refresh to retry.")
+    else:
+        c1, c2, c3, c4, c5 = st.columns([1.2, 1.4, 1.6, 1.2, 1.1])
+        guests  = c1.selectbox("Guest count", [50, 75, 100, 125, 150, 175, 200, 250, 300],
+                               index=4, key="vp_guests")
+        f_state = c2.selectbox("State", ["All"] + vp_meta["states"], key="vp_state")
+        f_type  = c3.selectbox("Venue type", ["All"] + vp_meta["venue_types"], key="vp_type")
+        f_year  = c4.selectbox("Year", ["All"] + vp_meta["years"], key="vp_year")
+        min_q   = c5.number_input("Min quotes", min_value=0, value=0, step=1, key="vp_minq")
+        search  = st.text_input("Filter by venue name", key="vp_search", placeholder="e.g. Mansion")
+
+        vendors = _vp_compute_vendors(vp_joined, guests, f_state, f_type, f_year, int(min_q), search)
+
+        if not vendors:
+            st.warning("No venues match these filters.")
+        else:
+            ests = sorted(v["Estimate"] for v in vendors)
+            avg = sum(ests) / len(ests)
+            mid = len(ests) // 2
+            med = ests[mid] if len(ests) % 2 else (ests[mid - 1] + ests[mid]) / 2.0
+
+            m1, m2, m3, m4, m5, m6 = st.columns(6)
+            m1.metric("Avg estimate", _vp_money(avg))
+            m2.metric("Median",       _vp_money(med))
+            m3.metric("Min",          _vp_money(ests[0]))
+            m4.metric("Max",          _vp_money(ests[-1]))
+            m5.metric("Venues",       len(vendors))
+            m6.metric("Total quotes", sum(v["Quotes"] for v in vendors))
+
+            df = pd.DataFrame(vendors)
+            df_show = df.copy()
+            df_show["Estimate"] = df_show["Estimate"].map(_vp_money)
+            st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+            st.markdown("#### Average estimate · State × Venue type")
+            st.caption("Each cell = average estimate for the current guest count & filters · greener = cheaper")
+            pivot = df.pivot_table(index="State", columns="Type", values="Estimate", aggfunc="mean")
+            if pivot.size and pivot.notna().any().any():
+                _flat = [v for v in pivot.values.flatten() if pd.notna(v)]
+                _lo, _hi = min(_flat), max(_flat)
+
+                def _vp_cell_style(val):
+                    if pd.isna(val):
+                        return ""
+                    t = (val - _lo) / (_hi - _lo) if _hi > _lo else 0.0
+                    a, b = (234, 244, 239), (245, 201, 138)  # sage-lt → amber
+                    c = tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+                    return f"background-color: rgb({c[0]},{c[1]},{c[2]})"
+
+                styled = (pivot.style
+                          .applymap(_vp_cell_style)
+                          .format(lambda v: "" if pd.isna(v) else _vp_money(v)))
+                st.dataframe(styled, use_container_width=True)
+            else:
+                st.caption("Not enough venue-type data to build the matrix.")
+
+            cnt = vp_meta["counts"]
+            st.caption(
+                f"Data: {cnt['joined']:,} priced venue rows · {cnt['t11_venues']:,} venues · "
+                f"deduped {cnt['t36_deduped']:,}/{cnt['t36_raw']:,} table-36 rows"
+            )
