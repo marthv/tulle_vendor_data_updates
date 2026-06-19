@@ -34,6 +34,7 @@ Optional fallback (if GOOGLE_CLIENT_ID is not set, password auth is used):
 
 import os
 import re
+import time
 import base64
 import datetime
 import json
@@ -1950,27 +1951,29 @@ def _vp_ts(v):
         return 0.0
 
 
-def _vp_fetch_all(url, per_page=500):
-    """Pull every page from a Xano list endpoint (unauthenticated, matching the
-    app's other reads). Returns (rows, error_str)."""
-    items, page = [], 1
-    while True:
+def _vp_fetch_all(url):
+    """Single GET — these Xano endpoints return the full table in one response (same
+    pattern the Data Explorer uses successfully; adding page/per_page params made them
+    503). Retries briefly on a transient 503. Returns (rows, error_str)."""
+    last = ""
+    for attempt in range(3):
         try:
-            r = requests.get(url, params={"page": page, "per_page": per_page}, timeout=60)
+            r = requests.get(url, timeout=120)
         except Exception as e:
-            return items, str(e)
-        if r.status_code != 200:
-            return items, str(r.status_code)
-        data = r.json()
-        if isinstance(data, dict):
-            data = data.get("items") or data.get("data") or data.get("result") or []
-        if not isinstance(data, list) or not data:
-            break
-        items.extend(data)
-        if len(data) < per_page:
-            break
-        page += 1
-    return items, ""
+            last = str(e)
+            time.sleep(1.0)
+            continue
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, dict):
+                data = data.get("items") or data.get("data") or data.get("result") or []
+            return (data if isinstance(data, list) else []), ""
+        last = str(r.status_code)
+        if r.status_code == 503:        # transient Xano nginx 503 — brief backoff, retry
+            time.sleep(1.5)
+            continue
+        break                            # other errors (4xx/5xx) won't fix on retry
+    return [], last
 
 
 def _vp_dedup_latest(rows):
