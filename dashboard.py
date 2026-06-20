@@ -45,15 +45,16 @@ from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import (run_extraction, get_pipeline_status,
                           run_extraction_batch, process_batch_results,
-                          list_recent_batches)
+                          list_recent_batches, ingest_batch_by_id)
 
 
 # ── JOB STATUS TRACKING (persistent across logouts) ──────────────────────────
 
-def _xano_get_with_retry(url: str, timeout: int = 10, attempts: int = 4):
-    """GET a Xano URL, retrying transient 5xx / network errors with backoff so a
-    momentary Xano 502/503 doesn't blank the UI (job history, active job). Returns
-    parsed JSON on success, or None if every attempt failed. 4xx is NOT retried."""
+def _xano_get_with_retry(url: str, timeout: int = 8, attempts: int = 3):
+    """GET a Xano URL, retrying transient 5xx / network errors with short backoff so
+    a momentary Xano 502/503 doesn't blank the UI (job history, active job). Kept
+    deliberately light — these run on every render, so a SUSTAINED outage must fail
+    fast rather than hang the whole page. Returns parsed JSON or None. 4xx not retried."""
     for i in range(attempts):
         try:
             r = requests.get(url, timeout=timeout)
@@ -64,7 +65,7 @@ def _xano_get_with_retry(url: str, timeout: int = 10, attempts: int = 4):
         except Exception:
             pass
         if i < attempts - 1:
-            time.sleep(min(8, 1.5 * (i + 1)))
+            time.sleep(1.0 * (i + 1))   # 1s, 2s — ~3s worst case per read
     return None
 
 def _post_job_status(job_type: str, status: str, user_email: str,
@@ -76,18 +77,30 @@ def _post_job_status(job_type: str, status: str, user_email: str,
     job_endpoint = os.environ.get("XANO_JOB_STATUS_ENDPOINT", "")
     if not job_endpoint:
         return False
-    try:
-        payload = {
-            "job_type": job_type,
-            "status": status,
-            "user_email": user_email,
-            "result_summary": result_summary,
-            "batch_id": batch_id,
-        }
-        r = requests.post(job_endpoint, json=payload, timeout=10)
-        return r.status_code == 200
-    except Exception:
-        return False
+    payload = {
+        "job_type": job_type,
+        "status": status,
+        "user_email": user_email,
+        "result_summary": result_summary,
+        "batch_id": batch_id,
+    }
+    # Retry on transient 5xx / network errors. This write is load-bearing for
+    # batches: it persists the batch_id + pdf_map, and if it's lost the dashboard
+    # can't map results back (the batch is orphaned). A Xano 503 blip must not
+    # orphan a batch, so retry with backoff. (Upsert endpoint, so a duplicate from
+    # a lost-response retry is harmless — resume dedups by batch_id.)
+    for i in range(4):
+        try:
+            r = requests.post(job_endpoint, json=payload, timeout=10)
+            if r.status_code == 200:
+                return True
+            if r.status_code < 500:
+                return False  # 4xx won't self-heal
+        except Exception:
+            pass
+        if i < 3:
+            time.sleep(min(8, 1.5 * (i + 1)))
+    return False
 
 
 def _get_active_job(job_type: str):
@@ -1938,6 +1951,37 @@ with tab5:
                         st.rerun()
                     else:
                         st.info("Still processing — check again later.")
+
+        # ── Recovery: ingest any ended batch by its ID ────────────────────────
+        # No saved job record needed — reconstructs the PDF→vendor map from the
+        # batch's own results. Use this when a batch shows ENDED in the Anthropic
+        # panel above but never got a Resume / Check Batch Results button (e.g. the
+        # job record was lost to a Xano outage at submit time).
+        with st.expander("🔧 Ingest a batch by ID (recovery)", expanded=False):
+            st.caption(
+                "Paste a batch ID from the **Anthropic batch jobs** panel above. "
+                "Works even if the batch never appeared in Job History — it rebuilds "
+                "the vendor map from the batch results and posts them to Xano."
+            )
+            _rec_id = st.text_input("Batch ID", key="pl_recover_id",
+                                    placeholder="msgbatch_…")
+            if st.button("⤓ Ingest this batch ID", key="pl_recover_btn") and _rec_id.strip():
+                rec_lines = []; rec_result = None
+                rec_ph = st.empty()
+                for item in ingest_batch_by_id(_rec_id.strip(), wait_secs=0):
+                    if isinstance(item, dict):
+                        rec_result = item
+                        break
+                    rec_lines.append(item)
+                    rec_ph.markdown('<div class="log-box">' + "\n".join(rec_lines) + "</div>",
+                                    unsafe_allow_html=True)
+                if rec_result and rec_result.get("batch_done"):
+                    ok = rec_result.get("ok", 0); fail = rec_result.get("failed", 0)
+                    st.success(f"Ingested — {ok} extracted, {fail} failed. "
+                               "Refresh status to see the rows update.")
+                    st.session_state["pl_data"] = get_pipeline_status()
+                elif rec_result:
+                    st.warning(f"Could not ingest: {rec_result.get('error', 'still processing or no mapping')}")
 
         # ── Last run summary (persists after rerun via session_state) ─────────
         _last_result = st.session_state.get("pl_last_result")

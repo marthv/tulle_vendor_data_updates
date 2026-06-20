@@ -930,13 +930,23 @@ def _update_pdf_status(xano_id, status, error="", cost_usd=0.0,
     # attempt is counted once at ingest, so the marker must not inflate the counter.
     if bump_attempts:
         payload["extraction_attempts"] = 1  # Xano increments server-side (current + 1)
-    try:
-        r = requests.patch(url, json=payload, timeout=10)
-        if r.status_code in (200, 201, 204):
-            return f"ok ({r.status_code}) → {url}"
-        return f"err {r.status_code}: {r.text[:200]}"
-    except Exception as e:
-        return f"exception: {e}"
+    # Retry on transient 5xx / network errors so a Xano blip doesn't drop the status
+    # write (the "Marked 0/N batch_submitted" symptom) or lose an ingest status. 4xx
+    # is returned immediately — it won't self-heal.
+    last = "no attempt"
+    for i in range(3):
+        try:
+            r = requests.patch(url, json=payload, timeout=10)
+            if r.status_code in (200, 201, 204):
+                return f"ok ({r.status_code}) → {url}"
+            if r.status_code < 500:
+                return f"err {r.status_code}: {r.text[:200]}"
+            last = f"err {r.status_code}: {r.text[:200]}"
+        except Exception as e:
+            last = f"exception: {e}"
+        if i < 2:
+            time.sleep(1.0 * (i + 1))
+    return last
 
 
 def _compute_cost(usage_dict):
@@ -1422,7 +1432,12 @@ def list_recent_batches(limit: int = 20):
             return str(dt)
 
     out = []
-    for b in client.messages.batches.list(limit=limit):   # iterating auto-paginates
+    # NOTE: iterating the SDK list object auto-paginates through EVERY batch on the
+    # account — so cap it at `limit` to avoid a slow crawl through hundreds of old
+    # batches (which made "Load batches" appear to hang).
+    for b in client.messages.batches.list(limit=limit):
+        if len(out) >= limit:
+            break
         rc = getattr(b, "request_counts", None)
         succeeded = getattr(rc, "succeeded", 0) if rc else 0
         errored   = getattr(rc, "errored", 0) if rc else 0
@@ -1708,6 +1723,79 @@ def poll_and_ingest_batches(log=print):
         else:
             summary["batches"].append({"batch_id": bid, "result": "ingest_incomplete"})
     return summary
+
+
+def ingest_batch_by_id(batch_id, wait_secs=0):
+    """Recovery ingest using ONLY a batch id — no saved job record / pdf_map needed.
+    Reconstructs the pdf_map from the batch's OWN result custom_ids (each is
+    "<PDF_ID>__<pass>") joined to wptp_pdfs for vendor_id / venue_name / xano_id, then
+    runs the normal ingest. This rescues a batch whose job record was lost (e.g. a
+    Xano outage at submit time, where the dashboard never persisted batch_id+pdf_map).
+    Yields log strings; final item is the process_batch_results contract dict."""
+    log = []
+
+    def emit(line):
+        log.append(line)
+        return (line,)
+
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    yield from emit(f"Reconstructing batch {batch_id} from its results…")
+
+    # 1) Pull the authoritative PDF_IDs straight out of the batch result custom_ids.
+    pdf_ids = set()
+    try:
+        for result in client.messages.batches.results(batch_id):
+            cid = result.custom_id or ""
+            if "__" in cid:
+                pdf_ids.add(cid.rsplit("__", 1)[0])
+    except Exception as e:
+        yield from emit(f"Could not read batch results (is it ended yet?): {e}")
+        yield {"batch_done": False, "error": str(e)}
+        return
+    if not pdf_ids:
+        yield from emit("No PDF ids found in this batch's results.")
+        yield {"batch_done": False, "error": "no_pdf_ids"}
+        return
+    yield from emit(f"{len(pdf_ids)} PDFs in batch — looking up vendors in wptp_pdfs…")
+
+    # 2) Join to wptp_pdfs for vendor_id / venue_name / xano_id.
+    rows = []
+    try:
+        for rows, _ in _fetch_xano_pages(os.environ.get("XANO_GET_ENDPOINT", "")):
+            pass
+    except Exception as e:
+        yield from emit(f"Could not fetch wptp_pdfs (Xano down?): {e}")
+        yield {"batch_done": False, "error": str(e)}
+        return
+    by_pdf = {}
+    for r in rows:
+        pid = str(r.get('PDF_ID') or r.get('pdf_id') or '').strip()
+        if pid:
+            by_pdf[pid] = r
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    pdf_map, missing = {}, []
+    for pid in pdf_ids:
+        r = by_pdf.get(pid)
+        if not r:
+            missing.append(pid)
+            continue
+        pdf_map[pid] = {
+            "vendor_id":  str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip(),
+            "venue_name": str(r.get('Name') or r.get('name') or '').strip(),
+            "xano_id":    r.get('id'),
+            "timestamp":  timestamp,
+        }
+    if missing:
+        yield from emit(f"⚠ {len(missing)} PDF id(s) not in wptp_pdfs: {', '.join(sorted(missing)[:10])}")
+    if not pdf_map:
+        yield from emit("No PDFs could be mapped to vendors — aborting.")
+        yield {"batch_done": False, "error": "no_mapping"}
+        return
+    yield from emit(f"Mapped {len(pdf_map)} PDFs — ingesting to Xano…")
+
+    # 3) Hand off to the normal ingest path.
+    yield from process_batch_results(batch_id, pdf_map, wait_secs=wait_secs)
 
 
 # ── PUBLIC GENERATOR ──────────────────────────────────────────────────────────
