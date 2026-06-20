@@ -1729,6 +1729,17 @@ with tab5:
                 else:
                     _status_icon = {"in_progress": "⏳ processing", "ended": "✅ ended",
                                     "canceling": "🛑 canceling"}
+                    n_proc = sum(1 for b in _batches if b["status"] in ("in_progress", "canceling"))
+                    n_done = sum(1 for b in _batches if b["status"] == "ended")
+                    if n_proc:
+                        st.success(f"⏳ **{n_proc} batch(es) queued/processing on Anthropic** · "
+                                   f"✅ {n_done} ended. Processing batches finish within 24h.")
+                    else:
+                        st.warning(f"⏳ **0 processing** · ✅ {n_done} ended — **nothing is currently "
+                                   f"queued or running on Anthropic.** A batch you submitted won't "
+                                   f"appear here until it's been accepted by Anthropic (after all its "
+                                   f"PDFs finish downloading). If it's missing, the submission didn't "
+                                   f"complete — re-submit and watch for the “Batch submitted · ID” log line.")
                     rows = []
                     for b in _batches:
                         done = b["succeeded"] + b["errored"] + b["canceled"] + b["expired"]
