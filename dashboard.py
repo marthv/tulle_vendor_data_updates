@@ -1574,16 +1574,22 @@ with tab5:
 
         df_display = df_raw[[c for c in display_cols if c in df_raw.columns]].copy()
 
-        # Normalise status: blank → pending
+        # Normalise status: only a truly blank/unknown status → pending. Every known
+        # status (incl. batch_submitted and skipped_non_venue) must display as itself,
+        # otherwise a submitted/skipped row wrongly shows as 'pending'.
+        _KNOWN_STATUSES = ('extracted', 'partial', 'failed', 'skipped',
+                           'skipped_non_venue', 'batch_submitted')
         if 'extraction_status' in df_display.columns:
             df_display['extraction_status'] = df_display['extraction_status'].apply(
-                lambda x: x if str(x).strip().lower() in ('extracted', 'partial', 'failed', 'skipped') else 'pending'
+                lambda x: str(x).strip().lower()
+                if str(x).strip().lower() in _KNOWN_STATUSES else 'pending'
             )
 
         # Filter controls
         filter_status = st.multiselect(
             "Filter by status",
-            options=['pending', 'extracted', 'partial', 'failed', 'skipped'],
+            options=['pending', 'batch_submitted', 'extracted', 'partial',
+                     'failed', 'skipped', 'skipped_non_venue'],
             default=['pending'],
             key="pl_filter_status",
         )
