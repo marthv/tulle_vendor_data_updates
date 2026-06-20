@@ -1135,19 +1135,46 @@ def _parse_batch_text(text):
         return None
 
 
-def _build_batch_requests(pdf_b64, pdf_id, vendor_id, venue_name):
-    """Return 3 batch request dicts for one PDF: Pass 1 (summary/Sonnet),
-    Pass 3 direct (pricing/Sonnet), Pass 4 (classification/Haiku)."""
+def _upload_pdf_file(client, pdf_bytes, name):
+    """Upload PDF bytes to the Files API → (file_id, error). Retries on the beta
+    rate limit (~100 uploads/min) and transient errors."""
+    last = None
+    for attempt in range(4):
+        try:
+            up = client.beta.files.upload(
+                file=(name, io.BytesIO(pdf_bytes), "application/pdf"))
+            return up.id, None
+        except Exception as e:
+            last = e
+            time.sleep(1.5 * (attempt + 1))   # back off (rate limit / transient)
+    return None, str(last)
+
+
+def _build_batch_requests(file_id, pdf_id, vendor_id, venue_name):
+    """Return 3 batch request dicts for one PDF: Pass 1 (summary/Sonnet), Pass 3
+    (pricing/Sonnet), Pass 4 (classification/Haiku).
+
+    The PDF is referenced by Files-API file_id (no base64), so each request is a
+    few KB — big batches stay well under the 256MB cap. cache_control is on the
+    SYSTEM prompt (identical across every same-pass request → cached across the
+    batch, stacking with the 50% batch discount), NOT on the per-PDF document:
+    each PDF is unique, so a cache_control there would write a cache that's never
+    re-read and just cost the 1.25× write premium for nothing."""
     doc_block = {
         "type": "document",
-        "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
-        "cache_control": {"type": "ephemeral"},
+        "source": {"type": "file", "file_id": file_id},
     }
+
+    def _sys(prompt):
+        # 1h TTL — batches routinely take longer than the default 5-min window.
+        return [{"type": "text", "text": prompt,
+                 "cache_control": {"type": "ephemeral", "ttl": "1h"}}]
+
     return [
         {
             "custom_id": f"{pdf_id}__p1",
             "params": {
-                "model": _MODEL_SONNET, "max_tokens": 4000, "system": SUMMARY_PROMPT,
+                "model": _MODEL_SONNET, "max_tokens": 4000, "system": _sys(SUMMARY_PROMPT),
                 "messages": [{"role": "user", "content": [
                     doc_block,
                     {"type": "text", "text": (
@@ -1159,7 +1186,7 @@ def _build_batch_requests(pdf_b64, pdf_id, vendor_id, venue_name):
         {
             "custom_id": f"{pdf_id}__p3",
             "params": {
-                "model": _MODEL_SONNET, "max_tokens": 8000, "system": PRICING_PROMPT_DIRECT,
+                "model": _MODEL_SONNET, "max_tokens": 8000, "system": _sys(PRICING_PROMPT_DIRECT),
                 "messages": [{"role": "user", "content": [
                     doc_block,
                     {"type": "text", "text": (
@@ -1171,7 +1198,7 @@ def _build_batch_requests(pdf_b64, pdf_id, vendor_id, venue_name):
         {
             "custom_id": f"{pdf_id}__p4",
             "params": {
-                "model": _MODEL_HAIKU, "max_tokens": 1000, "system": CLASSIFICATION_PROMPT,
+                "model": _MODEL_HAIKU, "max_tokens": 1000, "system": _sys(CLASSIFICATION_PROMPT),
                 "messages": [{"role": "user", "content": [
                     doc_block,
                     {"type": "text", "text": (
@@ -1245,16 +1272,14 @@ def run_extraction_batch(
         yield {"batch_submitted": False, "error": "empty_batch"}
         return
 
-    # Download all PDFs and build requests
+    # Download each PDF, upload it once to the Files API, and reference it by
+    # file_id in all 3 passes. Requests are now ~KB each (no embedded base64), so
+    # the 256MB per-batch cap is effectively a non-issue and big ranges go in one
+    # batch. Files-API uploads need the anthropic client, so build it up front.
     drive_service = get_drive_service()
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     all_requests, pdf_map = [], {}
     timestamp = datetime.now(timezone.utc).isoformat()
-    # Anthropic caps a single batch create at 256MB. The PDF is embedded once
-    # per pass (×3), so we stop accumulating before we'd exceed the cap and
-    # submit what fits — rather than building the whole thing and hitting a 413
-    # that throws away every download.
-    _MAX_BATCH_PAYLOAD = 200 * 1024 * 1024   # 200MB of base64 content (headroom under 256MB)
-    total_bytes = 0
 
     for i, row in enumerate(batch):
         pdf_id    = str(row.get('PDF_ID')    or row.get('pdf_id')    or '').strip()
@@ -1268,27 +1293,26 @@ def run_extraction_batch(
         if not pdf_bytes:
             yield from emit(f"    Download failed: {err} — skipping")
             continue
-        pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
-        b64_mb = len(pdf_b64) / 1024 / 1024
-        if b64_mb > 50:
-            yield from emit(f"    Too large — skipping")
-            continue
-        if b64_mb > 30:
+        # Downsample very large PDFs (Files API allows 500MB, but huge PDFs blow
+        # past Claude's page limits and slow uploads).
+        raw_mb = len(pdf_bytes) / 1024 / 1024
+        if raw_mb > 38:
             smaller = _downsample_pdf(pdf_bytes, target_b64_mb=25)
             if smaller and len(smaller) < len(pdf_bytes):
-                pdf_b64 = base64.standard_b64encode(smaller).decode("utf-8")
+                pdf_bytes = smaller
+                raw_mb = len(pdf_bytes) / 1024 / 1024
+        if raw_mb > 40:
+            yield from emit(f"    Too large ({raw_mb:.0f}MB) — skipping")
+            continue
 
-        req_bytes = 3 * len(pdf_b64)   # PDF embedded once per pass (p1/p3/p4)
-        if all_requests and (total_bytes + req_bytes) > _MAX_BATCH_PAYLOAD:
-            yield from emit(
-                f"    ⚠ Reached Anthropic's 256MB per-batch limit at {len(pdf_map)} PDFs — "
-                f"submitting these now; the remaining ~{len(batch) - i} PDF(s) in this range "
-                f"were NOT included. Run a narrower row range to send them.")
-            break
-        all_requests.extend(_build_batch_requests(pdf_b64, pdf_id, vendor_id, venue_name))
+        file_id, up_err = _upload_pdf_file(client, pdf_bytes, f"{pdf_id}.pdf")
+        if not file_id:
+            yield from emit(f"    Upload failed: {up_err} — skipping")
+            continue
+
+        all_requests.extend(_build_batch_requests(file_id, pdf_id, vendor_id, venue_name))
         pdf_map[pdf_id] = {"vendor_id": vendor_id, "venue_name": venue_name,
                            "xano_id": xano_id, "timestamp": timestamp}
-        total_bytes += req_bytes
 
     if not all_requests:
         yield from emit("No valid PDFs to submit.")
@@ -1297,8 +1321,9 @@ def run_extraction_batch(
 
     yield from emit(f"Submitting {len(all_requests)} requests ({len(pdf_map)} PDFs)...")
     try:
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-        batch_obj = client.messages.batches.create(requests=all_requests)
+        # Beta path — required for requests that reference Files-API file_ids.
+        batch_obj = client.beta.messages.batches.create(
+            requests=all_requests, betas=["files-api-2025-04-14"])
         batch_id = batch_obj.id
         # Persist batch_id + pdf_map to Xano the instant Anthropic accepts the batch,
         # so an interrupted submit (process death / a failed completion post) can't
