@@ -1249,6 +1249,12 @@ def run_extraction_batch(
     drive_service = get_drive_service()
     all_requests, pdf_map = [], {}
     timestamp = datetime.now(timezone.utc).isoformat()
+    # Anthropic caps a single batch create at 256MB. The PDF is embedded once
+    # per pass (×3), so we stop accumulating before we'd exceed the cap and
+    # submit what fits — rather than building the whole thing and hitting a 413
+    # that throws away every download.
+    _MAX_BATCH_PAYLOAD = 200 * 1024 * 1024   # 200MB of base64 content (headroom under 256MB)
+    total_bytes = 0
 
     for i, row in enumerate(batch):
         pdf_id    = str(row.get('PDF_ID')    or row.get('pdf_id')    or '').strip()
@@ -1272,9 +1278,17 @@ def run_extraction_batch(
             if smaller and len(smaller) < len(pdf_bytes):
                 pdf_b64 = base64.standard_b64encode(smaller).decode("utf-8")
 
+        req_bytes = 3 * len(pdf_b64)   # PDF embedded once per pass (p1/p3/p4)
+        if all_requests and (total_bytes + req_bytes) > _MAX_BATCH_PAYLOAD:
+            yield from emit(
+                f"    ⚠ Reached Anthropic's 256MB per-batch limit at {len(pdf_map)} PDFs — "
+                f"submitting these now; the remaining ~{len(batch) - i} PDF(s) in this range "
+                f"were NOT included. Run a narrower row range to send them.")
+            break
         all_requests.extend(_build_batch_requests(pdf_b64, pdf_id, vendor_id, venue_name))
         pdf_map[pdf_id] = {"vendor_id": vendor_id, "venue_name": venue_name,
                            "xano_id": xano_id, "timestamp": timestamp}
+        total_bytes += req_bytes
 
     if not all_requests:
         yield from emit("No valid PDFs to submit.")
