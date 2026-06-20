@@ -50,6 +50,23 @@ from extract_core import (run_extraction, get_pipeline_status,
 
 # ── JOB STATUS TRACKING (persistent across logouts) ──────────────────────────
 
+def _xano_get_with_retry(url: str, timeout: int = 10, attempts: int = 4):
+    """GET a Xano URL, retrying transient 5xx / network errors with backoff so a
+    momentary Xano 502/503 doesn't blank the UI (job history, active job). Returns
+    parsed JSON on success, or None if every attempt failed. 4xx is NOT retried."""
+    for i in range(attempts):
+        try:
+            r = requests.get(url, timeout=timeout)
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code < 500:
+                return None  # 4xx won't self-heal
+        except Exception:
+            pass
+        if i < attempts - 1:
+            time.sleep(min(8, 1.5 * (i + 1)))
+    return None
+
 def _post_job_status(job_type: str, status: str, user_email: str,
                      result_summary: dict = None, batch_id: str = None) -> bool:
     """
@@ -81,15 +98,10 @@ def _get_active_job(job_type: str):
     jobs_endpoint = os.environ.get("XANO_JOBS_ENDPOINT", "")
     if not jobs_endpoint:
         return None
-    try:
-        r = requests.get(f"{jobs_endpoint}?job_type={job_type}&is_active=true", timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            if isinstance(data, list) and len(data) > 0:
-                return data[0]
-        return None
-    except Exception:
-        return None
+    data = _xano_get_with_retry(f"{jobs_endpoint}?job_type={job_type}&is_active=true")
+    if isinstance(data, list) and len(data) > 0:
+        return data[0]
+    return None
 
 
 def _get_job_history(job_type: str, limit: int = 20):
@@ -100,15 +112,9 @@ def _get_job_history(job_type: str, limit: int = 20):
     jobs_endpoint = os.environ.get("XANO_JOBS_ENDPOINT", "")
     if not jobs_endpoint:
         return []
-    try:
-        r = requests.get(f"{jobs_endpoint}?job_type={job_type}&is_active=false&limit={limit}", timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            if isinstance(data, list):
-                return data
-        return []
-    except Exception:
-        return []
+    data = _xano_get_with_retry(
+        f"{jobs_endpoint}?job_type={job_type}&is_active=false&limit={limit}")
+    return data if isinstance(data, list) else []
 
 
 def _get_resumable_batch(skip=None):
