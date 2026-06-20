@@ -891,7 +891,8 @@ def _to_vendor_email(value):
 # ── XANO STATUS WRITEBACK ─────────────────────────────────────────────────────
 
 def _update_pdf_status(xano_id, status, error="", cost_usd=0.0,
-                       confidentiality_flag=False, confidentiality_evidence=""):
+                       confidentiality_flag=False, confidentiality_evidence="",
+                       bump_attempts=True):
     """
     PATCH wptp_pdfs/{xano_id} with the new extraction status fields.
     Returns a status string for logging. Never raises.
@@ -919,10 +920,13 @@ def _update_pdf_status(xano_id, status, error="", cost_usd=0.0,
         "last_extracted_at":        datetime.now(timezone.utc).isoformat(),
         "last_error":               error[:1000] if error else "",
         "extraction_cost_usd":      round(float(cost_usd), 6),
-        "extraction_attempts":      1,  # Xano increments server-side (current value + 1)
         "confidentiality_flag":     bool(confidentiality_flag),
         "confidentiality_evidence": (confidentiality_evidence or "")[:1000],
     }
+    # The submit-time "batch_submitted" marker passes bump_attempts=False — the real
+    # attempt is counted once at ingest, so the marker must not inflate the counter.
+    if bump_attempts:
+        payload["extraction_attempts"] = 1  # Xano increments server-side (current + 1)
     try:
         r = requests.patch(url, json=payload, timeout=10)
         if r.status_code in (200, 201, 204):
@@ -1239,7 +1243,8 @@ def run_extraction_batch(
                  if str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() in want]
     elif rerun_failed:
         batch = [r for r in rows_with_links
-                 if str(r.get('extraction_status') or '').strip().lower() == 'failed']
+                 if str(r.get('extraction_status') or '').strip().lower()
+                 in ('failed', 'batch_submitted')]
     else:
         batch = rows_with_links[start_row:(None if end_row is None else end_row)]
         try:
@@ -1335,6 +1340,18 @@ def run_extraction_batch(
         yield from emit(f"Batch submission failed: {e}")
         yield {"batch_submitted": False, "error": str(e)}
         return
+
+    # Mark every PDF in this batch as "batch_submitted" in wptp_pdfs immediately, so
+    # the status table reflects the attempt (and when) before results are ingested.
+    # bump_attempts=False — the attempt is counted once at ingest. rerun_failed also
+    # re-selects rows stuck here, so a batch that's never checked isn't silently lost.
+    marked = 0
+    for _meta in pdf_map.values():
+        if str(_update_pdf_status(_meta.get("xano_id"), "batch_submitted",
+                                  error=f"batch={batch_id}", cost_usd=0,
+                                  bump_attempts=False)).startswith("ok"):
+            marked += 1
+    yield from emit(f"Marked {marked}/{len(pdf_map)} PDFs as 'batch_submitted' in Xano.")
 
     yield from emit(f"Batch submitted — ID: {batch_id}")
     yield from emit("Processing takes up to 24 hours. Use 'Check Batch Results' to poll status.")
@@ -1580,10 +1597,12 @@ def run_extraction(
             yield from emit(f"   ⚠  Not found: {', '.join(sorted(not_found))}")
 
     elif rerun_failed:
-        # Re-run anything previously marked failed
+        # Re-run anything previously marked failed, plus rows stuck in batch_submitted
+        # (a batch was fired but its results were never checked/ingested).
         batch = [
             r for r in rows_with_links
-            if str(r.get('extraction_status') or '').strip().lower() == 'failed'
+            if str(r.get('extraction_status') or '').strip().lower()
+            in ('failed', 'batch_submitted')
         ]
         yield from emit(f"   Mode: re-run failed — {len(batch)} rows")
 
@@ -1985,7 +2004,7 @@ def get_pipeline_status() -> dict:
         if has_link:
             with_link += 1
         raw_status = str(r.get('extraction_status') or '').strip().lower()
-        status = raw_status if raw_status in ('extracted', 'partial', 'failed', 'skipped', 'skipped_non_venue') else 'pending'
+        status = raw_status if raw_status in ('extracted', 'partial', 'failed', 'skipped', 'skipped_non_venue', 'batch_submitted') else 'pending'
         counts[status] = counts.get(status, 0) + 1
 
     return {
