@@ -1979,17 +1979,25 @@ def _vp_ts(v):
         return 0.0
 
 
-def _vp_fetch_all(url):
+def _vp_fetch_all(url, breaker=None):
     """Single GET — these Xano endpoints return the full table in one response (same
     pattern the Data Explorer uses successfully; adding page/per_page params made them
-    503). Retries briefly on a transient 503. Returns (rows, error_str)."""
+    503). One quick retry on a transient 503. Returns (rows, error_str).
+
+    `breaker` is a shared dict for one _vp_load() call: once Xano is seen to be
+    fully down (503 after a retry), it trips and every later fetch in the same
+    load returns immediately — so a down instance fails in ~1s instead of
+    sleep-retrying across all 7+ endpoints (~30s of frozen page)."""
+    if breaker is not None and breaker.get("down"):
+        return [], "503"
     last = ""
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             r = requests.get(url, timeout=120)
         except Exception as e:
             last = str(e)
-            time.sleep(1.0)
+            if attempt == 0:
+                time.sleep(0.8)
             continue
         if r.status_code == 200:
             data = r.json()
@@ -1997,10 +2005,12 @@ def _vp_fetch_all(url):
                 data = data.get("items") or data.get("data") or data.get("result") or []
             return (data if isinstance(data, list) else []), ""
         last = str(r.status_code)
-        if r.status_code == 503:        # transient Xano nginx 503 — brief backoff, retry
-            time.sleep(1.5)
+        if r.status_code == 503 and attempt == 0:   # one quick retry on transient 503
+            time.sleep(0.8)
             continue
         break                            # other errors (4xx/5xx) won't fix on retry
+    if last == "503" and breaker is not None:
+        breaker["down"] = True           # Xano is down — short-circuit the rest of this load
     return [], last
 
 
@@ -2029,12 +2039,12 @@ def _vp_is_venue(category):
 _VP_MAP_BANDS = [(-125, -100), (-100, -87), (-87, -78), (-78, -71), (-71, -66)]
 
 
-def _vp_fetch_venue_index():
+def _vp_fetch_venue_index(breaker=None):
     """{Vendor_ID: {name, state}} for ALL venues nationwide, via map_light geo bands.
     Returns (idx, error_str)."""
     idx, err = {}, ""
     for w, e in _VP_MAP_BANDS:
-        rows, ee = _vp_fetch_all(f"{XANO_BASE}/wptp_map_light?north=50&south=24&east={e}&west={w}")
+        rows, ee = _vp_fetch_all(f"{XANO_BASE}/wptp_map_light?north=50&south=24&east={e}&west={w}", breaker)
         if ee:
             err = ee
         for r in rows:
@@ -2134,9 +2144,10 @@ def _vp_build_pdf_map(pdf_rows):
 def _vp_load():
     """Pull + dedup + join (venues only) + PDF links. Cached 10 min; _vp_load.clear() to refresh.
     Returns (joined_rows, pdf_map, meta)."""
-    t36, e36 = _vp_fetch_all(f"{XANO_BASE}/all_extracted_pdf_data")
-    pdfs, ep = _vp_fetch_all(f"{XANO_BASE}/wptp_pdfs")
-    idx, ei  = _vp_fetch_venue_index()
+    breaker = {}   # trips on the first confirmed 503 so a down Xano fails fast
+    t36, e36 = _vp_fetch_all(f"{XANO_BASE}/all_extracted_pdf_data", breaker)
+    pdfs, ep = _vp_fetch_all(f"{XANO_BASE}/wptp_pdfs", breaker)
+    idx, ei  = _vp_fetch_venue_index(breaker)
     t36d = _vp_dedup_latest(t36)
     joined = _vp_join(t36d, idx)
     pdf_map = _vp_build_pdf_map(pdfs)
