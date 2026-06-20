@@ -111,11 +111,14 @@ def _get_job_history(job_type: str, limit: int = 20):
         return []
 
 
-def _get_resumable_batch():
+def _get_resumable_batch(skip=None):
     """Find the most recent submitted batch job in Xano whose pdf_map is still
     available, so batch results can be checked after a logout / page refresh.
-    Returns (batch_id, pdf_map, job) or (None, None, None)."""
-    for job in _get_job_history("extraction", limit=20):
+    `skip` is a set of batch_ids already handled this session — they're passed
+    over so the user can walk through several submitted batches one after another
+    (newest first). Returns (batch_id, pdf_map, job) or (None, None, None)."""
+    skip = skip or set()
+    for job in _get_job_history("extraction", limit=40):
         summary = job.get("result_summary") or {}
         if isinstance(summary, str):
             try:
@@ -124,7 +127,7 @@ def _get_resumable_batch():
                 summary = {}
         bid = summary.get("batch_id") or job.get("batch_id")
         pmap = summary.get("pdf_map")
-        if bid and isinstance(pmap, dict) and pmap:
+        if bid and bid not in skip and isinstance(pmap, dict) and pmap:
             return bid, pmap, job
     return None, None, None
 
@@ -1849,15 +1852,17 @@ with tab5:
         # The session loses pl_batch_id/pl_batch_map on logout, but the batch_id
         # and pdf_map are persisted on the job row — reload them to keep checking.
         if not st.session_state.get("pl_batch_id"):
-            _r_bid, _r_map, _r_job = _get_resumable_batch()
-            if _r_bid and _r_bid in st.session_state.get("pl_checked_batches", set()):
-                _r_bid = None  # already checked this session — don't re-offer
+            # Walk through every submitted batch (newest first), skipping ones
+            # already checked this session — so multiple batches can be ingested
+            # one after another, not just the latest.
+            _r_bid, _r_map, _r_job = _get_resumable_batch(
+                skip=st.session_state.get("pl_checked_batches", set()))
             if _r_bid:
                 _r_when = _fmt_ts(_r_job.get("started_at")) if _r_job else ""
                 st.warning(
-                    f"📦 Submitted batch found from a previous session — `{_r_bid}` "
+                    f"📦 Submitted batch to check — `{_r_bid}` "
                     f"({len(_r_map)} PDFs, submitted {_r_when}). "
-                    "Load it to check results."
+                    "Load it to check/ingest results."
                 )
                 if st.button("↩️ Resume this batch", key="pl_resume_batch"):
                     st.session_state["pl_batch_id"]  = _r_bid

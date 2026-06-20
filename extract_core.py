@@ -1155,26 +1155,18 @@ def _build_batch_requests(file_id, pdf_id, vendor_id, venue_name):
     (pricing/Sonnet), Pass 4 (classification/Haiku).
 
     The PDF is referenced by Files-API file_id (no base64), so each request is a
-    few KB — big batches stay well under the 256MB cap. cache_control is on the
-    SYSTEM prompt (identical across every same-pass request → cached across the
-    batch, stacking with the 50% batch discount), NOT on the per-PDF document:
-    each PDF is unique, so a cache_control there would write a cache that's never
-    re-read and just cost the 1.25× write premium for nothing."""
+    few KB — big batches stay well under the 256MB cap. Otherwise this matches the
+    known-good base64 path exactly (plain string system prompts, no cache_control)
+    so file_id is the only variable vs the batch that processed with 0 errors."""
     doc_block = {
         "type": "document",
         "source": {"type": "file", "file_id": file_id},
     }
-
-    def _sys(prompt):
-        # 1h TTL — batches routinely take longer than the default 5-min window.
-        return [{"type": "text", "text": prompt,
-                 "cache_control": {"type": "ephemeral", "ttl": "1h"}}]
-
     return [
         {
             "custom_id": f"{pdf_id}__p1",
             "params": {
-                "model": _MODEL_SONNET, "max_tokens": 4000, "system": _sys(SUMMARY_PROMPT),
+                "model": _MODEL_SONNET, "max_tokens": 4000, "system": SUMMARY_PROMPT,
                 "messages": [{"role": "user", "content": [
                     doc_block,
                     {"type": "text", "text": (
@@ -1186,7 +1178,7 @@ def _build_batch_requests(file_id, pdf_id, vendor_id, venue_name):
         {
             "custom_id": f"{pdf_id}__p3",
             "params": {
-                "model": _MODEL_SONNET, "max_tokens": 8000, "system": _sys(PRICING_PROMPT_DIRECT),
+                "model": _MODEL_SONNET, "max_tokens": 8000, "system": PRICING_PROMPT_DIRECT,
                 "messages": [{"role": "user", "content": [
                     doc_block,
                     {"type": "text", "text": (
@@ -1198,7 +1190,7 @@ def _build_batch_requests(file_id, pdf_id, vendor_id, venue_name):
         {
             "custom_id": f"{pdf_id}__p4",
             "params": {
-                "model": _MODEL_HAIKU, "max_tokens": 1000, "system": _sys(CLASSIFICATION_PROMPT),
+                "model": _MODEL_HAIKU, "max_tokens": 1000, "system": CLASSIFICATION_PROMPT,
                 "messages": [{"role": "user", "content": [
                     doc_block,
                     {"type": "text", "text": (
@@ -1431,7 +1423,20 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
                 continue
             pdf_id_key, pass_tag = cid.rsplit("__", 1)
             if result.result.type != "succeeded":
-                errors.setdefault(pdf_id_key, []).append(f"{pass_tag}:{result.result.type}")
+                # Capture the ACTUAL error, not just "errored" — the detail lives in
+                # result.result.error (shape varies: {type,message} or nested .error.error).
+                detail = result.result.type
+                try:
+                    err_obj = getattr(result.result, "error", None)
+                    if err_obj is not None:
+                        inner = getattr(err_obj, "error", err_obj)
+                        etype = getattr(inner, "type", "") or ""
+                        emsg = getattr(inner, "message", "") or ""
+                        if etype or emsg:
+                            detail = f"{result.result.type}/{etype}: {emsg}"[:240]
+                except Exception:
+                    pass
+                errors.setdefault(pdf_id_key, []).append(f"{pass_tag} {detail}")
                 continue
             raw_content = (result.result.message.content or [None])[0]
             text = getattr(raw_content, "text", "") if raw_content else ""
@@ -1493,6 +1498,8 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
         _update_pdf_status(xano_id, status, cost_usd=0)
         result_status = "OK" if status == "extracted" else ("PARTIAL" if status == "partial" else "FAILED")
         yield from emit(f"    {ok_s} summary rows, {ok_p} pricing rows -> {status}")
+        if errs:
+            yield from emit(f"    ⚠ pass errors: {'; '.join(errs)}")
         results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
                              "status": result_status, "summary_rows": ok_s,
                              "pricing_rows": ok_p, "cost_usd": 0, "category": "Venue"})
