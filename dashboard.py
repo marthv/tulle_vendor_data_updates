@@ -140,6 +140,42 @@ def _parse_timestamp(ts_value) -> float | None:
         return None
 
 
+# A genuinely-running extraction job heartbeats updated_at every ~30s
+# (extract_core._maybe_post_progress). If we haven't heard from it in this long,
+# the process is dead (crash / Railway redeploy / user closed tab) and we should
+# stop showing it as "active" rather than leaving a permanent stuck card.
+STALE_AFTER_SEC = 600  # 10 minutes
+
+
+def _fmt_ts(ts_value) -> str:
+    """Render a stored timestamp as a readable 'YYYY-MM-DD HH:MM UTC' string."""
+    ts = _parse_timestamp(ts_value)
+    if ts is None:
+        return "unknown"
+    try:
+        return datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return "unknown"
+
+
+def _job_age_seconds(job: dict):
+    """Seconds since the job last posted progress (updated_at), or None if unknown."""
+    if not job:
+        return None
+    updated_ts = _parse_timestamp(job.get("updated_at"))
+    if updated_ts is None:
+        return None
+    return datetime.datetime.now(datetime.timezone.utc).timestamp() - updated_ts
+
+
+def _is_job_stale(job: dict) -> bool:
+    """True if a 'running' job has gone silent past STALE_AFTER_SEC (process is dead)."""
+    if not job or str(job.get("status", "")).lower() != "running":
+        return False
+    age = _job_age_seconds(job)
+    return age is not None and age > STALE_AFTER_SEC
+
+
 def _format_job_display(job: dict) -> str:
     """Format job info with elapsed time, progress, and stuck detection."""
     if not job:
@@ -171,7 +207,7 @@ def _format_job_display(job: dict) -> str:
     try:
         started_ts = _parse_timestamp(started)
         updated_ts = _parse_timestamp(updated)
-        now_ts = datetime.now(datetime.timezone.utc).timestamp()
+        now_ts = datetime.datetime.now(datetime.timezone.utc).timestamp()
 
         if started_ts:
             elapsed_secs = int(now_ts - started_ts)
@@ -205,7 +241,7 @@ def _format_job_display(job: dict) -> str:
     if current_pdf:
         progress += f"\n🔍 Processing: {current_pdf}"
 
-    return f"🔄 **Active Job**  \nStarted: {started}  \nUser: {user}  \nStatus: {status}{elapsed}  \nLast updated: {updated}{progress}{stuck_warning}"
+    return f"🔄 **Active Job**  \nStarted: {_fmt_ts(started)}  \nUser: {user}  \nStatus: {status}{elapsed}  \nLast updated: {_fmt_ts(updated)}{progress}{stuck_warning}"
 
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
@@ -1236,6 +1272,12 @@ with tab5:
         st.session_state["pl_refresh_job"] = False
     else:
         active_job = _get_active_job("extraction")
+
+    # A running job that hasn't heartbeated in STALE_AFTER_SEC is dead, not active —
+    # don't show it as a live job (this is what auto-clears stuck cards).
+    if active_job and _is_job_stale(active_job):
+        active_job = None
+        st.caption("No active extraction job (last run stalled or ended).")
 
     if active_job:
         with job_info_col:
