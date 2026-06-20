@@ -1197,9 +1197,10 @@ with tab2:
         if not cov:
             st.warning("Couldn't load coverage — try again.")
         else:
-            total = cov.get("total", 0) or 0
-            g_done = cov.get("google_done", 0) or 0
-            g_rem  = cov.get("google_remaining", 0) or 0
+            total   = cov.get("total", 0) or 0
+            g_done  = cov.get("google_done", 0) or 0      # real data (cache.name set)
+            g_never = cov.get("google_never", 0) or 0     # never run (cache null)
+            g_empty = cov.get("google_empty", 0) or 0     # ran but pulled nothing
             i1 = cov.get("image_1_done", 0) or 0
             i2 = cov.get("image_2_done", 0) or 0
             i3 = cov.get("image_3_done", 0) or 0
@@ -1210,35 +1211,47 @@ with tab2:
             cc1, cc2, cc3, cc4 = st.columns(4)
             cc1.markdown(_card("card-gray", "🏷️", f"{total:,}", "Total vendors"),
                          unsafe_allow_html=True)
-            cc2.markdown(_card("card-green" if g_rem == 0 else "card-amber", "🔍",
-                               f"{g_done:,}", f"Google data done · {g_pct}%"),
+            cc2.markdown(_card("card-green", "✅",
+                               f"{g_done:,}", f"Google data — real · {g_pct}%"),
                          unsafe_allow_html=True)
-            cc3.markdown(_card("card-gray" if g_rem == 0 else "card-red", "🔍",
-                               f"{g_rem:,}", "Google data remaining"),
+            cc3.markdown(_card("card-gray" if g_never == 0 else "card-red", "🔍",
+                               f"{g_never:,}", "Never run (no cache)"),
                          unsafe_allow_html=True)
-            cc4.markdown(_card("card-green" if i_rem == 0 else "card-amber", "🖼️",
-                               f"{i_rem:,}", "Images remaining (have data, no image 1)"),
+            cc4.markdown(_card("card-gray" if g_empty == 0 else "card-amber", "⚠️",
+                               f"{g_empty:,}", "Ran but no data pulled"),
                          unsafe_allow_html=True)
-            st.caption(f"Image slots populated — slot 1: **{i1:,}** ({i_pct}%) · "
-                       f"slot 2: **{i2:,}** · slot 3: **{i3:,}**")
+            st.caption(
+                f"**Ran but no data pulled** = a cache exists but it's an empty shell "
+                f"(Google returned nothing usable). The current batch **skips** these "
+                f"(it only fetches rows with no cache), so they need a re-pull to retry.  \n"
+                f"Image slots populated — slot 1: **{i1:,}** ({i_pct}%) · "
+                f"slot 2: **{i2:,}** · slot 3: **{i3:,}**"
+            )
 
-            g_sample = cov.get("google_sample") or []
-            if g_sample:
-                st.info(f"▶ **Google Data** — {g_rem:,} vendors still need it. "
-                        f"Next un-cached vendor ID: **{g_sample[0].get('id')}**.")
-                with st.expander(f"Vendors missing Google data — showing {min(len(g_sample), 50)} of {g_rem:,}"):
-                    st.dataframe(pd.DataFrame(g_sample[:50]), use_container_width=True, hide_index=True)
+            g_never_sample = cov.get("google_never_sample") or []
+            if g_never_sample:
+                st.info(f"▶ **Google Data (never run)** — {g_never:,} vendors with no cache. "
+                        f"Next un-cached vendor ID: **{g_never_sample[0].get('id')}**.")
+                with st.expander(f"Never-run vendors — showing {min(len(g_never_sample), 50)} of {g_never:,}"):
+                    st.dataframe(pd.DataFrame(g_never_sample[:50]), use_container_width=True, hide_index=True)
             else:
-                st.success("✅ All vendors have Google data cached.")
+                st.success("✅ Every vendor has been run at least once.")
+
+            g_empty_sample = cov.get("google_empty_sample") or []
+            if g_empty_sample:
+                st.warning(f"⚠️ **Ran but empty** — {g_empty:,} vendors have a cache with no real data. "
+                           f"These won't be retried by the normal batch.")
+                with st.expander(f"Empty-cache vendors — showing {min(len(g_empty_sample), 50)} of {g_empty:,}"):
+                    st.dataframe(pd.DataFrame(g_empty_sample[:50]), use_container_width=True, hide_index=True)
 
             i_sample = cov.get("image_sample") or []
             if i_sample:
-                st.info(f"▶ **Vendor Images** — {i_rem:,} vendors have Google data but no image 1. "
+                st.info(f"▶ **Vendor Images** — {i_rem:,} vendors have real Google data but no image 1. "
                         f"Next vendor ID needing images: **{i_sample[0].get('id')}**.")
                 with st.expander(f"Vendors missing images — showing {min(len(i_sample), 50)} of {i_rem:,}"):
                     st.dataframe(pd.DataFrame(i_sample[:50]), use_container_width=True, hide_index=True)
             else:
-                st.success("✅ Every vendor with Google data has at least image 1.")
+                st.success("✅ Every vendor with real Google data has at least image 1.")
 
     st.markdown("---")
 
