@@ -1311,6 +1311,38 @@ def run_extraction_batch(
            "pdf_count": len(pdf_map), "pdf_map": pdf_map}
 
 
+def list_recent_batches(limit: int = 20):
+    """List recent Anthropic Message Batches with live status — the source of
+    truth for what's actually queued/processing/done on Anthropic's side,
+    independent of whatever we tracked in Xano. Returns a list of plain dicts."""
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+    def _fmt(dt):
+        if not dt:
+            return ""
+        try:
+            return dt.strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            return str(dt)
+
+    out = []
+    for b in client.messages.batches.list(limit=limit):   # iterating auto-paginates
+        rc = getattr(b, "request_counts", None)
+        out.append({
+            "id":          b.id,
+            "status":      getattr(b, "processing_status", ""),  # in_progress|canceling|ended
+            "processing":  getattr(rc, "processing", 0) if rc else 0,
+            "succeeded":   getattr(rc, "succeeded", 0) if rc else 0,
+            "errored":     getattr(rc, "errored", 0) if rc else 0,
+            "canceled":    getattr(rc, "canceled", 0) if rc else 0,
+            "expired":     getattr(rc, "expired", 0) if rc else 0,
+            "created_at":  _fmt(getattr(b, "created_at", None)),
+            "ended_at":    _fmt(getattr(b, "ended_at", None)),
+            "expires_at":  _fmt(getattr(b, "expires_at", None)),
+        })
+    return out
+
+
 def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
     """Poll a submitted batch and post results to Xano when complete.
     Yields log strings; final item is the same contract as run_extraction:

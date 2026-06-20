@@ -42,7 +42,8 @@ import google.oauth2.id_token
 from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import (run_extraction, get_pipeline_status,
-                          run_extraction_batch, process_batch_results)
+                          run_extraction_batch, process_batch_results,
+                          list_recent_batches)
 
 
 # ── JOB STATUS TRACKING (persistent across logouts) ──────────────────────────
@@ -1704,6 +1705,51 @@ with tab5:
                     st.session_state["pl_last_result"] = pl_result
                     st.session_state["pl_data"] = get_pipeline_status()
                     st.rerun()
+
+        # ── Live batch status from Anthropic (source of truth) ────────────────
+        # Lists ALL recent Message Batches on Anthropic's side — including any
+        # whose batch_id we lost — with live processing_status + request counts.
+        with st.expander("📡 Anthropic batch jobs (live status)", expanded=False):
+            st.caption(
+                "Pulled directly from Anthropic's Batch API — what's actually "
+                "queued / processing / done, independent of our Xano tracking. "
+                "Batches finish within 24h; results are retrievable for 29 days."
+            )
+            if st.button("🔄 Load batches from Anthropic", key="pl_load_batches"):
+                try:
+                    with st.spinner("Querying Anthropic batches…"):
+                        st.session_state["pl_anthropic_batches"] = list_recent_batches(limit=20)
+                except Exception as e:
+                    st.error(f"Couldn't reach Anthropic Batch API: {e}")
+
+            _batches = st.session_state.get("pl_anthropic_batches")
+            if _batches is not None:
+                if not _batches:
+                    st.info("No batches found on this Anthropic account.")
+                else:
+                    _status_icon = {"in_progress": "⏳ processing", "ended": "✅ ended",
+                                    "canceling": "🛑 canceling"}
+                    rows = []
+                    for b in _batches:
+                        done = b["succeeded"] + b["errored"] + b["canceled"] + b["expired"]
+                        total = done + b["processing"]
+                        rows.append({
+                            "Batch ID":  b["id"],
+                            "Status":    _status_icon.get(b["status"], b["status"]),
+                            "Progress":  f"{done}/{total}" if total else "—",
+                            "✓ ok":      b["succeeded"],
+                            "✗ err":     b["errored"],
+                            "Created":   b["created_at"],
+                            "Ended":     b["ended_at"],
+                            "Expires":   b["expires_at"],
+                        })
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                    st.caption(
+                        "An `ended` batch we have a saved PDF→vendor map for can be ingested "
+                        "via **Resume this batch** / **Check Batch Results** below. An ended "
+                        "batch with no saved map (ID lost) shows here but must be re-run to "
+                        "ingest, since results can't be mapped back to vendors."
+                    )
 
         # ── Resume a batch from Xano (survives logout / refresh / redeploy) ───
         # The session loses pl_batch_id/pl_batch_map on logout, but the batch_id
