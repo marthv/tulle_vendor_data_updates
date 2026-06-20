@@ -1286,6 +1286,20 @@ def run_extraction_batch(
         client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         batch_obj = client.messages.batches.create(requests=all_requests)
         batch_id = batch_obj.id
+        # Persist batch_id + pdf_map to Xano the instant Anthropic accepts the batch,
+        # so an interrupted submit (process death / a failed completion post) can't
+        # lose the only handle to the in-flight batch. Best-effort; never blocks.
+        try:
+            from dashboard import _post_job_status
+            _post_job_status(
+                "extraction", "completed",
+                os.environ.get("LOGGED_IN_USER", "extraction-batch"),
+                result_summary={"batch_submitted": True, "batch_id": batch_id,
+                                "pdf_count": len(pdf_map), "pdf_map": pdf_map},
+                batch_id=batch_id,
+            )
+        except Exception:
+            pass
     except Exception as e:
         yield from emit(f"Batch submission failed: {e}")
         yield {"batch_submitted": False, "error": str(e)}

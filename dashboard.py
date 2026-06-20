@@ -1620,8 +1620,12 @@ with tab5:
         if run_btn:
             pdf_ids_list, rerun_failed, eff_start, eff_end = _parse_run_args()
             st.session_state["pl_running"] = True
+            _run_user = st.session_state.get("user_email", "unknown")
+            # Let extract_core attribute its own job posts (immediate batch_id
+            # capture + live heartbeats) to the real user, not "extraction-batch".
+            os.environ["LOGGED_IN_USER"] = _run_user
             # Track job persistently (survives logouts)
-            _post_job_status("extraction", "running", st.session_state.get("user_email", "unknown"))
+            _post_job_status("extraction", "running", _run_user)
             pl_lines = []; pl_result = None
             run_started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -1640,13 +1644,11 @@ with tab5:
                         unsafe_allow_html=True,
                     )
                 st.session_state["pl_running"] = False
-                # Track job completion persistently (result_summary carries batch_id +
-                # pdf_map so the batch can be resumed/checked later — even after logout)
-                job_status = "completed" if (pl_result and pl_result.get("batch_submitted")) else "failed"
-                _post_job_status("extraction", job_status, st.session_state.get("user_email", "unknown"),
-                                 result_summary=pl_result,
-                                 batch_id=(pl_result.get("batch_id") if pl_result else None))
                 if pl_result and pl_result.get("batch_submitted"):
+                    # batch_id + pdf_map were already persisted to Xano by
+                    # run_extraction_batch the instant Anthropic accepted the batch
+                    # (closes the lost-id window), so we don't double-post here —
+                    # a second "completed" post would create a duplicate job row.
                     bid = pl_result["batch_id"]
                     st.session_state["pl_batch_id"]   = bid
                     st.session_state["pl_batch_map"]  = pl_result["pdf_map"]
@@ -1654,8 +1656,13 @@ with tab5:
                         f"Batch submitted ({pl_result['pdf_count']} PDFs) · ID: `{bid}`  \n"
                         "Processing takes up to 24 hrs — use **Check Batch Results** below."
                     )
-                elif pl_result:
-                    pl_stat_ph.error(f"Batch submission failed: {pl_result.get('error', '?')}")
+                else:
+                    # Submission failed / returned nothing — close the running row as failed.
+                    _post_job_status("extraction", "failed",
+                                     st.session_state.get("user_email", "unknown"),
+                                     result_summary=pl_result)
+                    pl_stat_ph.error(
+                        f"Batch submission failed: {pl_result.get('error', '?') if pl_result else 'unknown'}")
             else:
                 # ── Normal (live) path ────────────────────────────────────────
                 for item in run_extraction(
