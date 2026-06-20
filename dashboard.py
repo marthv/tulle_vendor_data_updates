@@ -2084,7 +2084,7 @@ def _vp_build_pdf_map(pdf_rows):
     return m
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner="Loading venue pricing from Xano…")
 def _vp_load():
     """Pull + dedup + join (venues only) + PDF links. Cached 10 min; _vp_load.clear() to refresh.
     Returns (joined_rows, pdf_map, meta)."""
@@ -2180,8 +2180,9 @@ with tab_vp:
         if st.button("🔄 Load / Refresh", type="primary", use_container_width=True, key="vp_refresh"):
             _vp_load.clear()
 
-    with st.spinner("Loading venue pricing from Xano…"):
-        vp_joined, vp_pdf_map, vp_meta = _vp_load()
+    # Cached (10 min); the spinner is shown by the cache decorator only on an
+    # actual fetch — a dropdown change is a cache hit, so no spinner / no recompute.
+    vp_joined, vp_pdf_map, vp_meta = _vp_load()
 
     if vp_meta["errors"]:
         st.error("Xano fetch issue — " + ", ".join(vp_meta["errors"]))
@@ -2264,8 +2265,8 @@ to see its exact numbers and pricing PDFs.
 
             # ── 1) Pricing grid ON TOP (clickable) ────────────────────────────
             st.markdown("#### Average estimate · State × Venue type")
-            st.caption("Click a **State** (row) and a **Venue type** (column header) to pick a cell, "
-                       "then hit **Run** to list the venues that roll up into it · greener = cheaper")
+            st.caption("Click a **State** row (and optionally a **Venue type** column header) to pick a "
+                       "section, then hit **Run** to filter the venue table below to it · greener = cheaper")
             pivot = df.pivot_table(index="State", columns="Type", values="Estimate", aggfunc="mean")
             sel_state = sel_type = None
             if pivot.size and pivot.notna().any().any():
@@ -2296,64 +2297,82 @@ to see its exact numbers and pricing PDFs.
                         _c = _gs.columns[0]
                         sel_type = pivot.columns[_c] if isinstance(_c, int) else _c
 
-                if sel_state is not None and sel_type is not None:
-                    _cv = pivot.loc[sel_state, sel_type] if sel_type in pivot.columns else None
-                    st.markdown(
-                        f"**Selected cell:** {sel_state} × {sel_type} — "
-                        f"{_vp_money(_cv) if (_cv is not None and pd.notna(_cv)) else '—'}")
-                    if st.button(f"▶ Run — show venues in {sel_state} × {sel_type}", key="vp_drill_run"):
-                        st.session_state["vp_drill"] = (sel_state, sel_type)
+                # Run is enabled as soon as a row OR column is selected — a single
+                # cell click selects the row (State); also click a column header to
+                # narrow to one venue type.
+                if sel_state is not None or sel_type is not None:
+                    _picked = " × ".join([str(x) for x in (sel_state, sel_type) if x is not None])
+                    _rc1, _rc2 = st.columns([3, 5])
+                    with _rc1:
+                        if st.button(f"▶ Run — show venues in {_picked}", key="vp_drill_run",
+                                     type="primary", use_container_width=True):
+                            st.session_state["vp_drill"] = (sel_state, sel_type)
+                    with _rc2:
+                        st.caption(f"Selected: **{_picked}**")
                 else:
-                    st.caption("Pick a **State** row *and* a **Venue type** column above to enable Run.")
+                    st.caption("Click a State row (and optionally a Venue-type column header) to enable Run.")
             else:
                 st.caption("Not enough venue-type data to build the matrix.")
 
-            # ── 2) Drill-down: the venues that roll up into the selected cell ──
+            # ── 2) Venue line-item table — how each estimate is built ─────────
+            # Always visible (defaults to every venue in the applied filters); Run
+            # narrows it to the picked grid section.
             _drill = st.session_state.get("vp_drill")
             if _drill:
                 ds, dt = _drill
-                subset = [v for v in vendors if v["State"] == ds and v["Type"] == dt]
-                st.markdown(f"#### Venues in {ds} × {dt} @ {G} guests — {len(subset)} venue(s)")
-                if not subset:
-                    st.caption("No venues roll up into this cell.")
-                else:
-                    ddf = pd.DataFrame(subset)
-                    ddf = ddf[[c for c in _vp_order if c in ddf.columns]].reset_index(drop=True)
-                    _vp_event = st.dataframe(
-                        ddf, use_container_width=True, hide_index=True,
-                        on_select="rerun", selection_mode="single-row", key="vp_drill_table",
-                        column_config=_vp_colcfg,
-                    )
-                    _sel = (_vp_event.selection.rows if _vp_event and _vp_event.selection else [])
-                    if _sel:
-                        v = subset[_sel[0]]
-                        st.markdown(f"##### {v['Venue']} — breakdown @ {G} guests")
-                        per_head, fb_min = v["_per_head"], v["_fb_min"]
-                        by_head = per_head * G
-                        which = "per-head applies" if by_head >= fb_min else "F&B minimum applies"
-                        cer_pp = any(s in v["_cer_type"].lower() for s in ("per person", "per head", "pp"))
-                        d1, d2 = st.columns([3, 2])
-                        with d1:
-                            st.markdown(
-                                f"- **Base fee:** {_vp_money(v['Base fee'])}"
-                                + (f"  ·  space: {v['_space']}" if v["_space"] else "") + "\n"
-                                f"- **F&B:** max( ${per_head:,.0f}/guest × {G} = ${by_head:,.0f} ,  "
-                                f"min ${fb_min:,.0f} ) → **{_vp_money(v['F&B'])}**  _({which})_\n"
-                                f"- **Admin:** (base + F&B) × {v['_admin_pct']:.0f}% → {_vp_money(v['Admin'])}\n"
-                                f"- **Ceremony:** {_vp_money(v['Ceremony'])}  _({'per person × ' + str(G) if cer_pp else 'flat'})_\n"
-                                f"- **Estimate (from):** {_vp_money(v['Estimate'])}"
-                            )
-                        with d2:
-                            pdfs = vp_pdf_map.get(v["_vid"], [])
-                            if pdfs:
-                                st.markdown("**Pricing PDFs**")
-                                for p in pdfs:
-                                    lbl = p["name"] + (f" · {p['year']}" if p["year"] else "")
-                                    st.markdown(f"- [{lbl}]({p['link']})")
-                            else:
-                                st.caption("No pricing PDFs linked for this venue.")
+                subset = [v for v in vendors
+                          if (ds is None or v["State"] == ds) and (dt is None or v["Type"] == dt)]
+                _lbl = " × ".join([str(x) for x in (ds, dt) if x is not None]) or "selection"
+                _h1, _h2 = st.columns([5, 1])
+                with _h1:
+                    st.markdown(f"#### Venues in {_lbl} @ {G} guests — {len(subset)} venue(s)")
+                with _h2:
+                    if st.button("Show all", key="vp_drill_clear", use_container_width=True):
+                        st.session_state.pop("vp_drill", None)
             else:
-                st.caption("⬆️ Pick a cell in the grid and click **Run** to see the individual venues behind it.")
+                subset = vendors
+                st.markdown(f"#### All venues @ {G} guests — {len(subset)} venue(s)")
+                st.caption("Each row shows how the estimate is built (base · F&B · admin · ceremony). "
+                           "Pick a grid cell above + **Run** to filter to one section; click a row for its PDFs.")
+
+            if not subset:
+                st.caption("No venues for this selection.")
+            else:
+                ddf = pd.DataFrame(subset)
+                ddf = ddf[[c for c in _vp_order if c in ddf.columns]].reset_index(drop=True)
+                _vp_event = st.dataframe(
+                    ddf, use_container_width=True, hide_index=True,
+                    on_select="rerun", selection_mode="single-row", key="vp_drill_table",
+                    column_config=_vp_colcfg,
+                )
+                _sel = (_vp_event.selection.rows if _vp_event and _vp_event.selection else [])
+                if _sel:
+                    v = subset[_sel[0]]
+                    st.markdown(f"##### {v['Venue']} — breakdown @ {G} guests")
+                    per_head, fb_min = v["_per_head"], v["_fb_min"]
+                    by_head = per_head * G
+                    which = "per-head applies" if by_head >= fb_min else "F&B minimum applies"
+                    cer_pp = any(s in v["_cer_type"].lower() for s in ("per person", "per head", "pp"))
+                    d1, d2 = st.columns([3, 2])
+                    with d1:
+                        st.markdown(
+                            f"- **Base fee:** {_vp_money(v['Base fee'])}"
+                            + (f"  ·  space: {v['_space']}" if v["_space"] else "") + "\n"
+                            f"- **F&B:** max( ${per_head:,.0f}/guest × {G} = ${by_head:,.0f} ,  "
+                            f"min ${fb_min:,.0f} ) → **{_vp_money(v['F&B'])}**  _({which})_\n"
+                            f"- **Admin:** (base + F&B) × {v['_admin_pct']:.0f}% → {_vp_money(v['Admin'])}\n"
+                            f"- **Ceremony:** {_vp_money(v['Ceremony'])}  _({'per person × ' + str(G) if cer_pp else 'flat'})_\n"
+                            f"- **Estimate (from):** {_vp_money(v['Estimate'])}"
+                        )
+                    with d2:
+                        pdfs = vp_pdf_map.get(v["_vid"], [])
+                        if pdfs:
+                            st.markdown("**Pricing PDFs**")
+                            for p in pdfs:
+                                lbl = p["name"] + (f" · {p['year']}" if p["year"] else "")
+                                st.markdown(f"- [{lbl}]({p['link']})")
+                        else:
+                            st.caption("No pricing PDFs linked for this venue.")
 
             cnt = vp_meta["counts"]
             st.caption(
