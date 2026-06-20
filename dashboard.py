@@ -31,6 +31,8 @@ Optional fallback (if GOOGLE_CLIENT_ID is not set, password auth is used):
 import os
 import re
 import time
+import hmac
+import hashlib
 import base64
 import datetime
 import json
@@ -366,6 +368,51 @@ _USE_GOOGLE_AUTH      = bool(_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET)
 _GOOGLE_AUTH_URI  = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
+# ── Persistent login cookie ───────────────────────────────────────────────────
+# st.session_state (where the login lives) is wiped on every server restart
+# (each redeploy) and on WebSocket reconnects — that's what was signing people
+# out "randomly". We mirror the login into a signed browser cookie and restore
+# from it on load, so a session reset re-authenticates silently. All cookie ops
+# are best-effort: a failure degrades to the old session-only behavior, never a
+# lockout. The signing key persists across restarts (env SESSION_SECRET, falling
+# back to the always-set GOOGLE_CLIENT_SECRET).
+_SESSION_SECRET   = os.environ.get("SESSION_SECRET") or _GOOGLE_CLIENT_SECRET or "tulle-dev-secret"
+_SESSION_TTL_DAYS = 30
+
+
+def _sign_session(email: str, name: str, picture: str) -> str:
+    payload = {"email": email, "name": name, "pic": picture,
+               "exp": int(time.time()) + _SESSION_TTL_DAYS * 86400}
+    raw = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    sig = hmac.new(_SESSION_SECRET.encode(), raw.encode(), hashlib.sha256).hexdigest()
+    return f"{raw}.{sig}"
+
+
+def _verify_session(token: str):
+    """Return the payload dict if the token is well-formed, unexpired, and
+    correctly signed; else None."""
+    try:
+        raw, sig = token.split(".", 1)
+        expect = hmac.new(_SESSION_SECRET.encode(), raw.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expect):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(raw.encode()).decode())
+        if int(payload.get("exp", 0)) < int(time.time()):
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+# Cookie manager (best-effort — None if the component can't load).
+_cookies = None
+if _USE_GOOGLE_AUTH:
+    try:
+        import extra_streamlit_components as stx
+        _cookies = stx.CookieManager(key="tulle_auth_cookies")
+    except Exception:
+        _cookies = None
+
 
 def _build_google_auth_url() -> str:
     """Return a Google OAuth2 authorization URL."""
@@ -414,6 +461,20 @@ def _exchange_google_code(code: str) -> dict:
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+
+# ── Silent re-auth from the persistent cookie (survives redeploys/reconnects) ──
+if _USE_GOOGLE_AUTH and not st.session_state.authenticated and _cookies is not None:
+    try:
+        _tok = _cookies.get("tulle_auth")
+    except Exception:
+        _tok = None
+    if _tok:
+        _p = _verify_session(_tok)
+        if _p and (not _ALLOWED_EMAILS or _p.get("email") in _ALLOWED_EMAILS):
+            st.session_state.authenticated = True
+            st.session_state.user_email    = _p.get("email", "")
+            st.session_state.user_name     = _p.get("name", _p.get("email", ""))
+            st.session_state.user_picture  = _p.get("pic", "")
 
 # ── Handle Google OAuth callback (code in URL query params) ──────────────────
 if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
@@ -489,6 +550,23 @@ if not st.session_state.authenticated:
             else:
                 st.error("Incorrect password.")
     st.stop()
+
+# Past the gate → authenticated. Persist (or refresh) the login cookie once per
+# session so a later server restart / reconnect re-auths silently. Self-heals a
+# dropped set: runs on the OAuth-success rerun and on cookie-restored sessions.
+if _USE_GOOGLE_AUTH and _cookies is not None and not st.session_state.get("_auth_cookie_set"):
+    try:
+        _cookies.set(
+            "tulle_auth",
+            _sign_session(st.session_state.get("user_email", ""),
+                          st.session_state.get("user_name", ""),
+                          st.session_state.get("user_picture", "")),
+            expires_at=datetime.datetime.now() + datetime.timedelta(days=_SESSION_TTL_DAYS),
+            key="tulle_auth_set",
+        )
+        st.session_state["_auth_cookie_set"] = True
+    except Exception:
+        pass
 
 
 # ── USAGE / QUOTA TRACKER HELPERS ─────────────────────────────────────────────
@@ -639,8 +717,13 @@ with _h_user:
     )
 with _h_btn:
     if st.button("Sign out", use_container_width=True):
-        for k in ["authenticated", "user_email", "user_name", "user_picture"]:
+        for k in ["authenticated", "user_email", "user_name", "user_picture", "_auth_cookie_set"]:
             st.session_state.pop(k, None)
+        if _cookies is not None:
+            try:
+                _cookies.delete("tulle_auth", key="tulle_auth_del")
+            except Exception:
+                pass
         st.rerun()
 
 st.markdown('<hr class="tulle-rule" />', unsafe_allow_html=True)
