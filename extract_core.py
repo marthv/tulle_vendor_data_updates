@@ -608,7 +608,10 @@ def _downsample_pdf(pdf_bytes, target_b64_mb=25):
 
 # ── CLAUDE ────────────────────────────────────────────────────────────────────
 
-_MODEL_SONNET = "claude-sonnet-4-20250514"
+# Sonnet 4.6 — same price as Sonnet 4 ($3/$15), better quality, and (unlike the
+# older claude-sonnet-4-20250514) supports Files-API file_id document references,
+# which is what big batches require. The older model errored on file_id passes.
+_MODEL_SONNET = "claude-sonnet-4-6"
 _MODEL_HAIKU  = "claude-haiku-4-5-20251001"
 
 
@@ -1325,13 +1328,23 @@ def run_extraction_batch(
         # Persist batch_id + pdf_map to Xano the instant Anthropic accepts the batch,
         # so an interrupted submit (process death / a failed completion post) can't
         # lose the only handle to the in-flight batch. Best-effort; never blocks.
+        # Human-readable description of WHAT was submitted, so the batch is easy to
+        # identify later (row range / rerun / explicit ids) next to its Anthropic id.
+        if pdf_ids:
+            submitted_as = f"{len(pdf_map)} PDFs (by id)"
+        elif rerun_failed:
+            submitted_as = f"{len(pdf_map)} PDFs (rerun-failed)"
+        else:
+            submitted_as = f"rows {start_row}–{end_row if end_row else 'end'} ({len(pdf_map)} PDFs)"
         try:
             from dashboard import _post_job_status
             _post_job_status(
                 "extraction", "completed",
                 os.environ.get("LOGGED_IN_USER", "extraction-batch"),
                 result_summary={"batch_submitted": True, "batch_id": batch_id,
-                                "pdf_count": len(pdf_map), "pdf_map": pdf_map},
+                                "pdf_count": len(pdf_map), "pdf_map": pdf_map,
+                                "submitted_as": submitted_as,
+                                "start_row": start_row, "end_row": end_row},
                 batch_id=batch_id,
             )
         except Exception:
@@ -1365,10 +1378,19 @@ def list_recent_batches(limit: int = 20):
     independent of whatever we tracked in Xano. Returns a list of plain dicts."""
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
+    # Show times in US Eastern (handles EST/EDT automatically) instead of UTC.
+    try:
+        from zoneinfo import ZoneInfo
+        _ET = ZoneInfo("America/New_York")
+    except Exception:
+        _ET = None
+
     def _fmt(dt):
         if not dt:
             return ""
         try:
+            if _ET is not None:
+                return dt.astimezone(_ET).strftime("%Y-%m-%d %I:%M %p ET")
             return dt.strftime("%Y-%m-%d %H:%M UTC")
         except Exception:
             return str(dt)
@@ -1376,14 +1398,23 @@ def list_recent_batches(limit: int = 20):
     out = []
     for b in client.messages.batches.list(limit=limit):   # iterating auto-paginates
         rc = getattr(b, "request_counts", None)
+        succeeded = getattr(rc, "succeeded", 0) if rc else 0
+        errored   = getattr(rc, "errored", 0) if rc else 0
+        canceled  = getattr(rc, "canceled", 0) if rc else 0
+        expired   = getattr(rc, "expired", 0) if rc else 0
+        processing = getattr(rc, "processing", 0) if rc else 0
+        total = succeeded + errored + canceled + expired + processing
         out.append({
             "id":          b.id,
             "status":      getattr(b, "processing_status", ""),  # in_progress|canceling|ended
-            "processing":  getattr(rc, "processing", 0) if rc else 0,
-            "succeeded":   getattr(rc, "succeeded", 0) if rc else 0,
-            "errored":     getattr(rc, "errored", 0) if rc else 0,
-            "canceled":    getattr(rc, "canceled", 0) if rc else 0,
-            "expired":     getattr(rc, "expired", 0) if rc else 0,
+            "processing":  processing,
+            "succeeded":   succeeded,
+            "errored":     errored,
+            "canceled":    canceled,
+            "expired":     expired,
+            # Each PDF = 3 requests (summary + pricing + classification), so the
+            # PDF count is the quickest way to tell a 9-PDF test from a 200-PDF run.
+            "pdfs":        round(total / 3) if total else 0,
             "created_at":  _fmt(getattr(b, "created_at", None)),
             "ended_at":    _fmt(getattr(b, "ended_at", None)),
             "expires_at":  _fmt(getattr(b, "expires_at", None)),
@@ -1826,7 +1857,7 @@ def run_extraction(
             # Fallback: attempt extraction without structure map using format-agnostic prompt
             try:
                 msg = client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=_MODEL_SONNET,
                     max_tokens=8000,
                     system=PRICING_PROMPT_DIRECT,
                     messages=[{"role": "user", "content": [
