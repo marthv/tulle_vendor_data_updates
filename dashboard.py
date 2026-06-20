@@ -2057,17 +2057,29 @@ with tab5:
                 user = job.get('user_email', '')
                 start_row = summary.get('start_row', '-')
                 end_row = summary.get('end_row', '-')
-                pdf_count = summary.get('total', 0)
-                vendors = summary.get('vendor_ids', [])
-                vendor_str = ', '.join(vendors[:3]) + ('...' if len(vendors) > 3 else '')
+                # Batch jobs store pdf_count; live jobs store total — accept either.
+                pdf_count = summary.get('pdf_count') or summary.get('total', 0)
+
+                # The ACTUAL ids that ran (from pdf_map), so you can confirm a batch hit
+                # the rows you intended — not just the requested range. Shown as span+count.
+                pdf_map = summary.get('pdf_map') or {}
+                actual_ids = sorted(
+                    int(m['xano_id']) for m in pdf_map.values()
+                    if isinstance(m, dict) and str(m.get('xano_id') or '').strip().isdigit()
+                )
+                if actual_ids:
+                    ran_ids = (f"{actual_ids[0]}–{actual_ids[-1]} ({len(actual_ids)})"
+                               if len(actual_ids) > 1 else f"{actual_ids[0]}")
+                else:
+                    ran_ids = '-'
 
                 history_rows.append({
                     'Status': status.upper(),
                     'User': user,
                     'Started': _fmt_ts(started),
-                    'Rows': f"{start_row}–{end_row}",
+                    'Requested ids': f"{start_row}–{end_row}",
+                    'Ran ids': ran_ids,
                     'PDFs': pdf_count,
-                    'Vendors': vendor_str,
                 })
 
             df_hist = pd.DataFrame(history_rows)
