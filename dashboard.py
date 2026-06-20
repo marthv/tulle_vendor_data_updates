@@ -18,10 +18,6 @@ Required env vars (set in Railway dashboard):
     XANO_JOB_STATUS_ENDPOINT  — POST endpoint to track persistent job status (survives logouts)
     XANO_JOBS_ENDPOINT    — GET endpoint to fetch active jobs
 
-Vendor Scraper tab (optional — see scrape_core.py / .env.example for the full list):
-    XANO_PHOTOGRAPHERS_ENDPOINT, XANO_OBSERVATION_ENDPOINT, XANO_PATCH_VENDOR_ENDPOINT
-    REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT (Phase 2 — Reddit source)
-
 Usage/quota trackers (optional — widgets degrade gracefully if unset):
     GCP_PROJECT_ID        — GCP project for Places API quota reads (default "tulle-technologies").
                             Requires the GOOGLE_SERVICE_ACCOUNT_JSON service account to hold the
@@ -47,7 +43,6 @@ from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import (run_extraction, get_pipeline_status,
                           run_extraction_batch, process_batch_results)
-from scrape_core import run_scrape, get_scrape_status
 
 
 # ── JOB STATUS TRACKING (persistent across logouts) ──────────────────────────
@@ -111,6 +106,37 @@ def _get_job_history(job_type: str, limit: int = 20):
         return []
     except Exception:
         return []
+
+
+def _get_resumable_batch():
+    """Find the most recent submitted batch job in Xano whose pdf_map is still
+    available, so batch results can be checked after a logout / page refresh.
+    Returns (batch_id, pdf_map, job) or (None, None, None)."""
+    for job in _get_job_history("extraction", limit=20):
+        summary = job.get("result_summary") or {}
+        if isinstance(summary, str):
+            try:
+                summary = json.loads(summary)
+            except (json.JSONDecodeError, TypeError):
+                summary = {}
+        bid = summary.get("batch_id") or job.get("batch_id")
+        pmap = summary.get("pdf_map")
+        if bid and isinstance(pmap, dict) and pmap:
+            return bid, pmap, job
+    return None, None, None
+
+
+@st.cache_data(ttl=120)
+def _get_google_coverage():
+    """Coverage counts for Google data + images across WPTP Updated Mappings.
+    Returns the coverage dict from admin/google/coverage, or None on failure."""
+    try:
+        r = requests.get(f"{XANO_BASE}/admin/google/coverage", timeout=90)
+        if r.status_code == 200 and isinstance(r.json(), dict):
+            return r.json()
+    except Exception:
+        return None
+    return None
 
 
 def _parse_timestamp(ts_value) -> float | None:
@@ -623,8 +649,8 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab2, tab5, tab6, tab_vp = st.tabs([
-    "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction", "🔎 Vendor Scraper",
+tab0, tab2, tab5, tab_vp = st.tabs([
+    "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction",
     "💰 Venue Pricing"
 ])
 
@@ -1155,6 +1181,67 @@ with tab2:
 
     st.markdown("---")
 
+    # ── Coverage — what still needs Google data / images ──────────────────────
+    st.markdown("### 📊 Coverage")
+    st.caption(
+        "How many vendors in WPTP Updated Mappings already have Google data and images, "
+        "and exactly which rows still need a run (so you know where to point the batches below)."
+    )
+    if st.button("📊 Load / Refresh coverage", key="gg_load_coverage"):
+        _get_google_coverage.clear()
+        st.session_state["gg_cov_loaded"] = True
+
+    if st.session_state.get("gg_cov_loaded"):
+        with st.spinner("Counting coverage in Xano..."):
+            cov = _get_google_coverage()
+        if not cov:
+            st.warning("Couldn't load coverage — try again.")
+        else:
+            total = cov.get("total", 0) or 0
+            g_done = cov.get("google_done", 0) or 0
+            g_rem  = cov.get("google_remaining", 0) or 0
+            i1 = cov.get("image_1_done", 0) or 0
+            i2 = cov.get("image_2_done", 0) or 0
+            i3 = cov.get("image_3_done", 0) or 0
+            i_rem = cov.get("image_remaining", 0) or 0
+            g_pct = int(g_done / total * 100) if total else 0
+            i_pct = int(i1 / total * 100) if total else 0
+
+            cc1, cc2, cc3, cc4 = st.columns(4)
+            cc1.markdown(_card("card-gray", "🏷️", f"{total:,}", "Total vendors"),
+                         unsafe_allow_html=True)
+            cc2.markdown(_card("card-green" if g_rem == 0 else "card-amber", "🔍",
+                               f"{g_done:,}", f"Google data done · {g_pct}%"),
+                         unsafe_allow_html=True)
+            cc3.markdown(_card("card-gray" if g_rem == 0 else "card-red", "🔍",
+                               f"{g_rem:,}", "Google data remaining"),
+                         unsafe_allow_html=True)
+            cc4.markdown(_card("card-green" if i_rem == 0 else "card-amber", "🖼️",
+                               f"{i_rem:,}", "Images remaining (have data, no image 1)"),
+                         unsafe_allow_html=True)
+            st.caption(f"Image slots populated — slot 1: **{i1:,}** ({i_pct}%) · "
+                       f"slot 2: **{i2:,}** · slot 3: **{i3:,}**")
+
+            g_sample = cov.get("google_sample") or []
+            if g_sample:
+                st.info(f"▶ **Google Data** — {g_rem:,} vendors still need it. "
+                        f"Next un-cached vendor ID: **{g_sample[0].get('id')}**.")
+                with st.expander(f"Vendors missing Google data — showing {min(len(g_sample), 50)} of {g_rem:,}"):
+                    st.dataframe(pd.DataFrame(g_sample[:50]), use_container_width=True, hide_index=True)
+            else:
+                st.success("✅ All vendors have Google data cached.")
+
+            i_sample = cov.get("image_sample") or []
+            if i_sample:
+                st.info(f"▶ **Vendor Images** — {i_rem:,} vendors have Google data but no image 1. "
+                        f"Next vendor ID needing images: **{i_sample[0].get('id')}**.")
+                with st.expander(f"Vendors missing images — showing {min(len(i_sample), 50)} of {i_rem:,}"):
+                    st.dataframe(pd.DataFrame(i_sample[:50]), use_container_width=True, hide_index=True)
+            else:
+                st.success("✅ Every vendor with Google data has at least image 1.")
+
+    st.markdown("---")
+
     # ── Section 1: Google Data Cache ──────────────────────────────────────────
     st.markdown("### 🔍 Google Data Cache")
     st.caption("Fetches Google Places data for vendors in WPTP Updated Mappings that have a Place ID but no cached data yet.")
@@ -1540,10 +1627,12 @@ with tab5:
                         unsafe_allow_html=True,
                     )
                 st.session_state["pl_running"] = False
-                # Track job completion persistently
+                # Track job completion persistently (result_summary carries batch_id +
+                # pdf_map so the batch can be resumed/checked later — even after logout)
                 job_status = "completed" if (pl_result and pl_result.get("batch_submitted")) else "failed"
                 _post_job_status("extraction", job_status, st.session_state.get("user_email", "unknown"),
-                                 result_summary=pl_result)
+                                 result_summary=pl_result,
+                                 batch_id=(pl_result.get("batch_id") if pl_result else None))
                 if pl_result and pl_result.get("batch_submitted"):
                     bid = pl_result["batch_id"]
                     st.session_state["pl_batch_id"]   = bid
@@ -1596,6 +1685,25 @@ with tab5:
                     st.session_state["pl_data"] = get_pipeline_status()
                     st.rerun()
 
+        # ── Resume a batch from Xano (survives logout / refresh / redeploy) ───
+        # The session loses pl_batch_id/pl_batch_map on logout, but the batch_id
+        # and pdf_map are persisted on the job row — reload them to keep checking.
+        if not st.session_state.get("pl_batch_id"):
+            _r_bid, _r_map, _r_job = _get_resumable_batch()
+            if _r_bid and _r_bid in st.session_state.get("pl_checked_batches", set()):
+                _r_bid = None  # already checked this session — don't re-offer
+            if _r_bid:
+                _r_when = _fmt_ts(_r_job.get("started_at")) if _r_job else ""
+                st.warning(
+                    f"📦 Submitted batch found from a previous session — `{_r_bid}` "
+                    f"({len(_r_map)} PDFs, submitted {_r_when}). "
+                    "Load it to check results."
+                )
+                if st.button("↩️ Resume this batch", key="pl_resume_batch"):
+                    st.session_state["pl_batch_id"]  = _r_bid
+                    st.session_state["pl_batch_map"] = _r_map
+                    st.rerun()
+
         # ── Batch results checker (shown when a batch_id is stored) ───────────
         _bid = st.session_state.get("pl_batch_id")
         if _bid:
@@ -1626,6 +1734,9 @@ with tab5:
                     if batch_result.get("batch_done"):
                         ok = batch_result.get("ok", 0); fail = batch_result.get("failed", 0)
                         st.success(f"Batch complete — {ok} extracted, {fail} failed")
+                        # Remember this batch is done so the resume prompt won't
+                        # re-offer it (re-checking would re-write its rows).
+                        st.session_state.setdefault("pl_checked_batches", set()).add(_bid)
                         st.session_state.pop("pl_batch_id", None)
                         st.session_state.pop("pl_batch_map", None)
                         st.session_state["pl_last_result"] = batch_result
@@ -1759,7 +1870,7 @@ with tab5:
                 history_rows.append({
                     'Status': status.upper(),
                     'User': user,
-                    'Started': str(started)[:19],
+                    'Started': _fmt_ts(started),
                     'Rows': f"{start_row}–{end_row}",
                     'PDFs': pdf_count,
                     'Vendors': vendor_str,
@@ -1769,197 +1880,6 @@ with tab5:
             st.dataframe(df_hist, use_container_width=True, hide_index=True)
         else:
             st.info("No completed jobs yet")
-
-
-# ── TAB 6: VENDOR SCRAPER ─────────────────────────────────────────────────────
-
-with tab6:
-    st.subheader("Vendor Scraper — Photographer Pricing")
-    st.caption(
-        "Politely scrapes photographer **websites** (and Reddit, once configured) → Claude extracts "
-        "package pricing → Xano `photographer_pricing` with source provenance. Same Claude credit guard "
-        "as PDF Extraction. Photographers come from WPTP Updated Mappings (Category = Photographer)."
-    )
-
-    # ── Display active jobs ───────────────────────────────────────────────────
-    if st.session_state.get("sc_refresh_job"):
-        with st.spinner("Fetching latest job status..."):
-            active_scrape = _get_active_job("scrape")
-        st.session_state["sc_refresh_job"] = False
-    else:
-        active_scrape = _get_active_job("scrape")
-
-    if active_scrape:
-        scrape_info_col, scrape_btn_col = st.columns([5, 1])
-        with scrape_info_col:
-            st.info(_format_job_display(active_scrape))
-        with scrape_btn_col:
-            st.markdown("")  # spacing
-            if st.button("🔄", key="refresh_scrape_job", help="Refresh job status"):
-                st.session_state["sc_refresh_job"] = True
-                st.rerun()
-
-    sc_refresh_col, _sc_sp = st.columns([2, 6])
-    with sc_refresh_col:
-        sc_load = st.button("🔄 Load / Refresh Status", type="primary", use_container_width=True, key="sc_refresh")
-
-    if sc_load or st.session_state.get("sc_status_loaded"):
-        if sc_load:
-            st.session_state["sc_data"] = get_scrape_status()
-            st.session_state["sc_status_loaded"] = True
-        sc_data = st.session_state.get("sc_data") or {"rows": [], "counts": {}, "total": 0, "with_website": 0}
-        counts  = sc_data.get("counts", {})
-
-        if not sc_data.get("rows"):
-            st.info(
-                "No photographers loaded. Set **XANO_PHOTOGRAPHERS_ENDPOINT** (GET worklist for "
-                "Category = Photographer) in Railway, then Refresh."
-            )
-        else:
-            sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-            sc1.markdown(_card("card-gray",  "📷", f"{sc_data.get('total', 0):,}",       "Photographers"),  unsafe_allow_html=True)
-            sc2.markdown(_card("card-amber", "⏳", f"{counts.get('pending', 0):,}",       "Pending"),        unsafe_allow_html=True)
-            sc3.markdown(_card("card-green", "✅", f"{counts.get('scraped', 0):,}",       "Scraped"),        unsafe_allow_html=True)
-            sc4.markdown(_card("card-red",   "✗",  f"{counts.get('failed', 0):,}",        "Failed"),         unsafe_allow_html=True)
-            sc5.markdown(_card("card-gray",  "🌐", f"{sc_data.get('with_website', 0):,}", "Have a Website"), unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        # ── Run controls ──────────────────────────────────────────────────────
-        st.markdown("#### Run Scraper")
-        sc_sources = st.multiselect(
-            "Sources", options=["website", "reddit"], default=["website"],
-            help="Reddit requires REDDIT_CLIENT_ID / SECRET / USER_AGENT; until those are set it is skipped.",
-            key="sc_sources",
-        )
-        sc_run_mode = st.radio(
-            "Run mode",
-            options=["🆕 All pending", "❌ Re-run all failed", "🎯 Specific Vendor IDs", "📏 Row range"],
-            horizontal=True, key="sc_run_mode",
-        )
-        sc_specific = ""
-        sc_start_row, sc_end_row = 0, 10
-        if sc_run_mode == "🎯 Specific Vendor IDs":
-            sc_specific = st.text_area("Vendor IDs (one per line or comma-separated)", height=100,
-                                       placeholder="VND_018\nVND_042", key="sc_specific")
-        elif sc_run_mode == "📏 Row range":
-            scc1, scc2 = st.columns(2)
-            with scc1:
-                sc_start_row = st.number_input("Start row", min_value=0, value=0, step=1, key="sc_start")
-            with scc2:
-                sc_end_row = st.number_input("End row (0 = all)", min_value=0, value=10, step=1, key="sc_end")
-
-        n_pending = counts.get("pending", 0)
-        n_failed  = counts.get("failed", 0)
-        sc_btn_label = {
-            "🆕 All pending":         f"▶ Scrape All Pending ({n_pending})",
-            "❌ Re-run all failed":    f"▶ Re-scrape Failed ({n_failed})",
-            "🎯 Specific Vendor IDs":  "▶ Scrape Specified Vendors",
-            "📏 Row range":            "▶ Scrape Row Range",
-        }.get(sc_run_mode, "▶ Run")
-
-        if "sc_running" not in st.session_state:
-            st.session_state["sc_running"] = False
-        sc_run_btn = st.button(
-            sc_btn_label, type="primary", use_container_width=True,
-            disabled=st.session_state["sc_running"] or not sc_sources, key="sc_run_btn",
-        )
-
-        sc_log_ph  = st.empty()
-        sc_stat_ph = st.empty()
-
-        if sc_run_btn:
-            sc_vendor_ids   = None
-            sc_rerun_failed = False
-            sc_eff_start, sc_eff_end = 0, None
-            if sc_run_mode == "🎯 Specific Vendor IDs":
-                raw = sc_specific.replace(",", "\n")
-                sc_vendor_ids = [v.strip() for v in raw.splitlines() if v.strip()]
-                if not sc_vendor_ids:
-                    st.warning("Enter at least one Vendor ID.")
-                    st.stop()
-            elif sc_run_mode == "❌ Re-run all failed":
-                sc_rerun_failed = True
-            elif sc_run_mode == "📏 Row range":
-                sc_eff_start = int(sc_start_row)
-                sc_eff_end   = None if int(sc_end_row) == 0 else int(sc_end_row)
-
-            st.session_state["sc_running"] = True
-            # Track job persistently (survives logouts)
-            _post_job_status("scrape", "running", st.session_state.get("user_email", "unknown"))
-            sc_lines, sc_result = [], None
-            for item in run_scrape(
-                start_row=sc_eff_start, end_row=sc_eff_end,
-                vendor_ids=sc_vendor_ids, rerun_failed=sc_rerun_failed,
-                sources=tuple(sc_sources),
-            ):
-                if isinstance(item, dict):
-                    sc_result = item
-                    break
-                sc_lines.append(item)
-                sc_log_ph.markdown('<div class="log-box">' + "\n".join(sc_lines) + "</div>", unsafe_allow_html=True)
-            st.session_state["sc_running"] = False
-            # Track job completion persistently
-            _post_job_status("scrape", "completed", st.session_state.get("user_email", "unknown"),
-                             result_summary=sc_result)
-
-            if sc_result:
-                ok   = sc_result["ok"]
-                part = sc_result["partial"]
-                fail = sc_result["failed"]
-                cost = sc_result.get("cost_usd", 0.0)
-                if sc_result.get("credit_exhausted"):
-                    st.toast("🛑 Anthropic credits exhausted — scraping halted.", icon="🛑")
-                    sc_stat_ph.error(f"🛑 Halted — ran out of Anthropic credits after {ok} scraped · ${cost:.4f}")
-                elif fail:
-                    sc_stat_ph.error(f"Done — {ok} scraped, {part} partial, {fail} failed · ${cost:.4f}")
-                elif part:
-                    sc_stat_ph.warning(f"Done — {ok} scraped, {part} partial · ${cost:.4f}")
-                else:
-                    sc_stat_ph.success(f"Done — {ok} scraped · ${cost:.4f}")
-                st.session_state["sc_last_result"]   = sc_result
-                st.session_state["sc_status_loaded"] = True
-                st.session_state["sc_data"]          = get_scrape_status()
-                st.rerun()
-
-        # ── Persistent last-run output (survives the auto-refresh rerun) ──────
-        _sc_last = st.session_state.get("sc_last_result")
-        if _sc_last and _sc_last.get("credit_exhausted"):
-            st.error(
-                "🛑 **Out of Anthropic credits — scraping was halted.**  \n"
-                "Remaining photographers were left **pending** (not failed). Add credits, then re-run."
-            )
-            st.link_button(
-                "💳 Add credits → platform.claude.com/settings/billing",
-                "https://platform.claude.com/settings/billing", type="primary",
-            )
-            st.markdown("---")
-
-        if _sc_last and _sc_last.get("results"):
-            st.markdown("#### Run Summary")
-            for r in _sc_last["results"]:
-                status   = r.get("status", "")
-                vid      = r.get("pdf_id", "")
-                vname    = r.get("venue_name", vid)
-                posted   = r.get("summary_rows", 0)
-                cost     = r.get("cost_usd", 0.0)
-                offering = r.get("offering", "")
-                reason   = r.get("reason", "")
-                card_class = "run-card" if status == "OK" else ("run-card failed" if status == "FAILED" else "run-card partial")
-                badge = ('<span class="run-card-badge badge-green">✓ scraped</span>' if status == "OK"
-                         else '<span class="run-card-badge badge-red">✗ failed</span>' if status == "FAILED"
-                         else f'<span class="run-card-badge badge-amber">⚠ {status.lower()}</span>')
-                parts = []
-                if posted:   parts.append(f"{posted} observation{'s' if posted != 1 else ''}")
-                if offering: parts.append(offering)
-                if cost:     parts.append(f"${cost:.4f}")
-                if reason:   parts.append(f"<span style='color:#ef4444'>{reason}</span>")
-                st.markdown(f"""
-                <div class="{card_class}">
-                    <div class="run-card-title">{badge}{vname} <span style="font-weight:400;color:#9ca3af;font-size:12px">({vid})</span></div>
-                    <div class="run-card-meta">{" · ".join(parts)}</div>
-                </div>
-                """, unsafe_allow_html=True)
 
 
 # ══ VENUE PRICING TAB ══════════════════════════════════════════════════════════
