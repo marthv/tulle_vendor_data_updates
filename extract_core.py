@@ -1209,6 +1209,28 @@ def _build_batch_requests(file_id, pdf_id, vendor_id, venue_name):
     ]
 
 
+def _select_by_id_range(rows, start_row, end_row):
+    """Select rows whose `id` falls in [start_row, end_row] (inclusive). end_row of
+    0/None means no upper bound; start_row of 0/None means no lower bound. Matches the
+    PDF Status Table's `id` column — what the user types — instead of a list position
+    in Xano's (non-id) return order. Result is sorted by id for predictable ordering."""
+    lo = int(start_row) if start_row else None
+    hi = int(end_row) if end_row else None
+    out = []
+    for r in rows:
+        try:
+            rid = int(r.get('id'))
+        except (TypeError, ValueError):
+            continue
+        if lo is not None and rid < lo:
+            continue
+        if hi is not None and rid > hi:
+            continue
+        out.append(r)
+    out.sort(key=lambda r: int(r.get('id')))
+    return out
+
+
 def run_extraction_batch(
     start_row: int = 0,
     end_row: int | None = None,
@@ -1249,7 +1271,10 @@ def run_extraction_batch(
                  if str(r.get('extraction_status') or '').strip().lower()
                  in ('failed', 'batch_submitted')]
     else:
-        batch = rows_with_links[start_row:(None if end_row is None else end_row)]
+        # Select by row id (matches the PDF Status Table's `id` column): start_row /
+        # end_row are inclusive id bounds. end_row 0/None = no upper bound. This is
+        # what the user reads in the table — NOT a position in Xano's return order.
+        batch = _select_by_id_range(rows_with_links, start_row, end_row)
         try:
             done_rows = []
             for done_rows, _ in _fetch_xano_pages(os.environ.get("XANO_SUMMARY_ENDPOINT", "")):
@@ -1638,11 +1663,11 @@ def run_extraction(
         yield from emit(f"   Mode: re-run failed — {len(batch)} rows")
 
     else:
-        # Default: row-range, skipping already-extracted
-        total = len(rows_with_links)
-        end   = end_row if end_row is not None else total
-        batch = rows_with_links[start_row:end]
-        yield from emit(f"   Mode: rows {start_row + 1} → {min(end, total)} ({len(batch)} venues)")
+        # Default: select by row id (matches the PDF Status Table `id` column),
+        # inclusive bounds; end_row 0/None = no upper bound. Skips already-extracted.
+        batch = _select_by_id_range(rows_with_links, start_row, end_row)
+        _hi_txt = end_row if end_row else "end"
+        yield from emit(f"   Mode: id {start_row} → {_hi_txt} ({len(batch)} venues)")
 
     # ── For default mode: skip already-extracted (dedup by PDF_ID in summary table) ──
     already_done: set[str] = set()
@@ -1731,7 +1756,7 @@ def run_extraction(
         venue_name = str(row.get('Name')     or row.get('name')      or '').strip()
         pdf_link  = str(row.get('PDF_Link')  or row.get('pdf_link')  or '').strip()
         xano_id   = row.get('id')   # Xano integer primary key — used for PATCH
-        row_num   = (start_row + i + 1) if (not pdf_ids and not rerun_failed) else (i + 1)
+        row_num   = i + 1           # position within this batch (selection is by id now)
 
         # Update progress tracking
         current_pdf = pdf_id
@@ -1740,13 +1765,13 @@ def run_extraction(
 
         # Default mode dedup
         if not pdf_ids and not rerun_failed and pdf_id in already_done:
-            yield from emit(f"[{row_num}/{total_rows}] {pdf_id} — {venue_name} — ⏭  skipping (already extracted)")
+            yield from emit(f"[{row_num}/{len(batch)}] {pdf_id} — {venue_name} — ⏭  skipping (already extracted)")
             continue
 
         # Venue pre-filter: skip non-venue vendors entirely (no download, no model calls).
         # Only fires when the venue set loaded successfully; an empty set disables the gate.
         if venue_vendor_ids and vendor_id and vendor_id not in venue_vendor_ids:
-            yield from emit(f"[{row_num}/{total_rows}] {pdf_id} — {venue_name} — ⏭  skipping (vendor not categorized 'Venue')")
+            yield from emit(f"[{row_num}/{len(batch)}] {pdf_id} — {venue_name} — ⏭  skipping (vendor not categorized 'Venue')")
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "SKIPPED", "reason": "non-venue: mapping category != Venue", "cost_usd": 0})
             _update_pdf_status(xano_id, "skipped_non_venue", error="non-venue: mapping category != Venue")
             _maybe_post_progress()

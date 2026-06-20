@@ -1664,11 +1664,13 @@ with tab5:
                 key="pl_specific_ids",
             )
         elif run_mode == "📏 Row range":
+            st.caption("Selects by the **`id`** column shown in the PDF Status Table "
+                       "(inclusive). e.g. 6785–6795 = rows with id 6785 through 6795.")
             rc1, rc2 = st.columns(2)
             with rc1:
-                pl_start_row = st.number_input("Start row", min_value=0, value=0, step=1, key="pl_start")
+                pl_start_row = st.number_input("Start id", min_value=0, value=0, step=1, key="pl_start")
             with rc2:
-                pl_end_row = st.number_input("End row (0 = all)", min_value=0, value=10, step=1, key="pl_end")
+                pl_end_row = st.number_input("End id (0 = no upper limit)", min_value=0, value=10, step=1, key="pl_end")
 
         n_pending = counts.get('pending', 0)
         n_failed  = counts.get('failed', 0)
