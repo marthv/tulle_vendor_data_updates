@@ -1077,17 +1077,18 @@ def _fetch_xano_pages(endpoint, per_page=500):
     all_rows = []
     page = 1
     while True:
-        # Retry with jittered backoff: under parallel load Xano can return
-        # transient 502/503s, and a single bad page must not abort the whole run.
-        for attempt in range(6):
+        # Retry with jittered backoff: Xano throws transient 502/503 Bad Gateway
+        # under load, and a single bad page must not abort the whole run. 8 attempts
+        # with up to ~30s backoff rides out blips lasting a couple of minutes.
+        for attempt in range(8):
             try:
                 resp = requests.get(endpoint, params={"page": page, "per_page": per_page}, timeout=30)
                 resp.raise_for_status()
                 break
             except Exception:
-                if attempt == 5:
+                if attempt == 7:
                     raise
-                time.sleep(min(20, 2 * (attempt + 1)) + random.uniform(0, 2))
+                time.sleep(min(30, 2 * (attempt + 1)) + random.uniform(0, 2))
         data  = resp.json()
         batch = data if isinstance(data, list) else (data.get("items") or data.get("data") or data.get("result") or [])
         if not batch:
@@ -1586,6 +1587,127 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
     yield {"batch_done": True, "ok": ok_c, "partial": part_c, "failed": fail_c,
            "skipped": skip_c, "cost_usd": 0.0, "tokens": {},
            "results": results_log, "credit_exhausted": False, "log": log}
+
+
+# ── BACKGROUND AUTO-INGEST (Railway cron worker) ──────────────────────────────
+# Lets batch results land in Xano WITHOUT a manual "Check Batch Results" click.
+# A scheduled worker (batch_worker.py) calls poll_and_ingest_batches() every few
+# minutes; any batch that has ENDED on Anthropic and isn't already ingested is
+# pulled and posted to Xano. These helpers talk to Xano directly (no Streamlit) so
+# the worker can run headless.
+
+def _xano_get_json(url, timeout=20, attempts=5):
+    """GET a Xano URL with retry on 5xx/exceptions. Returns parsed JSON or None.
+    4xx is returned as None immediately (not retried — it won't self-heal)."""
+    for i in range(attempts):
+        try:
+            r = requests.get(url, timeout=timeout)
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code < 500:
+                return None
+        except Exception:
+            pass
+        time.sleep(min(15, 2 * (i + 1)) + random.uniform(0, 1))
+    return None
+
+
+def _list_submitted_batches(limit=40):
+    """Return [(batch_id, pdf_map, job_id), …] for extraction jobs that submitted a
+    batch, newest first, de-duplicated by batch_id. Mirrors the dashboard's resume
+    logic but reads XANO_JOBS_ENDPOINT directly so it has no Streamlit dependency."""
+    jobs_endpoint = os.environ.get("XANO_JOBS_ENDPOINT", "").strip()
+    if not jobs_endpoint:
+        return []
+    data = _xano_get_json(
+        f"{jobs_endpoint}?job_type=extraction&is_active=false&limit={limit}")
+    out, seen = [], set()
+    for job in (data or []):
+        summary = job.get("result_summary") or {}
+        if isinstance(summary, str):
+            try:
+                summary = json.loads(summary)
+            except (json.JSONDecodeError, TypeError):
+                summary = {}
+        bid = summary.get("batch_id") or job.get("batch_id")
+        pmap = summary.get("pdf_map")
+        if bid and bid not in seen and isinstance(pmap, dict) and pmap:
+            seen.add(bid)
+            out.append((bid, pmap, job.get("id")))
+    return out
+
+
+def _batch_already_ingested(pdf_map):
+    """True if this batch's PDFs have already left 'batch_submitted' status — i.e.
+    it was already ingested (manually or by a prior worker run). Used as the
+    idempotency guard so the worker never re-ingests and duplicates table-36 rows.
+    Samples a few of the batch's PDFs against wptp_pdfs. Conservative: if it can't
+    verify, returns False (allow ingest) — process_batch_results is the backstop."""
+    patch_base = (os.environ.get("XANO_PATCH_PDF_ENDPOINT", "").rstrip("/")
+                  or os.environ.get("XANO_GET_ENDPOINT", "").rstrip("/"))
+    if not patch_base:
+        return False
+    ids = [m.get("xano_id") for m in pdf_map.values() if m.get("xano_id")][:3]
+    if not ids:
+        return False
+    checked = still_submitted = 0
+    for xid in ids:
+        row = _xano_get_json(f"{patch_base}/{xid}")
+        if row is None:
+            continue
+        checked += 1
+        if str(row.get("extraction_status") or "").strip().lower() == "batch_submitted":
+            still_submitted += 1
+    if checked == 0:
+        return False
+    return still_submitted == 0
+
+
+def poll_and_ingest_batches(log=print):
+    """Find submitted batches and ingest any that have ENDED on Anthropic and not
+    yet been ingested — posting results to Xano via process_batch_results. Idempotent:
+    a batch whose PDFs already left 'batch_submitted' is skipped, so table-36 rows
+    aren't duplicated. Returns a summary dict. Safe to run on a schedule."""
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    summary = {"checked": 0, "ingested": 0, "still_processing": 0,
+               "skipped": 0, "errors": 0, "batches": []}
+    for bid, pmap, _job_id in _list_submitted_batches():
+        summary["checked"] += 1
+        if _batch_already_ingested(pmap):
+            summary["skipped"] += 1
+            summary["batches"].append({"batch_id": bid, "result": "already_ingested"})
+            continue
+        try:
+            obj = client.messages.batches.retrieve(bid)
+            status = getattr(obj, "processing_status", "")
+        except Exception as e:
+            summary["errors"] += 1
+            summary["batches"].append({"batch_id": bid, "result": f"retrieve_error: {e}"})
+            continue
+        if status != "ended":
+            summary["still_processing"] += 1
+            summary["batches"].append({"batch_id": bid, "result": f"status:{status}"})
+            continue
+        log(f"Ingesting ended batch {bid} ({len(pmap)} PDFs)…")
+        final = None
+        try:
+            for item in process_batch_results(bid, pmap, wait_secs=0):
+                if isinstance(item, dict):
+                    final = item
+        except Exception as e:
+            summary["errors"] += 1
+            summary["batches"].append({"batch_id": bid, "result": f"ingest_error: {e}"})
+            continue
+        if final and final.get("batch_done"):
+            summary["ingested"] += 1
+            summary["batches"].append({
+                "batch_id": bid, "result": "ingested",
+                "ok": final.get("ok"), "partial": final.get("partial"),
+                "failed": final.get("failed"), "skipped": final.get("skipped")})
+            log(f"  ✓ {bid}: {final.get('ok')} ok, {final.get('failed')} failed")
+        else:
+            summary["batches"].append({"batch_id": bid, "result": "ingest_incomplete"})
+    return summary
 
 
 # ── PUBLIC GENERATOR ──────────────────────────────────────────────────────────
