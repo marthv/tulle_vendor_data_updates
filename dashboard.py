@@ -1826,12 +1826,27 @@ with tab5:
                                    f"appear here until it's been accepted by Anthropic (after all its "
                                    f"PDFs finish downloading). If it's missing, the submission didn't "
                                    f"complete — re-submit and watch for the “Batch submitted · ID” log line.")
+                    # Join each Anthropic batch to what WE submitted (row range / PDF
+                    # count), looked up by batch_id from our own job history — so it's
+                    # obvious which batch corresponds to which run.
+                    _submitted_by_bid = {}
+                    for _job in _get_job_history("extraction", limit=40):
+                        _s = _job.get("result_summary") or {}
+                        if isinstance(_s, str):
+                            try: _s = json.loads(_s)
+                            except (json.JSONDecodeError, TypeError): _s = {}
+                        _bid = _s.get("batch_id") or _job.get("batch_id")
+                        if _bid and _bid not in _submitted_by_bid:
+                            _submitted_by_bid[_bid] = _s.get("submitted_as") or (
+                                f"{_s.get('pdf_count')} PDFs" if _s.get("pdf_count") else "")
                     rows = []
                     for b in _batches:
                         done = b["succeeded"] + b["errored"] + b["canceled"] + b["expired"]
                         total = done + b["processing"]
                         rows.append({
                             "Batch ID":  b["id"],
+                            "Submitted": _submitted_by_bid.get(b["id"], "—"),
+                            "PDFs":      b.get("pdfs", "") or "",
                             "Status":    _status_icon.get(b["status"], b["status"]),
                             "Progress":  f"{done}/{total}" if total else "—",
                             "✓ ok":      b["succeeded"],
