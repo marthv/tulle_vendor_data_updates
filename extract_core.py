@@ -1356,39 +1356,51 @@ def run_extraction_batch(
         return
 
     yield from emit(f"Submitting {len(all_requests)} requests ({len(pdf_map)} PDFs)...")
-    try:
-        # Beta path — required for requests that reference Files-API file_ids.
-        batch_obj = client.beta.messages.batches.create(
-            requests=all_requests, betas=["files-api-2025-04-14"])
-        batch_id = batch_obj.id
-        # Persist batch_id + pdf_map to Xano the instant Anthropic accepts the batch,
-        # so an interrupted submit (process death / a failed completion post) can't
-        # lose the only handle to the in-flight batch. Best-effort; never blocks.
-        # Human-readable description of WHAT was submitted, so the batch is easy to
-        # identify later (row range / rerun / explicit ids) next to its Anthropic id.
-        if pdf_ids:
-            submitted_as = f"{len(pdf_map)} PDFs (by id)"
-        elif rerun_failed:
-            submitted_as = f"{len(pdf_map)} PDFs (rerun-failed)"
-        else:
-            submitted_as = f"rows {start_row}–{end_row if end_row else 'end'} ({len(pdf_map)} PDFs)"
+    # Retry the batch-create on transient errors (Anthropic/Cloudflare 502/503).
+    # The PDFs are already uploaded and referenced by file_id in all_requests, so a
+    # retry costs nothing extra — without this, a single 502 throws away the whole
+    # upload phase. No Claude processing/credits happen until create succeeds.
+    batch_obj = None
+    last_err = None
+    for _attempt in range(4):
         try:
-            from dashboard import _post_job_status
-            _post_job_status(
-                "extraction", "completed",
-                os.environ.get("LOGGED_IN_USER", "extraction-batch"),
-                result_summary={"batch_submitted": True, "batch_id": batch_id,
-                                "pdf_count": len(pdf_map), "pdf_map": pdf_map,
-                                "submitted_as": submitted_as,
-                                "start_row": start_row, "end_row": end_row},
-                batch_id=batch_id,
-            )
-        except Exception:
-            pass
-    except Exception as e:
-        yield from emit(f"Batch submission failed: {e}")
-        yield {"batch_submitted": False, "error": str(e)}
+            # Beta path — required for requests that reference Files-API file_ids.
+            batch_obj = client.beta.messages.batches.create(
+                requests=all_requests, betas=["files-api-2025-04-14"])
+            break
+        except Exception as e:
+            last_err = e
+            if _attempt < 3:
+                yield from emit(f"  Submit attempt {_attempt + 1} failed ({e}); retrying…")
+                time.sleep(min(20, 3 * (_attempt + 1)))
+    if batch_obj is None:
+        yield from emit(f"Batch submission failed after retries: {last_err}")
+        yield from emit("  (PDFs were uploaded but no batch was created — no credits spent. Re-submit to retry.)")
+        yield {"batch_submitted": False, "error": str(last_err)}
         return
+
+    batch_id = batch_obj.id
+    # Persist batch_id + pdf_map to Xano the instant Anthropic accepts the batch,
+    # so an interrupted submit can't lose the only handle to the in-flight batch.
+    if pdf_ids:
+        submitted_as = f"{len(pdf_map)} PDFs (by id)"
+    elif rerun_failed:
+        submitted_as = f"{len(pdf_map)} PDFs (rerun-failed)"
+    else:
+        submitted_as = f"rows {start_row}–{end_row if end_row else 'end'} ({len(pdf_map)} PDFs)"
+    try:
+        from dashboard import _post_job_status
+        _post_job_status(
+            "extraction", "completed",
+            os.environ.get("LOGGED_IN_USER", "extraction-batch"),
+            result_summary={"batch_submitted": True, "batch_id": batch_id,
+                            "pdf_count": len(pdf_map), "pdf_map": pdf_map,
+                            "submitted_as": submitted_as,
+                            "start_row": start_row, "end_row": end_row},
+            batch_id=batch_id,
+        )
+    except Exception:
+        pass
 
     # Mark every PDF in this batch as "batch_submitted" in wptp_pdfs immediately, so
     # the status table reflects the attempt (and when) before results are ingested.
