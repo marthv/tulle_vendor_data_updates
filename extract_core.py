@@ -526,6 +526,40 @@ description: one sentence, or "" if insufficient info.
 preferred_vendors: comma-separated business names, or "" if none listed."""
 
 
+# ── MERGED PROMPT (cost-saving: 1 PDF send instead of 3) ──────────────────────
+# Composes the three prompts above VERBATIM into one request so the PDF is sent
+# once, not three times — the dominant input-token cost. The model performs all
+# three tasks reading the PDF once and returns one object {summary, pricing,
+# classification}, whose values are byte-for-byte the same shapes the separate
+# p1/p3/p4 passes return, so all downstream parsing/posting is unchanged.
+_MERGE_INTRO = (
+    "You will perform THREE extraction tasks on the SAME wedding-venue PDF, reading "
+    "it only ONCE. Return ONE valid JSON object and nothing else (no markdown, no "
+    "explanation). It MUST have exactly these three top-level keys:\n"
+    '  "summary"        -> the result of TASK A (a JSON object), per TASK A\'s spec\n'
+    '  "pricing"        -> the result of TASK B (a JSON array),  per TASK B\'s spec\n'
+    '  "classification" -> the result of TASK C (a JSON object), per TASK C\'s spec\n'
+    "\n"
+    "Each task below says 'return ONLY a JSON object/array'. For THIS combined "
+    "request, do NOT return them separately — place each task's JSON as the value of "
+    "its key above, all inside one object. Perform all three; never omit one. Apply "
+    "every rule in each task's spec exactly as written.\n"
+    "\n"
+    "If TASK A determines the vendor is NON-VENUE, set \"summary\" to the exact "
+    "non-venue JSON TASK A specifies, set \"pricing\" to [], and \"classification\" to {}.\n"
+    "\n"
+    "================= TASK A — SUMMARY =================\n"
+)
+MERGED_PROMPT = (
+    _MERGE_INTRO
+    + SUMMARY_PROMPT
+    + "\n\n================= TASK B — PRICING GRID =================\n"
+    + PRICING_PROMPT_DIRECT
+    + "\n\n================= TASK C — CLASSIFICATION =================\n"
+    + CLASSIFICATION_PROMPT
+)
+
+
 # ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
 
 def get_drive_service():
@@ -1220,6 +1254,26 @@ def _build_batch_requests(file_id, pdf_id, vendor_id, venue_name):
     ]
 
 
+def _build_merged_batch_request(file_id, pdf_id, vendor_id, venue_name):
+    """ONE request per PDF (vs 3) — summary + pricing + classification in a single
+    Sonnet response, so the PDF is sent once. ~half the per-PDF input cost. custom_id
+    ends in __m; process_batch_results splits the response back into p1/p3/p4."""
+    return [{
+        "custom_id": f"{pdf_id}__m",
+        "params": {
+            # Headroom for all three sections (pricing alone can need ~8k) so the
+            # combined JSON isn't truncated. Unused tokens aren't billed.
+            "model": _MODEL_SONNET, "max_tokens": 16000, "system": MERGED_PROMPT,
+            "messages": [{"role": "user", "content": [
+                {"type": "document", "source": {"type": "file", "file_id": file_id}},
+                {"type": "text", "text": (
+                    f'PDF_ID="{pdf_id}", Vendor_ID="{vendor_id}", venue="{venue_name}". '
+                    'Return ONE JSON object with keys summary, pricing, classification.')},
+            ]}],
+        },
+    }]
+
+
 def _select_by_id_range(rows, start_row, end_row):
     """Select rows whose `id` falls in [start_row, end_row] (inclusive). end_row of
     0/None means no upper bound; start_row of 0/None means no lower bound. Matches the
@@ -1247,13 +1301,20 @@ def run_extraction_batch(
     end_row: int | None = None,
     pdf_ids: list | None = None,
     rerun_failed: bool = False,
+    merged: bool = None,
 ):
     """Submit a Batch API job for PDF extraction (50% cost discount, async).
     Downloads PDFs sequentially with a streaming log, then submits all Claude
     requests in one batch. Yields log strings; final item is a dict:
       {batch_submitted: True, batch_id, pdf_count, pdf_map}  — on success
       {batch_submitted: False, error}                         — on failure
+
+    merged=True sends ONE request per PDF (summary+pricing+classification in a single
+    Sonnet call) instead of 3 — ~half the input cost. Defaults to the EXTRACT_MERGED
+    env flag when not passed explicitly.
     """
+    if merged is None:
+        merged = os.environ.get("EXTRACT_MERGED", "").strip().lower() in ("1", "true", "yes")
     log = []
 
     def emit(line):
@@ -1302,7 +1363,8 @@ def run_extraction_batch(
         batch = [r for r in batch
                  if str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip() in venue_vendor_ids]
 
-    yield from emit(f"{len(batch)} PDF(s) to submit (Batch API — 50% discount)")
+    _mode_txt = "merged 1-call/PDF (~50% cheaper)" if merged else "3 passes/PDF"
+    yield from emit(f"{len(batch)} PDF(s) to submit (Batch API — 50% discount · {_mode_txt})")
     if not batch:
         yield from emit("Nothing to do.")
         yield {"batch_submitted": False, "error": "empty_batch"}
@@ -1346,7 +1408,8 @@ def run_extraction_batch(
             yield from emit(f"    Upload failed: {up_err} — skipping")
             continue
 
-        all_requests.extend(_build_batch_requests(file_id, pdf_id, vendor_id, venue_name))
+        _builder = _build_merged_batch_request if merged else _build_batch_requests
+        all_requests.extend(_builder(file_id, pdf_id, vendor_id, venue_name))
         pdf_map[pdf_id] = {"vendor_id": vendor_id, "venue_name": venue_name,
                            "xano_id": xano_id, "timestamp": timestamp}
 
@@ -1545,6 +1608,15 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
             if pass_tag == "p1":   p1[pdf_id_key] = parsed
             elif pass_tag == "p3": p3[pdf_id_key] = parsed
             elif pass_tag == "p4": p4[pdf_id_key] = parsed
+            elif pass_tag == "m":
+                # Merged single-call response → split into the same p1/p3/p4 shapes
+                # so all downstream posting is identical to the 3-pass path.
+                if isinstance(parsed, dict):
+                    p1[pdf_id_key] = parsed.get("summary")
+                    p3[pdf_id_key] = parsed.get("pricing")
+                    p4[pdf_id_key] = parsed.get("classification")
+                else:
+                    errors.setdefault(pdf_id_key, []).append("m parse_failed (truncated?)")
     except Exception as e:
         yield from emit(f"Failed to iterate results: {e}")
         yield {"batch_done": False, "error": str(e)}
@@ -1808,6 +1880,110 @@ def ingest_batch_by_id(batch_id, wait_secs=0):
 
     # 3) Hand off to the normal ingest path.
     yield from process_batch_results(batch_id, pdf_map, wait_secs=wait_secs)
+
+
+def validate_merge(pdf_ids, log=None):
+    """Run BOTH the 3-pass path and the merged 1-call path on the same PDFs
+    (synchronously) and report whether the merged output matches — so the cost-saving
+    merge can be trusted BEFORE switching real batches to it. Yields log strings;
+    final item is {results:[…], recommend: bool}. Costs a few PDFs' worth of tokens."""
+    def emit(line):
+        if log:
+            log(line)
+        return (line,)
+
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    drive_service = get_drive_service()
+
+    want = [str(p).strip() for p in pdf_ids if str(p).strip()]
+    yield from emit(f"Validating merge on {len(want)} PDF(s): {', '.join(want)}")
+    rows = []
+    try:
+        for rows, _ in _fetch_xano_pages(os.environ.get("XANO_GET_ENDPOINT", "")):
+            pass
+    except Exception as e:
+        yield from emit(f"Could not fetch wptp_pdfs: {e}")
+        yield {"results": [], "recommend": False, "error": str(e)}
+        return
+    by_pdf = {str(r.get('PDF_ID') or '').strip(): r for r in rows if r.get('PDF_ID')}
+
+    def _sync(model, max_tokens, system, file_id, user_text):
+        msg = client.messages.create(
+            model=model, max_tokens=max_tokens, system=system,
+            messages=[{"role": "user", "content": [
+                {"type": "document", "source": {"type": "file", "file_id": file_id}},
+                {"type": "text", "text": user_text}]}])
+        raw = (msg.content or [None])[0]
+        return _parse_batch_text(getattr(raw, "text", "") if raw else "")
+
+    def _val(d, k):
+        v = d.get(k) if isinstance(d, dict) else None
+        return v.get("value") if isinstance(v, dict) else v
+
+    def _rows(x):
+        return len(x) if isinstance(x, list) else (1 if isinstance(x, dict) else 0)
+
+    results = []
+    for pid in want:
+        r = by_pdf.get(pid)
+        if not r:
+            yield from emit(f"{pid}: not found in wptp_pdfs — skipping")
+            continue
+        vname = str(r.get('Name') or '').strip()
+        vid = str(r.get('Vendor_ID') or '').strip()
+        link = str(r.get('PDF_Link') or '').strip()
+        yield from emit(f"── {pid} — {vname} ──")
+        pdf_bytes, err = download_pdf(link, drive_service)
+        if not pdf_bytes:
+            yield from emit(f"  download failed: {err}")
+            continue
+        file_id, up_err = _upload_pdf_file(client, pdf_bytes, f"{pid}.pdf")
+        if not file_id:
+            yield from emit(f"  upload failed: {up_err}")
+            continue
+        try:
+            yield from emit("  running 3-pass…")
+            s1 = _sync(_MODEL_SONNET, 4000, SUMMARY_PROMPT, file_id, f'PDF_ID="{pid}". Return only JSON.')
+            s3 = _sync(_MODEL_SONNET, 8000, PRICING_PROMPT_DIRECT, file_id, 'Extract all pricing. Return only the JSON array.')
+            s4 = _sync(_MODEL_HAIKU, 1000, CLASSIFICATION_PROMPT, file_id, f'Classify "{vname}". Return only JSON.')
+            yield from emit("  running merged (1 call)…")
+            m = _sync(_MODEL_SONNET, 16000, MERGED_PROMPT, file_id,
+                      f'PDF_ID="{pid}". Return ONE JSON object with keys summary, pricing, classification.')
+        except Exception as e:
+            yield from emit(f"  API error: {e}")
+            continue
+        m_sum = m.get("summary") if isinstance(m, dict) else None
+        m_pri = m.get("pricing") if isinstance(m, dict) else None
+        m_cls = m.get("classification") if isinstance(m, dict) else None
+
+        cmp = {
+            "pdf_id": pid, "venue": vname,
+            "merged_parsed": isinstance(m, dict) and m_sum is not None,
+            "vendor_type":  (_val(s1, 'vendor_type'),  _val(m_sum, 'vendor_type')),
+            "pricing_year": (_val(s1, 'pricing_year'), _val(m_sum, 'pricing_year')),
+            "pricing_rows": (_rows(s3), _rows(m_pri)),
+            "offering":     (_val(s4, 'venue_offering'), _val(m_cls, 'venue_offering')),
+            "category":     (_val(s4, 'category'),       _val(m_cls, 'category')),
+        }
+        results.append(cmp)
+        yield from emit(f"  merged parsed:  {cmp['merged_parsed']}")
+        yield from emit(f"  vendor_type:    3pass={cmp['vendor_type'][0]} | merged={cmp['vendor_type'][1]}")
+        yield from emit(f"  pricing rows:   3pass={cmp['pricing_rows'][0]} | merged={cmp['pricing_rows'][1]}")
+        yield from emit(f"  offering:       3pass={cmp['offering'][0]} | merged={cmp['offering'][1]}")
+        yield from emit(f"  category:       3pass={cmp['category'][0]} | merged={cmp['category'][1]}")
+
+    def _rows_close(a, b):
+        return abs(a - b) <= max(1, 0.25 * max(a, 1))
+
+    ok = bool(results) and all(
+        c["merged_parsed"]
+        and c["vendor_type"][0] == c["vendor_type"][1]
+        and _rows_close(c["pricing_rows"][0], c["pricing_rows"][1])
+        for c in results)
+    yield from emit("")
+    yield from emit("✅ Merged matches the 3-pass output — safe to enable." if ok
+                    else "⚠ Differences found — review above before enabling merged mode.")
+    yield {"results": results, "recommend": ok}
 
 
 # ── PUBLIC GENERATOR ──────────────────────────────────────────────────────────

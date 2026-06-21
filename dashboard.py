@@ -45,7 +45,7 @@ from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from extract_core import (run_extraction, get_pipeline_status,
                           run_extraction_batch, process_batch_results,
-                          list_recent_batches, ingest_batch_by_id)
+                          list_recent_batches, ingest_batch_by_id, validate_merge)
 
 
 # ── JOB STATUS TRACKING (persistent across logouts) ──────────────────────────
@@ -1664,6 +1664,44 @@ with tab5:
             else:
                 st.caption("Normal mode — live extraction. Pass 4 uses Haiku (~3% cheaper).")
 
+        # Merged mode — 1 Claude call per PDF (summary+pricing+classification in one
+        # response) instead of 3, so the PDF is sent once. ~half the input cost.
+        merged_mode = st.toggle(
+            "💸 Merged mode — 1 call/PDF (~50% cheaper input)",
+            value=st.session_state.get("pl_merged_mode", False),
+            key="pl_merged_mode",
+            help=("Sends each PDF to Claude ONCE (combined summary+pricing+classification) "
+                  "instead of 3 times. Validate it first in the 🧪 expander below before "
+                  "trusting it on a big run. Applies to Batch mode submissions."),
+        )
+        if merged_mode and not batch_mode:
+            st.caption("⚠ Merged mode currently applies to **Batch** submissions — turn on Batch mode too.")
+
+        with st.expander("🧪 Validate merged mode (run before trusting it)", expanded=False):
+            st.caption(
+                "Runs a few PDFs through BOTH the 3-pass and merged paths and diffs the "
+                "output, so you can confirm the cheaper merged mode matches quality before "
+                "using it on a big run. Costs a few PDFs' worth of tokens. Comma-separate IDs."
+            )
+            _val_ids = st.text_input("PDF IDs to validate", key="pl_val_ids",
+                                     placeholder="P6786, P6788, P6791")
+            if st.button("▶ Run validation", key="pl_val_btn") and _val_ids.strip():
+                _ids = [s.strip() for s in _val_ids.replace("\n", ",").split(",") if s.strip()]
+                v_lines = []; v_result = None
+                v_ph = st.empty()
+                for item in validate_merge(_ids):
+                    if isinstance(item, dict):
+                        v_result = item
+                        break
+                    v_lines.append(item)
+                    v_ph.markdown('<div class="log-box">' + "\n".join(v_lines) + "</div>",
+                                  unsafe_allow_html=True)
+                if v_result is not None:
+                    if v_result.get("recommend"):
+                        st.success("✅ Merged matches the 3-pass output — safe to turn on Merged mode.")
+                    else:
+                        st.warning("⚠ Differences found — review the log above before enabling Merged mode.")
+
         run_mode = st.radio(
             "Run mode",
             options=["🆕 All pending", "❌ Re-run all failed", "🎯 Specific PDF IDs", "📏 Row range"],
@@ -1748,6 +1786,7 @@ with tab5:
                 for item in run_extraction_batch(
                     start_row=eff_start, end_row=eff_end,
                     pdf_ids=pdf_ids_list, rerun_failed=rerun_failed,
+                    merged=merged_mode,
                 ):
                     if isinstance(item, dict):
                         pl_result = item
