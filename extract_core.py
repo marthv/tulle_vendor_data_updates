@@ -1908,8 +1908,11 @@ def validate_merge(pdf_ids, log=None):
     by_pdf = {str(r.get('PDF_ID') or '').strip(): r for r in rows if r.get('PDF_ID')}
 
     def _sync(model, max_tokens, system, file_id, user_text):
-        msg = client.messages.create(
+        # BETA path — file_id document references require it (the plain
+        # client.messages.create rejects source type 'file' with a 400).
+        msg = client.beta.messages.create(
             model=model, max_tokens=max_tokens, system=system,
+            betas=["files-api-2025-04-14"],
             messages=[{"role": "user", "content": [
                 {"type": "document", "source": {"type": "file", "file_id": file_id}},
                 {"type": "text", "text": user_text}]}])
