@@ -2419,6 +2419,7 @@ Do NOT explain what we did. Format as plain text, no markdown."""
         return f"Analysis unavailable ({type(e).__name__})"
 
 
+@st.cache_data(ttl=600)
 def _vp_load():
     """Pull + dedup + join (venues only) + PDF links. Cached 10 min; _vp_load.clear() to refresh.
     Returns (joined_rows, pdf_map, meta)."""
