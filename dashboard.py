@@ -2388,7 +2388,7 @@ def _vp_load():
     return joined, pdf_map, meta
 
 
-def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
+def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search, price_mode="All-in formula"):
     """One representative ('from') estimate per venue + quote count, after filters."""
     by_vendor = {}
     for r in joined:
@@ -2409,7 +2409,11 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
         # components shown sum to the displayed estimate.
         best_est, best_parts, best_row = None, None, None
         for r in cand:
-            est, parts = _vp_estimate_parts(r, G)
+            if price_mode == "Base fee only":
+                est = r["venue_fee"]
+                parts = {"base": r["venue_fee"], "fb": 0, "admin": 0, "ceremony": 0}
+            else:
+                est, parts = _vp_estimate_parts(r, G)
             if est <= 0:
                 continue
             if best_est is None or est < best_est:
@@ -2449,11 +2453,18 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search):
 
 
 with tab_vp:
+    _mode_display = st.session_state.get("vp_price_mode_applied", "All-in formula")
     st.markdown("### 💰 Venue Pricing — approximate all-in cost")
-    st.caption(
-        "Peak-season Saturday estimate · base fee + F&B (with minimum) + admin% + ceremony "
-        "· no tax (none in Xano). Venues only. Estimate per venue is the cheapest qualifying space."
-    )
+    if _mode_display == "Base fee only":
+        st.caption(
+            "Peak-season Saturday · **base fee only** (venue rental, no F&B / admin / ceremony). "
+            "Venues only. Estimate per venue is the cheapest qualifying space."
+        )
+    else:
+        st.caption(
+            "Peak-season Saturday estimate · base fee + F&B (with minimum) + admin% + ceremony "
+            "· no tax (none in Xano). Venues only. Estimate per venue is the cheapest qualifying space."
+        )
 
     _vp_rc, _ = st.columns([2, 6])
     with _vp_rc:
@@ -2481,14 +2492,23 @@ with tab_vp:
         min_q   = c5.number_input("Min quotes", min_value=0, value=0, step=1, key="vp_minq")
         search  = st.text_input("Filter by venue name", key="vp_search", placeholder="e.g. Mansion")
 
+        price_mode = st.radio(
+            "Pricing mode",
+            ["All-in formula", "Base fee only"],
+            horizontal=True,
+            key="vp_price_mode",
+            help="All-in: base fee + F&B + admin% + ceremony.  Base fee only: venue rental only.",
+        )
+
         apply = st.button("✅ Apply filters & compute", type="primary", key="vp_apply")
         st.caption("Change filters freely — the grid only recomputes when you click **Apply** "
                    "(keeps it fast and avoids extra work).")
 
         if apply:
             st.session_state["vp_vendors"] = _vp_compute_vendors(
-                vp_joined, guests, f_state, f_type, f_year, int(min_q), search)
+                vp_joined, guests, f_state, f_type, f_year, int(min_q), search, price_mode)
             st.session_state["vp_guests_applied"] = guests
+            st.session_state["vp_price_mode_applied"] = price_mode
             st.session_state.pop("vp_drill", None)  # reset drill on a fresh compute
 
         vendors = st.session_state.get("vp_vendors")
@@ -2512,8 +2532,20 @@ with tab_vp:
             m6.metric("Total quotes", sum(v["Quotes"] for v in vendors))
 
             with st.expander("ℹ️ How the estimate is calculated"):
-                st.markdown(
-                    f"""
+                if _mode_display == "Base fee only":
+                    st.markdown(
+                        f"""
+For each venue we take its **cheapest qualifying space** (one that can host **{G} guests**)
+and show its **base fee** (venue rental only) using peak-season-Saturday pricing.
+
+**F&B, admin %, and ceremony fees are excluded** in this mode. This helps you focus on raw venue
+capacity costs without the event-size scaling. Click a grid cell below, hit **Run**, then click a
+venue row to see its exact numbers and pricing PDFs.
+                        """
+                    )
+                else:
+                    st.markdown(
+                        f"""
 For each venue we take its **cheapest qualifying space** (one that can host **{G} guests**)
 and add up, using peak-season-Saturday pricing:
 
@@ -2524,21 +2556,31 @@ and add up, using peak-season-Saturday pricing:
 
 There is **no tax** in the data. Click a grid cell below, hit **Run**, then click a venue row
 to see its exact numbers and pricing PDFs.
-                    """
-                )
+                        """
+                    )
 
-            _vp_order = ["Venue", "State", "Type", "Capacity", "Quotes", "Year",
-                         "Base fee", "F&B", "Admin", "Ceremony", "Estimate"]
-            _vp_colcfg = {
-                "Capacity": st.column_config.NumberColumn("Capacity", format="%.0f"),
-                "Quotes":   st.column_config.NumberColumn("Quotes",   format="%.0f"),
-                "Year":     st.column_config.NumberColumn("Year",     format="%.0f"),
-                "Base fee": st.column_config.NumberColumn("Base fee", format="$%.0f"),
-                "F&B":      st.column_config.NumberColumn("F&B",      format="$%.0f"),
-                "Admin":    st.column_config.NumberColumn("Admin",    format="$%.0f"),
-                "Ceremony": st.column_config.NumberColumn("Ceremony", format="$%.0f"),
-                "Estimate": st.column_config.NumberColumn("Estimate", format="$%.0f"),
-            }
+            _mode_applied = st.session_state.get("vp_price_mode_applied", "All-in formula")
+            if _mode_applied == "Base fee only":
+                _vp_order = ["Venue", "State", "Type", "Capacity", "Quotes", "Year", "Estimate"]
+                _vp_colcfg = {
+                    "Capacity": st.column_config.NumberColumn("Capacity", format="%.0f"),
+                    "Quotes":   st.column_config.NumberColumn("Quotes",   format="%.0f"),
+                    "Year":     st.column_config.NumberColumn("Year",     format="%.0f"),
+                    "Estimate": st.column_config.NumberColumn("Base fee", format="$%.0f"),
+                }
+            else:
+                _vp_order = ["Venue", "State", "Type", "Capacity", "Quotes", "Year",
+                             "Base fee", "F&B", "Admin", "Ceremony", "Estimate"]
+                _vp_colcfg = {
+                    "Capacity": st.column_config.NumberColumn("Capacity", format="%.0f"),
+                    "Quotes":   st.column_config.NumberColumn("Quotes",   format="%.0f"),
+                    "Year":     st.column_config.NumberColumn("Year",     format="%.0f"),
+                    "Base fee": st.column_config.NumberColumn("Base fee", format="$%.0f"),
+                    "F&B":      st.column_config.NumberColumn("F&B",      format="$%.0f"),
+                    "Admin":    st.column_config.NumberColumn("Admin",    format="$%.0f"),
+                    "Ceremony": st.column_config.NumberColumn("Ceremony", format="$%.0f"),
+                    "Estimate": st.column_config.NumberColumn("Estimate", format="$%.0f"),
+                }
 
             df = pd.DataFrame(vendors)
             df = df[[c for c in _vp_order if c in df.columns]].reset_index(drop=True)
