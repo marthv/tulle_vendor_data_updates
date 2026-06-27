@@ -43,6 +43,7 @@ import google.auth.transport.requests
 import google.oauth2.id_token
 from google.oauth2 import service_account
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from anthropic import Anthropic
 from extract_core import (run_extraction, get_pipeline_status,
                           run_extraction_batch, process_batch_results,
                           list_recent_batches, ingest_batch_by_id, validate_merge)
@@ -2364,6 +2365,60 @@ def _vp_build_pdf_map(pdf_rows):
 
 
 @st.cache_data(ttl=600, show_spinner="Loading venue pricing from Xano…")
+def _vp_analyze_vendors(vendors, guest_count, price_mode):
+    """Quick AI analysis of vendor data for anomalies and insights. Returns markdown summary or empty string."""
+    if not vendors or len(vendors) < 3:
+        return ""
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return ""
+
+    try:
+        client = Anthropic(api_key=api_key)
+
+        # Build a summary of the data
+        ests = [v["Estimate"] for v in vendors]
+        states = set(v["State"] for v in vendors if v["State"] != "—")
+        types = set(v["Type"] for v in vendors if v["Type"] != "—")
+        avg_est = sum(ests) / len(ests)
+        std_dev = (sum((x - avg_est) ** 2 for x in ests) / len(ests)) ** 0.5
+
+        # Pick a few representative venues for context
+        cheapest = min(vendors, key=lambda v: v["Estimate"])
+        expensive = max(vendors, key=lambda v: v["Estimate"])
+        top_quoted = max(vendors, key=lambda v: v["Quotes"])
+
+        prompt = f"""You are analyzing venue pricing data from Tulle Together (a wedding vendor pricing platform).
+
+Data summary ({len(vendors)} venues, {guest_count} guests):
+- Pricing mode: {price_mode}
+- Average estimate: ${avg_est:.0f}, std dev: ${std_dev:.0f}
+- Range: ${min(ests):.0f} – ${max(ests):.0f}
+- States represented: {', '.join(sorted(states)) if states else 'N/A'}
+- Venue types: {', '.join(sorted(types)) if types else 'N/A'}
+
+Notable outliers:
+- Cheapest: {cheapest['Venue']} ({cheapest['State']}, {cheapest['Type']}) @ ${cheapest['Estimate']:.0f} ({cheapest['Quotes']} PDFs)
+- Most expensive: {expensive['Venue']} ({expensive['State']}, {expensive['Type']}) @ ${expensive['Estimate']:.0f} ({expensive['Quotes']} PDFs)
+- Most documented: {top_quoted['Venue']} ({top_quoted['State']}, {top_quoted['Type']}) with {top_quoted['Quotes']} pricing PDFs
+
+Provide a VERY SHORT (1–2 sentences max) insight: identify one striking pattern, anomaly, or trend.
+Focus on: extreme price gaps, unusual F&B/admin ratios, sparse data coverage, or state-level quirks.
+Ignore missing/null fields. If nothing stands out, say "No major anomalies detected."
+Do NOT explain what we did. Format as plain text, no markdown."""
+
+        response = client.messages.create(
+            model="claude-opus-4-1",
+            max_tokens=150,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        return response.content[0].text.strip()
+    except Exception as e:
+        return f"Analysis unavailable ({type(e).__name__})"
+
+
 def _vp_load():
     """Pull + dedup + join (venues only) + PDF links. Cached 10 min; _vp_load.clear() to refresh.
     Returns (joined_rows, pdf_map, meta)."""
@@ -2392,9 +2447,10 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search, 
     """One representative ('from') estimate per venue + quote count, after filters."""
     by_vendor = {}
     for r in joined:
-        if f_state != "All" and r["state"] != f_state:
+        # f_state and f_type are now lists (multiselect). Empty list means "all".
+        if f_state and r["state"] not in f_state:
             continue
-        if f_type != "All" and r["venue_type"] != f_type:
+        if f_type and r["venue_type"] not in f_type:
             continue
         if f_year != "All" and r["year"] != f_year:
             continue
@@ -2471,8 +2527,7 @@ with tab_vp:
         if st.button("🔄 Load / Refresh", type="primary", use_container_width=True, key="vp_refresh"):
             _vp_load.clear()
 
-    # Cached (10 min); the spinner is shown by the cache decorator only on an
-    # actual fetch — a dropdown change is a cache hit, so no spinner / no recompute.
+    # Load data (cached 10min). Filters don't trigger reloads — only Apply/Run buttons trigger computation.
     vp_joined, vp_pdf_map, vp_meta = _vp_load()
 
     if vp_meta["errors"]:
@@ -2483,11 +2538,13 @@ with tab_vp:
     else:
         # ── Filters — staged: nothing recomputes until you click Apply ────────
         st.markdown("#### Filters")
-        c1, c2, c3, c4, c5 = st.columns([1.2, 1.4, 1.6, 1.2, 1.1])
+        c1, c2, c3, c4, c5 = st.columns([1.0, 1.4, 1.6, 1.2, 1.1])
         guests  = c1.selectbox("Guest count", [50, 75, 100, 125, 150, 175, 200, 250, 300],
                                index=4, key="vp_guests")
-        f_state = c2.selectbox("State", ["All"] + vp_meta["states"], key="vp_state")
-        f_type  = c3.selectbox("Venue type", ["All"] + vp_meta["venue_types"], key="vp_type")
+        f_state = c2.multiselect("State", vp_meta["states"], key="vp_state",
+                                 placeholder="All states")
+        f_type  = c3.multiselect("Venue type", vp_meta["venue_types"], key="vp_type",
+                                 placeholder="All types")
         f_year  = c4.selectbox("Year", ["All"] + vp_meta["years"], key="vp_year")
         min_q   = c5.number_input("Min quotes", min_value=0, value=0, step=1, key="vp_minq")
         search  = st.text_input("Filter by venue name", key="vp_search", placeholder="e.g. Mansion")
@@ -2530,6 +2587,12 @@ with tab_vp:
             m4.metric("Max",          _vp_money(ests[-1]))
             m5.metric("Venues",       len(vendors))
             m6.metric("Total quotes", sum(v["Quotes"] for v in vendors))
+
+            # AI Summary
+            ai_summary = _vp_analyze_vendors(vendors, G, _mode_display)
+            if ai_summary:
+                with st.expander("🤖 AI Summary (anomalies & patterns)", expanded=True):
+                    st.caption(ai_summary)
 
             with st.expander("ℹ️ How the estimate is calculated"):
                 if _mode_display == "Base fee only":
