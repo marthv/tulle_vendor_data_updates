@@ -6,3 +6,4 @@ extraction_log.json
 .DS_Store
 logs/
 _*.py
+.xano_cache/

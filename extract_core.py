@@ -1145,6 +1145,76 @@ def _fetch_xano_pages(endpoint, per_page=500):
         time.sleep(0.3)
 
 
+# ── SHARED STARTUP-STATE CACHE ───────────────────────────────────────────────
+# Every worker used to full-scan wptp_pdfs + the summary table + venue categories
+# at startup, so an 8-12 worker launch fired ~300-400 concurrent list GETs at Xano
+# (the documented 502 trigger that WORKER_STAGGER_SECONDS papers over).
+# launch_parallel now calls prefetch_shared_xano_state() ONCE before spawning;
+# workers read the disk cache instead of re-fetching. Dashboard/single runs that
+# find no fresh cache just fetch live as before.
+
+_SHARED_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".xano_cache")
+_SHARED_CACHE_TTL = 900  # seconds — workers start within ~2 min of the prefetch
+
+
+def _shared_cache_read(name, ttl=_SHARED_CACHE_TTL):
+    """Return cached JSON payload for `name`, or None if missing/stale/unreadable."""
+    path = os.path.join(_SHARED_CACHE_DIR, f"{name}.json")
+    try:
+        if time.time() - os.path.getmtime(path) <= ttl:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def _shared_cache_write(name, data):
+    """Atomically write a JSON cache file (tmp + rename); failures are non-fatal."""
+    try:
+        os.makedirs(_SHARED_CACHE_DIR, exist_ok=True)
+        tmp = os.path.join(_SHARED_CACHE_DIR, f".{name}.{os.getpid()}.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, os.path.join(_SHARED_CACHE_DIR, f"{name}.json"))
+    except Exception:
+        pass
+
+
+def prefetch_shared_xano_state():
+    """Fetch the three Xano datasets every worker needs at startup and cache them
+    to disk, so a parallel launch hits Xano with ONE set of scans instead of N.
+    Returns a short human-readable summary string. Raises on pdf-list failure
+    (the launch can't proceed without it); the other two fail soft."""
+    get_endpoint = os.environ["XANO_GET_ENDPOINT"]
+    all_rows = []
+    for all_rows, _ in _fetch_xano_pages(get_endpoint):
+        pass
+    _shared_cache_write("wptp_pdfs", all_rows)
+
+    summary_ids = []
+    try:
+        summary_endpoint = os.environ.get("XANO_SUMMARY_ENDPOINT", "").strip()
+        if summary_endpoint:
+            existing = []
+            for existing, _ in _fetch_xano_pages(summary_endpoint):
+                pass
+            summary_ids = sorted({
+                str(r.get('PDF_ID') or r.get('pdf_id') or '').strip()
+                for r in existing
+            } - {''})
+            _shared_cache_write("summary_pdf_ids", summary_ids)
+    except Exception:
+        pass
+
+    venue_ids = sorted(_fetch_venue_vendor_ids())
+    if venue_ids:
+        _shared_cache_write("venue_vendor_ids", venue_ids)
+
+    return (f"{len(all_rows)} wptp_pdfs rows, {len(summary_ids)} extracted PDF_IDs, "
+            f"{len(venue_ids)} venue vendor ids cached to {_SHARED_CACHE_DIR}")
+
+
 def _fetch_venue_vendor_ids():
     """Return the set of Vendor_IDs whose mapping Category == 'Venue'.
 
@@ -1740,8 +1810,13 @@ def _batch_already_ingested(pdf_map):
     """True if this batch's PDFs have already left 'batch_submitted' status — i.e.
     it was already ingested (manually or by a prior worker run). Used as the
     idempotency guard so the worker never re-ingests and duplicates table-36 rows.
-    Samples a few of the batch's PDFs against wptp_pdfs. Conservative: if it can't
-    verify, returns False (allow ingest) — process_batch_results is the backstop."""
+    Samples a few of the batch's PDFs against wptp_pdfs.
+
+    Returns None ("unknown") when the sampled reads all fail: during a sustained
+    Xano read outage we must SKIP ingest and retry next cycle — the old
+    fail-open behavior (treat unverifiable as not-ingested) meant the 15-min cron
+    could re-ingest the same ended batch every cycle, duplicating table-36/37 rows
+    while also write-storming an already-struggling Xano."""
     patch_base = (os.environ.get("XANO_PATCH_PDF_ENDPOINT", "").rstrip("/")
                   or os.environ.get("XANO_GET_ENDPOINT", "").rstrip("/"))
     if not patch_base:
@@ -1758,7 +1833,7 @@ def _batch_already_ingested(pdf_map):
         if str(row.get("extraction_status") or "").strip().lower() == "batch_submitted":
             still_submitted += 1
     if checked == 0:
-        return False
+        return None   # couldn't verify — caller must skip, not ingest
     return still_submitted == 0
 
 
@@ -1772,7 +1847,15 @@ def poll_and_ingest_batches(log=print):
                "skipped": 0, "errors": 0, "batches": []}
     for bid, pmap, _job_id in _list_submitted_batches():
         summary["checked"] += 1
-        if _batch_already_ingested(pmap):
+        ingested = _batch_already_ingested(pmap)
+        if ingested is None:
+            # Xano reads are failing — can't prove the batch wasn't already
+            # ingested. Fail CLOSED (skip, retry next scheduled run) rather than
+            # re-ingest and duplicate rows.
+            summary["skipped"] += 1
+            summary["batches"].append({"batch_id": bid, "result": "status_unverifiable_skipped"})
+            continue
+        if ingested:
             summary["skipped"] += 1
             summary["batches"].append({"batch_id": bid, "result": "already_ingested"})
             continue
@@ -2027,9 +2110,13 @@ def run_extraction(
 
     yield from emit("🔄 Fetching PDF list from Xano...")
     try:
-        all_rows = []
-        for all_rows, pg in _fetch_xano_pages(get_endpoint):
-            yield from emit(f"   page {pg} — {len(all_rows)} rows fetched so far...")
+        all_rows = _shared_cache_read("wptp_pdfs")
+        if all_rows is not None:
+            yield from emit(f"   using prefetched list ({len(all_rows)} rows) — no Xano scan")
+        else:
+            all_rows = []
+            for all_rows, pg in _fetch_xano_pages(get_endpoint):
+                yield from emit(f"   page {pg} — {len(all_rows)} rows fetched so far...")
         rows_with_links = [
             r for r in all_rows
             if 'drive.google.com' in str(r.get('PDF_Link') or r.get('pdf_link') or '')
@@ -2079,11 +2166,15 @@ def run_extraction(
         yield from emit("")
         yield from emit("🔍 Checking already-extracted PDF IDs...")
         try:
-            summary_endpoint = os.environ["XANO_SUMMARY_ENDPOINT"]
-            existing = []
-            for existing, _ in _fetch_xano_pages(summary_endpoint):
-                pass
-            already_done = {str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() for r in existing}
+            cached_ids = _shared_cache_read("summary_pdf_ids")
+            if cached_ids is not None:
+                already_done = {str(x).strip() for x in cached_ids}
+            else:
+                summary_endpoint = os.environ["XANO_SUMMARY_ENDPOINT"]
+                existing = []
+                for existing, _ in _fetch_xano_pages(summary_endpoint):
+                    pass
+                already_done = {str(r.get('PDF_ID') or r.get('pdf_id') or '').strip() for r in existing}
             already_done.discard('')
             yield from emit(f"✓  {len(already_done)} already extracted — will skip")
         except Exception as e:
@@ -2093,7 +2184,9 @@ def run_extraction(
 
     # ── Venue pre-filter: load Vendor_IDs categorized 'Venue' in wptp_updated_mappings ──
     # Non-venue vendors are skipped BEFORE any download or model call (cost saver).
-    venue_vendor_ids = _fetch_venue_vendor_ids()
+    _cached_venue_ids = _shared_cache_read("venue_vendor_ids")
+    venue_vendor_ids = (set(str(x) for x in _cached_venue_ids)
+                        if _cached_venue_ids else _fetch_venue_vendor_ids())
     if venue_vendor_ids:
         yield from emit(f"✓  Venue filter active — {len(venue_vendor_ids)} venue vendors loaded; non-venue PDFs skip download + extraction")
     else:

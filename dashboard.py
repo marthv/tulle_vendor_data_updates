@@ -94,6 +94,10 @@ def _post_job_status(job_type: str, status: str, user_email: str,
         try:
             r = requests.post(job_endpoint, json=payload, timeout=10)
             if r.status_code == 200:
+                try:
+                    _get_active_job.clear()   # job state changed — drop the 15s cache
+                except Exception:
+                    pass
                 return True
             if r.status_code < 500:
                 return False  # 4xx won't self-heal
@@ -104,10 +108,16 @@ def _post_job_status(job_type: str, status: str, user_email: str,
     return False
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def _get_active_job(job_type: str):
     """
     Get the currently active job of a given type from Xano.
     Returns job dict or None if no active job.
+
+    Cached 15s: Streamlit re-runs the whole script on every widget interaction,
+    and these calls fire on every render — uncached they hit Xano (with retry
+    sleeps) on each click anywhere in the app. The 🔄 refresh buttons call
+    _get_active_job.clear() for an immediate re-read.
     """
     jobs_endpoint = os.environ.get("XANO_JOBS_ENDPOINT", "")
     if not jobs_endpoint:
@@ -116,6 +126,20 @@ def _get_active_job(job_type: str):
     if isinstance(data, list) and len(data) > 0:
         return data[0]
     return None
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _explorer_fetch(url: str):
+    """Data Explorer table load, cached 2 min per URL so repeated Load Data clicks
+    on the same table don't each trigger another full-table scan on Xano (these
+    endpoints are unpaginated). Save Changes clears this cache. Returns (rows, err)."""
+    r = requests.get(url, timeout=120)
+    if r.status_code != 200:
+        return [], f"Xano returned {r.status_code}: {r.text[:200]}"
+    raw = r.json()
+    if isinstance(raw, dict):
+        raw = raw.get("items") or raw.get("data") or raw.get("result") or []
+    return (raw if isinstance(raw, list) else []), ""
 
 
 def _get_job_history(job_type: str, limit: int = 20):
@@ -941,15 +965,13 @@ Typical cost: ~$0.20–0.40 per PDF. Model: `claude-sonnet-4-20250514`.
                         data = data.get("items") or data.get("data") or data.get("result") or []
                     return data if isinstance(data, list) else [], 200
 
-                with ThreadPoolExecutor(max_workers=4) as pool:
-                    f_users    = pool.submit(_fetch_all, f"{XANO_WGW}/user")
-                    f_todos    = pool.submit(_fetch_all, f"{XANO_WGW}/to_do_items")
-                    f_packages = pool.submit(_fetch_all, f"{XANO_WGW}/packages")
-                    f_payments = pool.submit(_fetch_all, f"{XANO_WGW}/donation_payment_log")
-                    users_data,    users_sc    = f_users.result()
-                    todos_data,    todos_sc    = f_todos.result()
-                    packages_data, packages_sc = f_packages.result()
-                    payments_data, payments_sc = f_payments.result()
+                # Sequential on purpose: these are 4 full-table reads, and firing
+                # them concurrently spikes Xano's small worker pool. Serial is a
+                # few seconds slower but keeps the load to one query at a time.
+                users_data,    users_sc    = _fetch_all(f"{XANO_WGW}/user")
+                todos_data,    todos_sc    = _fetch_all(f"{XANO_WGW}/to_do_items")
+                packages_data, packages_sc = _fetch_all(f"{XANO_WGW}/packages")
+                payments_data, payments_sc = _fetch_all(f"{XANO_WGW}/donation_payment_log")
 
                 errors = []
                 if users_sc    != 200: errors.append(f"users ({users_sc})")
@@ -1042,22 +1064,20 @@ Typical cost: ~$0.20–0.40 per PDF. Model: `claude-sonnet-4-20250514`.
         if st.button("Clear", use_container_width=True, key="exp_clear"):
             for k in ["exp_raw", "exp_loaded_table", "exp_filters"]:
                 st.session_state.pop(k, None)
+            _explorer_fetch.clear()   # Clear + Load Data = guaranteed fresh read
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
     if load_data:
         with st.spinner(f"Loading {exp_table}..."):
             try:
-                r = requests.get(exp_cfg["url"], timeout=120)
-                if r.status_code == 200:
-                    raw = r.json()
-                    if isinstance(raw, dict):
-                        raw = raw.get("items") or raw.get("data") or raw.get("result") or []
+                raw, err = _explorer_fetch(exp_cfg["url"])
+                if err:
+                    st.error(err)
+                else:
                     st.session_state["exp_raw"]          = raw
                     st.session_state["exp_loaded_table"] = exp_table
                     st.session_state["exp_filters"]      = []
-                else:
-                    st.error(f"Xano returned {r.status_code}: {r.text[:200]}")
             except Exception as e:
                 st.error(f"Load failed: {e}")
 
@@ -1171,13 +1191,15 @@ Typical cost: ~$0.20–0.40 per PDF. Model: `claude-sonnet-4-20250514`.
                         except Exception:
                             return False, row_id
 
+                    # max_workers=3 (was 10): bulk edits shouldn't burst-write Xano.
                     with st.spinner(f"Saving {len(changes)} row(s)..."):
-                        with ThreadPoolExecutor(max_workers=10) as pool:
+                        with ThreadPoolExecutor(max_workers=3) as pool:
                             futures = [pool.submit(_do_patch, rid, payload) for rid, payload in changes]
                             results = [f.result() for f in as_completed(futures)]
 
                     saved  = sum(1 for ok, _ in results if ok)
                     failed = len(results) - saved
+                    _explorer_fetch.clear()   # table changed — next Load Data re-reads
 
                     if failed == 0:
                         st.success(f"Saved {saved} row(s).")
@@ -1199,6 +1221,7 @@ with tab2:
 
     # ── Display active jobs ───────────────────────────────────────────────────
     if st.session_state.get("gg_refresh_jobs"):
+        _get_active_job.clear()
         with st.spinner("Fetching latest job status..."):
             active_google = _get_active_job("google_data")
             active_images = _get_active_job("vendor_images")
@@ -1474,6 +1497,7 @@ with tab5:
     job_info_col, job_btn_col = st.columns([5, 1])
 
     if st.session_state.get("pl_refresh_job"):
+        _get_active_job.clear()
         with st.spinner("Fetching latest job status..."):
             active_job = _get_active_job("extraction")
         st.session_state["pl_refresh_job"] = False
@@ -1513,6 +1537,7 @@ with tab5:
                                 },
                                 timeout=10
                             )
+                            _get_active_job.clear()
                             st.success("✅ Job marked as failed. Refresh page.")
                     except Exception as e:
                         st.error(f"Failed to clear: {e}")
@@ -2086,17 +2111,20 @@ with tab5:
                 }
                 st.caption(f"Fetching rows for: {', '.join(sorted(run_pdf_ids))}")
                 try:
-                    ep_resp = requests.get(f"{XANO_BASE}/all_extracted_pdf_data", timeout=60)
-                    vp_resp = requests.get(f"{XANO_BASE}/venue_pricing", timeout=60)
+                    # Server-side PDF_ID filter (ep 199 raw sections) — fetches only this
+                    # run's rows instead of dumping both full tables. ts busts the
+                    # endpoint's response cache so rows written seconds ago show up.
+                    _q = "&".join(f"pdf_ids[]={pid}" for pid in sorted(run_pdf_ids))
+                    _ts = int(time.time())
+                    ep_resp = requests.get(
+                        f"{XANO_BASE}/venue_pricing_dashboard?section=raw_extracted&{_q}&ts={_ts}",
+                        timeout=60)
+                    vp_resp = requests.get(
+                        f"{XANO_BASE}/venue_pricing_dashboard?section=raw_pricing&{_q}&ts={_ts}",
+                        timeout=60)
 
                     if ep_resp.status_code == 200:
-                        ep_rows = ep_resp.json()
-                        if isinstance(ep_rows, dict):
-                            ep_rows = ep_rows.get("items") or ep_rows.get("result") or []
-                        ep_rows = [
-                            r for r in ep_rows
-                            if str(r.get("PDF_ID") or r.get("pdf_id") or "").strip() in run_pdf_ids
-                        ]
+                        ep_rows = ep_resp.json().get("items") or []
                         st.markdown(f"**extracted_pdf_data** — {len(ep_rows)} row(s) from this run")
                         if ep_rows:
                             st.dataframe(pd.DataFrame(ep_rows), use_container_width=True, hide_index=True)
@@ -2104,13 +2132,7 @@ with tab5:
                         st.warning(f"extracted_pdf_data fetch failed ({ep_resp.status_code})")
 
                     if vp_resp.status_code == 200:
-                        vp_rows = vp_resp.json()
-                        if isinstance(vp_rows, dict):
-                            vp_rows = vp_rows.get("items") or vp_rows.get("result") or []
-                        vp_rows = [
-                            r for r in vp_rows
-                            if str(r.get("PDF_ID") or r.get("pdf_id") or "").strip() in run_pdf_ids
-                        ]
+                        vp_rows = vp_resp.json().get("items") or []
                         st.markdown(f"**venue_pricing** — {len(vp_rows)} row(s) from this run")
                         if vp_rows:
                             st.dataframe(pd.DataFrame(vp_rows), use_container_width=True, hide_index=True)
@@ -2203,39 +2225,51 @@ def _vp_ts(v):
         return 0.0
 
 
-def _vp_fetch_all(url, breaker=None):
-    """Single GET — these Xano endpoints return the full table in one response (same
-    pattern the Data Explorer uses successfully; adding page/per_page params made them
-    503). One quick retry on a transient 503. Returns (rows, error_str).
+def _vp_fetch_paged(section, breaker=None, per_page=5000):
+    """All rows from /venue_pricing_dashboard (Xano ep 199) — slim columns, venue-joined
+    server-side, paginated. Replaces the old unpaginated full-table dumps that could
+    hold a Xano worker for up to 120s and take the instance down. Each page is a small
+    (~1MB) request. One quick retry per page on a transient 503. Returns (rows, error_str).
 
     `breaker` is a shared dict for one _vp_load() call: once Xano is seen to be
     fully down (503 after a retry), it trips and every later fetch in the same
-    load returns immediately — so a down instance fails in ~1s instead of
-    sleep-retrying across all 7+ endpoints (~30s of frozen page)."""
-    if breaker is not None and breaker.get("down"):
-        return [], "503"
-    last = ""
-    for attempt in range(2):
-        try:
-            r = requests.get(url, timeout=120)
-        except Exception as e:
-            last = str(e)
-            if attempt == 0:
+    load returns immediately — so a down instance fails fast instead of
+    sleep-retrying across every page."""
+    rows, page = [], 1
+    while True:
+        if breaker is not None and breaker.get("down"):
+            return rows, "503"
+        url = (f"{XANO_BASE}/venue_pricing_dashboard"
+               f"?section={section}&page={page}&per_page={per_page}")
+        data, last = None, ""
+        for attempt in range(2):
+            try:
+                r = requests.get(url, timeout=60)
+            except Exception as e:
+                last = str(e)
+                if attempt == 0:
+                    time.sleep(0.8)
+                continue
+            if r.status_code == 200:
+                data = r.json()
+                break
+            last = str(r.status_code)
+            if r.status_code == 503 and attempt == 0:   # one quick retry on transient 503
                 time.sleep(0.8)
-            continue
-        if r.status_code == 200:
-            data = r.json()
-            if isinstance(data, dict):
-                data = data.get("items") or data.get("data") or data.get("result") or []
-            return (data if isinstance(data, list) else []), ""
-        last = str(r.status_code)
-        if r.status_code == 503 and attempt == 0:   # one quick retry on transient 503
-            time.sleep(0.8)
-            continue
-        break                            # other errors (4xx/5xx) won't fix on retry
-    if last == "503" and breaker is not None:
-        breaker["down"] = True           # Xano is down — short-circuit the rest of this load
-    return [], last
+                continue
+            break                        # other errors (4xx/5xx) won't fix on retry
+        if data is None:
+            if last == "503" and breaker is not None:
+                breaker["down"] = True   # Xano is down — short-circuit the rest of this load
+            return rows, last
+        if not isinstance(data, dict):
+            return rows, ""
+        items = data.get("items") or []
+        rows.extend(items)
+        next_page = data.get("nextPage")
+        if not next_page or not items:
+            return rows, ""
+        page = next_page
 
 
 def _vp_dedup_latest(rows):
@@ -2252,51 +2286,19 @@ def _vp_dedup_latest(rows):
     return list(best.values()) + passthrough
 
 
-def _vp_is_venue(category):
-    return str(category or "").strip().lower() == "venue"
-
-
-# Longitude bands spanning the continental US. map_light caps at 2,500 rows/call, so we
-# pull in bands narrow enough that none truncates, then union. (The /wptp_*_search and
-# /wptp_updated_mappings endpoints default State_Input to "New York" and only return 574
-# NY venues — map_light is geo-filtered, not state-filtered, so it sees every state.)
-_VP_MAP_BANDS = [(-125, -100), (-100, -87), (-87, -78), (-78, -71), (-71, -66)]
-
-
-def _vp_fetch_venue_index(breaker=None):
-    """{Vendor_ID: {name, state}} for ALL venues nationwide, via map_light geo bands.
-    Returns (idx, error_str)."""
-    idx, err = {}, ""
-    for w, e in _VP_MAP_BANDS:
-        rows, ee = _vp_fetch_all(f"{XANO_BASE}/wptp_map_light?north=50&south=24&east={e}&west={w}", breaker)
-        if ee:
-            err = ee
-        for r in rows:
-            if not _vp_is_venue(r.get("Category")):
-                continue
-            vid = str(r.get("Vendor_ID") or "").strip()
-            if not vid:
-                continue
-            idx[vid] = {
-                "name":  str(r.get("Name") or "").strip(),
-                "state": str(r.get("State") or "").strip(),
-            }
-    return idx, err
-
-
-def _vp_join(t36_dedup, vendor_idx):
-    """Inner-join deduped pricing rows to the venue master on VENDOR_ID. Drops
-    non-venue / unmatched rows."""
+def _vp_join(t36_dedup):
+    """Shape deduped pricing rows for the tab. The venue join (name/state via
+    WPTP Updated Mappings, Category == Venue) already happened server-side in
+    Xano ep 199, so this is just a per-row field mapping."""
     out = []
     for r in t36_dedup:
         vid = str(r.get("VENDOR_ID") or "").strip()
-        v = vendor_idx.get(vid)
-        if v is None:
+        if not vid:
             continue
         out.append({
             "vendor_id":  vid,
-            "name":       v["name"] or (r.get("VENUE_NAME") or "").strip(),
-            "state":      v["state"],
+            "name":       str(r.get("venue_name") or "").strip() or (r.get("VENUE_NAME") or "").strip(),
+            "state":      str(r.get("venue_state") or "").strip(),
             "venue_type": (r.get("Venue_Type") or "").strip(),
             "year":       str(r.get("Pricing_Year") or "").strip(),
             "space":      (r.get("Venue_Space_Name") or "").strip(),
@@ -2424,18 +2426,17 @@ def _vp_load():
     """Pull + dedup + join (venues only) + PDF links. Cached 10 min; _vp_load.clear() to refresh.
     Returns (joined_rows, pdf_map, meta)."""
     breaker = {}   # trips on the first confirmed 503 so a down Xano fails fast
-    t36, e36 = _vp_fetch_all(f"{XANO_BASE}/all_extracted_pdf_data", breaker)
-    pdfs, ep = _vp_fetch_all(f"{XANO_BASE}/wptp_pdfs", breaker)
-    idx, ei  = _vp_fetch_venue_index(breaker)
+    t36, e36 = _vp_fetch_paged("pricing", breaker)
+    pdfs, ep = _vp_fetch_paged("pdfs", breaker)
     t36d = _vp_dedup_latest(t36)
-    joined = _vp_join(t36d, idx)
+    joined = _vp_join(t36d)
     pdf_map = _vp_build_pdf_map(pdfs)
     meta = {
-        "errors": [x for x in (f"table36:{e36}" if e36 else "",
-                               f"map_light:{ei}" if ei else "",
-                               f"wptp_pdfs:{ep}" if ep else "") if x],
+        "errors": [x for x in (f"pricing:{e36}" if e36 else "",
+                               f"pdfs:{ep}" if ep else "") if x],
         "counts": {"t36_raw": len(t36), "t36_deduped": len(t36d),
-                   "venues": len(idx), "joined": len(joined),
+                   "venues": len({r["vendor_id"] for r in joined}),
+                   "joined": len(joined),
                    "pdf_vendors": len(pdf_map)},
         "states":      sorted({r["state"] for r in joined if r["state"]}),
         "venue_types": sorted({r["venue_type"] for r in joined if r["venue_type"]}),

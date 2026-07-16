@@ -39,7 +39,20 @@ def _env_flag(name):
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
 
 
+def _prefetch_shared_state():
+    """One set of Xano scans for the whole launch. Workers read the disk cache
+    instead of each full-scanning wptp_pdfs + summary + venue categories at
+    startup (N workers x 3 tables was the concurrent-read 502 trigger)."""
+    try:
+        from extract_core import prefetch_shared_xano_state
+        print("Prefetching shared Xano state (one scan for all workers)...", flush=True)
+        print("✓ " + prefetch_shared_xano_state(), flush=True)
+    except Exception as e:
+        print(f"⚠ prefetch failed ({e}) — workers will fetch individually (staggered)", flush=True)
+
+
 def main():
+    _prefetch_shared_state()
     # ── Targeted IDs mode: rerun an explicit PDF_ID set in parallel. ──
     # Source: --ids-file <path> (CLI) or BATCH_PDF_IDS env (comma/newline list).
     ids_src = ""
