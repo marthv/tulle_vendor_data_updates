@@ -2242,24 +2242,25 @@ def _vp_fetch_paged(section, breaker=None, per_page=5000):
         url = (f"{XANO_BASE}/venue_pricing_dashboard"
                f"?section={section}&page={page}&per_page={per_page}")
         data, last = None, ""
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 r = requests.get(url, timeout=60)
             except Exception as e:
                 last = str(e)
-                if attempt == 0:
-                    time.sleep(0.8)
+                if attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
                 continue
             if r.status_code == 200:
                 data = r.json()
                 break
             last = str(r.status_code)
-            if r.status_code == 503 and attempt == 0:   # one quick retry on transient 503
-                time.sleep(0.8)
+            # Xano throws 502 (not just 503) under load — retry all gateway errors.
+            if r.status_code in (502, 503, 504) and attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
                 continue
-            break                        # other errors (4xx/5xx) won't fix on retry
+            break                        # other errors (4xx) won't fix on retry
         if data is None:
-            if last == "503" and breaker is not None:
+            if last in ("502", "503", "504") and breaker is not None:
                 breaker["down"] = True   # Xano is down — short-circuit the rest of this load
             return rows, last
         if not isinstance(data, dict):
