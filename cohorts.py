@@ -32,7 +32,7 @@ EXPORT_SECRET = os.environ.get(
 _ROLE_EXCLUDE = {"admin", "test", "staff", "superadmin", "dev"}
 _BACKFILL_START = "2026-07-21"
 _GROUP_OPTS = ["density_tier", "hub_key", "hub_mapped", "signup_month", "planning_phase",
-               "age_range", "referral", "intent", "area", "budget_bucket", "guest_bucket"]
+               "age_range", "referral", "intent", "budget_bucket", "guest_bucket"]
 
 
 # ── HTTP (retry transient 000/5xx) ───────────────────────────────────────────────
@@ -132,7 +132,6 @@ def _build_df(rows):
     df["signup_dt"] = pd.to_datetime(df.get("signup_at"), unit="ms", errors="coerce")
     df["last_active_dt"] = pd.to_datetime(df.get("last_active_at"), unit="ms", errors="coerce")
     df["signup_month"] = df["signup_dt"].dt.strftime("%Y-%m")
-    df["area"] = df.get("Wedding_Location_Updated").apply(_first)
     df["hub_mapped"] = df.get("hub_key").apply(lambda k: bool(k))
     df["budget_bucket"] = df.get("Wedding_Budget").apply(_budget_bucket)
     df["guest_bucket"] = df.get("Wedding_Guest_Count").apply(_guest_bucket)
@@ -209,7 +208,7 @@ def _metrics(sub):
 
 def _apply_filters(df, F):
     m = pd.Series(True, index=df.index)
-    for key in ("planning_phase", "age_range", "referral", "intent", "area",
+    for key in ("planning_phase", "age_range", "referral", "intent", "hub_key",
                 "density_tier", "budget_bucket", "guest_bucket"):
         vals = F.get(key)
         if vals:
@@ -236,7 +235,7 @@ def _insights(sub):
     base_payers = int(sub["is_payer"].sum())
     base_rate = base_payers / n_base if n_base else 0.0
     dims = ["density_tier", "hub_key", "referral", "intent", "planning_phase",
-            "age_range", "budget_bucket", "guest_bucket", "area", "signup_month"]
+            "age_range", "budget_bucket", "guest_bucket", "signup_month"]
     movers = []
     for dim in dims:
         for val, grp in sub.groupby(sub[dim].astype(str)):
@@ -399,7 +398,10 @@ def render_cohorts_tab(xano_base):
         F["intent"]        = c2[0].multiselect("Intent", _opts(adf, "intent"))
         F["budget_bucket"] = c2[1].multiselect("Budget", _opts(adf, "budget_bucket"))
         F["guest_bucket"]  = c2[2].multiselect("Guests", _opts(adf, "guest_bucket"))
-        F["area"]          = c2[3].multiselect("Area", _opts(adf, "area"))
+        hub_keys           = sorted(adf.loc[adf["hub_mapped"], "hub_key"].astype(str).unique())
+        F["hub_key"]       = c2[3].multiselect(
+            "Hub", hub_keys,
+            format_func=lambda k: hub_meta.get(k, {}).get("display_name", k))
         c3 = st.columns(4)
         F["min_vendor_views"] = c3[0].number_input("Min vendor views", 0, value=0, step=1)
         F["min_pdf_views"]    = c3[1].number_input("Min PDF views", 0, value=0, step=1)
@@ -451,14 +453,14 @@ def render_cohorts_tab(xano_base):
         st.caption(f"each dot = one hub · x = vendors in that hub, y = % who pay · "
                    f"correlation r = {r_pay} (pay rate), {r_arpu} (ARPU)")
         st.scatter_chart(ddf, x="vendor_count", y="pay_rate_pct", color="hub_key")
-        st.dataframe(ddf, hide_index=True, use_container_width=True)
+        st.dataframe(ddf, hide_index=True, width="stretch")
 
     # Cohort comparison (green heatmap table)
     st.markdown("#### Cohort comparison")
     gb = st.selectbox("Group by", _GROUP_OPTS, index=0, key="co_gb")
     tdf = _table(sub, gb).reset_index(drop=True)
     st.caption("Greener = higher within each column.")
-    st.dataframe(_style_table(tdf), hide_index=True, use_container_width=True)
+    st.dataframe(_style_table(tdf), hide_index=True, width="stretch")
 
     # Retention
     st.markdown("#### Retention — last-active survival")
