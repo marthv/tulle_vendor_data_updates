@@ -781,13 +781,13 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab2, tab5, tab_vp, tab_co = st.tabs([
-    "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction",
-    "💰 Venue Pricing", "📈 Cohorts"
+tab_co, tab_vp, tab2, tab5 = st.tabs([
+    "📈 Cohorts", "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction"
 ])
 
 
-# ── TAB 0: ADMIN DASHBOARD ────────────────────────────────────────────────────
+# ── (legacy Admin-tab helpers — the Admin tab was removed 2026-07-27; kept because
+# some are imported by other tabs / harmless if unused) ──────────────────────────
 
 XANO_WGW = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:WGW_G49d"
 
@@ -900,313 +900,6 @@ def _to_ms(d: datetime.date, end_of_day=False) -> int:
     t = datetime.time(23, 59, 59) if end_of_day else datetime.time(0, 0, 0)
     dt = datetime.datetime.combine(d, t, tzinfo=datetime.timezone.utc)
     return int(dt.timestamp() * 1000)
-
-with tab0:
-
-    # ── ABOUT ─────────────────────────────────────────────────────────────────
-    with st.expander("ℹ️ What is this dashboard?", expanded=False):
-        st.markdown("""
-**Tulle Admin** is the internal ops tool for [tulletogether.app](https://tulletogether.app) — a wedding vendor pricing platform where couples pay to access crowdsourced pricing PDFs from real vendors.
-
-The core workflow this dashboard runs:
-
-> Vendors submit pricing PDFs → Claude extracts structured data → rows land in Xano → WeWeb surfaces them to paying users
-
----
-
-**Tab guide**
-
-| Tab | What it does |
-|---|---|
-| **Admin** | Timebound reports (signups, payments, packages, to-dos) + Data Explorer for browsing/editing Xano tables |
-| **Google Data & Images** | Two Google Places operations sharing one daily quota (shown at the top): **Google Data** caches Places info (rating, reviews, address) for vendors with a Place ID, and **Vendor Images** pulls photos into WPTP Updated Mappings |
-| **PDF Extraction** | Production extraction queue — shows status across all 6,700+ PDFs (Pending / Extracted / Partial / Failed), with run controls (pending, failed, specific IDs, row range) and per-venue result cards. Downloads PDFs from Drive, runs Claude (4 passes), posts rows to Xano |
-
----
-
-**What Claude extracts per PDF (4 passes):**
-1. Summary fields — venue type, pricing year, admin fee, peak/off-peak Saturday fees
-2. Pricing grid structure — spaces, seasons, day columns
-3. Full pricing grid — venue fee + F&B min + per-person by month × day (up to ~96 rows/PDF)
-4. Classification — venue offering (Raw/Semi-Inclusive/All-Inclusive), attributes, category
-
-Typical cost: ~$0.20–0.40 per PDF. Model: `claude-sonnet-4-20250514`.
-        """)
-
-    st.markdown("---")
-
-    # ── METRICS ───────────────────────────────────────────────────────────────
-    st.subheader("Timebound Reporting")
-    st.caption("Generate reports for user signups, to-dos created, and payments made within a specific date range.")
-
-    col_s, col_e, col_btn = st.columns([2, 2, 1])
-    with col_s:
-        start_date = st.date_input("Start Date",
-                                   value=datetime.date.today() - datetime.timedelta(days=30))
-    with col_e:
-        end_date = st.date_input("End Date", value=datetime.date.today())
-    with col_btn:
-        st.markdown("<div style='padding-top:28px'>", unsafe_allow_html=True)
-        generate = st.button("Generate Report", type="primary", use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if generate:
-        with st.spinner("Fetching data from Xano..."):
-            try:
-                start_ts = _to_ms(start_date)
-                end_ts   = _to_ms(end_date, end_of_day=True)
-
-                def _fetch_all(url):
-                    """GET url, unwrap paginated envelope, return (list, status_code)."""
-                    r = requests.get(url, timeout=60)
-                    if r.status_code != 200:
-                        return None, r.status_code
-                    data = r.json()
-                    if isinstance(data, dict):
-                        data = data.get("items") or data.get("data") or data.get("result") or []
-                    return data if isinstance(data, list) else [], 200
-
-                # Sequential on purpose: these are 4 full-table reads, and firing
-                # them concurrently spikes Xano's small worker pool. Serial is a
-                # few seconds slower but keeps the load to one query at a time.
-                users_data,    users_sc    = _fetch_all(f"{XANO_WGW}/user")
-                todos_data,    todos_sc    = _fetch_all(f"{XANO_WGW}/to_do_items")
-                packages_data, packages_sc = _fetch_all(f"{XANO_WGW}/packages")
-                payments_data, payments_sc = _fetch_all(f"{XANO_WGW}/donation_payment_log")
-
-                errors = []
-                if users_sc    != 200: errors.append(f"users ({users_sc})")
-                if todos_sc    != 200: errors.append(f"to_do_items ({todos_sc})")
-                if packages_sc != 200: errors.append(f"packages ({packages_sc})")
-                if payments_sc != 200: errors.append(f"donation_payment_log ({payments_sc})")
-                if errors:
-                    st.error(f"Endpoint(s) failed: {', '.join(errors)}")
-
-                def _in_range(rows, ts_field):
-                    return [
-                        r for r in (rows or [])
-                        if r.get(ts_field) is not None
-                        and start_ts <= r[ts_field] <= end_ts
-                    ]
-
-                def _unique_users(rows):
-                    seen = set()
-                    for r in rows:
-                        uid = (r.get("user_id")
-                               or r.get("User")
-                               or r.get("user")
-                               or (r.get("_user") if isinstance(r.get("_user"), (int, str)) else None))
-                        if uid:
-                            seen.add(str(uid))
-                    return len(seen)
-
-                # Signups — filter by created_at
-                users_range = _in_range(users_data or [], "created_at")
-                signups     = len(users_range)
-
-                # To-Dos
-                todos_range = _in_range(todos_data or [], "created_at")
-                todo_made   = len(todos_range)
-                todo_uniq   = _unique_users(todos_range)
-                todo_rate   = (todo_uniq * 100 / signups) if signups > 0 else 0.0
-
-                # Packages (exclude "Example" vendor names)
-                pkg_range = [
-                    r for r in _in_range(packages_data or [], "created_at")
-                    if "example" not in str(
-                        r.get("vendor_name") or r.get("Vendor_Name") or r.get("name") or ""
-                    ).lower()
-                ]
-                pkg_made  = len(pkg_range)
-                pkg_uniq  = _unique_users(pkg_range)
-                pkg_rate  = (pkg_uniq * 100 / signups) if signups > 0 else 0.0
-
-                # Payments
-                pay_range = _in_range(payments_data or [], "Time_of_Payment")
-                pay_made  = len(pay_range)
-                pay_uniq  = _unique_users(pay_range)
-                pay_rate  = (pay_uniq * 100 / signups) if signups > 0 else 0.0
-
-                st.markdown(_card("card-green", "👤", signups, "New Signups"),
-                            unsafe_allow_html=True)
-                c1, c2, c3 = st.columns(3)
-                c1.markdown(_card("card-amber",  "💳", pay_made,          "Payments Made"),           unsafe_allow_html=True)
-                c2.markdown(_card("card-amber",  "💳", pay_uniq,          "Unique Payers"),            unsafe_allow_html=True)
-                c3.markdown(_card("card-amber",  "💳", f"{pay_rate:.1f}%","Payment Rate"),             unsafe_allow_html=True)
-                c4, c5, c6 = st.columns(3)
-                c4.markdown(_card("card-green",  "✅", todo_made,          "To-Dos Created"),          unsafe_allow_html=True)
-                c5.markdown(_card("card-green",  "✅", todo_uniq,          "Unique Users w/ To-Dos"),  unsafe_allow_html=True)
-                c6.markdown(_card("card-green",  "✅", f"{todo_rate:.1f}%","To-Do Creation Rate"),     unsafe_allow_html=True)
-                c7, c8, c9 = st.columns(3)
-                c7.markdown(_card("card-purple", "📦", pkg_made,           "Packages Created"),        unsafe_allow_html=True)
-                c8.markdown(_card("card-purple", "📦", pkg_uniq,           "Unique Users w/ Packages"),unsafe_allow_html=True)
-                c9.markdown(_card("card-purple", "📦", f"{pkg_rate:.1f}%", "Package Creation Rate"),   unsafe_allow_html=True)
-
-            except Exception as e:
-                st.error(f"Request failed: {e}")
-
-    # ── DATA EXPLORER ─────────────────────────────────────────────────────────
-    st.markdown("---")
-    st.subheader("Data Explorer")
-
-    exp_table = st.selectbox("Table", list(EXPLORER_TABLES.keys()), key="exp_table")
-    exp_cfg   = EXPLORER_TABLES[exp_table]
-
-    # Load controls
-    col_lim, col_load, col_clr = st.columns([2, 2, 1])
-    with col_lim:
-        row_limit = st.selectbox("Row limit", [100, 500, 1000, 0], format_func=lambda x: "All" if x == 0 else str(x), key="exp_limit")
-    with col_load:
-        st.markdown("<div style='padding-top:28px'>", unsafe_allow_html=True)
-        load_data = st.button("Load Data", type="primary", use_container_width=True, key="exp_load")
-        st.markdown("</div>", unsafe_allow_html=True)
-    with col_clr:
-        st.markdown("<div style='padding-top:28px'>", unsafe_allow_html=True)
-        if st.button("Clear", use_container_width=True, key="exp_clear"):
-            for k in ["exp_raw", "exp_loaded_table", "exp_filters"]:
-                st.session_state.pop(k, None)
-            _explorer_fetch.clear()   # Clear + Load Data = guaranteed fresh read
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if load_data:
-        with st.spinner(f"Loading {exp_table}..."):
-            try:
-                raw, err = _explorer_fetch(exp_cfg["url"])
-                if err:
-                    st.error(err)
-                else:
-                    st.session_state["exp_raw"]          = raw
-                    st.session_state["exp_loaded_table"] = exp_table
-                    st.session_state["exp_filters"]      = []
-            except Exception as e:
-                st.error(f"Load failed: {e}")
-
-    if st.session_state.get("exp_loaded_table") == exp_table and st.session_state.get("exp_raw"):
-        raw  = st.session_state["exp_raw"]
-
-        # ── Pre-process raw → display DataFrame ───────────────────────────
-        df_all = pd.DataFrame(raw)
-
-        # Drop hidden columns
-        for col in exp_cfg.get("hide_cols", []):
-            if col in df_all.columns:
-                df_all.drop(columns=[col], inplace=True)
-
-        # Format ms timestamps as readable dates
-        for col in exp_cfg.get("ts_cols", []):
-            if col in df_all.columns:
-                df_all[col] = pd.to_datetime(
-                    df_all[col], unit="ms", utc=True, errors="coerce"
-                ).dt.strftime("%Y-%m-%d %H:%M")
-
-        # Format array columns as comma-separated strings
-        for col in exp_cfg.get("array_cols", []):
-            if col in df_all.columns:
-                df_all[col] = df_all[col].apply(
-                    lambda x: ", ".join(str(i) for i in x) if isinstance(x, list) else (str(x) if x else "")
-                )
-
-        cols = list(df_all.columns)
-
-        # ── Filter UI ──────────────────────────────────────────────────────
-        st.markdown("**Filters**")
-        if "exp_filters" not in st.session_state:
-            st.session_state["exp_filters"] = []
-
-        fc1, fc2, fc3, fc4 = st.columns([3, 2, 3, 1])
-        with fc1:
-            f_col = st.selectbox("Column", cols, key="f_col", label_visibility="collapsed")
-        with fc2:
-            f_op  = st.selectbox("Operator", FILTER_OPS, key="f_op", label_visibility="collapsed")
-        with fc3:
-            f_val = st.text_input("Value", key="f_val", label_visibility="collapsed",
-                                  placeholder="value" if f_op not in ("is blank", "is not blank") else "—",
-                                  disabled=f_op in ("is blank", "is not blank"))
-        with fc4:
-            if st.button("Add", use_container_width=True, key="f_add"):
-                st.session_state["exp_filters"].append((f_col, f_op, f_val))
-                st.rerun()
-
-        for i, (fc, fo, fv) in enumerate(st.session_state.get("exp_filters", [])):
-            tag_col, rm_col = st.columns([8, 1])
-            tag_col.markdown(f"`{fc}` **{fo}** `{fv}`")
-            if rm_col.button("✕", key=f"rm_{i}"):
-                st.session_state["exp_filters"].pop(i)
-                st.rerun()
-
-        # ── Build display DataFrame ────────────────────────────────────────
-        df = _apply_filters(df_all.copy(), st.session_state.get("exp_filters", []))
-        if row_limit:
-            df = df.head(row_limit)
-
-        st.caption(f"{len(df):,} of {len(df_all):,} rows — {exp_table}"
-                   + ("" if exp_cfg["editable"] else "  ·  read-only"))
-
-        # Determine which columns are locked
-        editable_cols = exp_cfg.get("editable_cols", [])
-        if not exp_cfg["editable"]:
-            disabled_arg = True
-        elif editable_cols:
-            disabled_arg = [c for c in df.columns if c not in editable_cols]
-        else:
-            disabled_arg = False
-
-        # ── Display / Edit ─────────────────────────────────────────────────
-        edited = st.data_editor(
-            df,
-            use_container_width=True,
-            num_rows="fixed",
-            disabled=disabled_arg,
-            key="exp_editor",
-        )
-
-        if exp_cfg["editable"]:
-            if st.button("💾 Save Changes", type="primary", use_container_width=True, key="exp_save"):
-                id_col     = exp_cfg["id_col"]
-                patch_base = exp_cfg["patch"]
-                field_map  = exp_cfg.get("patch_field_map", {})
-                orig_map   = {str(r[id_col]): r for r in raw}
-
-                # Collect only changed editable fields
-                changes: list[tuple[str, dict]] = []
-                for _, row in edited.iterrows():
-                    row_id = str(row[id_col])
-                    orig   = orig_map.get(row_id, {})
-                    watch  = editable_cols if editable_cols else [c for c in row.index if c != id_col]
-                    changed = {
-                        field_map.get(k, k): row[k]
-                        for k in watch
-                        if k in row.index and str(row[k]) != str(orig.get(k, ""))
-                    }
-                    if changed:
-                        changes.append((row_id, changed))
-
-                if not changes:
-                    st.info("No changes detected.")
-                else:
-                    def _do_patch(row_id, payload):
-                        try:
-                            r = requests.patch(f"{patch_base}/{row_id}", json=payload, timeout=15)
-                            return r.status_code in (200, 201, 204), row_id
-                        except Exception:
-                            return False, row_id
-
-                    # max_workers=3 (was 10): bulk edits shouldn't burst-write Xano.
-                    with st.spinner(f"Saving {len(changes)} row(s)..."):
-                        with ThreadPoolExecutor(max_workers=3) as pool:
-                            futures = [pool.submit(_do_patch, rid, payload) for rid, payload in changes]
-                            results = [f.result() for f in as_completed(futures)]
-
-                    saved  = sum(1 for ok, _ in results if ok)
-                    failed = len(results) - saved
-                    _explorer_fetch.clear()   # table changed — next Load Data re-reads
-
-                    if failed == 0:
-                        st.success(f"Saved {saved} row(s).")
-                    else:
-                        st.warning(f"Saved {saved}, failed {failed}.")
-
 
 # ── TAB 2: GOOGLE DATA & IMAGES ───────────────────────────────────────────────
 # Google Data and Vendor Images both call the Google Places API and draw from the
@@ -2772,4 +2465,51 @@ to see its exact numbers and pricing PDFs.
 
 # ── TAB: COHORTS (📈) ─────────────────────────────────────────────────────────
 with tab_co:
+    with st.expander("ℹ️ What is this dashboard?", expanded=False):
+        st.markdown("""
+**Tulle Cohort Analytics** is the internal growth + ops tool for [tulletogether.app](https://tulletogether.app) — a wedding-vendor pricing platform where couples pay ($30 / $75) to access crowdsourced pricing PDFs from real vendors.
+
+The business in one line:
+
+> **Revenue = signups × payment rate × ARPU**
+
+The **thesis** this tool exists to test: building out **geographic hubs** — more pricing across more vendors in specific areas — lifts all three (more people sign up, more of them pay, and they pay more).
+
+---
+
+**Tab guide**
+
+| Tab | What it does |
+|---|---|
+| **📈 Cohorts** | This tab — slice the user base into cohorts and compare funnel, payment, and retention metrics. |
+| **💰 Venue Pricing** | Approximate all-in venue cost by guest count, from extracted pricing (State × venue-type). |
+| **🔍 Google Data & Images** | Cache Google Places data (rating, reviews, address) and pull vendor photos. Shared daily quota. |
+| **📄 PDF Extraction** | Production extraction queue over 6,700+ PDFs — Claude reads each PDF and posts structured rows to Xano. |
+
+---
+
+**What the Cohorts tab shows**
+
+- **Filters** — cut the base by planning phase, age, hub density, referral, intent, budget, guest count, area, signup date, and engagement thresholds.
+- **Tiles** — signups, payment rate, ARPU, revenue, rev / signup, and viewed-a-PDF rate for the current slice.
+- **Auto-insights** — the segments that most beat / miss the baseline payment rate (with lift × and sample size; noisy small groups are filtered out).
+- **Funnel** — Signed up → Viewed a vendor → Viewed a PDF → Paid, with counts and %.
+- **Hub density → payment** — one dot per hub: vendor density vs % who pay, plus the correlation. This is the direct thesis test.
+- **Cohort comparison** — a green heatmap of any dimension (default: hub-density tier).
+- **Retention** — of each cohort's users with a recorded session, the % still active N days after signup.
+
+**Definitions & data**
+
+- **ARPU = revenue ÷ *paying* user** (so revenue = signups × payment rate × ARPU). "Rev / signup" is the blended figure across everyone.
+- Admin / test accounts are excluded.
+- **Xano-only and cached.** One snapshot is pulled every ~6 hours from two secret-gated endpoints — `analytics_users_export` (a slim, PII-free per-user projection) and `analytics_hub_stats` (per-hub vendor density) — then all slicing happens in memory. It **never hammers Xano**. Use **↻ Refresh data** to force a fresh pull.
+- **Caveats:** vendor / PDF views are cumulative counters (no per-event history). **Retention only reflects activity since 2026-07-21**, when last-active tracking went live, over users with a recorded session — so trust recent cohorts with a decent n.
+
+---
+
+**Behind the scenes (recent changes)**
+
+- **Search & map endpoints (119 / 121)** filter on denormalized aggregates (fast), return **facets** for dynamic filter counts, an **empty-state fallback** (`fallback_all` → never a dead "no results" screen, flagged by `is_fallback`), and **`filtered_total`** for an accurate "X vendors found". Dead live-compute code was removed 2026-07-27.
+- **Extraction pipeline:** vendors submit PDFs → Claude extracts in 4 passes (summary fields, grid structure, full pricing grid, classification) → rows land in Xano → WeWeb surfaces them to paying users. Typical cost ~$0.20–0.40 per PDF.
+        """)
     render_cohorts_tab(XANO_BASE)
