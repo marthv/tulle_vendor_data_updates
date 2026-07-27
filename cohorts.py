@@ -120,7 +120,9 @@ def _clean(s):
 
 
 # ── Snapshot pull + dataframe build (cached 6h) ─────────────────────────────────
-def _build_df(rows, tiers):
+def _build_df(rows):
+    # density_tier is added later in the tab from the separately-cached hub pull, so a
+    # transient hub-stats blip can never poison this (heavy) users snapshot.
     df = pd.DataFrame(rows)
     if df.empty:
         return df
@@ -132,8 +134,6 @@ def _build_df(rows, tiers):
     df["signup_month"] = df["signup_dt"].dt.strftime("%Y-%m")
     df["area"] = df.get("Wedding_Location_Updated").apply(_first)
     df["hub_mapped"] = df.get("hub_key").apply(lambda k: bool(k))
-    df["density_tier"] = df.get("hub_key").apply(
-        lambda k: tiers.get(str(k), "Low density") if k else "Unmapped")
     df["budget_bucket"] = df.get("Wedding_Budget").apply(_budget_bucket)
     df["guest_bucket"] = df.get("Wedding_Guest_Count").apply(_guest_bucket)
     df["referral"] = df.get("How_did_you_hear_about_us").apply(_clean)
@@ -147,10 +147,12 @@ def _build_df(rows, tiers):
     return df
 
 
-@st.cache_data(ttl=21600, show_spinner="Loading cohort snapshot (first load ~30s)…")
-def load_snapshot(xano_base, secret):
-    # hub density
-    hub = _xget(f"{xano_base}/analytics_hub_stats?secret={secret}", timeout=30)
+@st.cache_data(ttl=21600, show_spinner=False)
+def load_hubs(xano_base, secret):
+    """Tiny hub-density pull, cached separately so a transient blip can't poison the
+    heavy users snapshot. Returns (tiers, hub_meta); {} on failure so the caller can
+    detect an empty result, clear this cache, and self-heal on the next render."""
+    hub = _xget(f"{xano_base}/analytics_hub_stats?secret={secret}", timeout=30, tries=6)
     hub_rows = hub.get("items", []) if isinstance(hub, dict) else (hub or [])
     hub_meta, hubs = {}, []
     for r in hub_rows:
@@ -166,7 +168,11 @@ def load_snapshot(xano_base, secret):
     for i, (k, _c) in enumerate(hubs):
         tiers[k] = ("High density" if i < n / 3
                     else "Medium density" if i < 2 * n / 3 else "Low density")
-    # users (follow nextPage)
+    return tiers, hub_meta
+
+
+@st.cache_data(ttl=21600, show_spinner="Loading cohort snapshot (first load ~30s)…")
+def load_users(xano_base, secret):
     rows, page = [], 1
     while page <= 60:
         d = _xget(f"{xano_base}/analytics_users_export?secret={secret}&page={page}&per_page=1000")
@@ -178,8 +184,7 @@ def load_snapshot(xano_base, secret):
             break
         page += 1
         time.sleep(0.25)
-    df = _build_df(rows, tiers)
-    return df, hub_meta, _dt.datetime.utcnow().isoformat()
+    return _build_df(rows), _dt.datetime.utcnow().isoformat()
 
 
 # ── Metrics / filters / aggregations ─────────────────────────────────────────────
@@ -263,21 +268,6 @@ def _funnel(sub):
     return pd.DataFrame(steps, columns=["step", "count"])
 
 
-def _engagement(sub, metric):
-    col = "total_pdf_views" if metric == "pdf_views" else "total_vendor_views"
-    edges = [(-1, 0, "0"), (0, 1, "1"), (1, 3, "2–3"), (3, 10, "4–10"), (10, 10 ** 9, "11+")]
-    out = []
-    for lo, hi, label in edges:
-        grp = sub[(sub[col] > lo) & (sub[col] <= hi)]
-        gn = int(len(grp))
-        payers = int(grp["is_payer"].sum())
-        amt = float(grp["total_amount_paid"].sum())
-        out.append(dict(bucket=label, n=gn,
-                        pay_rate_pct=round(payers / gn * 100, 2) if gn else 0.0,
-                        arpu=round(amt / payers, 2) if payers else 0.0))
-    return pd.DataFrame(out)
-
-
 def _density(sub, hub_meta):
     hsub = sub[sub["hub_mapped"]]
     pts = []
@@ -325,7 +315,8 @@ def _retention(sub, cohort_by):
             continue
         series[f"{val} (n={len(valid)})"] = [round(float((valid["days_active"] >= h).mean()) * 100, 1)
                                              for h in horizons]
-    piv = pd.DataFrame(series, index=[f"{h}d" for h in horizons])
+    # numeric index → st.line_chart orders the x-axis ascending (1→180), not lexically
+    piv = pd.DataFrame(series, index=pd.Index(horizons, name="days since signup"))
     return piv
 
 
@@ -334,21 +325,67 @@ def _opts(df, col):
     return sorted([v for v in df[col].astype(str).unique() if v not in ("", "nan")])
 
 
+def _funnel_html(sub):
+    """Horizontal funnel bars with the count + % printed above each bar."""
+    m = _metrics(sub)
+    signups = m["signups"] or 1
+    steps = [("Signed up", m["signups"]), ("Viewed a vendor", m["viewed_vendor"]),
+             ("Viewed a PDF", m["viewed_pdf"]), ("Paid", m["payers"])]
+    html, prev = [], None
+    for label, cnt in steps:
+        pct = cnt / signups * 100
+        of_prev = "" if prev in (None, 0) else f" · {cnt / prev * 100:.0f}% of previous step"
+        html.append(
+            f'<div style="margin:10px 0">'
+            f'<div style="font-size:13px;margin-bottom:3px"><b>{label}</b> — {cnt:,} '
+            f'<span style="color:#4B5563">({pct:.1f}% of signups{of_prev})</span></div>'
+            f'<div style="background:#eef2f0;border-radius:6px;height:22px">'
+            f'<div style="width:{max(pct, 1.5):.1f}%;background:#0F7348;height:22px;'
+            f'border-radius:6px"></div></div></div>'
+        )
+        prev = cnt or prev
+    return "<div>" + "".join(html) + "</div>"
+
+
+def _style_table(df):
+    """Per-column transparent→green heatmap, black text for legibility. No matplotlib."""
+    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+
+    def _grad(col):
+        v = col.astype(float)
+        lo, hi = v.min(), v.max()
+        rng = (hi - lo) or 1.0
+        return [f"background-color: rgba(15,115,72,{0.82 * (x - lo) / rng:.2f}); color:#111"
+                for x in v]
+
+    sty = df.style
+    if num_cols:
+        sty = sty.apply(_grad, axis=0, subset=num_cols)
+    return sty
+
+
 def render_cohorts_tab(xano_base):
     st.markdown("### 📊 Cohort & Funnel Analytics")
     st.caption("revenue = signups × payment rate × ARPU · thesis: geographic-hub vendor density lifts all three")
 
-    df, hub_meta, as_of = load_snapshot(xano_base, EXPORT_SECRET)
+    users_df, as_of = load_users(xano_base, EXPORT_SECRET)
     top = st.columns([4, 1])
-    if df is None or df.empty:
+    if users_df is None or users_df.empty:
         top[0].warning("Snapshot empty or pull failed (Xano may be briefly unreachable).")
         if top[1].button("↻ Retry"):
-            load_snapshot.clear(); st.rerun()
+            load_users.clear(); st.rerun()
         return
-    adf = df[~df["role_l"].isin(_ROLE_EXCLUDE)].copy()
+    tiers, hub_meta = load_hubs(xano_base, EXPORT_SECRET)
+    if not hub_meta:                       # a transient hub blip cached empty — self-heal
+        load_hubs.clear()
+        tiers, hub_meta = load_hubs(xano_base, EXPORT_SECRET)
+
+    adf = users_df[~users_df["role_l"].isin(_ROLE_EXCLUDE)].copy()
+    adf["density_tier"] = adf["hub_key"].apply(
+        lambda k: tiers.get(str(k), "Low density") if k else "Unmapped")
     top[0].caption(f"Snapshot {as_of[:16].replace('T', ' ')} UTC · {len(adf):,} users (excl. admin/test)")
     if top[1].button("↻ Refresh data"):
-        load_snapshot.clear(); st.rerun()
+        load_users.clear(); load_hubs.clear(); st.rerun()
 
     with st.expander("Filters", expanded=False):
         c = st.columns(4)
@@ -384,64 +421,58 @@ def render_cohorts_tab(xano_base):
     t2[1].metric("Rev / signup", f"${m['rev_per_signup']:,.2f}")
     t2[2].metric("Viewed a PDF", f"{m['pdf_rate']*100:.1f}%")
 
-    # Auto-insights
-    st.markdown("#### 🔎 Auto-insights — top movers")
-    base_rate, base_n, over, under = _insights(sub)
-    st.caption(f"baseline pay rate {base_rate*100:.2f}% (n={base_n:,}) · min n=200 · ✓ = significant")
-
-    def _mv(mm, arrow):
-        sig = " ✓" if mm["significant"] else ""
-        return (f"{arrow} **{mm['dimension']}** = {mm['group']} — {mm['pay_rate']*100:.1f}% pay "
-                f"({mm['lift']:.2f}× baseline), ARPU ${mm['arpu']:,.0f}, n={mm['n']:,}, "
-                f"${mm['revenue']:,.0f} rev{sig}")
-    ic = st.columns(2)
-    ic[0].markdown("**Over-performers**\n\n" + ("\n\n".join(_mv(x, "🔼") for x in over) or "_none above min-n_"))
-    ic[1].markdown("**Under-performers**\n\n" + ("\n\n".join(_mv(x, "🔽") for x in under) or "_none_"))
-
     # Funnel
     st.markdown("#### Funnel")
-    fdf = _funnel(sub)
-    st.bar_chart(fdf.set_index("step")["count"])
+    st.markdown(_funnel_html(sub), unsafe_allow_html=True)
 
-    # Engagement
-    st.markdown("#### Engagement → pay curve")
-    em = st.radio("By", ["pdf_views", "vendor_views"], horizontal=True, key="co_eng",
-                  format_func=lambda x: "PDF views" if x == "pdf_views" else "vendor views")
-    edf = _engagement(sub, em)
-    st.caption("bars = % pay per bucket; table shows n and ARPU")
-    st.bar_chart(edf.set_index("bucket")["pay_rate_pct"])
-    st.dataframe(edf, hide_index=True, use_container_width=True)
+    # Auto-insights (simplified: a few numbers + a short explanation)
+    st.markdown("#### 🔎 Auto-insights")
+    base_rate, base_n, over, under = _insights(sub)
+    st.caption(f"compared to the {base_rate*100:.1f}% average pay rate across the {base_n:,} selected users")
+    if over:
+        st.markdown("**Segments paying MORE than average**")
+        for x in over[:3]:
+            st.markdown(f"- **{x['group']}** ({x['dimension']}) — **{x['pay_rate']*100:.1f}%** pay, "
+                        f"**{x['lift']:.1f}× the average** · {x['n']:,} users")
+    if under:
+        st.markdown("**Segments paying LESS than average**")
+        for x in under[:2]:
+            st.markdown(f"- **{x['group']}** ({x['dimension']}) — **{x['pay_rate']*100:.1f}%** pay, "
+                        f"**{x['lift']:.1f}× the average** · {x['n']:,} users")
+    if not over and not under:
+        st.caption("No segment clears the minimum sample size (200) in this slice.")
 
-    # Density scatter
+    # Hub density scatter
     st.markdown("#### Hub density → payment (thesis)")
     ddf, r_pay, r_arpu = _density(sub, hub_meta)
     if ddf.empty:
-        st.info("No hubs with ≥100 users in this slice.")
+        st.info("No hubs with ≥100 users in this slice (or hub-density data is briefly unavailable — try ↻ Refresh).")
     else:
-        st.caption(f"x = hub vendor count, y = % pay · Pearson r · vendor_count↔pay_rate = {r_pay}  ·  vendor_count↔ARPU = {r_arpu}")
+        st.caption(f"each dot = one hub · x = vendors in that hub, y = % who pay · "
+                   f"correlation r = {r_pay} (pay rate), {r_arpu} (ARPU)")
         st.scatter_chart(ddf, x="vendor_count", y="pay_rate_pct", color="hub_key")
         st.dataframe(ddf, hide_index=True, use_container_width=True)
 
-    # Cohort comparison + pareto
+    # Cohort comparison (green heatmap table)
     st.markdown("#### Cohort comparison")
     gb = st.selectbox("Group by", _GROUP_OPTS, index=0, key="co_gb")
-    tdf = _table(sub, gb)
-    st.dataframe(tdf, hide_index=True, use_container_width=True)
-    st.caption("Revenue by group (Pareto — sorted high→low)")
-    st.bar_chart(tdf.sort_values("revenue_$", ascending=False).set_index(gb)["revenue_$"])
+    tdf = _table(sub, gb).reset_index(drop=True)
+    st.caption("Greener = higher within each column.")
+    st.dataframe(_style_table(tdf), hide_index=True, use_container_width=True)
 
     # Retention
     st.markdown("#### Retention — last-active survival")
     cb = st.selectbox("Cohort by", _GROUP_OPTS, index=_GROUP_OPTS.index("signup_month"), key="co_cb")
+    st.caption("Of each cohort's users who have any recorded session, the % still active at least "
+               "N days after signup (x-axis: days since signup, ascending). Higher lines = better retention.")
     rpiv = _retention(sub, cb)
     if rpiv.empty:
         st.info("Not enough users with recorded activity for a retention curve in this slice.")
     else:
-        st.caption("y = % still active · x = days since signup")
         st.line_chart(rpiv)
 
     st.caption(
-        f"💵 ARPU = revenue ÷ paying user (dollars). ⏱ Retention: last_active_at went live "
-        f"{_BACKFILL_START}; the survival curve covers only users with a recorded session since then "
-        f"(see n per cohort). Snapshot refreshes every 6h; use ↻ Refresh to force."
+        f"💵 ARPU = revenue ÷ paying user (dollars). ⏱ Retention only reflects activity since "
+        f"{_BACKFILL_START} (when last-active tracking went live), over users with a recorded "
+        f"session. Snapshot refreshes every 6h; use ↻ Refresh to force."
     )
