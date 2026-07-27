@@ -355,7 +355,7 @@ def _style_table(df):
         v = col.astype(float)
         lo, hi = v.min(), v.max()
         rng = (hi - lo) or 1.0
-        return [f"background-color: rgba(15,115,72,{0.82 * (x - lo) / rng:.2f}); color:#111"
+        return [f"background-color: rgba(15,115,72,{0.55 * (x - lo) / rng:.2f}); color:#111"
                 for x in v]
 
     sty = df.style
