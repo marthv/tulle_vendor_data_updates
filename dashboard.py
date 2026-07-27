@@ -587,7 +587,7 @@ if not st.session_state.authenticated:
         with pw_col:
             pwd   = st.text_input("Password", type="password", label_visibility="collapsed",
                                   placeholder="Team password")
-            login = st.button("Login", width="stretch")
+            login = st.button("Login", use_container_width=True)
         if login:
             expected = os.environ.get("DASHBOARD_PASSWORD", "")
             if pwd == expected and expected:
@@ -764,7 +764,7 @@ with _h_user:
         unsafe_allow_html=True,
     )
 with _h_btn:
-    if st.button("Sign out", width="stretch"):
+    if st.button("Sign out", use_container_width=True):
         for k in ["authenticated", "user_email", "user_name", "user_picture", "_auth_cookie_set"]:
             st.session_state.pop(k, None)
         if _cookies is not None:
@@ -961,9 +961,9 @@ with tab2:
     with _q_head:
         st.markdown("**Google Places API — quota & usage**")
     with _q_link:
-        st.link_button("GCP quotas ↗", GCP_QUOTAS_URL, width="stretch")
+        st.link_button("GCP quotas ↗", GCP_QUOTAS_URL, use_container_width=True)
     with _q_refresh:
-        if st.button("↻", help="Refresh quota", width="stretch", key="refresh_quota"):
+        if st.button("↻", help="Refresh quota", use_container_width=True, key="refresh_quota"):
             _fetch_places_quota.clear()
             st.rerun()
 
@@ -1057,7 +1057,7 @@ with tab2:
                 st.info(f"▶ **Google Data (never run)** — {g_never:,} vendors with no cache. "
                         f"Next un-cached vendor ID: **{g_never_sample[0].get('id')}**.")
                 with st.expander(f"Never-run vendors — showing {min(len(g_never_sample), 50)} of {g_never:,}"):
-                    st.dataframe(pd.DataFrame(g_never_sample[:50]), width="stretch", hide_index=True)
+                    st.dataframe(pd.DataFrame(g_never_sample[:50]), use_container_width=True, hide_index=True)
             else:
                 st.success("✅ Every vendor has been run at least once.")
 
@@ -1066,14 +1066,14 @@ with tab2:
                 st.warning(f"⚠️ **Ran but empty** — {g_empty:,} vendors have a cache with no real data. "
                            f"These won't be retried by the normal batch.")
                 with st.expander(f"Empty-cache vendors — showing {min(len(g_empty_sample), 50)} of {g_empty:,}"):
-                    st.dataframe(pd.DataFrame(g_empty_sample[:50]), width="stretch", hide_index=True)
+                    st.dataframe(pd.DataFrame(g_empty_sample[:50]), use_container_width=True, hide_index=True)
 
             i_sample = cov.get("image_sample") or []
             if i_sample:
                 st.info(f"▶ **Vendor Images** — {i_rem:,} vendors have real Google data but no image 1. "
                         f"Next vendor ID needing images: **{i_sample[0].get('id')}**.")
                 with st.expander(f"Vendors missing images — showing {min(len(i_sample), 50)} of {i_rem:,}"):
-                    st.dataframe(pd.DataFrame(i_sample[:50]), width="stretch", hide_index=True)
+                    st.dataframe(pd.DataFrame(i_sample[:50]), use_container_width=True, hide_index=True)
             else:
                 st.success("✅ Every vendor with real Google data has at least image 1.")
 
@@ -1089,7 +1089,7 @@ with tab2:
     with col_e2:
         gd_end = st.number_input("Ending index (vendor ID)", min_value=1, value=500, step=1, key="gd_end")
 
-    if st.button("▶ Run Google Data Batch", type="primary", width="stretch"):
+    if st.button("▶ Run Google Data Batch", type="primary", use_container_width=True):
         with st.spinner("Running — Xano is fetching Google Places data for each vendor..."):
             try:
                 resp = requests.get(
@@ -1147,7 +1147,7 @@ with tab2:
 
     for slot, col in [(1, col_i1), (2, col_i2), (3, col_i3)]:
         with col:
-            if st.button(f"Image {slot}", width="stretch", key=f"img_btn_{slot}"):
+            if st.button(f"Image {slot}", use_container_width=True, key=f"img_btn_{slot}"):
                 with st.spinner(f"Updating image {slot}..."):
                     code, data = run_image_endpoint(slot)
                 if code == 200:
@@ -1163,7 +1163,7 @@ with tab2:
     st.markdown("---")
 
     # Run all 3 in sequence
-    if st.button("▶ Run All 3 Images in Sequence", type="primary", width="stretch"):
+    if st.button("▶ Run All 3 Images in Sequence", type="primary", use_container_width=True):
         for slot in [1, 2, 3]:
             with st.spinner(f"Running image {slot} of 3..."):
                 code, data = run_image_endpoint(slot)
@@ -1239,7 +1239,7 @@ with tab5:
     # ── Status overview ───────────────────────────────────────────────────────
     refresh_col, _ = st.columns([2, 6])
     with refresh_col:
-        load_status = st.button("🔄 Load / Refresh Status", type="primary", width="stretch", key="pl_refresh")
+        load_status = st.button("🔄 Load / Refresh Status", type="primary", use_container_width=True, key="pl_refresh")
 
     if load_status or st.session_state.get("pl_status_loaded"):
         if load_status:
@@ -1345,7 +1345,7 @@ with tab5:
             df_filtered = df_filtered[mask]
 
         st.caption(f"Showing {len(df_filtered):,} of {len(df_display):,} rows")
-        st.dataframe(df_filtered, width="stretch", hide_index=True)
+        st.dataframe(df_filtered, use_container_width=True, hide_index=True)
 
         # CSV export
         csv_bytes = df_filtered.to_csv(index=False).encode()
@@ -1466,7 +1466,7 @@ with tab5:
         run_btn = st.button(
             btn_label,
             type="primary",
-            width="stretch",
+            use_container_width=True,
             disabled=st.session_state["pl_running"],
             key="pl_run_btn",
         )
@@ -1641,7 +1641,7 @@ with tab5:
                             "Ended":     b["ended_at"],
                             "Expires":   b["expires_at"],
                         })
-                    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
                     st.caption(
                         "An `ended` batch we have a saved PDF→vendor map for can be ingested "
                         "via **Resume this batch** / **Check Batch Results** below. An ended "
@@ -1676,9 +1676,9 @@ with tab5:
             st.info(f"Pending batch: `{_bid}`")
             _chk_col, _clr_col = st.columns([3, 1])
             with _chk_col:
-                check_btn = st.button("📊 Check Batch Results", width="stretch", key="pl_check_batch")
+                check_btn = st.button("📊 Check Batch Results", use_container_width=True, key="pl_check_batch")
             with _clr_col:
-                if st.button("✕ Clear", width="stretch", key="pl_clear_batch"):
+                if st.button("✕ Clear", use_container_width=True, key="pl_clear_batch"):
                     st.session_state.pop("pl_batch_id", None)
                     st.session_state.pop("pl_batch_map", None)
                     st.rerun()
@@ -1821,7 +1821,7 @@ with tab5:
                         ep_rows = ep_resp.json().get("items") or []
                         st.markdown(f"**extracted_pdf_data** — {len(ep_rows)} row(s) from this run")
                         if ep_rows:
-                            st.dataframe(pd.DataFrame(ep_rows), width="stretch", hide_index=True)
+                            st.dataframe(pd.DataFrame(ep_rows), use_container_width=True, hide_index=True)
                     else:
                         st.warning(f"extracted_pdf_data fetch failed ({ep_resp.status_code})")
 
@@ -1829,7 +1829,7 @@ with tab5:
                         vp_rows = vp_resp.json().get("items") or []
                         st.markdown(f"**venue_pricing** — {len(vp_rows)} row(s) from this run")
                         if vp_rows:
-                            st.dataframe(pd.DataFrame(vp_rows), width="stretch", hide_index=True)
+                            st.dataframe(pd.DataFrame(vp_rows), use_container_width=True, hide_index=True)
                     else:
                         st.warning(f"venue_pricing fetch failed ({vp_resp.status_code})")
                 except Exception as e:
@@ -1883,7 +1883,7 @@ with tab5:
                 })
 
             df_hist = pd.DataFrame(history_rows)
-            st.dataframe(df_hist, width="stretch", hide_index=True)
+            st.dataframe(df_hist, use_container_width=True, hide_index=True)
         else:
             st.info("No completed jobs yet")
 
@@ -2221,7 +2221,7 @@ with tab_vp:
 
     _vp_rc, _ = st.columns([2, 6])
     with _vp_rc:
-        if st.button("🔄 Load / Refresh", type="primary", width="stretch", key="vp_refresh"):
+        if st.button("🔄 Load / Refresh", type="primary", use_container_width=True, key="vp_refresh"):
             _vp_load.clear()
 
     # Load data (cached 10min). Filters don't trigger reloads — only Apply/Run buttons trigger computation.
@@ -2368,7 +2368,7 @@ to see its exact numbers and pricing PDFs.
                 styled = _elementwise(_vp_cell_style).format(
                     lambda v: "" if pd.isna(v) else _vp_money(v))
                 _grid = st.dataframe(
-                    styled, width="stretch", key="vp_grid",
+                    styled, use_container_width=True, key="vp_grid",
                     on_select="rerun", selection_mode=["single-row", "single-column"],
                 )
                 _gs = _grid.selection if _grid else None
@@ -2387,7 +2387,7 @@ to see its exact numbers and pricing PDFs.
                     _rc1, _rc2 = st.columns([3, 5])
                     with _rc1:
                         if st.button(f"▶ Run — show venues in {_picked}", key="vp_drill_run",
-                                     type="primary", width="stretch"):
+                                     type="primary", use_container_width=True):
                             st.session_state["vp_drill"] = (sel_state, sel_type)
                     with _rc2:
                         st.caption(f"Selected: **{_picked}**")
@@ -2409,7 +2409,7 @@ to see its exact numbers and pricing PDFs.
                 with _h1:
                     st.markdown(f"#### Venues in {_lbl} @ {G} guests — {len(subset)} venue(s)")
                 with _h2:
-                    if st.button("Show all", key="vp_drill_clear", width="stretch"):
+                    if st.button("Show all", key="vp_drill_clear", use_container_width=True):
                         st.session_state.pop("vp_drill", None)
             else:
                 subset = vendors
@@ -2423,7 +2423,7 @@ to see its exact numbers and pricing PDFs.
                 ddf = pd.DataFrame(subset)
                 ddf = ddf[[c for c in _vp_order if c in ddf.columns]].reset_index(drop=True)
                 _vp_event = st.dataframe(
-                    ddf, width="stretch", hide_index=True,
+                    ddf, use_container_width=True, hide_index=True,
                     on_select="rerun", selection_mode="single-row", key="vp_drill_table",
                     column_config=_vp_colcfg,
                 )

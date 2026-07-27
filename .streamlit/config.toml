@@ -1,9 +1,0 @@
-# Streamlit server config — makes the app play nicely behind Railway's proxy.
-# Symptom this fixes: /_stcore/stream WebSocket dropping (status 0, timeouts) so the
-# browser renders the shell (icons/nav) but never streams content = blank view.
-# headless is also set in railway.toml's start command; kept here for completeness.
-[server]
-headless = true
-enableCORS = false
-enableXsrfProtection = false
-enableWebsocketCompression = false

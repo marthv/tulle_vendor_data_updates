@@ -453,14 +453,14 @@ def render_cohorts_tab(xano_base):
         st.caption(f"each dot = one hub · x = vendors in that hub, y = % who pay · "
                    f"correlation r = {r_pay} (pay rate), {r_arpu} (ARPU)")
         st.scatter_chart(ddf, x="vendor_count", y="pay_rate_pct", color="hub_key")
-        st.dataframe(ddf, hide_index=True, width="stretch")
+        st.dataframe(ddf, hide_index=True, use_container_width=True)
 
     # Cohort comparison (green heatmap table)
     st.markdown("#### Cohort comparison")
     gb = st.selectbox("Group by", _GROUP_OPTS, index=0, key="co_gb")
     tdf = _table(sub, gb).reset_index(drop=True)
     st.caption("Greener = higher within each column.")
-    st.dataframe(_style_table(tdf), hide_index=True, width="stretch")
+    st.dataframe(_style_table(tdf), hide_index=True, use_container_width=True)
 
     # Retention
     st.markdown("#### Retention — last-active survival")
