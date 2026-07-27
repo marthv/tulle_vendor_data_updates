@@ -84,6 +84,7 @@ Set these in the Railway dashboard under Variables.
 | `XANO_GET_ENDPOINT` | `https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B/wptp_pdfs` — used for GET list, status table, and PATCH writeback |
 | `XANO_SUMMARY_ENDPOINT` | POST endpoint for `extracted_pdf_data` rows |
 | `XANO_PRICING_ENDPOINT` | POST endpoint for `venue_pricing` rows |
+| `XANO_VENDOR_CATEGORIES_ENDPOINT` | `.../wptp_venue_categories` — slim `{Vendor_ID, Category}` list driving the pre-download category gate. Vendors outside Venue / Photography / Entertainment are skipped before any model call; in-scope ones are routed to their category's prompt. **If unset the gate is off** and every PDF costs a full Sonnet pass. Old name `XANO_VENUE_CATEGORIES_ENDPOINT` still works as a fallback. |
 | `XANO_BASE_URL` | Base URL for enrichment endpoints (`/google_data_batch`, `/sync_collections`, etc.) |
 | `DASHBOARD_PASSWORD` | Fallback password auth (only used if Google OAuth is not configured) |
 

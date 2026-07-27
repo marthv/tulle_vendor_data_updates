@@ -15,6 +15,7 @@ Required env vars:
 import re
 import os
 import json
+import collections
 import base64
 import time
 import random
@@ -53,6 +54,67 @@ def _post_extraction_progress(job_type: str = "extraction", current_pdf: str = "
 MONTHS = ["January", "February", "March", "April", "May", "June",
           "July", "August", "September", "October", "November", "December"]
 DAYS   = ["Weekday", "Everyday", "Friday", "Saturday", "Sunday"]
+
+# ── VENDOR CATEGORIES ─────────────────────────────────────────────────────────
+# Values as they appear in table 11's Category column (exact spelling matters:
+# it is "Photography" and "Entertainment", NOT "Photographer"/"DJ"/"Band").
+# Anything not listed here is skipped before download — see _resolve_category.
+# DJ vs Band is NOT a category: table 11 keeps that split in Type_of_Entertainment,
+# and it surfaces as the Service_Type facet instead. That avoids migrating 195
+# vendor rows and correctly handles vendors who are genuinely both.
+CAT_VENUE         = "Venue"
+CAT_PHOTOGRAPHY   = "Photography"
+CAT_ENTERTAINMENT = "Entertainment"
+SUPPORTED_CATEGORIES = (CAT_VENUE, CAT_PHOTOGRAPHY, CAT_ENTERTAINMENT)
+
+# Statuses that `rerun_failed` re-picks up. 'skipped_non_venue' is included as of
+# 2026-07-27: ~484 Photography/Entertainment PDFs were parked under that status by
+# the old venue-only gate and are now in scope. 'skipped_unsupported_category' is
+# deliberately NOT here — those really are out of scope (Flowers, Beauty, ...).
+RERUNNABLE_STATUSES = ('failed', 'batch_submitted', 'skipped_non_venue')
+
+# ── CONTROLLED VOCABULARIES (non-venue) ───────────────────────────────────────
+# These are enforced IN CODE after parsing, not just described in the prompt —
+# see _normalize_vocab / _normalize_multi. The venue vocabularies (venue_type,
+# venue_offering, venue_attributes, category) have never had a code-level guard,
+# so any hallucinated string lands straight in Xano and then in a WeWeb filter
+# dropdown. Don't repeat that for the new categories.
+
+# Shared across Photography + Entertainment. Derived in code from Hours_Included
+# so the model never has to pick the bucket itself.
+COVERAGE_BANDS = ["Up to 6 hours", "8 hours", "10+ hours", "Full day / Unlimited"]
+
+PHOTO_STYLES = [
+    "Documentary", "Editorial", "Traditional / Classic", "Light & Airy",
+    "Dark & Moody", "Film / Analog", "Fine Art",
+]
+
+PHOTO_INCLUSIONS = [
+    "Second Shooter", "Engagement Session", "Album", "Prints",
+    "Full Gallery Rights", "Videography", "Drone", "Rehearsal Dinner",
+    "Travel Included",
+]
+
+ENT_SERVICE_TYPES = [
+    "DJ", "Band - Solo / Duo", "Band - 3 to 5 piece", "Band - 6 to 9 piece",
+    "Band - 10+ / Orchestra", "Ensemble", "Soloist",
+]
+
+ENT_INCLUSIONS = [
+    "MC / Host", "Ceremony Musicians", "Ceremony Sound", "Cocktail Hour Set",
+    "DJ Between Sets", "Uplighting", "Dance Floor Lighting", "Photo Booth",
+    "Cold Sparks / FX", "Monogram / Projection", "Sound & Lighting Provided",
+    "Travel Included", "Vendor Meals Required",
+]
+
+SERVICE_TYPES_BY_CATEGORY = {
+    CAT_PHOTOGRAPHY:   PHOTO_STYLES,
+    CAT_ENTERTAINMENT: ENT_SERVICE_TYPES,
+}
+INCLUSIONS_BY_CATEGORY = {
+    CAT_PHOTOGRAPHY:   PHOTO_INCLUSIONS,
+    CAT_ENTERTAINMENT: ENT_INCLUSIONS,
+}
 
 # Claude Sonnet 4 pricing (per token)
 _COST_INPUT       = 3.00  / 1_000_000
@@ -526,6 +588,144 @@ description: one sentence, or "" if insufficient info.
 preferred_vendors: comma-separated business names, or "" if none listed."""
 
 
+# ── NON-VENUE PROMPTS (Photography / Entertainment) ───────────────────────────
+# One merged call per PDF: these are short package sheets, not multi-page pricing
+# grids, so there is no separate structure pass and no separate pricing pass.
+# Shape mirrors SUMMARY_PROMPT's {value, confidence} envelope so _clean /
+# _to_number / _is_yes / NUMERIC_FIELDS all apply downstream unchanged.
+#
+# Note the deliberate asymmetry with the venue prompts: every controlled
+# vocabulary below is ALSO enforced in code (_normalize_vocab / _normalize_multi)
+# after parsing. The prompt text is a hint, not the guarantee.
+
+_NON_VENUE_COMMON_RULES = """
+NUMERIC FIELD RULES — CRITICAL:
+All dollar amounts, hours, and counts must be plain numbers only.
+- No $ signs, commas, % signs, or text. 2500 not $2,500. 8 not "8 hours".
+- For a range like "$2,500-$3,500" return the LOWER number (the starting price).
+- If a numeric field is not present in the document: return "".
+- Never return "Not listed", "N/A", or any text in a numeric field.
+
+PACKAGES — return ONE ARRAY ENTRY PER NAMED PACKAGE / TIER.
+- If the PDF lists Silver / Gold / Platinum, return three entries.
+- If the PDF gives only a single "starting at" price, return ONE entry with
+  package_name "Starting Package".
+- If the PDF gives ONLY an hourly rate and no package price, still return one
+  entry: set package_price "" and hourly_rate to the rate.
+- Do NOT invent packages that are not in the document.
+- Do NOT return à-la-carte add-on line items as packages. An add-on belongs in
+  included_services only when it is INCLUDED in that package's price.
+
+HOURS_INCLUDED:
+- Numeric hours of coverage/performance included in that package's price.
+- "All day", "unlimited", "full day" -> return 16.
+- If the PDF never states hours for the package, return "".
+
+CONFIDENTIALITY:
+- confidentiality_risk "yes" only if the PDF states its pricing is confidential,
+  proprietary, not to be shared, or under NDA. Otherwise "no". Lowercase only.
+- confidentiality_evidence: the verbatim sentence, max 200 chars, else "".
+
+CONTACT_INFORMATION: the vendor's own business email if present, else "".
+PRICING_YEAR: 4-digit year the pricing applies to, else "".
+DESCRIPTION: ONE sentence, ~25 words max, describing the vendor for a couple
+shopping for this service. Plain factual prose. No marketing adjectives, no
+exclamation points, no "perfect"/"stunning"/"dream". Do not repeat the vendor
+name. Return "" if the PDF lacks enough information.
+"""
+
+PHOTO_PROMPT = """You are an expert at extracting WEDDING PHOTOGRAPHY pricing from PDF price sheets and brochures. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
+
+VENDOR TYPE — determine this FIRST:
+- "photography": the business sells photography (and/or videography) coverage — packages priced by hours of coverage, deliverables like galleries/albums/prints, second shooters, engagement sessions.
+- "other": anything else (a venue renting space, a florist, a DJ/band, a planner, a caterer).
+
+IF "other": return ONLY this JSON and STOP:
+{"vendor_type":{"value":"other","confidence":"high"},"actual_category":{"value":"<one word: venue/planner/florist/dj/band/caterer/baker/stationery/transportation/hair-makeup/officiant/rentals/other>","confidence":"high"}}
+
+IF "photography": continue with everything below.
+
+STYLE — assign AT MOST ONE, and ONLY if the PDF explicitly describes the shooting style. Most pricing sheets do NOT state a style — returning "" is the correct and expected answer in that case. Never infer style from sample photos or from the vendor's name.
+  "Documentary" — candid, photojournalistic, unposed.
+  "Editorial" — directed, fashion/magazine-styled posing.
+  "Traditional / Classic" — posed portraits, formal family groupings.
+  "Light & Airy" — explicitly describes a bright, pale, airy edit.
+  "Dark & Moody" — explicitly describes a dark, rich, moody edit.
+  "Film / Analog" — shoots film or hybrid film/digital.
+  "Fine Art" — explicitly self-describes as fine art.
+
+INCLUDED_SERVICES — for EACH package, list ALL that are INCLUDED IN THAT PACKAGE'S PRICE, semicolon-separated, choosing ONLY from this list:
+  "Second Shooter", "Engagement Session", "Album", "Prints",
+  "Full Gallery Rights", "Videography", "Drone", "Rehearsal Dinner",
+  "Travel Included"
+Rules:
+- "Full Gallery Rights" only when the PDF grants digital files / print release / full resolution images to the couple.
+- If something is offered as a PAID ADD-ON rather than included, do NOT list it.
+- Return "" if nothing in the list is included.
+
+TEAM_SIZE — number of photographers shooting that package (1 for solo, 2 when a second shooter is included). "" if not stated.
+HOURLY_RATE — the vendor's stated hourly rate, if any. "" otherwise.
+OVERTIME_HOURLY_RATE — cost per additional/overtime hour. "" otherwise.
+""" + _NON_VENUE_COMMON_RULES + """
+Return EXACTLY this shape:
+{"vendor_type":{"value":"photography","confidence":"high"},"vendor_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"},"packages":[{"package_name":{"value":"","confidence":"high"},"package_price":{"value":"","confidence":"high"},"hours_included":{"value":"","confidence":"high"},"hourly_rate":{"value":"","confidence":"high"},"overtime_hourly_rate":{"value":"","confidence":"high"},"team_size":{"value":"","confidence":"high"},"included_services":{"value":"","confidence":"high"}}]}
+
+service_type: one STYLE value from the list, or "" (expected default).
+packages: one entry per named tier. Never an empty array if any price appears in the PDF."""
+
+
+ENTERTAINMENT_PROMPT = """You are an expert at extracting WEDDING ENTERTAINMENT pricing (DJs, bands, ensembles, soloists) from PDF price sheets and brochures. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
+
+VENDOR TYPE — determine this FIRST:
+- "entertainment": the business provides music/entertainment for the event — a DJ, a live band, a string ensemble, a solo musician, or a combination. Pricing is for performance packages, sets, or hours of performance.
+- "other": anything else (a venue renting space, a photographer, a florist, a planner, a caterer).
+
+IF "other": return ONLY this JSON and STOP:
+{"vendor_type":{"value":"other","confidence":"high"},"actual_category":{"value":"<one word: venue/planner/florist/photographer/caterer/baker/stationery/transportation/hair-makeup/officiant/rentals/other>","confidence":"high"}}
+
+IF "entertainment": continue with everything below.
+
+SERVICE_TYPE — assign EXACTLY ONE, based on what is performing in that PDF:
+  "DJ" — a DJ, with or without an MC.
+  "Band - Solo / Duo" — a live band/act of 1-2 performers.
+  "Band - 3 to 5 piece" — a live band of 3-5 performers. USE THIS when the PDF
+      says "band" but never states a size.
+  "Band - 6 to 9 piece" — a live band of 6-9 performers.
+  "Band - 10+ / Orchestra" — 10 or more performers, showband, or orchestra.
+  "Ensemble" — a small classical/jazz group hired for ceremony or cocktail hour
+      (string quartet, trio, jazz combo) rather than a reception dance band.
+  "Soloist" — a single musician or vocalist (harpist, guitarist, singer, organist).
+Count performers, not crew — sound engineers, lighting techs and roadies do not count.
+If the vendor offers BOTH a DJ and a band, pick the one this PDF's pricing is for; if the PDF genuinely prices both equally, pick the band value.
+
+INCLUDED_SERVICES — for EACH package, list ALL that are INCLUDED IN THAT PACKAGE'S PRICE, semicolon-separated, choosing ONLY from this list:
+  "MC / Host", "Ceremony Musicians", "Ceremony Sound", "Cocktail Hour Set",
+  "DJ Between Sets", "Uplighting", "Dance Floor Lighting", "Photo Booth",
+  "Cold Sparks / FX", "Monogram / Projection", "Sound & Lighting Provided",
+  "Travel Included", "Vendor Meals Required"
+Rules:
+- "Sound & Lighting Provided" when the act supplies its own PA / basic stage lighting.
+- "Vendor Meals Required" when the PDF states the couple must provide meals for performers.
+- If something is a PAID ADD-ON rather than included, do NOT list it.
+- Return "" if nothing in the list is included.
+
+TEAM_SIZE — number of performers in that package (1 for a solo DJ or soloist). "" if not stated.
+HOURLY_RATE — stated hourly rate, if any. "" otherwise.
+OVERTIME_HOURLY_RATE — cost per additional/overtime hour. "" otherwise.
+""" + _NON_VENUE_COMMON_RULES + """
+Return EXACTLY this shape:
+{"vendor_type":{"value":"entertainment","confidence":"high"},"vendor_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"},"packages":[{"package_name":{"value":"","confidence":"high"},"package_price":{"value":"","confidence":"high"},"hours_included":{"value":"","confidence":"high"},"hourly_rate":{"value":"","confidence":"high"},"overtime_hourly_rate":{"value":"","confidence":"high"},"team_size":{"value":"","confidence":"high"},"included_services":{"value":"","confidence":"high"}}]}
+
+service_type: exactly one value from the SERVICE_TYPE list.
+packages: one entry per named tier. Never an empty array if any price appears in the PDF."""
+
+
+PROMPT_BY_CATEGORY = {
+    CAT_PHOTOGRAPHY:   PHOTO_PROMPT,
+    CAT_ENTERTAINMENT: ENTERTAINMENT_PROMPT,
+}
+
+
 # ── MERGED PROMPT (cost-saving: 1 PDF send instead of 3) ──────────────────────
 # Composes the three prompts above VERBATIM into one request so the PDF is sent
 # once, not three times — the dominant input-token cost. The model performs all
@@ -763,6 +963,113 @@ def _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name):
     return parsed, note, usage
 
 
+def _extract_packages(client, pdf_b64, pdf_id, vendor_id, vendor_name, category,
+                      service_type_hint=None):
+    """Single merged call for a Photography / Entertainment PDF.
+
+    Returns (entries, note, usage) where `entries` is a list of per-package dicts
+    in the same {value, confidence} envelope the venue path uses, each already
+    stamped with pdf_id / vendor_id / vendor_name and with vocabulary normalized
+    against the code-level lists.
+
+    Mirrors _extract_summary's mismatch contract: if the model decides this PDF
+    is not actually the category table 11 claims, returns
+    {"__wrong_category__": True, "category": <guess>} so the caller can record it
+    instead of writing junk rows (which is what produced the "Levi Stolove
+    Photography" venue row with Venue_Space_Name "Not applicable").
+    """
+    prompt = PROMPT_BY_CATEGORY[category]
+    expected = "photography" if category == CAT_PHOTOGRAPHY else "entertainment"
+    parsed, note, usage = call_claude(
+        client, pdf_b64, prompt,
+        f'PDF_ID="{pdf_id}", Vendor_ID="{vendor_id}", vendor="{vendor_name}". '
+        f'First confirm vendor_type is "{expected}". If it is not, return only the '
+        f'2-field short-circuit. Return only JSON.',
+        max_tokens=8000
+    )
+    entries, extra_note = _build_package_entries(
+        parsed, pdf_id, vendor_id, vendor_name, category, service_type_hint)
+    return entries, (note or "") + extra_note, usage
+
+
+def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
+                           service_type_hint=None):
+    """Turn one parsed category-prompt response into table-36-ready entries.
+
+    Shared by the sequential path (_extract_packages) and the batch ingest so the
+    two cannot drift — that drift is exactly what left the batch path on a
+    different pricing prompt from the sequential one for venues.
+    Returns (entries_or_sentinel, note).
+    """
+    if not parsed:
+        return None, ""
+    if isinstance(parsed, list):
+        parsed = parsed[0] if parsed else {}
+    if not isinstance(parsed, dict):
+        return None, " (unexpected response shape)"
+
+    def val(field, src=None):
+        f = (src or parsed).get(field, {})
+        return f.get('value', '') if isinstance(f, dict) else str(f or '')
+
+    expected = "photography" if category == CAT_PHOTOGRAPHY else "entertainment"
+    vtype = val('vendor_type').strip().lower()
+    if vtype and vtype != expected:
+        return ({"__wrong_category__": True,
+                 "category": val('actual_category').strip() or 'unknown'}, "")
+
+    packages = parsed.get('packages') or []
+    if isinstance(packages, dict):
+        packages = [packages]
+    if not packages:
+        return None, " (no packages found)"
+
+    service_vocab   = SERVICE_TYPES_BY_CATEGORY[category]
+    inclusion_vocab = INCLUSIONS_BY_CATEGORY[category]
+    # service_type is PDF-level in the prompt but stored per row so fn21 can
+    # aggregate it without a second lookup.
+    service_type = _normalize_vocab(val('service_type'), service_vocab)
+    # Fall back to the vendor's submitted Type_of_Entertainment ONLY when the PDF
+    # states nothing. Extracted always wins, so a PDF saying "9-piece" does not also
+    # get indexed under the unsized "Band - 3 to 5 piece" default and show up under
+    # two mutually exclusive band-size filters.
+    if not service_type and service_type_hint:
+        hints = [h for h in service_type_hint if h in service_vocab]
+        if len(hints) == 1:
+            service_type = hints[0]
+
+    entries = []
+    for p in packages:
+        if not isinstance(p, dict):
+            continue
+        hours = _clean(val('hours_included', p))
+        entries.append({
+            'pdf_id':                   {"value": pdf_id,        "confidence": "high"},
+            'vendor_id':                {"value": vendor_id,     "confidence": "high"},
+            'vendor_name':              {"value": vendor_name,   "confidence": "high"},
+            'vendor_category':          {"value": category,      "confidence": "high"},
+            'pricing_year':             {"value": val('pricing_year'),        "confidence": "high"},
+            'description':              {"value": val('description'),         "confidence": "high"},
+            'contact_information':      {"value": val('contact_information'), "confidence": "high"},
+            'confidentiality_risk':     {"value": val('confidentiality_risk'),     "confidence": "high"},
+            'confidentiality_evidence': {"value": val('confidentiality_evidence'), "confidence": "high"},
+            'service_type':             {"value": service_type,  "confidence": "high"},
+            'package_name':             {"value": _clean(val('package_name', p)), "confidence": "high"},
+            'package_price':            {"value": val('package_price', p),        "confidence": "high"},
+            'hours_included':           {"value": hours,                          "confidence": "high"},
+            'coverage_band':            {"value": _coverage_band(hours),          "confidence": "high"},
+            'hourly_rate':              {"value": val('hourly_rate', p),          "confidence": "high"},
+            'overtime_hourly_rate':     {"value": val('overtime_hourly_rate', p), "confidence": "high"},
+            'team_size':                {"value": val('team_size', p),            "confidence": "high"},
+            'included_services':        {"value": _normalize_multi(
+                                             val('included_services', p), inclusion_vocab),
+                                         "confidence": "high"},
+        })
+    if not entries:
+        return None, " (no usable package entries)"
+    return entries, ""
+
+
 def _extract_grid_structure(client, pdf_b64, venue_name):
     parsed, note, usage = call_claude(
         client, pdf_b64, STRUCTURE_PROMPT,
@@ -815,6 +1122,99 @@ def _is_yes(value):
     return str(value or "").strip().lower() in {"yes", "true", "1", "y"}
 
 
+def _normalize_vocab(value, vocab):
+    """Snap a model-produced string to an exact member of `vocab`, else "".
+
+    Matching is case/punctuation-insensitive so "light and airy", "Light & Airy"
+    and "light&airy" all resolve to the canonical "Light & Airy". Anything that
+    does not match is DROPPED rather than stored — a hallucinated value would
+    otherwise become a permanent orphan option in a WeWeb filter dropdown.
+    """
+    s = _clean(value)
+    if not s:
+        return ""
+    key = re.sub(r'[^a-z0-9]', '', s.lower())
+    if not key:
+        return ""
+    for canon in vocab:
+        if re.sub(r'[^a-z0-9]', '', canon.lower()) == key:
+            return canon
+    # tolerate "and" vs "&" and singular/plural drift
+    alt = key.replace('and', '')
+    for canon in vocab:
+        ck = re.sub(r'[^a-z0-9]', '', canon.lower()).replace('and', '')
+        if ck == alt:
+            return canon
+    return ""
+
+
+def _normalize_multi(value, vocab):
+    """Normalize a ';'-separated multi-select against `vocab`.
+
+    Returns a ';'-joined string of canonical values, deduped, order preserved.
+    Off-vocabulary tokens are dropped silently. Accepts ';' or ',' separators
+    because models drift between the two.
+    """
+    s = _clean(value)
+    if not s:
+        return ""
+    parts = re.split(r'[;,]', s)
+    out = []
+    for p in parts:
+        c = _normalize_vocab(p, vocab)
+        if c and c not in out:
+            out.append(c)
+    return ";".join(out)
+
+
+def _coverage_band(hours):
+    """Bucket an hours-of-coverage number into one of COVERAGE_BANDS, or "".
+
+    Derived in code rather than asked of the model: the band is what the filter
+    dropdown uses, and a model picking its own bucket boundaries is a reliable
+    source of off-vocabulary values. "Unlimited"/"full day" text is mapped by
+    the caller to a large hours value before this is called.
+    """
+    n = _to_number(hours)
+    if n is None:
+        return ""
+    try:
+        h = float(n)
+    except (TypeError, ValueError):
+        return ""
+    if h <= 0:
+        return ""
+    if h >= 16:
+        return "Full day / Unlimited"
+    if h >= 10:
+        return "10+ hours"
+    if h >= 7:
+        return "8 hours"
+    return "Up to 6 hours"
+
+
+# Table 11's Type_of_Entertainment is user-submitted at upload time and drifts in
+# spacing ("Band, DJ" vs "Band,DJ"). It is the ONLY DJ/Band signal that exists
+# before any PDF is extracted, so it seeds the Service_Type facet.
+_ENT_TYPE_SEED_MAP = {
+    "dj": "DJ",
+    "band": "Band - 3 to 5 piece",   # unsized band; a PDF stating a size refines it
+    "ensemble": "Ensemble",
+    "soloist": "Soloist",
+}
+
+
+def _seed_service_types_from_entertainment(raw):
+    """Map a raw Type_of_Entertainment cell to canonical ENT_SERVICE_TYPES values."""
+    out = []
+    for part in re.split(r'[;,/]', str(raw or '')):
+        key = part.strip().lower()
+        canon = _ENT_TYPE_SEED_MAP.get(key)
+        if canon and canon not in out:
+            out.append(canon)
+    return out
+
+
 NUMERIC_FIELDS = {
     "admin_fee_pct",
     "ceremony_fee",
@@ -830,6 +1230,12 @@ NUMERIC_FIELDS = {
     "base_menu_per_person",
     "base_bar_per_person",
     "pricing_year",
+    # non-venue package fields
+    "package_price",
+    "hours_included",
+    "hourly_rate",
+    "overtime_hourly_rate",
+    "team_size",
 }
 
 def _to_number(value):
@@ -1053,13 +1459,83 @@ def _post_summary(entries, classification, timestamp):
             "confidentiality_flag":                                    _is_yes(e.get("confidentiality_risk", {}).get("value", "")),
             "last_extracted_at":                                       timestamp[:10],
         }
+        if _post_row(summary_endpoint, payload):
+            ok += 1
+        else:
+            fail += 1
+    return ok, fail
+
+
+def _post_row(endpoint, payload, attempts=4):
+    """POST one row to Xano, retrying transient failures. Returns True on success.
+
+    Xano's public API intermittently returns 502/503 under burst load (documented
+    behaviour on this workspace), and a plain single-attempt POST silently DROPS
+    the row: the run reports 'partial' and the data is simply gone. Observed live
+    on 2026-07-27 — a 16-row package post lost its first 2 rows to a 5xx while the
+    other 14 succeeded. Retrying with backoff is the difference between a complete
+    extraction and a quietly incomplete one across a 698-PDF backfill.
+    """
+    delay = 1.0
+    for attempt in range(attempts):
         try:
-            r = requests.post(summary_endpoint, json=payload, timeout=15)
+            r = requests.post(endpoint, json=payload, timeout=20)
             if r.status_code in (200, 201):
-                ok += 1
-            else:
-                fail += 1
+                return True
+            # 4xx other than 429 is a bad payload — retrying will not help.
+            if 400 <= r.status_code < 500 and r.status_code != 429:
+                return False
         except Exception:
+            pass
+        if attempt < attempts - 1:
+            time.sleep(delay + random.uniform(0, 0.4))
+            delay = min(delay * 2, 8)
+    return False
+
+
+def _post_packages(entries, timestamp):
+    """POST Photography / Entertainment package rows to table 36 (one row per tier).
+
+    Same endpoint and same append semantics as _post_summary — table 36 is the
+    single source of truth for every category, discriminated by Vendor_Category.
+    The venue-only columns are simply left unset, so fn21's coalesce resolves
+    each row to the package fields. Table 37 (venue_pricing) is NOT written:
+    the package tiers already are the pricing grid for these categories.
+    """
+    summary_endpoint = os.environ["XANO_SUMMARY_ENDPOINT"]
+    ok = fail = 0
+    for e in entries:
+        def v(key):
+            raw = _clean(e.get(key, {}).get('value', ''))
+            if key in NUMERIC_FIELDS:
+                return _to_number(raw)
+            return raw
+
+        payload = {
+            "PDF_ID":               e.get('pdf_id',        {}).get('value', ''),
+            "VENDOR_ID":            e.get('vendor_id',     {}).get('value', ''),
+            "VENUE_NAME":           e.get('vendor_name',   {}).get('value', ''),
+            "Vendor_Category":      e.get('vendor_category', {}).get('value', ''),
+            "Pricing_Year":         v('pricing_year'),
+            "Description":          v('description'),
+            "Package_Name":         v('package_name'),
+            "Package_Price":        v('package_price'),
+            "Hours_Included":       v('hours_included'),
+            "Coverage_Band":        v('coverage_band'),
+            "Hourly_Rate":          v('hourly_rate'),
+            "Overtime_Hourly_Rate": v('overtime_hourly_rate'),
+            "Team_Size":            v('team_size'),
+            "Service_Type":         v('service_type'),
+            "Included_Services":    v('included_services'),
+            "Contact_Information":  _to_vendor_email(
+                e.get('contact_information', {}).get('value', '')),
+            "confidentiality_flag": _is_yes(
+                e.get('confidentiality_risk', {}).get('value', '')),
+            "last_extracted_at":    timestamp[:10],
+        }
+        if _post_row(summary_endpoint, payload):
+            ok += 1
+        else:
             fail += 1
     return ok, fail
 
@@ -1105,13 +1581,9 @@ def _post_pricing_grid(rows, pdf_id, vendor_id, venue_name, timestamp):
             "Notes":                       r("Notes"),
             "last_extracted_at":           timestamp,
         }
-        try:
-            r = requests.post(pricing_endpoint, json=payload, timeout=15)
-            if r.status_code in (200, 201):
-                ok += 1
-            else:
-                fail += 1
-        except Exception:
+        if _post_row(pricing_endpoint, payload):
+            ok += 1
+        else:
             fail += 1
     return ok, fail
 
@@ -1207,39 +1679,100 @@ def prefetch_shared_xano_state():
     except Exception:
         pass
 
-    venue_ids = sorted(_fetch_venue_vendor_ids())
-    if venue_ids:
-        _shared_cache_write("venue_vendor_ids", venue_ids)
+    vendor_categories = _fetch_vendor_categories()
+    if vendor_categories:
+        _shared_cache_write("vendor_categories", vendor_categories)
 
+    by_cat = collections.Counter(_category_of(vendor_categories, v)
+                                 for v in vendor_categories)
+    cat_summary = ", ".join(f"{n} {c}" for c, n in sorted(by_cat.items())) or "none"
     return (f"{len(all_rows)} wptp_pdfs rows, {len(summary_ids)} extracted PDF_IDs, "
-            f"{len(venue_ids)} venue vendor ids cached to {_SHARED_CACHE_DIR}")
+            f"{len(vendor_categories)} in-scope vendor ids ({cat_summary}) "
+            f"cached to {_SHARED_CACHE_DIR}")
 
 
-def _fetch_venue_vendor_ids():
-    """Return the set of Vendor_IDs whose mapping Category == 'Venue'.
+def _split_categories(raw):
+    """Table 11's Category column holds comma-joined multi-category values for a
+    minority of vendors ("Venue, Food and Beverage", "Entertainment, Photography").
+    Split so those vendors are not silently dropped by an exact-string compare."""
+    return [p.strip() for p in str(raw or '').split(',') if p.strip()]
 
-    Reads the slim XANO_VENUE_CATEGORIES_ENDPOINT (Vendor_ID + Category only).
-    Returns an EMPTY set if the endpoint is unset or the fetch fails — callers
-    MUST treat an empty set as "filter unavailable, do not skip anything"
-    (otherwise a bad fetch would skip every PDF). Non-venue vendors are still
-    caught downstream by the LLM non-venue short-circuit, so the empty-set
+
+def _resolve_category(raw):
+    """Map a raw table-11 Category value to one canonical SUPPORTED_CATEGORIES
+    entry, or None if this vendor is out of scope for extraction.
+
+    Multi-category vendors resolve to whichever supported category is listed
+    first, so "Venue, Food and Beverage" -> "Venue". Comparison is
+    case-insensitive because the column has no trim/case validator."""
+    for part in _split_categories(raw):
+        for canon in SUPPORTED_CATEGORIES:
+            if part.lower() == canon.lower():
+                return canon
+    return None
+
+
+def _fetch_vendor_categories():
+    """Return {Vendor_ID: {"category": ..., "ent_type": [...]}} for every vendor
+    whose mapping Category is in SUPPORTED_CATEGORIES.
+
+    `ent_type` is the normalized Type_of_Entertainment seed (DJ / Band / Ensemble /
+    Soloist as submitted at upload). It is used ONLY as a fallback when an
+    Entertainment PDF does not state its own service type — see _extract_packages.
+
+    Reads the slim categories endpoint (Vendor_ID + Category only) — the same
+    Xano endpoint 177 as before; it always returned every category, the pipeline
+    just used to throw the non-venue rows away.
+
+    Returns an EMPTY dict if the endpoint is unset or the fetch fails — callers
+    MUST treat an empty dict as "filter unavailable, do not skip anything"
+    (otherwise a bad fetch would skip every PDF). Out-of-scope vendors are still
+    caught downstream by the LLM vendor_type short-circuit, so the empty-dict
     fallback is safe, just less cost-efficient.
     """
-    endpoint = os.environ.get("XANO_VENUE_CATEGORIES_ENDPOINT", "").strip()
+    endpoint = (os.environ.get("XANO_VENDOR_CATEGORIES_ENDPOINT", "").strip()
+                or os.environ.get("XANO_VENUE_CATEGORIES_ENDPOINT", "").strip())
     if not endpoint:
-        return set()
+        return {}
     try:
         all_rows = []
         for all_rows, _ in _fetch_xano_pages(endpoint):
             pass
-        return {
-            str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip()
-            for r in all_rows
-            if str(r.get('Category') or r.get('category') or '').strip().lower() == 'venue'
-            and str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip()
-        }
+        out = {}
+        for r in all_rows:
+            vid = str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip()
+            if not vid:
+                continue
+            cat = _resolve_category(r.get('Category') or r.get('category'))
+            if cat:
+                out[vid] = {
+                    "category": cat,
+                    "ent_type": _seed_service_types_from_entertainment(
+                        r.get('Type_of_Entertainment') or ''),
+                }
+        return out
     except Exception:
-        return set()
+        return {}
+
+
+def _category_of(vendor_categories, vendor_id, default=None):
+    """Read the category out of the map produced by _fetch_vendor_categories.
+    Tolerates the old flat {vid: "Venue"} shape so a stale .xano_cache file from a
+    pre-2026-07-27 prefetch does not crash a worker mid-run."""
+    entry = (vendor_categories or {}).get(vendor_id)
+    if entry is None:
+        return default if default is not None else CAT_VENUE
+    if isinstance(entry, str):
+        return entry
+    return entry.get("category") or (default if default is not None else CAT_VENUE)
+
+
+def _ent_type_hint(vendor_categories, vendor_id):
+    """Normalized Type_of_Entertainment seed values for a vendor, or []."""
+    entry = (vendor_categories or {}).get(vendor_id)
+    if isinstance(entry, dict):
+        return entry.get("ent_type") or []
+    return []
 
 
 # ── BATCH API HELPERS ────────────────────────────────────────────────────────
@@ -1324,10 +1857,32 @@ def _build_batch_requests(file_id, pdf_id, vendor_id, venue_name):
     ]
 
 
-def _build_merged_batch_request(file_id, pdf_id, vendor_id, venue_name):
+def _build_merged_batch_request(file_id, pdf_id, vendor_id, venue_name,
+                                category=CAT_VENUE):
     """ONE request per PDF (vs 3) — summary + pricing + classification in a single
     Sonnet response, so the PDF is sent once. ~half the per-PDF input cost. custom_id
-    ends in __m; process_batch_results splits the response back into p1/p3/p4."""
+    ends in __m; process_batch_results splits the response back into p1/p3/p4.
+
+    For Photography / Entertainment the merged venue prompt does not apply: those
+    PDFs get the single category prompt, which already returns everything in one
+    object. custom_id ends in __k ("packages") so the ingest routes it to
+    _post_packages instead of the venue writers."""
+    if category in PROMPT_BY_CATEGORY:
+        expected = "photography" if category == CAT_PHOTOGRAPHY else "entertainment"
+        return [{
+            "custom_id": f"{pdf_id}__k",
+            "params": {
+                "model": _MODEL_SONNET, "max_tokens": 8000,
+                "system": PROMPT_BY_CATEGORY[category],
+                "messages": [{"role": "user", "content": [
+                    {"type": "document", "source": {"type": "file", "file_id": file_id}},
+                    {"type": "text", "text": (
+                        f'PDF_ID="{pdf_id}", Vendor_ID="{vendor_id}", vendor="{venue_name}". '
+                        f'First confirm vendor_type is "{expected}". If it is not, return only '
+                        'the 2-field short-circuit. Return only JSON.')},
+                ]}],
+            },
+        }]
     return [{
         "custom_id": f"{pdf_id}__m",
         "params": {
@@ -1411,7 +1966,7 @@ def run_extraction_batch(
     elif rerun_failed:
         batch = [r for r in rows_with_links
                  if str(r.get('extraction_status') or '').strip().lower()
-                 in ('failed', 'batch_submitted')]
+                 in RERUNNABLE_STATUSES]
     else:
         # Select by row id (matches the PDF Status Table's `id` column): start_row /
         # end_row are inclusive id bounds. end_row 0/None = no upper bound. This is
@@ -1428,10 +1983,21 @@ def run_extraction_batch(
         except Exception:
             pass
 
-    venue_vendor_ids = _fetch_venue_vendor_ids()
-    if venue_vendor_ids:
+    # Category gate: drop vendors outside SUPPORTED_CATEGORIES before upload/download.
+    # An empty map means "filter unavailable" and gates nothing (see _fetch_vendor_categories).
+    vendor_categories = _shared_cache_read("vendor_categories") or _fetch_vendor_categories()
+    if vendor_categories:
         batch = [r for r in batch
-                 if str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip() in venue_vendor_ids]
+                 if str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip() in vendor_categories]
+    # Row-level category, resolved once so the builders and the ingest agree.
+    batch_categories = {
+        str(r.get('PDF_ID') or r.get('pdf_id') or '').strip():
+            _category_of(vendor_categories,
+                         str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip())
+        for r in batch
+    }
+    _by_cat = collections.Counter(batch_categories.values())
+    yield from emit("   categories: " + (", ".join(f"{n} {c}" for c, n in sorted(_by_cat.items())) or "none"))
 
     _mode_txt = "merged 1-call/PDF (~50% cheaper)" if merged else "3 passes/PDF"
     yield from emit(f"{len(batch)} PDF(s) to submit (Batch API — 50% discount · {_mode_txt})")
@@ -1478,10 +2044,19 @@ def run_extraction_batch(
             yield from emit(f"    Upload failed: {up_err} — skipping")
             continue
 
-        _builder = _build_merged_batch_request if merged else _build_batch_requests
-        all_requests.extend(_builder(file_id, pdf_id, vendor_id, venue_name))
+        # Photography / Entertainment always take the single category prompt —
+        # the 3-pass venue split (summary / pricing grid / classification) has no
+        # meaning for a package sheet, so `merged` is irrelevant for them.
+        row_category = batch_categories.get(pdf_id, CAT_VENUE)
+        if row_category in PROMPT_BY_CATEGORY or merged:
+            reqs = _build_merged_batch_request(file_id, pdf_id, vendor_id, venue_name,
+                                               category=row_category)
+        else:
+            reqs = _build_batch_requests(file_id, pdf_id, vendor_id, venue_name)
+        all_requests.extend(reqs)
         pdf_map[pdf_id] = {"vendor_id": vendor_id, "venue_name": venue_name,
-                           "xano_id": xano_id, "timestamp": timestamp}
+                           "xano_id": xano_id, "timestamp": timestamp,
+                           "category": row_category}
 
     if not all_requests:
         yield from emit("No valid PDFs to submit.")
@@ -1598,9 +2173,11 @@ def list_recent_batches(limit: int = 20):
             "errored":     errored,
             "canceled":    canceled,
             "expired":     expired,
-            # Each PDF = 3 requests (summary + pricing + classification), so the
-            # PDF count is the quickest way to tell a 9-PDF test from a 200-PDF run.
-            "pdfs":        round(total / 3) if total else 0,
+            # Requests-per-PDF is NOT fixed: the venue 3-pass path sends 3, while
+            # merged venue batches (__m) and Photography/Entertainment batches (__k)
+            # send 1. Reporting total/3 unconditionally undercounted those 3x, so
+            # report raw requests and let the caller interpret.
+            "requests":    total,
             "created_at":  _fmt(getattr(b, "created_at", None)),
             "ended_at":    _fmt(getattr(b, "ended_at", None)),
             "expires_at":  _fmt(getattr(b, "expires_at", None)),
@@ -1649,7 +2226,7 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
 
     # Collect results grouped by pdf_id
     yield from emit("Batch complete — posting results to Xano...")
-    p1: dict = {}; p3: dict = {}; p4: dict = {}; errors: dict = {}
+    p1: dict = {}; p3: dict = {}; p4: dict = {}; pk: dict = {}; errors: dict = {}
     try:
         for result in client.messages.batches.results(batch_id):
             cid = result.custom_id or ""
@@ -1687,10 +2264,22 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
                     p4[pdf_id_key] = parsed.get("classification")
                 else:
                     errors.setdefault(pdf_id_key, []).append("m parse_failed (truncated?)")
+            elif pass_tag == "k":
+                # Photography / Entertainment package response — one object, not
+                # the venue triple. Kept separate so the venue branch is untouched.
+                if isinstance(parsed, dict):
+                    pk[pdf_id_key] = parsed
+                else:
+                    errors.setdefault(pdf_id_key, []).append("k parse_failed (truncated?)")
     except Exception as e:
         yield from emit(f"Failed to iterate results: {e}")
         yield {"batch_done": False, "error": str(e)}
         return
+
+    # Loaded once for the whole ingest: supplies the Type_of_Entertainment fallback
+    # used when an Entertainment PDF states no service type of its own.
+    _ingest_vendor_categories = (
+        _shared_cache_read("vendor_categories") or _fetch_vendor_categories())
 
     results_log = []
     for pdf_id, meta in pdf_map.items():
@@ -1702,9 +2291,53 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
         summary_data = p1.get(pdf_id)
         pricing_data = p3.get(pdf_id)
         classif_data = p4.get(pdf_id)
+        package_data = pk.get(pdf_id)
+        category     = meta.get("category", CAT_VENUE)
         errs         = errors.get(pdf_id, [])
 
         yield from emit(f"  {pdf_id} — {venue_name}")
+
+        # ── Photography / Entertainment branch ────────────────────────────────
+        if category in PROMPT_BY_CATEGORY:
+            entries, note = _build_package_entries(
+                package_data, pdf_id, vendor_id, venue_name, category,
+                _ent_type_hint(_ingest_vendor_categories, vendor_id))
+            if isinstance(entries, dict) and entries.get('__wrong_category__'):
+                actual = entries.get('category', 'unknown')
+                reason = f"category mismatch: table 11 says {category}, PDF looks like {actual}"
+                yield from emit(f"    {reason}")
+                _update_pdf_status(xano_id, "category_mismatch", error=reason)
+                results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                    "status": "SKIPPED", "reason": reason,
+                                    "cost_usd": 0, "category": category})
+                continue
+            if not entries:
+                reason = "; ".join(errs) or (f"no packages parsed{note}")
+                yield from emit(f"    Failed: {reason}")
+                _update_pdf_status(xano_id, "failed", error=reason)
+                results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                    "status": "FAILED", "reason": reason,
+                                    "cost_usd": 0, "category": category})
+                continue
+            ok_k, fail_k = _post_packages(entries, timestamp)
+            status = "extracted" if (ok_k and not fail_k) else ("partial" if ok_k else "failed")
+            _update_pdf_status(
+                xano_id, status, cost_usd=0,
+                confidentiality_flag=any(
+                    _is_yes(e.get('confidentiality_risk', {}).get('value', '')) for e in entries),
+                confidentiality_evidence=next(
+                    (str(e.get('confidentiality_evidence', {}).get('value', '')).strip()
+                     for e in entries
+                     if str(e.get('confidentiality_evidence', {}).get('value', '')).strip()), ""))
+            yield from emit(f"    {ok_k} package rows ({category}) -> {status}")
+            if errs:
+                yield from emit(f"    ⚠ pass errors: {'; '.join(errs)}")
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                "status": "OK" if status == "extracted" else (
+                                    "PARTIAL" if status == "partial" else "FAILED"),
+                                "summary_rows": ok_k, "pricing_rows": 0,
+                                "cost_usd": 0, "category": category})
+            continue
 
         if not summary_data:
             reason = "; ".join(errs) or "p1 missing"
@@ -1940,6 +2573,11 @@ def ingest_batch_by_id(batch_id, wait_secs=0):
         if pid:
             by_pdf[pid] = r
 
+    # The lost job record also lost each PDF's category, so re-derive it from the
+    # vendor mapping — otherwise every recovered row would be ingested as a Venue
+    # and a Photography batch's __k responses would be silently dropped.
+    vendor_categories = _shared_cache_read("vendor_categories") or _fetch_vendor_categories()
+
     timestamp = datetime.now(timezone.utc).isoformat()
     pdf_map, missing = {}, []
     for pid in pdf_ids:
@@ -1947,11 +2585,13 @@ def ingest_batch_by_id(batch_id, wait_secs=0):
         if not r:
             missing.append(pid)
             continue
+        _vid = str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip()
         pdf_map[pid] = {
-            "vendor_id":  str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip(),
+            "vendor_id":  _vid,
             "venue_name": str(r.get('Name') or r.get('name') or '').strip(),
             "xano_id":    r.get('id'),
             "timestamp":  timestamp,
+            "category":   _category_of(vendor_categories, _vid),
         }
     if missing:
         yield from emit(f"⚠ {len(missing)} PDF id(s) not in wptp_pdfs: {', '.join(sorted(missing)[:10])}")
@@ -2146,7 +2786,7 @@ def run_extraction(
         batch = [
             r for r in rows_with_links
             if str(r.get('extraction_status') or '').strip().lower()
-            in ('failed', 'batch_submitted')
+            in RERUNNABLE_STATUSES
         ]
         yield from emit(f"   Mode: re-run failed — {len(batch)} rows")
 
@@ -2182,15 +2822,19 @@ def run_extraction(
 
     yield from emit("")
 
-    # ── Venue pre-filter: load Vendor_IDs categorized 'Venue' in wptp_updated_mappings ──
-    # Non-venue vendors are skipped BEFORE any download or model call (cost saver).
-    _cached_venue_ids = _shared_cache_read("venue_vendor_ids")
-    venue_vendor_ids = (set(str(x) for x in _cached_venue_ids)
-                        if _cached_venue_ids else _fetch_venue_vendor_ids())
-    if venue_vendor_ids:
-        yield from emit(f"✓  Venue filter active — {len(venue_vendor_ids)} venue vendors loaded; non-venue PDFs skip download + extraction")
+    # ── Category pre-filter: load Vendor_ID -> category from wptp_updated_mappings ──
+    # Vendors outside SUPPORTED_CATEGORIES are skipped BEFORE any download or model
+    # call (cost saver). In-scope vendors are routed to the prompt for their category.
+    _cached_categories = _shared_cache_read("vendor_categories")
+    vendor_categories = (dict(_cached_categories)
+                         if _cached_categories else _fetch_vendor_categories())
+    if vendor_categories:
+        _cat_counts = collections.Counter(_category_of(vendor_categories, v)
+                                          for v in vendor_categories)
+        _cat_txt = ", ".join(f"{n} {c}" for c, n in sorted(_cat_counts.items()))
+        yield from emit(f"✓  Category filter active — {len(vendor_categories)} in-scope vendors ({_cat_txt}); out-of-scope PDFs skip download + extraction")
     else:
-        yield from emit("⚠  Venue filter inactive (XANO_VENUE_CATEGORIES_ENDPOINT unset or fetch failed) — relying on LLM non-venue detection only")
+        yield from emit("⚠  Category filter inactive (XANO_VENDOR_CATEGORIES_ENDPOINT unset or fetch failed) — relying on LLM vendor_type detection only")
     yield from emit("")
 
     client        = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -2262,14 +2906,20 @@ def run_extraction(
             yield from emit(f"[{row_num}/{len(batch)}] {pdf_id} — {venue_name} — ⏭  skipping (already extracted)")
             continue
 
-        # Venue pre-filter: skip non-venue vendors entirely (no download, no model calls).
-        # Only fires when the venue set loaded successfully; an empty set disables the gate.
-        if venue_vendor_ids and vendor_id and vendor_id not in venue_vendor_ids:
-            yield from emit(f"[{row_num}/{len(batch)}] {pdf_id} — {venue_name} — ⏭  skipping (vendor not categorized 'Venue')")
-            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "SKIPPED", "reason": "non-venue: mapping category != Venue", "cost_usd": 0})
-            _update_pdf_status(xano_id, "skipped_non_venue", error="non-venue: mapping category != Venue")
+        # Category pre-filter: skip out-of-scope vendors entirely (no download, no
+        # model calls). Only fires when the category map loaded; an empty map disables
+        # the gate. Rows with a blank Vendor_ID bypass it, as before.
+        if vendor_categories and vendor_id and vendor_id not in vendor_categories:
+            reason = "unsupported category: mapping category not in " + "/".join(SUPPORTED_CATEGORIES)
+            yield from emit(f"[{row_num}/{len(batch)}] {pdf_id} — {venue_name} — ⏭  skipping ({reason})")
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name, "status": "SKIPPED", "reason": reason, "cost_usd": 0})
+            _update_pdf_status(xano_id, "skipped_unsupported_category", error=reason)
             _maybe_post_progress()
             continue
+
+        # Which prompt set this PDF gets. Defaults to Venue when the gate is disabled
+        # so behaviour with no category endpoint is exactly what it was before.
+        row_category = _category_of(vendor_categories, vendor_id) if vendor_id else CAT_VENUE
 
         yield from emit(f"")
         yield from emit(f"[{row_num}] {pdf_id} — {venue_name}")
@@ -2312,6 +2962,75 @@ def run_extraction(
             _add_usage(u)
             for k in run_usage:
                 run_usage[k] += u.get(k, 0)
+
+        # ── Photography / Entertainment: ONE call, then done ──────────────────
+        # These are short package sheets. There is no pricing grid to map and no
+        # venue classification to run, so the 4-pass venue flow does not apply.
+        if row_category in PROMPT_BY_CATEGORY:
+            yield from emit(f"  🤖 [1/1] Extracting {row_category.lower()} packages...")
+            try:
+                entries, note, usage = _extract_packages(
+                    client, pdf_b64, pdf_id, vendor_id, venue_name, row_category,
+                    service_type_hint=_ent_type_hint(vendor_categories, vendor_id))
+            except CreditExhausted as ce:
+                credit_halted = True
+                yield from emit(f"  🛑 CREDIT BALANCE EXHAUSTED at [{row_num}] — halting this worker to avoid mass false-failures.")
+                yield from emit(f"     ({ce})")
+                yield from emit("  ℹ  Remaining rows left PENDING (not marked failed) — add credits, then rerun_failed / re-run the range.")
+                _slack_alert(f"🛑 Tulle extraction HALTED — Anthropic credit balance too low (stopped near row {row_num}/{total_rows}, pdf {pdf_id}). Add credits + re-run.")
+                break
+            _track(usage)
+            run_cost = _compute_cost(run_usage)
+
+            if isinstance(entries, dict) and entries.get('__wrong_category__'):
+                actual = entries.get('category', 'unknown')
+                msg = f"category mismatch: table 11 says {row_category}, PDF looks like {actual}"
+                yield from emit(f"  ⏭  {msg}")
+                results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                    "status": "SKIPPED", "reason": msg,
+                                    "cost_usd": run_cost, "category": row_category})
+                _update_pdf_status(xano_id, "category_mismatch", error=msg, cost_usd=run_cost)
+                if i < len(batch) - 1:
+                    time.sleep(1)
+                continue
+
+            if not entries:
+                msg = f"Package extraction failed:{note}"
+                yield from emit(f"  ❌ {msg}")
+                results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                    "status": "FAILED", "reason": msg,
+                                    "cost_usd": run_cost, "category": row_category})
+                patch_result = _update_pdf_status(xano_id, "failed", error=msg, cost_usd=run_cost)
+                yield from emit(f"  📝 Status writeback: {patch_result}")
+                _maybe_post_progress()
+                continue
+
+            conf_flag = any(_is_yes(e.get('confidentiality_risk', {}).get('value', ''))
+                            for e in entries)
+            conf_evidence = next(
+                (str(e.get('confidentiality_evidence', {}).get('value', '')).strip()
+                 for e in entries
+                 if str(e.get('confidentiality_evidence', {}).get('value', '')).strip()), "")
+            if conf_flag:
+                yield from emit(f"  🚩 Confidentiality risk flagged — for review (stays live): \"{conf_evidence[:140]}\"")
+
+            yield from emit(f"  ✓  {len(entries)} package(s){note}")
+            ok_k, fail_k = _post_packages(entries, timestamp)
+            status = "extracted" if (ok_k and not fail_k) else ("partial" if ok_k else "failed")
+            patch_result = _update_pdf_status(
+                xano_id, status, cost_usd=run_cost,
+                confidentiality_flag=conf_flag, confidentiality_evidence=conf_evidence)
+            yield from emit(f"  📤 {ok_k} package rows posted ({fail_k} failed) → {status} (${run_cost:.4f}) · writeback: {patch_result}")
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                "status": "OK" if status == "extracted" else (
+                                    "PARTIAL" if status == "partial" else "FAILED"),
+                                "summary_rows": ok_k, "pricing_rows": 0,
+                                "cost_usd": run_cost, "category": row_category})
+            processed_count += 1
+            _maybe_post_progress()
+            if i < len(batch) - 1:
+                time.sleep(2)
+            continue
 
         # ── Pass 1: Summary ───────────────────────────────────────────────────
         yield from emit(f"  🤖 [1/4] Extracting summary + pricing year + venue type...")
@@ -2497,7 +3216,12 @@ def run_extraction(
     yield from emit("─" * 48)
     if credit_halted:
         yield from emit("🛑 HALTED — Anthropic credit balance too low. Add credits, then re-run.")
-    yield from emit(f"✅ Done — {ok_count} succeeded, {part_count} partial, {skip_count} skipped (non-venue), {fail_count} failed")
+    _cat_counts = collections.Counter(
+        r.get('category', CAT_VENUE) for r in results_log if r.get('status') == 'OK')
+    _cat_txt = ", ".join(f"{n} {c}" for c, n in sorted(_cat_counts.items()))
+    yield from emit(f"✅ Done — {ok_count} succeeded, {part_count} partial, {skip_count} skipped (out of scope / mismatch), {fail_count} failed")
+    if _cat_txt:
+        yield from emit(f"   by category: {_cat_txt}")
     yield from emit(
         f"💰 Claude cost: ${cost_usd:.4f}  "
         f"({total_tokens['input']:,} input · {total_tokens['output']:,} output · "
@@ -2534,7 +3258,17 @@ def get_pipeline_status() -> dict:
         "total":     int,
         "with_link": int,
       }
-    Statuses: pending | extracted | partial | failed | skipped | skipped_non_venue | (blank → pending)
+    Statuses: pending | extracted | partial | failed | skipped | skipped_non_venue |
+              skipped_unsupported_category | category_mismatch | batch_submitted |
+              (blank → pending)
+
+    skipped_non_venue           — legacy; a Venue-categorized PDF the model judged non-venue.
+                                  ~484 Photography/Entertainment PDFs are ALSO parked here
+                                  from before multi-category support and are re-runnable.
+    skipped_unsupported_category — vendor category is outside SUPPORTED_CATEGORIES
+                                  (Flowers, Beauty, Catering, ...). Genuinely out of scope.
+    category_mismatch           — table 11's category and the PDF's own content disagree;
+                                  nothing written, needs a human to fix the vendor record.
     """
     get_endpoint = os.environ.get("XANO_GET_ENDPOINT", "")
     if not get_endpoint:
@@ -2554,7 +3288,10 @@ def get_pipeline_status() -> dict:
         if has_link:
             with_link += 1
         raw_status = str(r.get('extraction_status') or '').strip().lower()
-        status = raw_status if raw_status in ('extracted', 'partial', 'failed', 'skipped', 'skipped_non_venue', 'batch_submitted') else 'pending'
+        status = raw_status if raw_status in (
+            'extracted', 'partial', 'failed', 'skipped', 'skipped_non_venue',
+            'skipped_unsupported_category', 'category_mismatch', 'batch_submitted',
+        ) else 'pending'
         counts[status] = counts.get(status, 0) + 1
 
     return {

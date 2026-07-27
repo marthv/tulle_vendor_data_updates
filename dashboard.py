@@ -1632,7 +1632,10 @@ with tab5:
                         rows.append({
                             "Batch ID":  b["id"],
                             "Submitted": _submitted_by_bid.get(b["id"], "—"),
-                            "PDFs":      b.get("pdfs", "") or "",
+                            # requests, not PDFs: a batch mixes 3-request venue jobs
+                            # with 1-request merged/package jobs, so there is no single
+                            # divisor. The "Submitted" column carries the real PDF count.
+                            "Requests":  b.get("requests", "") or "",
                             "Status":    _status_icon.get(b["status"], b["status"]),
                             "Progress":  f"{done}/{total}" if total else "—",
                             "✓ ok":      b["succeeded"],
