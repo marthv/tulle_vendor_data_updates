@@ -132,7 +132,13 @@ def _build_df(rows):
     df["signup_dt"] = pd.to_datetime(df.get("signup_at"), unit="ms", errors="coerce")
     df["last_active_dt"] = pd.to_datetime(df.get("last_active_at"), unit="ms", errors="coerce")
     df["signup_month"] = df["signup_dt"].dt.strftime("%Y-%m")
-    df["hub_mapped"] = df.get("hub_key").apply(lambda k: bool(k))
+    # hub_key nulls arrive as either None or float NaN depending on the pull; bool(nan) is True,
+    # so detect "mapped" via notna()+non-empty (never bool()) — else NaN pollutes sorts/tiers.
+    _hk = df.get("hub_key")
+    if _hk is None:
+        df["hub_key"] = None
+        _hk = df["hub_key"]
+    df["hub_mapped"] = _hk.notna() & (_hk.astype(str).str.strip() != "")
     df["budget_bucket"] = df.get("Wedding_Budget").apply(_budget_bucket)
     df["guest_bucket"] = df.get("Wedding_Guest_Count").apply(_guest_bucket)
     df["referral"] = df.get("How_did_you_hear_about_us").apply(_clean)
@@ -380,8 +386,10 @@ def render_cohorts_tab(xano_base):
         tiers, hub_meta = load_hubs(xano_base, EXPORT_SECRET)
 
     adf = users_df[~users_df["role_l"].isin(_ROLE_EXCLUDE)].copy()
-    adf["density_tier"] = adf["hub_key"].apply(
-        lambda k: tiers.get(str(k), "Low density") if k else "Unmapped")
+    adf["density_tier"] = [
+        tiers.get(str(k), "Low density") if mapped else "Unmapped"
+        for k, mapped in zip(adf["hub_key"], adf["hub_mapped"])
+    ]
     top[0].caption(f"Snapshot {as_of[:16].replace('T', ' ')} UTC · {len(adf):,} users (excl. admin/test)")
     if top[1].button("↻ Refresh data"):
         load_users.clear(); load_hubs.clear(); st.rerun()
@@ -398,7 +406,7 @@ def render_cohorts_tab(xano_base):
         F["intent"]        = c2[0].multiselect("Intent", _opts(adf, "intent"))
         F["budget_bucket"] = c2[1].multiselect("Budget", _opts(adf, "budget_bucket"))
         F["guest_bucket"]  = c2[2].multiselect("Guests", _opts(adf, "guest_bucket"))
-        hub_keys           = sorted(adf.loc[adf["hub_mapped"], "hub_key"].astype(str).unique())
+        hub_keys           = sorted(adf.loc[adf["hub_mapped"], "hub_key"].dropna().astype(str).unique())
         F["hub_key"]       = c2[3].multiselect(
             "Hub", hub_keys,
             format_func=lambda k: hub_meta.get(k, {}).get("display_name", k))
