@@ -47,6 +47,7 @@ from anthropic import Anthropic
 from extract_core import (run_extraction, get_pipeline_status,
                           run_extraction_batch, process_batch_results,
                           list_recent_batches, ingest_batch_by_id, validate_merge)
+from cohorts import render_cohorts_tab
 
 
 # ── JOB STATUS TRACKING (persistent across logouts) ──────────────────────────
@@ -780,9 +781,9 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab0, tab2, tab5, tab_vp = st.tabs([
+tab0, tab2, tab5, tab_vp, tab_co = st.tabs([
     "📊 Admin", "🔍 Google Data & Images", "📄 PDF Extraction",
-    "💰 Venue Pricing"
+    "💰 Venue Pricing", "📈 Cohorts"
 ])
 
 
@@ -2767,3 +2768,8 @@ to see its exact numbers and pricing PDFs.
                 f"Data: {cnt['joined']:,} priced venue rows · {cnt['venues']:,} venues (all states) · "
                 f"deduped {cnt['t36_deduped']:,}/{cnt['t36_raw']:,} table-36 rows"
             )
+
+
+# ── TAB: COHORTS (📈) ─────────────────────────────────────────────────────────
+with tab_co:
+    render_cohorts_tab(XANO_BASE)
