@@ -32,7 +32,7 @@ EXPORT_SECRET = os.environ.get(
 _ROLE_EXCLUDE = {"admin", "test", "staff", "superadmin", "dev"}
 _BACKFILL_START = "2026-07-21"
 _GROUP_OPTS = ["density_tier", "hub_key", "hub_mapped", "signup_month", "planning_phase",
-               "age_range", "referral", "intent", "budget_bucket", "guest_bucket"]
+               "age_range", "referral", "customization", "budget_bucket", "guest_bucket"]
 
 
 # ── HTTP (retry transient 000/5xx) ───────────────────────────────────────────────
@@ -119,6 +119,21 @@ def _clean(s):
     return (str(s).strip() or "Unknown") if s is not None else "Unknown"
 
 
+def _customization(v):
+    # Bucket the long venue_customization sentences into 3 clean labels (keyword match so
+    # it's robust to smart-quote / encoding variants of the stored text).
+    s = str(v or "").strip().lower()
+    if not s:
+        return "Unknown"
+    if "turn-key" in s or "turnkey" in s:
+        return "Turn-key"
+    if "customize everything" in s:
+        return "Full customization"
+    if "some customization" in s or "prefer some things" in s:
+        return "Some customization"
+    return "Other"
+
+
 # ── Snapshot pull + dataframe build (cached 6h) ─────────────────────────────────
 def _build_df(rows):
     # density_tier is added later in the tab from the separately-cached hub pull, so a
@@ -142,7 +157,7 @@ def _build_df(rows):
     df["budget_bucket"] = df.get("Wedding_Budget").apply(_budget_bucket)
     df["guest_bucket"] = df.get("Wedding_Guest_Count").apply(_guest_bucket)
     df["referral"] = df.get("How_did_you_hear_about_us").apply(_clean)
-    df["intent"] = df.get("What_are_you_most_interested_in_").apply(_clean)
+    df["customization"] = df.get("venue_customization").apply(_customization)
     df["planning_phase"] = df.get("Planning_Phase").apply(_clean)
     df["age_range"] = df.get("Age_Range").apply(_clean)
     df["role_l"] = df.get("role").apply(lambda s: str(s or "").strip().lower())
@@ -214,7 +229,7 @@ def _metrics(sub):
 
 def _apply_filters(df, F):
     m = pd.Series(True, index=df.index)
-    for key in ("planning_phase", "age_range", "referral", "intent", "hub_key",
+    for key in ("planning_phase", "age_range", "referral", "customization", "hub_key",
                 "density_tier", "budget_bucket", "guest_bucket"):
         vals = F.get(key)
         if vals:
@@ -240,7 +255,7 @@ def _insights(sub):
     n_base = int(len(sub))
     base_payers = int(sub["is_payer"].sum())
     base_rate = base_payers / n_base if n_base else 0.0
-    dims = ["density_tier", "hub_key", "referral", "intent", "planning_phase",
+    dims = ["density_tier", "hub_key", "referral", "customization", "planning_phase",
             "age_range", "budget_bucket", "guest_bucket", "signup_month"]
     movers = []
     for dim in dims:
@@ -403,7 +418,7 @@ def render_cohorts_tab(xano_base):
             "referral":       c[3].multiselect("Referral", _opts(adf, "referral")),
         }
         c2 = st.columns(4)
-        F["intent"]        = c2[0].multiselect("Intent", _opts(adf, "intent"))
+        F["customization"] = c2[0].multiselect("Customization", _opts(adf, "customization"))
         F["budget_bucket"] = c2[1].multiselect("Budget", _opts(adf, "budget_bucket"))
         F["guest_bucket"]  = c2[2].multiselect("Guests", _opts(adf, "guest_bucket"))
         hub_keys           = sorted(adf.loc[adf["hub_mapped"], "hub_key"].dropna().astype(str).unique())
