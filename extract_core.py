@@ -121,6 +121,8 @@ _COST_INPUT       = 3.00  / 1_000_000
 _COST_OUTPUT      = 15.00 / 1_000_000
 _COST_CACHE_WRITE = 3.75  / 1_000_000
 _COST_CACHE_READ  = 0.30  / 1_000_000
+# Anthropic Batch API bills at 50% of the sequential rate.
+_BATCH_DISCOUNT   = 0.5
 
 
 class CreditExhausted(Exception):
@@ -2026,6 +2028,10 @@ def run_extraction_batch(
         pdf_bytes, err = download_pdf(pdf_link, drive_service)
         if not pdf_bytes:
             yield from emit(f"    Download failed: {err} — skipping")
+            # Record it. Without this the row keeps whatever status/last_error it
+            # already had, attempts never increments, and the PDF is indistinguishable
+            # from one that was never submitted (P874, 2026-07-28 pilot).
+            _update_pdf_status(xano_id, "failed", error=f"download failed: {err}")
             continue
         # Downsample very large PDFs (Files API allows 500MB, but huge PDFs blow
         # past Claude's page limits and slow uploads).
@@ -2037,11 +2043,14 @@ def run_extraction_batch(
                 raw_mb = len(pdf_bytes) / 1024 / 1024
         if raw_mb > 40:
             yield from emit(f"    Too large ({raw_mb:.0f}MB) — skipping")
+            _update_pdf_status(xano_id, "failed",
+                               error=f"too large ({raw_mb:.0f}MB) after downsample")
             continue
 
         file_id, up_err = _upload_pdf_file(client, pdf_bytes, f"{pdf_id}.pdf")
         if not file_id:
             yield from emit(f"    Upload failed: {up_err} — skipping")
+            _update_pdf_status(xano_id, "failed", error=f"files-api upload failed: {up_err}")
             continue
 
         # Photography / Entertainment always take the single category prompt —
@@ -2227,6 +2236,10 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
     # Collect results grouped by pdf_id
     yield from emit("Batch complete — posting results to Xano...")
     p1: dict = {}; p3: dict = {}; p4: dict = {}; pk: dict = {}; errors: dict = {}
+    # Per-PDF token usage, summed across whichever passes that PDF ran (m / k / p1+p3+p4).
+    # Batch mode previously hardcoded extraction_cost_usd=0 on every write, so the whole
+    # batch path reported $0 spend and the full-run cost could not be forecast.
+    usage: dict = {}
     try:
         for result in client.messages.batches.results(batch_id):
             cid = result.custom_id or ""
@@ -2249,6 +2262,16 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
                     pass
                 errors.setdefault(pdf_id_key, []).append(f"{pass_tag} {detail}")
                 continue
+            try:
+                u = result.result.message.usage
+                acc = usage.setdefault(pdf_id_key,
+                                       {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0})
+                acc["input"]        += getattr(u, "input_tokens", 0) or 0
+                acc["output"]       += getattr(u, "output_tokens", 0) or 0
+                acc["cache_read"]   += getattr(u, "cache_read_input_tokens", 0) or 0
+                acc["cache_create"] += getattr(u, "cache_creation_input_tokens", 0) or 0
+            except Exception:
+                pass
             raw_content = (result.result.message.content or [None])[0]
             text = getattr(raw_content, "text", "") if raw_content else ""
             parsed = _parse_batch_text(text)
@@ -2294,6 +2317,8 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
         package_data = pk.get(pdf_id)
         category     = meta.get("category", CAT_VENUE)
         errs         = errors.get(pdf_id, [])
+        # Batch API bills at 50% of the sequential rate; _compute_cost uses list price.
+        row_cost     = _compute_cost(usage.get(pdf_id, {})) * _BATCH_DISCOUNT
 
         yield from emit(f"  {pdf_id} — {venue_name}")
 
@@ -2306,23 +2331,23 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
                 actual = entries.get('category', 'unknown')
                 reason = f"category mismatch: table 11 says {category}, PDF looks like {actual}"
                 yield from emit(f"    {reason}")
-                _update_pdf_status(xano_id, "category_mismatch", error=reason)
+                _update_pdf_status(xano_id, "category_mismatch", error=reason, cost_usd=row_cost)
                 results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
                                     "status": "SKIPPED", "reason": reason,
-                                    "cost_usd": 0, "category": category})
+                                    "cost_usd": row_cost, "category": category})
                 continue
             if not entries:
                 reason = "; ".join(errs) or (f"no packages parsed{note}")
                 yield from emit(f"    Failed: {reason}")
-                _update_pdf_status(xano_id, "failed", error=reason)
+                _update_pdf_status(xano_id, "failed", error=reason, cost_usd=row_cost)
                 results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
                                     "status": "FAILED", "reason": reason,
-                                    "cost_usd": 0, "category": category})
+                                    "cost_usd": row_cost, "category": category})
                 continue
             ok_k, fail_k = _post_packages(entries, timestamp)
             status = "extracted" if (ok_k and not fail_k) else ("partial" if ok_k else "failed")
             _update_pdf_status(
-                xano_id, status, cost_usd=0,
+                xano_id, status, cost_usd=row_cost,
                 confidentiality_flag=any(
                     _is_yes(e.get('confidentiality_risk', {}).get('value', '')) for e in entries),
                 confidentiality_evidence=next(
@@ -2336,23 +2361,23 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
                                 "status": "OK" if status == "extracted" else (
                                     "PARTIAL" if status == "partial" else "FAILED"),
                                 "summary_rows": ok_k, "pricing_rows": 0,
-                                "cost_usd": 0, "category": category})
+                                "cost_usd": row_cost, "category": category})
             continue
 
         if not summary_data:
             reason = "; ".join(errs) or "p1 missing"
             yield from emit(f"    Failed: {reason}")
-            _update_pdf_status(xano_id, "failed", error=reason)
+            _update_pdf_status(xano_id, "failed", error=reason, cost_usd=row_cost)
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
-                                 "status": "FAILED", "reason": reason, "cost_usd": 0})
+                                 "status": "FAILED", "reason": reason, "cost_usd": row_cost})
             continue
 
         if isinstance(summary_data, dict) and summary_data.get('__non_venue__'):
             cat = summary_data.get('category', 'unknown')
             yield from emit(f"    non-venue ({cat})")
-            _update_pdf_status(xano_id, "skipped_non_venue", error=f"non-venue: {cat}")
+            _update_pdf_status(xano_id, "skipped_non_venue", error=f"non-venue: {cat}", cost_usd=row_cost)
             results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
-                                 "status": "SKIPPED", "reason": f"non-venue: {cat}", "cost_usd": 0})
+                                 "status": "SKIPPED", "reason": f"non-venue: {cat}", "cost_usd": row_cost})
             continue
 
         if isinstance(summary_data, dict):
@@ -2371,23 +2396,29 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
 
         status = ("extracted" if (ok_s and not fail_s and not fail_p)
                   else ("partial" if ok_s else "failed"))
-        _update_pdf_status(xano_id, status, cost_usd=0)
+        _update_pdf_status(xano_id, status, cost_usd=row_cost)
         result_status = "OK" if status == "extracted" else ("PARTIAL" if status == "partial" else "FAILED")
         yield from emit(f"    {ok_s} summary rows, {ok_p} pricing rows -> {status}")
         if errs:
             yield from emit(f"    ⚠ pass errors: {'; '.join(errs)}")
         results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
                              "status": result_status, "summary_rows": ok_s,
-                             "pricing_rows": ok_p, "cost_usd": 0, "category": "Venue"})
+                             "pricing_rows": ok_p, "cost_usd": row_cost, "category": "Venue"})
 
     ok_c   = sum(1 for r in results_log if r["status"] == "OK")
     part_c = sum(1 for r in results_log if r["status"] == "PARTIAL")
     fail_c = sum(1 for r in results_log if r["status"] == "FAILED")
     skip_c = sum(1 for r in results_log if r["status"] == "SKIPPED")
+    batch_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
+    for _u in usage.values():
+        for _k in batch_tokens:
+            batch_tokens[_k] += _u.get(_k, 0)
+    batch_cost = _compute_cost(batch_tokens) * _BATCH_DISCOUNT
     yield from emit(f"Done — {ok_c} extracted, {part_c} partial, {skip_c} skipped, {fail_c} failed")
-    yield from emit("Cost: ~50% of sequential rate (Batch API discount)")
+    yield from emit(f"💰 Batch cost: ${batch_cost:.4f} across {len(usage)} PDFs "
+                    f"(50% Batch API discount applied)")
     yield {"batch_done": True, "ok": ok_c, "partial": part_c, "failed": fail_c,
-           "skipped": skip_c, "cost_usd": 0.0, "tokens": {},
+           "skipped": skip_c, "cost_usd": batch_cost, "tokens": batch_tokens,
            "results": results_log, "credit_exhausted": False, "log": log}
 
 
