@@ -939,6 +939,31 @@ def call_claude_text(client, source_text, system_prompt, user_text, max_tokens=6
 
 # ── EXTRACTION ────────────────────────────────────────────────────────────────
 
+def _non_venue_sentinel(parsed):
+    """Return {"__non_venue__": True, "category": ...} if `parsed` is TASK A's
+    2-field non-venue short-circuit, else None.
+
+    Shared by the sequential path and the merged-batch (__m) split. The split had
+    NO non-venue detection: it did p1[pdf] = parsed["summary"], so a short-circuit
+    summary reached _post_summary, which maps neither vendor_type nor
+    non_venue_category and POSTed a row carrying only PDF_ID / VENDOR_ID /
+    VENUE_NAME / last_extracted_at — 448 blank table-36 rows marked "extracted"
+    on 2026-07-28. This affects ordinary VENUE merged runs too.
+    """
+    first = parsed
+    if isinstance(first, list):
+        first = first[0] if first else {}
+    if not isinstance(first, dict):
+        return None
+    vt = first.get('vendor_type', {})
+    vt = vt.get('value', '') if isinstance(vt, dict) else str(vt or '')
+    if vt.strip().lower() != 'non-venue':
+        return None
+    cat = first.get('non_venue_category', {})
+    cat = cat.get('value', '') if isinstance(cat, dict) else str(cat or '')
+    return {"__non_venue__": True, "category": cat.strip() or 'unknown'}
+
+
 def _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name):
     parsed, note, usage = call_claude(
         client, pdf_b64, SUMMARY_PROMPT,
@@ -950,13 +975,9 @@ def _extract_summary(client, pdf_b64, pdf_id, vendor_id, venue_name):
     if isinstance(parsed, dict):
         parsed = [parsed]
 
-    first = parsed[0] if parsed else {}
-    vtype_field = first.get('vendor_type', {})
-    vtype_val = vtype_field.get('value', '') if isinstance(vtype_field, dict) else str(vtype_field or '')
-    if vtype_val.strip().lower() == 'non-venue':
-        cat_field = first.get('non_venue_category', {})
-        cat_val = cat_field.get('value', '') if isinstance(cat_field, dict) else str(cat_field or '')
-        return {"__non_venue__": True, "category": cat_val.strip() or 'unknown'}, note, usage
+    sentinel = _non_venue_sentinel(parsed)
+    if sentinel:
+        return sentinel, note, usage
 
     for e in parsed:
         e['pdf_id']     = {"value": pdf_id,     "confidence": "high"}
@@ -1401,6 +1422,54 @@ def _compute_cost(usage_dict):
     )
 
 
+# ── BLANK-ROW GUARD ───────────────────────────────────────────────────────────
+# PDF_ID / VENDOR_ID / VENUE_NAME / Vendor_Category / last_extracted_at are stamped
+# by the pipeline, never extracted. A row carrying ONLY those is content-free — the
+# exact shape _post_summary wrote 448 times on 2026-07-28 when a non-venue merged
+# response fell through the (then missing) __non_venue__ check. Never write one, and
+# never call such a write "extracted".
+_MEANINGFUL_VENUE_FIELDS = (
+    "pricing_year", "venue_type", "venue_space", "max_capacity_seated",
+    "admin_fee_pct", "ceremony_fee", "ceremony_fee_type",
+    "venue_fee_high_sat", "fb_min_high_sat", "guest_min_high_sat", "per_person_fb_high_sat",
+    "venue_fee_low_sat", "fb_min_low_sat", "guest_min_low_sat", "per_person_fb_low_sat",
+    "months_highest_pricing", "months_lowest_pricing", "fb_spend_min_type",
+    "base_menu_per_person", "base_bar_per_person",
+    "additional_fees", "additional_fees_description", "outside_ceremony_space",
+    "contact_information",
+)
+_MEANINGFUL_PACKAGE_FIELDS = (
+    "package_name", "package_price", "hours_included", "hourly_rate",
+    "overtime_hourly_rate", "team_size", "service_type", "included_services",
+    "description", "pricing_year", "contact_information",
+)
+
+
+def _has_content(entry, fields):
+    """True if `entry` carries at least one non-empty value among `fields`."""
+    for f in fields:
+        v = (entry or {}).get(f, {})
+        v = v.get('value', '') if isinstance(v, dict) else v
+        if str(v or '').strip():
+            return True
+    return False
+
+
+def _blank_row_reason(entries, category):
+    """Empty string if `entries` contain at least one writable row, else a reason.
+    Used at every write site so neither the sequential nor the batch path can mark
+    a content-free write "extracted"."""
+    fields = (_MEANINGFUL_VENUE_FIELDS if category == CAT_VENUE
+              else _MEANINGFUL_PACKAGE_FIELDS)
+    if not entries:
+        return "nothing to post (no entries)"
+    if any(_has_content(e, fields) for e in entries):
+        return ""
+    shape = "venue summary" if category == CAT_VENUE else "package"
+    return (f"blank-row guard: {len(entries)} {shape} entr(y/ies) contained no "
+            "extracted content — only pipeline-stamped identifiers. Not written.")
+
+
 # ── XANO POST ─────────────────────────────────────────────────────────────────
 
 def _post_summary(entries, classification, timestamp):
@@ -1424,6 +1493,10 @@ def _post_summary(entries, classification, timestamp):
             if key in NUMERIC_FIELDS:
                 return _to_number(raw)
             return raw
+
+        if not _has_content(e, _MEANINGFUL_VENUE_FIELDS):
+            fail += 1          # counted as a failure so status can never be "extracted"
+            continue
 
         payload = {
             "PDF_ID":                                                  e.get("pdf_id",     {}).get("value", ""),
@@ -1512,6 +1585,10 @@ def _post_packages(entries, timestamp):
             if key in NUMERIC_FIELDS:
                 return _to_number(raw)
             return raw
+
+        if not _has_content(e, _MEANINGFUL_PACKAGE_FIELDS):
+            fail += 1          # counted as a failure so status can never be "extracted"
+            continue
 
         payload = {
             "PDF_ID":               e.get('pdf_id',        {}).get('value', ''),
@@ -1659,7 +1736,10 @@ def prefetch_shared_xano_state():
     """Fetch the three Xano datasets every worker needs at startup and cache them
     to disk, so a parallel launch hits Xano with ONE set of scans instead of N.
     Returns a short human-readable summary string. Raises on pdf-list failure
-    (the launch can't proceed without it); the other two fail soft."""
+    (the launch can't proceed without it); the summary list fails soft. The
+    category map does NOT fail soft: if the endpoint is configured but returns
+    nothing, no cache file is written and the summary says so, because every
+    worker will (correctly) abort rather than run with an all-Venue default."""
     get_endpoint = os.environ["XANO_GET_ENDPOINT"]
     all_rows = []
     for all_rows, _ in _fetch_xano_pages(get_endpoint):
@@ -1684,12 +1764,18 @@ def prefetch_shared_xano_state():
     vendor_categories = _fetch_vendor_categories()
     if vendor_categories:
         _shared_cache_write("vendor_categories", vendor_categories)
+    elif vendor_categories == {}:
+        # Configured but unreachable. Do NOT write a cache file — workers must see
+        # the live failure and abort rather than run with an all-Venue default.
+        return (f"{len(all_rows)} wptp_pdfs rows, {len(summary_ids)} extracted PDF_IDs, "
+                f"⚠ CATEGORY MAP UNAVAILABLE — workers will abort. Fix the endpoint "
+                f"before launching.")
 
     by_cat = collections.Counter(_category_of(vendor_categories, v)
-                                 for v in vendor_categories)
+                                 for v in (vendor_categories or {}))
     cat_summary = ", ".join(f"{n} {c}" for c, n in sorted(by_cat.items())) or "none"
     return (f"{len(all_rows)} wptp_pdfs rows, {len(summary_ids)} extracted PDF_IDs, "
-            f"{len(vendor_categories)} in-scope vendor ids ({cat_summary}) "
+            f"{len(vendor_categories or {})} in-scope vendor ids ({cat_summary}) "
             f"cached to {_SHARED_CACHE_DIR}")
 
 
@@ -1726,16 +1812,20 @@ def _fetch_vendor_categories():
     Xano endpoint 177 as before; it always returned every category, the pipeline
     just used to throw the non-venue rows away.
 
-    Returns an EMPTY dict if the endpoint is unset or the fetch fails — callers
-    MUST treat an empty dict as "filter unavailable, do not skip anything"
-    (otherwise a bad fetch would skip every PDF). Out-of-scope vendors are still
-    caught downstream by the LLM vendor_type short-circuit, so the empty-dict
-    fallback is safe, just less cost-efficient.
+    Return contract is THREE-state and callers MUST honour it:
+      None  — no categories endpoint configured. The filter is deliberately
+              disabled (local/dev runs); every PDF resolves to Venue as before.
+      {}    — endpoint IS configured but unreachable, errored, or returned no
+              in-scope vendors. This is a FAILURE, not "no filter": callers must
+              ABORT. Treating it as "gate nothing" is what routed 464
+              Photography/Entertainment PDFs through the Venue prompt on
+              2026-07-28 and wrote 448 blank rows marked "extracted".
+      dict  — usable {Vendor_ID: {"category": ..., "ent_type": [...]}} map.
     """
     endpoint = (os.environ.get("XANO_VENDOR_CATEGORIES_ENDPOINT", "").strip()
                 or os.environ.get("XANO_VENUE_CATEGORIES_ENDPOINT", "").strip())
     if not endpoint:
-        return {}
+        return None
     try:
         all_rows = []
         for all_rows, _ in _fetch_xano_pages(endpoint):
@@ -1752,20 +1842,35 @@ def _fetch_vendor_categories():
                     "ent_type": _seed_service_types_from_entertainment(
                         r.get('Type_of_Entertainment') or ''),
                 }
-        return out
+        return out          # {} here means the endpoint answered with nothing → fatal
     except Exception:
         return {}
 
 
+def _load_vendor_categories():
+    """Shared-cache-then-live load of the vendor category map. Propagates
+    _fetch_vendor_categories' three-state contract verbatim (None = unset,
+    {} = unavailable → abort, dict = usable)."""
+    cached = _shared_cache_read("vendor_categories")
+    if cached:
+        return dict(cached)
+    return _fetch_vendor_categories()
+
+
 def _category_of(vendor_categories, vendor_id, default=None):
     """Read the category out of the map produced by _fetch_vendor_categories.
-    Tolerates the old flat {vid: "Venue"} shape so a stale .xano_cache file from a
-    pre-2026-07-27 prefetch does not crash a worker mid-run."""
+
+    `vendor_categories` of None means the category filter is disabled (endpoint
+    unset) — everything resolves to `default`/Venue. An unavailable map ({}) must
+    have aborted the run before reaching here (see _load_vendor_categories)."""
     entry = (vendor_categories or {}).get(vendor_id)
     if entry is None:
         return default if default is not None else CAT_VENUE
-    if isinstance(entry, str):
-        return entry
+    if not isinstance(entry, dict):
+        raise TypeError(
+            f"vendor_categories entry for {vendor_id!r} is {type(entry).__name__}, "
+            "expected dict — stale .xano_cache/vendor_categories.json; delete it "
+            "and re-run prefetch_shared_xano_state()")
     return entry.get("category") or (default if default is not None else CAT_VENUE)
 
 
@@ -1986,8 +2091,21 @@ def run_extraction_batch(
             pass
 
     # Category gate: drop vendors outside SUPPORTED_CATEGORIES before upload/download.
-    # An empty map means "filter unavailable" and gates nothing (see _fetch_vendor_categories).
-    vendor_categories = _shared_cache_read("vendor_categories") or _fetch_vendor_categories()
+    # FAIL CLOSED. An unavailable map used to mean "gate nothing", and because
+    # _category_of defaults to Venue that silently routed every PDF through
+    # MERGED_PROMPT (__m) instead of the Photography/Entertainment prompt (__k).
+    vendor_categories = _load_vendor_categories()
+    if vendor_categories is not None and not vendor_categories:
+        yield from emit("ABORT: vendor category map unavailable — the categories "
+                        "endpoint is configured but returned nothing (Xano down, "
+                        "bad/unscoped XANO_VENDOR_CATEGORIES_ENDPOINT, or stale cache).")
+        yield from emit("  Refusing to submit: every PDF would be treated as a Venue "
+                        "and non-venue PDFs would post blank rows. Fix the endpoint "
+                        "and re-submit. Nothing was uploaded, no credits spent.")
+        yield {"batch_submitted": False, "error": "vendor_categories_unavailable"}
+        return
+    if vendor_categories is None:
+        yield from emit("   ⚠ category endpoint unset — filter disabled, all PDFs treated as Venue")
     if vendor_categories:
         batch = [r for r in batch
                  if str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip() in vendor_categories]
@@ -2281,8 +2399,13 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
             elif pass_tag == "m":
                 # Merged single-call response → split into the same p1/p3/p4 shapes
                 # so all downstream posting is identical to the 3-pass path.
+                # A NON-VENUE merged response puts TASK A's 2-field short-circuit in
+                # "summary"; normalize it to the same sentinel the sequential path
+                # emits so the "__non_venue__" ingest branch below fires instead of
+                # posting a blank row.
                 if isinstance(parsed, dict):
-                    p1[pdf_id_key] = parsed.get("summary")
+                    _sum = parsed.get("summary")
+                    p1[pdf_id_key] = _non_venue_sentinel(_sum) or _sum
                     p3[pdf_id_key] = parsed.get("pricing")
                     p4[pdf_id_key] = parsed.get("classification")
                 else:
@@ -2300,9 +2423,10 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
         return
 
     # Loaded once for the whole ingest: supplies the Type_of_Entertainment fallback
-    # used when an Entertainment PDF states no service type of its own.
-    _ingest_vendor_categories = (
-        _shared_cache_read("vendor_categories") or _fetch_vendor_categories())
+    # used when an Entertainment PDF states no service type of its own. Each row's
+    # category comes from pdf_map (resolved at submit), NOT from this map, so a
+    # missing map here degrades the hint only — it cannot mis-route a row.
+    _ingest_vendor_categories = _load_vendor_categories() or {}
 
     results_log = []
     for pdf_id, meta in pdf_map.items():
@@ -2342,6 +2466,14 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
                 _update_pdf_status(xano_id, "failed", error=reason, cost_usd=row_cost)
                 results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
                                     "status": "FAILED", "reason": reason,
+                                    "cost_usd": row_cost, "category": category})
+                continue
+            blank = _blank_row_reason(entries, category)
+            if blank:
+                yield from emit(f"    Failed: {blank}")
+                _update_pdf_status(xano_id, "failed", error=blank, cost_usd=row_cost)
+                results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                    "status": "FAILED", "reason": blank,
                                     "cost_usd": row_cost, "category": category})
                 continue
             ok_k, fail_k = _post_packages(entries, timestamp)
@@ -2386,6 +2518,16 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
             e.setdefault('pdf_id',     {"value": pdf_id,    "confidence": "high"})
             e.setdefault('vendor_id',  {"value": vendor_id, "confidence": "high"})
             e.setdefault('venue_name', {"value": venue_name,"confidence": "high"})
+
+        # The guard that would have caught the 2026-07-28 incident on its own.
+        blank = _blank_row_reason(summary_data, CAT_VENUE)
+        if blank:
+            reason = "; ".join(errs + [blank]) if errs else blank
+            yield from emit(f"    Failed: {reason}")
+            _update_pdf_status(xano_id, "failed", error=reason, cost_usd=row_cost)
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                "status": "FAILED", "reason": reason, "cost_usd": row_cost})
+            continue
 
         ok_s, fail_s = _post_summary(summary_data, classif_data, timestamp)
         ok_p = fail_p = 0
@@ -2607,7 +2749,14 @@ def ingest_batch_by_id(batch_id, wait_secs=0):
     # The lost job record also lost each PDF's category, so re-derive it from the
     # vendor mapping — otherwise every recovered row would be ingested as a Venue
     # and a Photography batch's __k responses would be silently dropped.
-    vendor_categories = _shared_cache_read("vendor_categories") or _fetch_vendor_categories()
+    # Fail closed for the same reason the submit path does: an unavailable map would
+    # re-derive every recovered PDF as a Venue.
+    vendor_categories = _load_vendor_categories()
+    if vendor_categories is not None and not vendor_categories:
+        yield from emit("ABORT: vendor category map unavailable — every recovered PDF "
+                        "would be ingested as a Venue and __k package responses dropped.")
+        yield {"batch_done": False, "error": "vendor_categories_unavailable"}
+        return
 
     timestamp = datetime.now(timezone.utc).isoformat()
     pdf_map, missing = {}, []
@@ -2856,16 +3005,24 @@ def run_extraction(
     # ── Category pre-filter: load Vendor_ID -> category from wptp_updated_mappings ──
     # Vendors outside SUPPORTED_CATEGORIES are skipped BEFORE any download or model
     # call (cost saver). In-scope vendors are routed to the prompt for their category.
-    _cached_categories = _shared_cache_read("vendor_categories")
-    vendor_categories = (dict(_cached_categories)
-                         if _cached_categories else _fetch_vendor_categories())
+    # An UNAVAILABLE map aborts the run — see _fetch_vendor_categories' three-state contract.
+    vendor_categories = _load_vendor_categories()
+    if vendor_categories is not None and not vendor_categories:
+        yield from emit("❌ ABORT: vendor category map unavailable — XANO_VENDOR_CATEGORIES_ENDPOINT "
+                        "is set but returned nothing (Xano error / wrong env scope / stale cache).")
+        yield from emit("   Refusing to run: every PDF would default to the Venue prompt. "
+                        "No PDFs were downloaded and no Claude calls were made.")
+        yield {"ok": 0, "partial": 0, "failed": 0, "skipped_non_venue": 0,
+               "cost_usd": 0.0, "log": log, "error": "vendor_categories_unavailable"}
+        return
     if vendor_categories:
         _cat_counts = collections.Counter(_category_of(vendor_categories, v)
                                           for v in vendor_categories)
         _cat_txt = ", ".join(f"{n} {c}" for c, n in sorted(_cat_counts.items()))
         yield from emit(f"✓  Category filter active — {len(vendor_categories)} in-scope vendors ({_cat_txt}); out-of-scope PDFs skip download + extraction")
     else:
-        yield from emit("⚠  Category filter inactive (XANO_VENDOR_CATEGORIES_ENDPOINT unset or fetch failed) — relying on LLM vendor_type detection only")
+        yield from emit("⚠  Category filter DISABLED (no categories endpoint configured) — "
+                        "every PDF will use the Venue prompt and rely on LLM vendor_type detection")
     yield from emit("")
 
     client        = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -2938,8 +3095,9 @@ def run_extraction(
             continue
 
         # Category pre-filter: skip out-of-scope vendors entirely (no download, no
-        # model calls). Only fires when the category map loaded; an empty map disables
-        # the gate. Rows with a blank Vendor_ID bypass it, as before.
+        # model calls). Only a DELIBERATELY UNSET categories endpoint disables the gate
+        # (vendor_categories is None); an unavailable map aborted the run far above.
+        # Rows with a blank Vendor_ID bypass it, as before.
         if vendor_categories and vendor_id and vendor_id not in vendor_categories:
             reason = "unsupported category: mapping category not in " + "/".join(SUPPORTED_CATEGORIES)
             yield from emit(f"[{row_num}/{len(batch)}] {pdf_id} — {venue_name} — ⏭  skipping ({reason})")
@@ -2948,8 +3106,9 @@ def run_extraction(
             _maybe_post_progress()
             continue
 
-        # Which prompt set this PDF gets. Defaults to Venue when the gate is disabled
-        # so behaviour with no category endpoint is exactly what it was before.
+        # Which prompt set this PDF gets. Defaults to Venue only when the categories
+        # endpoint is UNSET, so behaviour with no endpoint configured is exactly what it
+        # was before. An unavailable endpoint aborted the run rather than landing here.
         row_category = _category_of(vendor_categories, vendor_id) if vendor_id else CAT_VENUE
 
         yield from emit(f"")
@@ -3046,6 +3205,16 @@ def run_extraction(
                 yield from emit(f"  🚩 Confidentiality risk flagged — for review (stays live): \"{conf_evidence[:140]}\"")
 
             yield from emit(f"  ✓  {len(entries)} package(s){note}")
+            blank = _blank_row_reason(entries, row_category)
+            if blank:
+                yield from emit(f"  ❌ {blank}")
+                results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                    "status": "FAILED", "reason": blank,
+                                    "cost_usd": run_cost, "category": row_category})
+                patch_result = _update_pdf_status(xano_id, "failed", error=blank, cost_usd=run_cost)
+                yield from emit(f"  📝 Status writeback: {patch_result}")
+                _maybe_post_progress()
+                continue
             ok_k, fail_k = _post_packages(entries, timestamp)
             status = "extracted" if (ok_k and not fail_k) else ("partial" if ok_k else "failed")
             patch_result = _update_pdf_status(
@@ -3179,6 +3348,19 @@ def run_extraction(
             yield from emit(f"  ⚠  Classification failed{note}")
 
         # ── Post to Xano ──────────────────────────────────────────────────────
+        blank = _blank_row_reason(summary, CAT_VENUE)
+        if blank:
+            run_cost = _compute_cost(run_usage)
+            yield from emit(f"  ❌ {blank}")
+            results_log.append({"pdf_id": pdf_id, "venue_name": venue_name,
+                                "status": "FAILED", "reason": blank, "cost_usd": run_cost})
+            patch_result = _update_pdf_status(xano_id, "failed", error=blank, cost_usd=run_cost)
+            yield from emit(f"  📝 Status writeback: {patch_result}")
+            _maybe_post_progress()
+            if i < len(batch) - 1:
+                time.sleep(2)
+            continue
+
         yield from emit(f"  📤 Posting summary ({len(summary)} row(s))...")
         s_ok, s_fail = _post_summary(summary, classification, timestamp)
         yield from emit(f"  {'✓' if s_fail == 0 else '⚠'}  {s_ok} posted, {s_fail} failed")
