@@ -687,7 +687,12 @@ IF "other": return ONLY this JSON and STOP:
 
 IF "entertainment": continue with everything below.
 
-SERVICE_TYPE — assign EXACTLY ONE, based on what is performing in that PDF:
+SERVICE_TYPE — assign one PER PACKAGE, based on what performs in THAT package.
+Many agencies price several different acts on one sheet (a string quartet for the
+ceremony, a soloist for cocktails, a DJ for the reception): each package gets the
+value for its OWN act, NOT one value for the whole PDF. Also return a top-level
+service_type = the act this sheet is mostly about, used only as a fallback.
+Choose EXACTLY ONE per package from:
   "DJ" — a DJ, with or without an MC.
   "Band - Solo / Duo" — a live band/act of 1-2 performers.
   "Band - 3 to 5 piece" — a live band of 3-5 performers. USE THIS when the PDF
@@ -698,7 +703,11 @@ SERVICE_TYPE — assign EXACTLY ONE, based on what is performing in that PDF:
       (string quartet, trio, jazz combo) rather than a reception dance band.
   "Soloist" — a single musician or vocalist (harpist, guitarist, singer, organist).
 Count performers, not crew — sound engineers, lighting techs and roadies do not count.
-If the vendor offers BOTH a DJ and a band, pick the one this PDF's pricing is for; if the PDF genuinely prices both equally, pick the band value.
+Band size must match THAT package's performer count: a "9 Piece Band" tier is
+"Band - 6 to 9 piece", not "Band - 10+ / Orchestra", even if the same sheet also
+sells a 12-piece tier.
+For the TOP-LEVEL fallback only: if the vendor offers both a DJ and a band, pick the
+one this PDF's pricing is mostly for; if it prices both equally, pick the band value.
 
 INCLUDED_SERVICES — for EACH package, list ALL that are INCLUDED IN THAT PACKAGE'S PRICE, semicolon-separated, choosing ONLY from this list:
   "MC / Host", "Ceremony Musicians", "Ceremony Sound", "Cocktail Hour Set",
@@ -716,9 +725,10 @@ HOURLY_RATE — stated hourly rate, if any. "" otherwise.
 OVERTIME_HOURLY_RATE — cost per additional/overtime hour. "" otherwise.
 """ + _NON_VENUE_COMMON_RULES + """
 Return EXACTLY this shape:
-{"vendor_type":{"value":"entertainment","confidence":"high"},"vendor_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"},"packages":[{"package_name":{"value":"","confidence":"high"},"package_price":{"value":"","confidence":"high"},"hours_included":{"value":"","confidence":"high"},"hourly_rate":{"value":"","confidence":"high"},"overtime_hourly_rate":{"value":"","confidence":"high"},"team_size":{"value":"","confidence":"high"},"included_services":{"value":"","confidence":"high"}}]}
+{"vendor_type":{"value":"entertainment","confidence":"high"},"vendor_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"},"packages":[{"package_name":{"value":"","confidence":"high"},"package_price":{"value":"","confidence":"high"},"hours_included":{"value":"","confidence":"high"},"hourly_rate":{"value":"","confidence":"high"},"overtime_hourly_rate":{"value":"","confidence":"high"},"team_size":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"included_services":{"value":"","confidence":"high"}}]}
 
-service_type: exactly one value from the SERVICE_TYPE list.
+service_type: exactly one value from the SERVICE_TYPE list, on EVERY package, plus the
+top-level fallback value. Never omit the per-package one.
 packages: one entry per named tier. Never an empty array if any price appears in the PDF."""
 
 
@@ -1049,9 +1059,9 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
 
     service_vocab   = SERVICE_TYPES_BY_CATEGORY[category]
     inclusion_vocab = INCLUSIONS_BY_CATEGORY[category]
-    # service_type is PDF-level in the prompt but stored per row so fn21 can
-    # aggregate it without a second lookup. For bands it is then refined per package
-    # from team_size — see the loop below.
+    # PDF-level service_type. Photography treats this as the vendor's STYLE, which is
+    # genuinely one-per-vendor; Entertainment now also returns it per package and this
+    # value is only the fallback. Refined per row in the loop below.
     service_type = _normalize_vocab(val('service_type'), service_vocab)
     # Fall back to the vendor's submitted Type_of_Entertainment ONLY when the PDF
     # states nothing. Extracted always wins, so a PDF saying "9-piece" does not also
@@ -1067,13 +1077,21 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
         if not isinstance(p, dict):
             continue
         hours = _clean(val('hours_included', p))
-        # Band size is PER-PACKAGE, not per-PDF: a band selling 8/9/10-piece tiers in
-        # one sheet gets one PDF-level service_type, so at most one tier lands in the
-        # right band-size filter. Re-derive from this package's team_size when the PDF
-        # is a band; DJ / Ensemble / Soloist and all Photography styles are untouched.
-        row_service_type = service_type
-        if service_type.startswith("Band"):
-            row_service_type = _band_size_from_team(val('team_size', p)) or service_type
+        # service_type is resolved PER PACKAGE. An agency sheet can price a string
+        # quartet, a soloist and a DJ side by side (P3876 Villa Regina, 2026-07-28,
+        # tagged all 30 rows "Ensemble" including its DJ and solo-piano tiers), so a
+        # single PDF-level value is wrong by construction. Precedence:
+        #   1. the package's own service_type (Entertainment prompt asks for it)
+        #   2. the PDF-level value / Type_of_Entertainment seed
+        #   3. band size re-derived from THIS package's team_size
+        #   4. an "Ensemble" of one performer is a Soloist
+        team_raw = val('team_size', p)
+        row_service_type = (_normalize_vocab(val('service_type', p), service_vocab)
+                            or service_type)
+        if row_service_type.startswith("Band"):
+            row_service_type = _band_size_from_team(team_raw) or row_service_type
+        elif row_service_type == "Ensemble" and _team_int(team_raw) == 1:
+            row_service_type = "Soloist"
         entries.append({
             'pdf_id':                   {"value": pdf_id,        "confidence": "high"},
             'vendor_id':                {"value": vendor_id,     "confidence": "high"},
@@ -1239,6 +1257,17 @@ _BAND_SIZE_BANDS = ((2, "Band - Solo / Duo"), (5, "Band - 3 to 5 piece"),
                     (9, "Band - 6 to 9 piece"))
 
 
+def _team_int(team_size_raw):
+    """Per-package team_size as an int, or 0 if absent/unparseable.
+    NOTE _to_number returns a numeric STRING (for Xano posting), not a number — so it
+    must be int()-ed before any comparison."""
+    n = _to_number(_clean(str(team_size_raw or '')))
+    try:
+        return int(float(n or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _band_size_from_team(team_size_raw):
     """Map a per-package team_size to the canonical band-size ENT_SERVICE_TYPES value,
     or "" if the size is missing/unparseable.
@@ -1249,11 +1278,7 @@ def _band_size_from_team(team_size_raw):
     9-piece packages were filed under a band-size filter that excludes them.
     team_size IS per-package and was correct on every probe row, so derive from it.
     """
-    n = _to_number(_clean(str(team_size_raw or '')))
-    try:
-        n = int(n or 0)
-    except (TypeError, ValueError):
-        return ""
+    n = _team_int(team_size_raw)
     if n <= 0:
         return ""
     for ceiling, label in _BAND_SIZE_BANDS:
