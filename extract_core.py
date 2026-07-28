@@ -1050,7 +1050,8 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
     service_vocab   = SERVICE_TYPES_BY_CATEGORY[category]
     inclusion_vocab = INCLUSIONS_BY_CATEGORY[category]
     # service_type is PDF-level in the prompt but stored per row so fn21 can
-    # aggregate it without a second lookup.
+    # aggregate it without a second lookup. For bands it is then refined per package
+    # from team_size — see the loop below.
     service_type = _normalize_vocab(val('service_type'), service_vocab)
     # Fall back to the vendor's submitted Type_of_Entertainment ONLY when the PDF
     # states nothing. Extracted always wins, so a PDF saying "9-piece" does not also
@@ -1066,6 +1067,13 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
         if not isinstance(p, dict):
             continue
         hours = _clean(val('hours_included', p))
+        # Band size is PER-PACKAGE, not per-PDF: a band selling 8/9/10-piece tiers in
+        # one sheet gets one PDF-level service_type, so at most one tier lands in the
+        # right band-size filter. Re-derive from this package's team_size when the PDF
+        # is a band; DJ / Ensemble / Soloist and all Photography styles are untouched.
+        row_service_type = service_type
+        if service_type.startswith("Band"):
+            row_service_type = _band_size_from_team(val('team_size', p)) or service_type
         entries.append({
             'pdf_id':                   {"value": pdf_id,        "confidence": "high"},
             'vendor_id':                {"value": vendor_id,     "confidence": "high"},
@@ -1076,7 +1084,7 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
             'contact_information':      {"value": val('contact_information'), "confidence": "high"},
             'confidentiality_risk':     {"value": val('confidentiality_risk'),     "confidence": "high"},
             'confidentiality_evidence': {"value": val('confidentiality_evidence'), "confidence": "high"},
-            'service_type':             {"value": service_type,  "confidence": "high"},
+            'service_type':             {"value": row_service_type, "confidence": "high"},
             'package_name':             {"value": _clean(val('package_name', p)), "confidence": "high"},
             'package_price':            {"value": val('package_price', p),        "confidence": "high"},
             'hours_included':           {"value": hours,                          "confidence": "high"},
@@ -1225,6 +1233,33 @@ _ENT_TYPE_SEED_MAP = {
     "ensemble": "Ensemble",
     "soloist": "Soloist",
 }
+
+
+_BAND_SIZE_BANDS = ((2, "Band - Solo / Duo"), (5, "Band - 3 to 5 piece"),
+                    (9, "Band - 6 to 9 piece"))
+
+
+def _band_size_from_team(team_size_raw):
+    """Map a per-package team_size to the canonical band-size ENT_SERVICE_TYPES value,
+    or "" if the size is missing/unparseable.
+
+    service_type is PDF-level in the prompt, but a band that sells 8-, 9- and
+    10-piece tiers in ONE PDF cannot be described by a single value: on 2026-07-28
+    P22 (45 Riots) tagged all three tiers "Band - 10+ / Orchestra", so the 8- and
+    9-piece packages were filed under a band-size filter that excludes them.
+    team_size IS per-package and was correct on every probe row, so derive from it.
+    """
+    n = _to_number(_clean(str(team_size_raw or '')))
+    try:
+        n = int(n or 0)
+    except (TypeError, ValueError):
+        return ""
+    if n <= 0:
+        return ""
+    for ceiling, label in _BAND_SIZE_BANDS:
+        if n <= ceiling:
+            return label
+    return "Band - 10+ / Orchestra"
 
 
 def _seed_service_types_from_entertainment(raw):
