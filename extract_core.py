@@ -2294,8 +2294,16 @@ def run_extraction_batch(
                             "start_row": start_row, "end_row": end_row},
             batch_id=batch_id,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Do NOT swallow this. The job record is how poll_and_ingest_batches()
+        # finds the batch (_list_submitted_batches reads XANO_JOBS_ENDPOINT), so a
+        # failure here means the batch is paid for but orphaned — nothing will
+        # ingest it automatically. The batch_id below is the only remaining handle.
+        yield from emit(
+            f"WARNING: could not persist the job record ({type(e).__name__}: {e}). "
+            f"This batch will NOT be picked up automatically. Recover it with: "
+            f"python ingest_batch.py {batch_id} --wait 60"
+        )
 
     # Mark every PDF in this batch as "batch_submitted" in wptp_pdfs immediately, so
     # the status table reflects the attempt (and when) before results are ingested.

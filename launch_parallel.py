@@ -64,6 +64,26 @@ def main():
         ids_src = os.environ.get("BATCH_PDF_IDS", "")
     ids = [s.strip() for s in ids_src.replace("\n", ",").split(",") if s.strip()]
     if ids:
+        # ── Batch API route (50% of sequential cost) ──────────────────────────
+        # Safe in ids mode only: both extraction paths take the same explicit
+        # PDF_ID list here (in range mode they disagree — see run_chunk.py).
+        # No worker fan-out: the Batch API parallelises server-side, so N local
+        # workers would only fragment one job into N smaller ones.
+        use_batch = "--batch" in sys.argv or _env_flag("EXTRACT_BATCH")
+        if not use_batch and not _env_flag("NO_AUTO_BATCH"):
+            threshold = int(os.environ.get("BATCH_MIN_IDS", "20"))
+            if len(ids) >= threshold:
+                use_batch = True
+                print(f"[auto-batch] {len(ids)} ids >= BATCH_MIN_IDS={threshold} -> one "
+                      f"Batch API job at 50% cost instead of {os.environ.get('BATCH_WORKERS', '12')} "
+                      f"live workers. Set NO_AUTO_BATCH=1 to force the sequential path.",
+                      flush=True)
+        if use_batch:
+            code = subprocess.call(
+                [PYTHON, os.path.join(HERE, "run_chunk.py"), "--batch",
+                 "--ids", ",".join(ids)], cwd=HERE)
+            sys.exit(code)
+
         workers = int(os.environ.get("BATCH_WORKERS", "12"))
         os.makedirs(os.path.join(HERE, "logs"), exist_ok=True)
         size = -(-len(ids) // workers)  # ceil → even-ish chunks
