@@ -1,4 +1,8 @@
-streamlit>=1.35.0
+# Upper bound is deliberate: theming behaviour (and .streamlit/config.toml keys)
+# has changed across releases, and there is no lockfile — an unbounded pin meant
+# Railway installed whatever was newest at build time. st.segmented_control needs
+# >=1.40; the invisible-text theme fix is verified against 1.60.
+streamlit>=1.40,<2.0
 extra-streamlit-components>=0.1.71
 pandas>=2.0.0
 anthropic>=0.25.0

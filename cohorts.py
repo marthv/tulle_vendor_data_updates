@@ -355,13 +355,18 @@ def _funnel_html(sub):
     for label, cnt in steps:
         pct = cnt / signups * 100
         of_prev = "" if prev in (None, 0) else f" · {cnt / prev * 100:.0f}% of previous step"
+        # Colours come from theme.py's CSS custom properties (tt-funnel-* classes)
+        # rather than being hardcoded. The label/count line previously had NO colour
+        # at all, so it inherited the theme's text colour and vanished for anyone
+        # whose browser reported dark mode.
         html.append(
             f'<div style="margin:10px 0">'
-            f'<div style="font-size:13px;margin-bottom:3px"><b>{label}</b> — {cnt:,} '
-            f'<span style="color:#4B5563">({pct:.1f}% of signups{of_prev})</span></div>'
-            f'<div style="background:#eef2f0;border-radius:6px;height:22px">'
-            f'<div style="width:{max(pct, 1.5):.1f}%;background:#0F7348;height:22px;'
-            f'border-radius:6px"></div></div></div>'
+            f'<div class="tt-funnel-label" style="font-size:13px;margin-bottom:3px">'
+            f'<b>{label}</b> — {cnt:,} '
+            f'<span class="tt-funnel-pct">({pct:.1f}% of signups{of_prev})</span></div>'
+            f'<div class="tt-funnel-track" style="border-radius:6px;height:22px">'
+            f'<div style="width:{max(pct, 1.5):.1f}%;background:var(--tt-brand,#0F7348);'
+            f'height:22px;border-radius:6px"></div></div></div>'
         )
         prev = cnt or prev
     return "<div>" + "".join(html) + "</div>"

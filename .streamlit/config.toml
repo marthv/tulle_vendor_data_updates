@@ -1,0 +1,24 @@
+# Streamlit theme — PINNED ON PURPOSE. Do not delete.
+#
+# Without this file Streamlit auto-detects the theme from the browser's
+# `prefers-color-scheme`. dashboard.py forces a LIGHT canvas
+# (`.stApp { background: ... }`), so any user whose OS is in dark mode got
+# Streamlit's dark base text (near-white #fafafa) painted onto that light
+# background — i.e. invisible text everywhere except elements that carry their
+# own colour. Reported 2026-07-28: two accounts could only read the dashboard by
+# selecting the page. It never reproduced on a light-mode OS.
+#
+# Pinning `base` makes Streamlit's own text, widget and dataframe/chart colours
+# deterministic for everyone regardless of OS setting. The in-app Light / Sepia /
+# Dark switcher (theme.py) layers CSS on top of this base; it deliberately does
+# NOT change these values, because st.dataframe and the native charts render to
+# canvas and read their colours from here, not from CSS.
+[theme]
+base                     = "light"
+primaryColor             = "#1B7A4A"   # Tulle green — also replaces Streamlit's default red accent
+backgroundColor          = "#F8F9FA"   # matches the .stApp background in theme.py's light palette
+secondaryBackgroundColor = "#FFFFFF"
+textColor                = "#18191A"
+
+[server]
+headless = true

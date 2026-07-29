@@ -48,6 +48,7 @@ from extract_core import (run_extraction, get_pipeline_status,
                           run_extraction_batch, process_batch_results,
                           list_recent_batches, ingest_batch_by_id, validate_merge)
 from cohorts import render_cohorts_tab
+import theme
 
 
 # ── JOB STATUS TRACKING (persistent across logouts) ──────────────────────────
@@ -329,80 +330,12 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("""
-<style>
-    /* ── Global ── */
-    .block-container { max-width: 92vw !important; padding: 0.75rem 2rem 1.5rem !important; }
-    .stApp { background: #f8f9fa; }
-    /* Remove Streamlit's fixed top chrome bar — it was floating over and
-       clipping our own header. We render the Tulle logo/title ourselves. */
-    [data-testid="stHeader"]     { display: none !important; }
-    [data-testid="stDecoration"] { display: none !important; }
-    [data-testid="stToolbar"]    { display: none !important; }
-
-    /* ── Header ── */
-    .tulle-logo { font-size: 22px; font-weight: 700; color: #1B7A4A; letter-spacing: -0.3px; }
-    .tulle-user { font-size: 13px; color: #52555C; }
-    .tulle-rule { border: none; border-top: 2px solid #1B7A4A; margin: 4px 0 16px; }
-
-    /* ── Metric cards ── */
-    .metric-card {
-        border-radius: 10px; padding: 18px 14px;
-        text-align: center; margin-bottom: 8px;
-    }
-    .metric-card .metric-icon { font-size: 20px; margin-bottom: 4px; }
-    .metric-card .metric-value { font-size: 30px; font-weight: 700; margin: 4px 0; }
-    .metric-card .metric-label { font-size: 12px; opacity: 0.75; }
-    .card-green  { background: #d1fae5; color: #065f46; border: 1.5px solid #6ee7b7; }
-    .card-amber  { background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; }
-    .card-purple { background: #ede9fe; color: #4c1d95; border: 1.5px solid #c4b5fd; }
-    .card-red    { background: #fee2e2; color: #991b1b; border: 1.5px solid #fca5a5; }
-    .card-gray   { background: #f3f4f6; color: #374151; border: 1.5px solid #d1d5db; }
-
-    /* ── Log box ── */
-    .log-box {
-        background: #0f172a; color: #e2e8f0;
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        font-size: 12.5px; padding: 16px; border-radius: 8px;
-        max-height: 500px; overflow-y: auto;
-        white-space: pre-wrap; word-break: break-word;
-        border: 1px solid #1e293b;
-    }
-
-    /* ── Run result cards ── */
-    .run-card {
-        background: white; border-radius: 10px; padding: 14px 16px;
-        margin-bottom: 10px; border-left: 4px solid #1B7A4A;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-    }
-    .run-card.failed  { border-left-color: #ef4444; }
-    .run-card.partial { border-left-color: #f59e0b; }
-    .run-card-title   { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
-    .run-card-meta    { font-size: 12px; color: #6b7280; }
-    .run-card-badge   {
-        display: inline-block; font-size: 11px; font-weight: 600;
-        padding: 2px 8px; border-radius: 99px; margin-right: 6px;
-    }
-    .badge-green  { background: #d1fae5; color: #065f46; }
-    .badge-amber  { background: #fef3c7; color: #92400e; }
-    .badge-red    { background: #fee2e2; color: #991b1b; }
-
-    /* ── Buttons ── */
-    .stButton>button {
-        width: 100%; border-radius: 7px; font-weight: 500;
-        transition: all 0.15s;
-    }
-    .stButton>button[kind="primary"] {
-        background: #1B7A4A !important; border-color: #1B7A4A !important;
-    }
-    .stButton>button[kind="primary"]:hover {
-        background: #155f39 !important; border-color: #155f39 !important;
-    }
-
-    /* ── Tables ── */
-    .stDataFrame { border-radius: 8px; overflow: hidden; }
-</style>
-""", unsafe_allow_html=True)
+# Appearance (Light / Sepia / Dark) lives in theme.py. The palette is applied here,
+# before anything renders, so the login screen is themed too. The cookie manager is
+# not built yet at this point, so this first resolve reads session state + ?theme=;
+# theme.py re-resolves with cookies once _cookies exists.
+_theme_mode = theme.resolve_mode()
+theme.inject(_theme_mode)
 
 
 # ── AUTH CONFIGURATION ────────────────────────────────────────────────────────
@@ -533,17 +466,17 @@ if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
             email   = id_info.get("email", "").lower()
             if _ALLOWED_EMAILS and email not in _ALLOWED_EMAILS:
                 st.error(f"Access denied for **{email}**. Ask your admin to add your email to `ALLOWED_EMAILS`.")
-                st.query_params.clear()
+                theme.preserve_on_clear()   # a blanket clear() would drop ?theme= on every sign-in
                 st.stop()
             st.session_state.authenticated  = True
             st.session_state.user_email     = email
             st.session_state.user_name      = id_info.get("name", email)
             st.session_state.user_picture   = id_info.get("picture", "")
-            st.query_params.clear()
+            theme.preserve_on_clear()   # a blanket clear() would drop ?theme= on every sign-in
             st.rerun()
         except Exception as e:
             st.error(f"Google sign-in failed: {e}")
-            st.query_params.clear()
+            theme.preserve_on_clear()   # a blanket clear() would drop ?theme= on every sign-in
             st.stop()
 
 # ── Show login screen if not yet authenticated ────────────────────────────────
@@ -552,7 +485,7 @@ if not st.session_state.authenticated:
     with login_col:
         st.markdown("""
             <div style="text-align:center;padding:60px 0 16px">
-                <div style="font-size:26px;font-weight:700">Tulle Admin Dashboard</div>
+                <div class="tulle-login-title">Tulle Admin Dashboard</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -748,8 +681,17 @@ def _logo_data_uri():
         return ""
 
 
-# Single-row header: [logo + title] ............ [signed in as · Sign out]
-_h_title, _h_user, _h_btn = st.columns([6, 3, 1.2], vertical_alignment="center")
+# Re-resolve the appearance mode now that the cookie manager exists, so a choice
+# made on a previous visit is restored. If it differs from the palette already
+# injected at import time, re-inject — the later <style> block wins by cascade
+# order, so there is no flash-of-wrong-theme beyond the first paint.
+_theme_saved = theme.resolve_mode(_cookies)
+if _theme_saved != _theme_mode:
+    _theme_mode = _theme_saved
+    theme.inject(_theme_mode)
+
+# Single-row header: [logo + title] ..... [signed in as] [appearance] [Sign out]
+_h_title, _h_user, _h_mode, _h_btn = st.columns([5, 2.6, 1.7, 1.2], vertical_alignment="center")
 with _h_title:
     _logo = _logo_data_uri()
     _logo_img = f'<img src="{_logo}" style="height:30px;width:auto" />' if _logo else "🌿"
@@ -758,6 +700,8 @@ with _h_title:
         f'{_logo_img}<span class="tulle-logo">Tulle Admin</span></div>',
         unsafe_allow_html=True,
     )
+with _h_mode:
+    _theme_mode = theme.mode_selector(_theme_mode, _cookies)
 with _h_user:
     st.markdown(
         f'<div class="tulle-user" style="text-align:right">{_user_info}</div>',
@@ -2364,7 +2308,10 @@ to see its exact numbers and pricing PDFs.
                     t = (val - _lo) / (_hi - _lo) if _hi > _lo else 0.0
                     a, b = (234, 244, 239), (245, 201, 138)  # sage-lt → amber
                     c = tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
-                    return f"background-color: rgb({c[0]},{c[1]},{c[2]})"
+                    # Pin the ink too. Styler set only a background, so the value
+                    # inherited the theme's text colour and went white-on-pale for
+                    # dark-mode browsers. These cells are always light, so dark ink.
+                    return f"background-color: rgb({c[0]},{c[1]},{c[2]}); color: #18191A"
 
                 _sty = pivot.style
                 _elementwise = getattr(_sty, "map", None) or _sty.applymap
