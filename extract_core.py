@@ -80,39 +80,51 @@ RERUNNABLE_STATUSES = ('failed', 'batch_submitted', 'skipped_non_venue')
 # so any hallucinated string lands straight in Xano and then in a WeWeb filter
 # dropdown. Don't repeat that for the new categories.
 
-# Shared across Photography + Entertainment. Derived in code from Hours_Included
-# so the model never has to pick the bucket itself.
-COVERAGE_BANDS = ["Up to 6 hours", "8 hours", "10+ hours", "Full day / Unlimited"]
+# PHOTOGRAPHY ONLY as of 2026-07-30. Derived in code from Hours_Included so the model
+# never picks the bucket itself. Entertainment leaves Coverage_Band empty — coverage-time
+# filtering was dropped for that category (product decision, not a data problem).
+# Buckets changed: the old set was ["Up to 6 hours", "8 hours", "10+ hours",
+# "Full day / Unlimited"], which had a dead zone (6 < h < 7 fell into "Up to 6 hours")
+# and a literal "8 hours" bucket that actually held everything from 7 to 10.
+PHOTO_HOUR_BANDS = ["6 Hours or Less", "7-10 Hours", "11+ Hours"]
 
-PHOTO_STYLES = [
-    "Documentary", "Editorial", "Traditional / Classic", "Light & Airy",
-    "Dark & Moody", "Film / Analog", "Fine Art",
-]
+# Photography package kind. Orthogonal to hours — an elopement package can be 4 hours —
+# so this is its own filter facet, not mixed into the hour buckets.
+PHOTO_PACKAGE_TYPES = ["Wedding Day", "Engagement", "Elopement", "Other"]
 
-PHOTO_INCLUSIONS = [
+# What a photography package includes, or offers for a fee. One vocabulary, two slots:
+# included_services (in the price) and addon_services (costs extra). The UI panel is
+# labelled "also offers (for a fee)" and matches either.
+# Changed 2026-07-30: dropped "Travel Included", added "Content Creation".
+PHOTO_OFFERS = [
     "Second Shooter", "Engagement Session", "Album", "Prints",
     "Full Gallery Rights", "Videography", "Drone", "Rehearsal Dinner",
-    "Travel Included",
+    "Content Creation",
 ]
 
+# Act style. Collapsed 2026-07-30 from 7 values to 5: the four "Band - N piece" buckets
+# became a single "Live Band" (performer count already lives in Team_Size, so nothing is
+# lost), "Soloist" was renamed "Solo Performer", and "Other Entertainment" was added for
+# acts that are not musicians — photo-booth-only vendors, caricaturists, dancers.
 ENT_SERVICE_TYPES = [
-    "DJ", "Band - Solo / Duo", "Band - 3 to 5 piece", "Band - 6 to 9 piece",
-    "Band - 10+ / Orchestra", "Ensemble", "Soloist",
+    "DJ", "Solo Performer", "Ensemble", "Live Band", "Other Entertainment",
 ]
 
+# Narrowed 2026-07-30 from 13 values to 5. Dropped: MC / Host, Ceremony Musicians,
+# Cocktail Hour Set, DJ Between Sets, Uplighting, Dance Floor Lighting, Travel Included,
+# Vendor Meals Required. "Special Effects" replaces the old "Cold Sparks / FX".
 ENT_INCLUSIONS = [
-    "MC / Host", "Ceremony Musicians", "Ceremony Sound", "Cocktail Hour Set",
-    "DJ Between Sets", "Uplighting", "Dance Floor Lighting", "Photo Booth",
-    "Cold Sparks / FX", "Monogram / Projection", "Sound & Lighting Provided",
-    "Travel Included", "Vendor Meals Required",
+    "Ceremony Sound", "Photo Booth", "Monogram / Projection",
+    "Sound & Lighting Provided", "Special Effects",
 ]
 
 SERVICE_TYPES_BY_CATEGORY = {
-    CAT_PHOTOGRAPHY:   PHOTO_STYLES,
+    # Photography no longer has a service_type at all — the style facet was dropped
+    # (17% fill, ~8% vendor coverage, and the model was inferring it from vendor names).
     CAT_ENTERTAINMENT: ENT_SERVICE_TYPES,
 }
 INCLUSIONS_BY_CATEGORY = {
-    CAT_PHOTOGRAPHY:   PHOTO_INCLUSIONS,
+    CAT_PHOTOGRAPHY:   PHOTO_OFFERS,
     CAT_ENTERTAINMENT: ENT_INCLUSIONS,
 }
 
@@ -615,8 +627,33 @@ PACKAGES — return ONE ARRAY ENTRY PER NAMED PACKAGE / TIER.
 - If the PDF gives ONLY an hourly rate and no package price, still return one
   entry: set package_price "" and hourly_rate to the rate.
 - Do NOT invent packages that are not in the document.
-- Do NOT return à-la-carte add-on line items as packages. An add-on belongs in
-  included_services only when it is INCLUDED in that package's price.
+- Do NOT return à-la-carte add-on line items as packages. An add-on is not a tier —
+  but DO record it, in addon_services / addons_detail, not in included_services.
+
+INCLUDED vs ADD-ON — this distinction matters, get it right per package:
+- included_services: in that package's price already. The couple pays nothing more.
+- addon_services: the vendor offers it FOR AN EXTRA FEE. Available, not bundled.
+- If a package includes something AND a higher quantity of it costs extra, list it
+  in included_services only.
+- If the PDF shows an add-on menu that applies to every package, list those items in
+  addon_services on every package.
+- Both draw from the SAME vocabulary list. Both default to "".
+
+ADDONS_DETAIL — the à-la-carte menu with prices, as "name:price;name:price",
+using the PDF's own wording for the name and a plain number for the price.
+Example: "Extra hour:500;Second shooter:800;Engagement session:600".
+Include ONLY items with a stated price. "" if the PDF prices no add-ons.
+
+PACKAGE_NOTES — one short factual sentence on what this specific tier gets you,
+only where the PDF says something the structured fields do not capture (deliverable
+counts, album sizes, page counts, coverage caveats). Plain prose, no marketing
+adjectives. "" when the tier is fully described by the other fields.
+
+CURRENCY — the ISO code of the currency the prices are printed in: "USD", "MXN",
+"EUR", "GBP", "CAD", "AUD". Default "USD" when there is no indication otherwise.
+Look for explicit codes, currency words, non-$ symbols, or a non-English price sheet.
+This matters: a foreign price ingested as dollars corrupts the price filter, so say
+so when you see it.
 
 HOURS_INCLUDED:
 - Numeric hours of coverage/performance included in that package's price.
@@ -634,6 +671,11 @@ DESCRIPTION: ONE sentence, ~25 words max, describing the vendor for a couple
 shopping for this service. Plain factual prose. No marketing adjectives, no
 exclamation points, no "perfect"/"stunning"/"dream". Do not repeat the vendor
 name. Return "" if the PDF lacks enough information.
+VENDOR_BLURB: 2-3 sentences, ~60 words max, for a couple deciding whether to
+enquire. Cover what they do, the area they serve, the team, and how the tiers differ
+from one another. Same tone rules as DESCRIPTION — plain factual prose, no marketing
+adjectives. This is a longer companion to DESCRIPTION, not a replacement: do not
+simply restate it. Return "" if the PDF lacks enough information.
 """
 
 PHOTO_PROMPT = """You are an expert at extracting WEDDING PHOTOGRAPHY pricing from PDF price sheets and brochures. Return ONLY a valid JSON object. No markdown, no explanation, just the JSON.
@@ -647,32 +689,39 @@ IF "other": return ONLY this JSON and STOP:
 
 IF "photography": continue with everything below.
 
-STYLE — assign AT MOST ONE, and ONLY if the PDF explicitly describes the shooting style. Most pricing sheets do NOT state a style — returning "" is the correct and expected answer in that case. Never infer style from sample photos or from the vendor's name.
-  "Documentary" — candid, photojournalistic, unposed.
-  "Editorial" — directed, fashion/magazine-styled posing.
-  "Traditional / Classic" — posed portraits, formal family groupings.
-  "Light & Airy" — explicitly describes a bright, pale, airy edit.
-  "Dark & Moody" — explicitly describes a dark, rich, moody edit.
-  "Film / Analog" — shoots film or hybrid film/digital.
-  "Fine Art" — explicitly self-describes as fine art.
+PACKAGE_TYPE — for EACH package, exactly one of:
+  "Wedding Day" — coverage of the wedding day itself. This is the DEFAULT: use it for
+    any normal hours-based wedding tier.
+  "Engagement" — an engagement or couples session sold on its own, not as an inclusion.
+  "Elopement" — an elopement, micro-wedding or courthouse package, usually short and
+    explicitly named as such.
+  "Other" — anything genuinely not the above (boudoir, day-after session, Super 8 reel,
+    print or album product sold alone).
+Judge by what the package IS, not by its length. An elopement package is still
+"Elopement" at 8 hours; a short wedding-day tier is still "Wedding Day" at 4 hours.
 
-INCLUDED_SERVICES — for EACH package, list ALL that are INCLUDED IN THAT PACKAGE'S PRICE, semicolon-separated, choosing ONLY from this list:
+INCLUDED_SERVICES / ADDON_SERVICES — for EACH package, semicolon-separated, choosing ONLY from this list:
   "Second Shooter", "Engagement Session", "Album", "Prints",
   "Full Gallery Rights", "Videography", "Drone", "Rehearsal Dinner",
-  "Travel Included"
+  "Content Creation"
 Rules:
 - "Full Gallery Rights" only when the PDF grants digital files / print release / full resolution images to the couple.
-- If something is offered as a PAID ADD-ON rather than included, do NOT list it.
-- Return "" if nothing in the list is included.
+- "Content Creation" for social-media / short-form vertical video or same-day content deliverables.
+- included_services = in that package's price. addon_services = offered for an extra fee.
+- Return "" for either if nothing in the list applies.
 
 TEAM_SIZE — number of photographers shooting that package (1 for solo, 2 when a second shooter is included). "" if not stated.
 HOURLY_RATE — the vendor's stated hourly rate, if any. "" otherwise.
 OVERTIME_HOURLY_RATE — cost per additional/overtime hour. "" otherwise.
+
+Do NOT return a shooting style / aesthetic (documentary, light and airy, fine art, ...).
+That field was removed: pricing sheets almost never state one, and guessing it from a
+vendor's name or sample images produced wrong data.
 """ + _NON_VENUE_COMMON_RULES + """
 Return EXACTLY this shape:
-{"vendor_type":{"value":"photography","confidence":"high"},"vendor_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"},"packages":[{"package_name":{"value":"","confidence":"high"},"package_price":{"value":"","confidence":"high"},"hours_included":{"value":"","confidence":"high"},"hourly_rate":{"value":"","confidence":"high"},"overtime_hourly_rate":{"value":"","confidence":"high"},"team_size":{"value":"","confidence":"high"},"included_services":{"value":"","confidence":"high"}}]}
+{"vendor_type":{"value":"photography","confidence":"high"},"vendor_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"vendor_blurb":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"},"packages":[{"package_name":{"value":"","confidence":"high"},"package_price":{"value":"","confidence":"high"},"currency":{"value":"USD","confidence":"high"},"package_type":{"value":"Wedding Day","confidence":"high"},"hours_included":{"value":"","confidence":"high"},"hourly_rate":{"value":"","confidence":"high"},"overtime_hourly_rate":{"value":"","confidence":"high"},"team_size":{"value":"","confidence":"high"},"included_services":{"value":"","confidence":"high"},"addon_services":{"value":"","confidence":"high"},"addons_detail":{"value":"","confidence":"high"},"package_notes":{"value":"","confidence":"high"}}]}
 
-service_type: one STYLE value from the list, or "" (expected default).
+package_type: exactly one value from the PACKAGE_TYPE list, on EVERY package.
 packages: one entry per named tier. Never an empty array if any price appears in the PDF."""
 
 
@@ -694,38 +743,38 @@ value for its OWN act, NOT one value for the whole PDF. Also return a top-level
 service_type = the act this sheet is mostly about, used only as a fallback.
 Choose EXACTLY ONE per package from:
   "DJ" — a DJ, with or without an MC.
-  "Band - Solo / Duo" — a live band/act of 1-2 performers.
-  "Band - 3 to 5 piece" — a live band of 3-5 performers. USE THIS when the PDF
-      says "band" but never states a size.
-  "Band - 6 to 9 piece" — a live band of 6-9 performers.
-  "Band - 10+ / Orchestra" — 10 or more performers, showband, or orchestra.
+  "Solo Performer" — a single musician or vocalist (harpist, guitarist, singer,
+      organist, solo pianist, solo cellist).
   "Ensemble" — a small classical/jazz group hired for ceremony or cocktail hour
       (string quartet, trio, jazz combo) rather than a reception dance band.
-  "Soloist" — a single musician or vocalist (harpist, guitarist, singer, organist).
-Count performers, not crew — sound engineers, lighting techs and roadies do not count.
-Band size must match THAT package's performer count: a "9 Piece Band" tier is
-"Band - 6 to 9 piece", not "Band - 10+ / Orchestra", even if the same sheet also
-sells a 12-piece tier.
+  "Live Band" — a live band playing the reception, ANY size from a duo upward.
+      USE THIS whenever the PDF says "band", regardless of stated size.
+  "Other Entertainment" — an act that is not a musical performance: photo-booth-only
+      vendors, caricaturists, dancers, fire performers, magicians.
+Do NOT encode band size here — the performer count goes in TEAM_SIZE. A 4-piece and a
+12-piece tier on the same sheet are both "Live Band".
+A single performer is "Solo Performer", not an "Ensemble" of one.
 For the TOP-LEVEL fallback only: if the vendor offers both a DJ and a band, pick the
-one this PDF's pricing is mostly for; if it prices both equally, pick the band value.
+one this PDF's pricing is mostly for; if it prices both equally, pick "Live Band".
 
-INCLUDED_SERVICES — for EACH package, list ALL that are INCLUDED IN THAT PACKAGE'S PRICE, semicolon-separated, choosing ONLY from this list:
-  "MC / Host", "Ceremony Musicians", "Ceremony Sound", "Cocktail Hour Set",
-  "DJ Between Sets", "Uplighting", "Dance Floor Lighting", "Photo Booth",
-  "Cold Sparks / FX", "Monogram / Projection", "Sound & Lighting Provided",
-  "Travel Included", "Vendor Meals Required"
+INCLUDED_SERVICES / ADDON_SERVICES — for EACH package, semicolon-separated, choosing ONLY from this list:
+  "Ceremony Sound", "Photo Booth", "Monogram / Projection",
+  "Sound & Lighting Provided", "Special Effects"
 Rules:
+- "Ceremony Sound" when the package covers amplification for the ceremony itself.
 - "Sound & Lighting Provided" when the act supplies its own PA / basic stage lighting.
-- "Vendor Meals Required" when the PDF states the couple must provide meals for performers.
-- If something is a PAID ADD-ON rather than included, do NOT list it.
-- Return "" if nothing in the list is included.
+- "Special Effects" for cold sparks, pyro, haze, confetti, dancing-on-a-cloud and similar.
+- included_services = in that package's price. addon_services = offered for an extra fee.
+- Return "" for either if nothing in the list applies.
 
-TEAM_SIZE — number of performers in that package (1 for a solo DJ or soloist). "" if not stated.
+TEAM_SIZE — number of performers in that package (1 for a solo DJ or solo musician).
+Count performers, not crew — sound engineers, lighting techs and roadies do not count.
+"" if not stated.
 HOURLY_RATE — stated hourly rate, if any. "" otherwise.
 OVERTIME_HOURLY_RATE — cost per additional/overtime hour. "" otherwise.
 """ + _NON_VENUE_COMMON_RULES + """
 Return EXACTLY this shape:
-{"vendor_type":{"value":"entertainment","confidence":"high"},"vendor_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"},"packages":[{"package_name":{"value":"","confidence":"high"},"package_price":{"value":"","confidence":"high"},"hours_included":{"value":"","confidence":"high"},"hourly_rate":{"value":"","confidence":"high"},"overtime_hourly_rate":{"value":"","confidence":"high"},"team_size":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"included_services":{"value":"","confidence":"high"}}]}
+{"vendor_type":{"value":"entertainment","confidence":"high"},"vendor_name":{"value":"","confidence":"high"},"pricing_year":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"description":{"value":"","confidence":"high"},"vendor_blurb":{"value":"","confidence":"high"},"contact_information":{"value":"","confidence":"high"},"confidentiality_risk":{"value":"no","confidence":"high"},"confidentiality_evidence":{"value":"","confidence":"high"},"packages":[{"package_name":{"value":"","confidence":"high"},"package_price":{"value":"","confidence":"high"},"currency":{"value":"USD","confidence":"high"},"hours_included":{"value":"","confidence":"high"},"hourly_rate":{"value":"","confidence":"high"},"overtime_hourly_rate":{"value":"","confidence":"high"},"team_size":{"value":"","confidence":"high"},"service_type":{"value":"","confidence":"high"},"included_services":{"value":"","confidence":"high"},"addon_services":{"value":"","confidence":"high"},"addons_detail":{"value":"","confidence":"high"},"package_notes":{"value":"","confidence":"high"}}]}
 
 service_type: exactly one value from the SERVICE_TYPE list, on EVERY package, plus the
 top-level fallback value. Never omit the per-package one.
@@ -1057,20 +1106,21 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
     if not packages:
         return None, " (no packages found)"
 
-    service_vocab   = SERVICE_TYPES_BY_CATEGORY[category]
+    # Photography has no service_type at all as of 2026-07-30 (the style facet was
+    # dropped), so the vocab lookup must not assume every category has one.
+    service_vocab   = SERVICE_TYPES_BY_CATEGORY.get(category, [])
     inclusion_vocab = INCLUSIONS_BY_CATEGORY[category]
-    # PDF-level service_type. Photography treats this as the vendor's STYLE, which is
-    # genuinely one-per-vendor; Entertainment now also returns it per package and this
-    # value is only the fallback. Refined per row in the loop below.
-    service_type = _normalize_vocab(val('service_type'), service_vocab)
-    # Fall back to the vendor's submitted Type_of_Entertainment ONLY when the PDF
-    # states nothing. Extracted always wins, so a PDF saying "9-piece" does not also
-    # get indexed under the unsized "Band - 3 to 5 piece" default and show up under
-    # two mutually exclusive band-size filters.
-    if not service_type and service_type_hint:
+    # PDF-level service_type — Entertainment only, and only as the per-package fallback.
+    service_type = _normalize_vocab(val('service_type'), service_vocab) if service_vocab else ""
+    # Fall back to the vendor's submitted Type_of_Entertainment ONLY when the PDF states
+    # nothing, and only when it maps unambiguously. Extracted always wins.
+    if not service_type and service_type_hint and service_vocab:
         hints = [h for h in service_type_hint if h in service_vocab]
         if len(hints) == 1:
             service_type = hints[0]
+
+    pricing_year = val('pricing_year')
+    uids_used = set()
 
     entries = []
     for p in packages:
@@ -1083,36 +1133,62 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
         # single PDF-level value is wrong by construction. Precedence:
         #   1. the package's own service_type (Entertainment prompt asks for it)
         #   2. the PDF-level value / Type_of_Entertainment seed
-        #   3. band size re-derived from THIS package's team_size
-        #   4. an "Ensemble" of one performer is a Soloist
-        team_raw = val('team_size', p)
+        # The old band-size re-derivation and the Ensemble-of-1 -> Soloist coercion are
+        # both gone: the four "Band - N piece" values collapsed into one "Live Band", so
+        # there is no size to re-derive. Performer count still lives in Team_Size.
         row_service_type = (_normalize_vocab(val('service_type', p), service_vocab)
-                            or service_type)
-        if row_service_type.startswith("Band"):
-            row_service_type = _band_size_from_team(team_raw) or row_service_type
-        elif row_service_type == "Ensemble" and _team_int(team_raw) == 1:
-            row_service_type = "Soloist"
+                            or service_type) if service_vocab else ""
+
+        # Two lists from one vocabulary: what the price includes, and what costs extra.
+        included = _normalize_multi(val('included_services', p), inclusion_vocab)
+        addons   = _normalize_multi(val('addon_services', p),    inclusion_vocab)
+        # Offers_List is the union and is THE ONLY column ep119 filters on — one
+        # `overlaps?` instead of an OR across two columns. Computed here, never asked
+        # of the model. Order-preserving: included first, then add-ons not already in it.
+        inc_parts = [x for x in included.split(';') if x]
+        add_parts = [x for x in addons.split(';') if x]
+        offers = inc_parts + [x for x in add_parts if x not in inc_parts]
+
+        pkg_name = _clean(val('package_name', p))
         entries.append({
             'pdf_id':                   {"value": pdf_id,        "confidence": "high"},
             'vendor_id':                {"value": vendor_id,     "confidence": "high"},
             'vendor_name':              {"value": vendor_name,   "confidence": "high"},
             'vendor_category':          {"value": category,      "confidence": "high"},
-            'pricing_year':             {"value": val('pricing_year'),        "confidence": "high"},
+            'pricing_year':             {"value": pricing_year,               "confidence": "high"},
             'description':              {"value": val('description'),         "confidence": "high"},
+            'vendor_blurb':             {"value": val('vendor_blurb'),        "confidence": "high"},
             'contact_information':      {"value": val('contact_information'), "confidence": "high"},
             'confidentiality_risk':     {"value": val('confidentiality_risk'),     "confidence": "high"},
             'confidentiality_evidence': {"value": val('confidentiality_evidence'), "confidence": "high"},
             'service_type':             {"value": row_service_type, "confidence": "high"},
-            'package_name':             {"value": _clean(val('package_name', p)), "confidence": "high"},
+            'package_uid':              {"value": _package_uid(
+                                             vendor_id, pkg_name, uids_used,
+                                             pricing_year=pricing_year, pdf_id=pdf_id),
+                                         "confidence": "high"},
+            'package_name':             {"value": pkg_name,                       "confidence": "high"},
             'package_price':            {"value": val('package_price', p),        "confidence": "high"},
+            'currency':                 {"value": _clean(val('currency', p)).upper() or "USD",
+                                         "confidence": "high"},
             'hours_included':           {"value": hours,                          "confidence": "high"},
-            'coverage_band':            {"value": _coverage_band(hours),          "confidence": "high"},
+            # Coverage_Band is PHOTOGRAPHY ONLY now — Entertainment dropped coverage-time
+            # filtering, so leave it empty there rather than writing a value nothing reads.
+            'coverage_band':            {"value": (_hours_band(hours)
+                                                   if category == CAT_PHOTOGRAPHY else ""),
+                                         "confidence": "high"},
+            'package_type':             {"value": (_normalize_vocab(
+                                                       val('package_type', p),
+                                                       PHOTO_PACKAGE_TYPES)
+                                                   if category == CAT_PHOTOGRAPHY else ""),
+                                         "confidence": "high"},
             'hourly_rate':              {"value": val('hourly_rate', p),          "confidence": "high"},
             'overtime_hourly_rate':     {"value": val('overtime_hourly_rate', p), "confidence": "high"},
             'team_size':                {"value": val('team_size', p),            "confidence": "high"},
-            'included_services':        {"value": _normalize_multi(
-                                             val('included_services', p), inclusion_vocab),
-                                         "confidence": "high"},
+            'included_services':        {"value": included, "confidence": "high"},
+            'addon_services':           {"value": addons,   "confidence": "high"},
+            'offers_list':              {"value": ";".join(offers), "confidence": "high"},
+            'addons_detail':            {"value": _clean(val('addons_detail', p)),  "confidence": "high"},
+            'package_notes':            {"value": _clean(val('package_notes', p)),  "confidence": "high"},
         })
     if not entries:
         return None, " (no usable package entries)"
@@ -1171,13 +1247,25 @@ def _is_yes(value):
     return str(value or "").strip().lower() in {"yes", "true", "1", "y"}
 
 
+def _split_multi(joined):
+    """";"-joined vocabulary string -> list, for Xano's style="list" text columns.
+
+    _normalize_multi produces the ";"-joined form (kept, because raw consumers and the
+    dashboard already read it). The list columns Included_List / Addons_List /
+    Offers_List are what ep119 filters with `overlaps?`, and Xano needs a real array
+    for that. Empty in -> [] out, never [""], which would otherwise show up as a
+    blank option in a facet tally.
+    """
+    return [p for p in (x.strip() for x in str(joined or '').split(';')) if p]
+
+
 def _normalize_vocab(value, vocab):
     """Snap a model-produced string to an exact member of `vocab`, else "".
 
-    Matching is case/punctuation-insensitive so "light and airy", "Light & Airy"
-    and "light&airy" all resolve to the canonical "Light & Airy". Anything that
-    does not match is DROPPED rather than stored — a hallucinated value would
-    otherwise become a permanent orphan option in a WeWeb filter dropdown.
+    Matching is case/punctuation-insensitive so "documentary", "Documentary" and
+    "DOCUMENTARY" all resolve to the canonical form. Anything that does not match is
+    DROPPED rather than stored — a hallucinated value would otherwise become a
+    permanent orphan option in a WeWeb filter dropdown.
     """
     s = _clean(value)
     if not s:
@@ -1216,13 +1304,21 @@ def _normalize_multi(value, vocab):
     return ";".join(out)
 
 
-def _coverage_band(hours):
-    """Bucket an hours-of-coverage number into one of COVERAGE_BANDS, or "".
+def _hours_band(hours):
+    """Bucket an hours-of-coverage number into one of PHOTO_HOUR_BANDS, or "".
 
     Derived in code rather than asked of the model: the band is what the filter
     dropdown uses, and a model picking its own bucket boundaries is a reliable
     source of off-vocabulary values. "Unlimited"/"full day" text is mapped by
-    the caller to a large hours value before this is called.
+    the caller to a large hours value (16) before this is called, which lands in
+    "11+ Hours".
+
+    PHOTOGRAPHY ONLY — Entertainment leaves Coverage_Band empty as of 2026-07-30.
+
+    Replaces _coverage_band, whose buckets were ["Up to 6 hours", "8 hours",
+    "10+ hours", "Full day / Unlimited"]. Two defects are fixed here: 6 < h < 7
+    used to fall through to "Up to 6 hours", and the bucket literally labelled
+    "8 hours" actually held everything from 7 up to 10.
     """
     n = _to_number(hours)
     if n is None:
@@ -1233,28 +1329,23 @@ def _coverage_band(hours):
         return ""
     if h <= 0:
         return ""
-    if h >= 16:
-        return "Full day / Unlimited"
-    if h >= 10:
-        return "10+ hours"
+    if h >= 11:
+        return "11+ Hours"
     if h >= 7:
-        return "8 hours"
-    return "Up to 6 hours"
+        return "7-10 Hours"
+    return "6 Hours or Less"
 
 
 # Table 11's Type_of_Entertainment is user-submitted at upload time and drifts in
-# spacing ("Band, DJ" vs "Band,DJ"). It is the ONLY DJ/Band signal that exists
-# before any PDF is extracted, so it seeds the Service_Type facet.
+# spacing ("Band, DJ" vs "Band,DJ"). It is the ONLY act signal that exists before
+# any PDF is extracted, so it seeds the Service_Type facet.
+# Remapped 2026-07-30 onto the collapsed 5-value ENT_SERVICE_TYPES.
 _ENT_TYPE_SEED_MAP = {
     "dj": "DJ",
-    "band": "Band - 3 to 5 piece",   # unsized band; a PDF stating a size refines it
+    "band": "Live Band",
     "ensemble": "Ensemble",
-    "soloist": "Soloist",
+    "soloist": "Solo Performer",
 }
-
-
-_BAND_SIZE_BANDS = ((2, "Band - Solo / Duo"), (5, "Band - 3 to 5 piece"),
-                    (9, "Band - 6 to 9 piece"))
 
 
 def _team_int(team_size_raw):
@@ -1268,25 +1359,6 @@ def _team_int(team_size_raw):
         return 0
 
 
-def _band_size_from_team(team_size_raw):
-    """Map a per-package team_size to the canonical band-size ENT_SERVICE_TYPES value,
-    or "" if the size is missing/unparseable.
-
-    service_type is PDF-level in the prompt, but a band that sells 8-, 9- and
-    10-piece tiers in ONE PDF cannot be described by a single value: on 2026-07-28
-    P22 (45 Riots) tagged all three tiers "Band - 10+ / Orchestra", so the 8- and
-    9-piece packages were filed under a band-size filter that excludes them.
-    team_size IS per-package and was correct on every probe row, so derive from it.
-    """
-    n = _team_int(team_size_raw)
-    if n <= 0:
-        return ""
-    for ceiling, label in _BAND_SIZE_BANDS:
-        if n <= ceiling:
-            return label
-    return "Band - 10+ / Orchestra"
-
-
 def _seed_service_types_from_entertainment(raw):
     """Map a raw Type_of_Entertainment cell to canonical ENT_SERVICE_TYPES values."""
     out = []
@@ -1296,6 +1368,49 @@ def _seed_service_types_from_entertainment(raw):
         if canon and canon not in out:
             out.append(canon)
     return out
+
+
+def _package_uid(vendor_id, package_name, used, pricing_year=None, pdf_id=None):
+    """Stable per-package identity: {vendor_id}-{slug(package_name)}, <=60 chars.
+
+    `used` is a mutable set of UIDs already minted for THIS pdf; it both dedupes
+    within a sheet and disambiguates. Uniqueness is enforced here rather than by a
+    unique DB index: a `text Foo?` column in Xano stores "" (verified 2026-07-30),
+    not NULL, so a unique index would collide across all ~24k venue rows. And
+    _post_row returns False without retry on a non-429 4xx, so a rejected insert
+    would vanish silently.
+
+    Caveat: derived from an LLM-produced package_name, so it is stable only as long
+    as the source PDF is. Not a permanent key across prompt revisions — nothing
+    irreversible should be keyed on it.
+    """
+    vid = _clean(str(vendor_id or '')).lower()
+    slug = re.sub(r'[^a-z0-9]+', '-', _clean(str(package_name or '')).lower()).strip('-')
+    if not slug:
+        slug = "package"
+    base = f"{vid}-{slug}"[:60].rstrip('-')
+
+    if base not in used:
+        used.add(base)
+        return base
+
+    # Same vendor + same package name from a DIFFERENT sheet (e.g. a 2025 and a 2026
+    # price list both listing "Gold Package") — genuinely different rows, so qualify
+    # rather than collapse.
+    for suffix in ([f"-{_clean(str(pricing_year))}"] if pricing_year else []) + \
+                  ([f"-p{re.sub(r'[^0-9]', '', str(pdf_id or ''))}"] if pdf_id else []):
+        cand = f"{base}{suffix}"[:60].rstrip('-')
+        if cand and cand not in used:
+            used.add(cand)
+            return cand
+
+    # Two identically-named tiers inside one sheet.
+    for n in range(2, 100):
+        cand = f"{base}-{n}"[:60].rstrip('-')
+        if cand not in used:
+            used.add(cand)
+            return cand
+    return base
 
 
 NUMERIC_FIELDS = {
@@ -1502,6 +1617,11 @@ _MEANINGFUL_PACKAGE_FIELDS = (
     "package_name", "package_price", "hours_included", "hourly_rate",
     "overtime_hourly_rate", "team_size", "service_type", "included_services",
     "description", "pricing_year", "contact_information",
+    # Added 2026-07-30. Deliberately EXCLUDES package_uid and currency: package_uid
+    # always has a value (the slug falls back to "package") and currency defaults to
+    # "USD", so either one would make every row look meaningful and silently disable
+    # this guard — which is what let 448 blank rows be marked "extracted" on 2026-07-28.
+    "package_type", "addon_services", "addons_detail", "package_notes", "vendor_blurb",
 )
 
 
@@ -1628,17 +1748,95 @@ def _post_row(endpoint, payload, attempts=4):
     return False
 
 
-def _post_packages(entries, timestamp):
+def _purge_package_rows(pdf_id, vendor_id, category, log=None):
+    """Delete this PDF's existing P/E package rows from table 36 before re-writing them.
+
+    Table 36 appends with no dedupe, and a 🎯 Specific-PDF-IDs re-run skips the
+    already-extracted check entirely — so re-running a PDF used to silently double its
+    rows (V3961 carried literal duplicate tiers from exactly that). Purging first makes
+    a re-run idempotent and frees the Package_UIDs.
+
+    Uses the existing public CRUD rather than a bespoke purge endpoint: GET by vendor_id,
+    then DELETE by row id. The row selection happens HERE, in Python, so it can be
+    asserted and logged per row — safer than a Xano where-clause, where one wrong/empty
+    parameter could match venue rows.
+
+    Returns (deleted, failed). Never deletes a row that isn't this PDF's, and never
+    a row whose Vendor_Category isn't Photography/Entertainment.
+    """
+    say = log if callable(log) else (lambda m: None)
+    if category not in (CAT_PHOTOGRAPHY, CAT_ENTERTAINMENT):
+        return 0, 0                       # venue rows are not managed here, ever
+    base = os.environ["XANO_SUMMARY_ENDPOINT"]
+
+    try:
+        r = requests.get(base, params={"vendor_id": vendor_id}, timeout=30)
+        if r.status_code != 200:
+            say(f"   ⚠  purge: lookup failed ({r.status_code}) — not purging, "
+                f"re-run may duplicate rows")
+            return 0, 1
+        rows = r.json() or []
+    except Exception as ex:
+        say(f"   ⚠  purge: lookup error {ex} — not purging, re-run may duplicate rows")
+        return 0, 1
+
+    if not isinstance(rows, list):
+        say("   ⚠  purge: unexpected lookup shape — not purging")
+        return 0, 1
+
+    doomed = [
+        row for row in rows
+        if isinstance(row, dict)
+        and str(row.get("PDF_ID") or "").strip() == str(pdf_id).strip()
+        and str(row.get("Vendor_Category") or "").strip() in (CAT_PHOTOGRAPHY,
+                                                             CAT_ENTERTAINMENT)
+        and row.get("id")
+    ]
+    if not doomed:
+        return 0, 0
+
+    deleted = failed = 0
+    for row in doomed:
+        try:
+            d = requests.delete(f"{base}/{row['id']}", timeout=30)
+            if d.status_code in (200, 201, 204):
+                deleted += 1
+            else:
+                failed += 1
+                say(f"   ⚠  purge: delete {row['id']} failed ({d.status_code})")
+        except Exception as ex:
+            failed += 1
+            say(f"   ⚠  purge: delete {row['id']} error {ex}")
+    if deleted:
+        say(f"   🧹 purged {deleted} existing {category} row(s) for {pdf_id}")
+    return deleted, failed
+
+
+def _post_packages(entries, timestamp, log=None):
     """POST Photography / Entertainment package rows to table 36 (one row per tier).
 
-    Same endpoint and same append semantics as _post_summary — table 36 is the
-    single source of truth for every category, discriminated by Vendor_Category.
-    The venue-only columns are simply left unset, so fn21's coalesce resolves
-    each row to the package fields. Table 37 (venue_pricing) is NOT written:
-    the package tiers already are the pricing grid for these categories.
+    Same endpoint as _post_summary — table 36 is the single source of truth for every
+    category, discriminated by Vendor_Category. The venue-only columns are left unset.
+    Table 37 (venue_pricing) is NOT written: the package tiers already are the pricing
+    grid for these categories.
+
+    Purges this PDF's prior package rows first (see _purge_package_rows), so the append
+    semantics no longer duplicate on re-run.
     """
     summary_endpoint = os.environ["XANO_SUMMARY_ENDPOINT"]
+    say = log if callable(log) else (lambda m: None)
     ok = fail = 0
+
+    # Purge once per (pdf, category) before the first write.
+    first = next((e for e in entries or [] if isinstance(e, dict)), None)
+    if first:
+        _purge_package_rows(
+            first.get('pdf_id', {}).get('value', ''),
+            first.get('vendor_id', {}).get('value', ''),
+            first.get('vendor_category', {}).get('value', ''),
+            log=say)
+
+    seen_uids = set()
     for e in entries:
         def v(key):
             raw = _clean(e.get(key, {}).get('value', ''))
@@ -1650,6 +1848,38 @@ def _post_packages(entries, timestamp):
             fail += 1          # counted as a failure so status can never be "extracted"
             continue
 
+        # Writer-side uniqueness. _package_uid already dedupes within a sheet; this is
+        # the backstop that guarantees it, since no unique DB index can (a `text Foo?`
+        # column stores "" not NULL, so an index would collide across ~24k venue rows).
+        uid = v('package_uid')
+        if uid and uid in seen_uids:
+            say(f"   ⚠  duplicate Package_UID {uid} collapsed (not written)")
+            continue
+        if uid:
+            seen_uids.add(uid)
+
+        # Currency guard. P4511/P4515 each wrote 234375 for a Spanish-language sheet —
+        # almost certainly MXN (~$13.7k USD) ingested as dollars. There is no FX
+        # conversion here on purpose: a wrong number is worse than a missing one, so a
+        # non-USD row keeps every other field but surrenders Package_Price, and the raw
+        # amount is preserved as prose so nothing is lost.
+        #
+        # Package_Price lands as 0, not NULL — the column is int/nullable:false/default:0,
+        # so Xano coerces None (verified 2026-07-30). That is the right outcome anyway:
+        # 0 already means "no usable stated price" everywhere else in the stack, and both
+        # readers skip it (ep119 filters Package_Price >= 1; fn21 only pushes values > 0).
+        currency = (v('currency') or "USD").upper()
+        price = v('package_price')
+        notes = v('package_notes')
+        if currency != "USD":
+            raw_price = _clean(e.get('package_price', {}).get('value', ''))
+            if raw_price:
+                stamp = f"Price as printed: {raw_price} {currency}."
+                notes = f"{notes} {stamp}".strip() if notes else stamp
+            say(f"   ⚠  non-USD sheet ({currency}) — Package_Price suppressed for "
+                f"{v('package_name') or 'unnamed tier'}")
+            price = None
+
         payload = {
             "PDF_ID":               e.get('pdf_id',        {}).get('value', ''),
             "VENDOR_ID":            e.get('vendor_id',     {}).get('value', ''),
@@ -1657,15 +1887,26 @@ def _post_packages(entries, timestamp):
             "Vendor_Category":      e.get('vendor_category', {}).get('value', ''),
             "Pricing_Year":         v('pricing_year'),
             "Description":          v('description'),
+            "Vendor_Blurb":         v('vendor_blurb'),
+            "Package_UID":          uid,
             "Package_Name":         v('package_name'),
-            "Package_Price":        v('package_price'),
+            "Package_Price":        price,
+            "Currency":             currency,
             "Hours_Included":       v('hours_included'),
             "Coverage_Band":        v('coverage_band'),
+            "Package_Type":         v('package_type'),
             "Hourly_Rate":          v('hourly_rate'),
             "Overtime_Hourly_Rate": v('overtime_hourly_rate'),
             "Team_Size":            v('team_size'),
             "Service_Type":         v('service_type'),
+            # Both the ";"-joined text (what raw consumers already read) and the
+            # list-style columns ep119 filters on.
             "Included_Services":    v('included_services'),
+            "Included_List":        _split_multi(v('included_services')),
+            "Addons_List":          _split_multi(v('addon_services')),
+            "Offers_List":          _split_multi(v('offers_list')),
+            "Addons_Detail":        v('addons_detail'),
+            "Package_Notes":        notes,
             "Contact_Information":  _to_vendor_email(
                 e.get('contact_information', {}).get('value', '')),
             "confidentiality_flag": _is_yes(
@@ -2544,7 +2785,10 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
                                     "status": "FAILED", "reason": blank,
                                     "cost_usd": row_cost, "category": category})
                 continue
-            ok_k, fail_k = _post_packages(entries, timestamp)
+            pkg_notes = []
+            ok_k, fail_k = _post_packages(entries, timestamp, log=pkg_notes.append)
+            for _m in pkg_notes:
+                yield from emit(_m)
             status = "extracted" if (ok_k and not fail_k) else ("partial" if ok_k else "failed")
             _update_pdf_status(
                 xano_id, status, cost_usd=row_cost,
@@ -3283,7 +3527,10 @@ def run_extraction(
                 yield from emit(f"  📝 Status writeback: {patch_result}")
                 _maybe_post_progress()
                 continue
-            ok_k, fail_k = _post_packages(entries, timestamp)
+            pkg_notes = []
+            ok_k, fail_k = _post_packages(entries, timestamp, log=pkg_notes.append)
+            for _m in pkg_notes:
+                yield from emit(_m)
             status = "extracted" if (ok_k and not fail_k) else ("partial" if ok_k else "failed")
             patch_result = _update_pdf_status(
                 xano_id, status, cost_usd=run_cost,
