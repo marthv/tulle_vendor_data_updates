@@ -909,6 +909,13 @@ def _downsample_pdf(pdf_bytes, target_b64_mb=25):
 _MODEL_SONNET = "claude-sonnet-4-6"
 _MODEL_HAIKU  = "claude-haiku-4-5-20251001"
 
+# Output ceiling for the Photography/Entertainment package prompt, shared by the
+# sequential and batch paths so they cannot drift. Raised from 8000 on 2026-07-31:
+# P2088 (50 packages) came back `parse_failed (truncated?)` because each package now
+# carries roughly twice the fields it did before. Output tokens bill as used, not as
+# reserved, so this is free on ordinary sheets.
+_PACKAGE_MAX_TOKENS = 16000
+
 
 def _call_claude_messages(client, content_blocks, system_prompt, max_tokens=6000,
                           model=None):
@@ -1067,7 +1074,14 @@ def _extract_packages(client, pdf_b64, pdf_id, vendor_id, vendor_name, category,
         f'PDF_ID="{pdf_id}", Vendor_ID="{vendor_id}", vendor="{vendor_name}". '
         f'First confirm vendor_type is "{expected}". If it is not, return only the '
         f'2-field short-circuit. Return only JSON.',
-        max_tokens=8000
+        # 16000, not 8000: the 2026-07-30 run lost P2088 (Natalie + Kate Studio, 50
+        # packages) to `parse_failed (truncated?)`. Each package now carries roughly
+        # twice the fields it used to — addon_services, addons_detail, package_notes,
+        # package_type, currency — so a large sheet overruns 8000 output tokens and the
+        # JSON is cut mid-object. Matches MERGED_PROMPT's ceiling. Only large sheets get
+        # near it, so this costs nothing on a typical PDF (output tokens are billed as
+        # used, not as reserved).
+        max_tokens=_PACKAGE_MAX_TOKENS
     )
     entries, extra_note = _build_package_entries(
         parsed, pdf_id, vendor_id, vendor_name, category, service_type_hint)
@@ -2280,7 +2294,10 @@ def _build_merged_batch_request(file_id, pdf_id, vendor_id, venue_name,
         return [{
             "custom_id": f"{pdf_id}__k",
             "params": {
-                "model": _MODEL_SONNET, "max_tokens": 8000,
+                # Must match the sequential path (_extract_packages) or a large sheet
+                # truncates on batch but not on sync — the exact drift this shared
+                # constant exists to prevent.
+                "model": _MODEL_SONNET, "max_tokens": _PACKAGE_MAX_TOKENS,
                 "system": PROMPT_BY_CATEGORY[category],
                 "messages": [{"role": "user", "content": [
                     {"type": "document", "source": {"type": "file", "file_id": file_id}},
