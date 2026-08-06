@@ -125,6 +125,27 @@ In Railway project `tulle admin dash`, create a service from
 Watch that service's logs; re-run it if it dies — the `only_pending` filter makes
 that safe.
 
+> **Two Railway traps, both hit on 2026-08-06.**
+>
+> 1. **A redeploy does not re-resolve the config file.** Setting a service's Config
+>    File to `/railway.ingest.toml` and then hitting Redeploy keeps using the
+>    *previous* deployment's resolved config — which, for a service created without
+>    one, is the repo-root `railway.toml`, i.e. Streamlit. The service boots the
+>    dashboard instead of the ingest and reports SUCCESS while doing so. A
+>    service-level Start Command does **not** override this either: the config file
+>    wins. Only a **git-triggered** deploy (a push to `main`) re-resolves it. So:
+>    set the Config File, then push — don't redeploy.
+>
+> 2. **A push to `main` used to auto-deploy `extraction-batch`, which submits a new
+>    paid Anthropic batch on every deploy.** It is armed with `BATCH_*` / `FORCE_ALL`
+>    env vars left over from a past run, so it re-fires them on any deploy. A docs-only
+>    commit triggered it; it aborted only because Xano happened to be down that minute
+>    ("Nothing was uploaded, no credits spent"). It is now disarmed via watch patterns
+>    (`_manual_deploy_only_do_not_match/**`), so it deploys **only** when triggered
+>    manually from the Railway UI. Its env vars are untouched — clear the watch
+>    pattern to restore auto-deploy, but clear the `BATCH_*`/`FORCE_ALL` vars first
+>    unless you want a run on every push.
+
 ### Option B — the dashboard
 
 Pipeline tab → **🔧 Ingest a batch by ID (recovery)** → paste the batch id →
