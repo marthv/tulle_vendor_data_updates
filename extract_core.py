@@ -3058,13 +3058,25 @@ def poll_and_ingest_batches(log=print):
     return summary
 
 
-def ingest_batch_by_id(batch_id, wait_secs=0):
+def ingest_batch_by_id(batch_id, wait_secs=0, only_pending=True):
     """Recovery ingest using ONLY a batch id — no saved job record / pdf_map needed.
     Reconstructs the pdf_map from the batch's OWN result custom_ids (each is
     "<PDF_ID>__<pass>") joined to wptp_pdfs for vendor_id / venue_name / xano_id, then
     runs the normal ingest. This rescues a batch whose job record was lost (e.g. a
     Xano outage at submit time, where the dashboard never persisted batch_id+pdf_map).
-    Yields log strings; final item is the process_batch_results contract dict."""
+    Yields log strings; final item is the process_batch_results contract dict.
+
+    only_pending=True (default) restricts the ingest to PDFs whose wptp_pdfs row is
+    STILL 'batch_submitted' — i.e. the ones this batch never finished writing. This
+    makes a half-finished ingest resumable: process_batch_results has no per-row
+    "already written" guard, and table 36 appends venue rows with no dedupe (only P/E
+    rows are purge-then-rewrite, see _purge_package_rows), so re-ingesting a PDF that
+    already landed silently duplicates its venue row. That is exactly what happens
+    when a long ingest dies partway — as on 2026-08-06, when a 3,174-PDF batch wrote
+    984 rows and left 2,190 stuck in 'batch_submitted'.
+
+    Pass only_pending=False to force a full re-ingest of every PDF in the batch
+    (accepting duplicate venue rows) — e.g. to redo an ingest known to be bad."""
     log = []
 
     def emit(line):
@@ -3119,11 +3131,17 @@ def ingest_batch_by_id(batch_id, wait_secs=0):
         return
 
     timestamp = datetime.now(timezone.utc).isoformat()
-    pdf_map, missing = {}, []
+    pdf_map, missing, already = {}, [], []
     for pid in pdf_ids:
         r = by_pdf.get(pid)
         if not r:
             missing.append(pid)
+            continue
+        # Resume guard: a row that has already left 'batch_submitted' was written by
+        # an earlier (possibly interrupted) ingest of this same batch. Re-writing it
+        # would append a duplicate venue row to table 36, so skip it by default.
+        if only_pending and str(r.get('extraction_status') or '').strip().lower() != 'batch_submitted':
+            already.append(pid)
             continue
         _vid = str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip()
         pdf_map[pid] = {
@@ -3135,11 +3153,24 @@ def ingest_batch_by_id(batch_id, wait_secs=0):
         }
     if missing:
         yield from emit(f"⚠ {len(missing)} PDF id(s) not in wptp_pdfs: {', '.join(sorted(missing)[:10])}")
+    if already:
+        yield from emit(f"⏭  {len(already)} PDF(s) already ingested (no longer 'batch_submitted') — skipping "
+                        f"so their table-36 rows aren't duplicated. Pass only_pending=False to force.")
     if not pdf_map:
+        if already:
+            # Everything mappable in this batch has already landed. That is a
+            # SUCCESS (the batch is fully ingested), not a mapping failure — even
+            # if a few ids were unresolvable, which `missing` already reported.
+            yield from emit("Nothing left to ingest — every PDF in this batch has already been written.")
+            yield {"batch_done": True, "ok": 0, "partial": 0, "failed": 0,
+                   "skipped": len(already), "cost_usd": 0.0, "results": [], "log": log}
+            return
         yield from emit("No PDFs could be mapped to vendors — aborting.")
         yield {"batch_done": False, "error": "no_mapping"}
         return
-    yield from emit(f"Mapped {len(pdf_map)} PDFs — ingesting to Xano…")
+    yield from emit(f"Mapped {len(pdf_map)} PDFs to ingest"
+                    + (f" ({len(already)} already done, skipped)" if already else "")
+                    + " — ingesting to Xano…")
 
     # 3) Hand off to the normal ingest path.
     yield from process_batch_results(batch_id, pdf_map, wait_secs=wait_secs)

@@ -1667,14 +1667,20 @@ with tab5:
             st.caption(
                 "Paste a batch ID from the **Anthropic batch jobs** panel above. "
                 "Works even if the batch never appeared in Job History — it rebuilds "
-                "the vendor map from the batch results and posts them to Xano."
+                "the vendor map from the batch results and posts them to Xano. "
+                "Safe to re-run on a batch whose ingest died partway: by default it "
+                "only writes PDFs still in `batch_submitted`."
             )
             _rec_id = st.text_input("Batch ID", key="pl_recover_id",
                                     placeholder="msgbatch_…")
+            _rec_all = st.checkbox(
+                "Force re-ingest of PDFs already written (appends duplicate venue rows)",
+                key="pl_recover_all", value=False)
             if st.button("⤓ Ingest this batch ID", key="pl_recover_btn") and _rec_id.strip():
                 rec_lines = []; rec_result = None
                 rec_ph = st.empty()
-                for item in ingest_batch_by_id(_rec_id.strip(), wait_secs=0):
+                for item in ingest_batch_by_id(_rec_id.strip(), wait_secs=0,
+                                               only_pending=not _rec_all):
                     if isinstance(item, dict):
                         rec_result = item
                         break

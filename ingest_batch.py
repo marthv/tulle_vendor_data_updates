@@ -3,11 +3,15 @@
 ingest_batch.py — ingest one Batch API extraction result into Xano, by batch id.
 
 Usage:
-    python ingest_batch.py <batch_id> [--wait SECONDS]
+    python ingest_batch.py <batch_id> [--wait SECONDS] [--all]
 
     <batch_id>  the id printed by `run_chunk.py --batch` (or the dashboard)
     --wait N    poll up to N seconds for the batch to reach "ended" before
                 ingesting (default 0 = ingest now, fail if still processing)
+    --all       re-ingest EVERY PDF in the batch, including ones already written.
+                Off by default: normally only PDFs still in 'batch_submitted' are
+                ingested, so an interrupted ingest can be resumed without appending
+                duplicate venue rows to table 36.
 
 WHY THIS EXISTS
     Message Batches are scoped to the workspace of the API key that submitted them.
@@ -42,6 +46,10 @@ def main():
         i = argv.index("--wait")
         if i + 1 < len(argv):
             wait_secs = int(argv[i + 1])
+    only_pending = "--all" not in argv
+    if not only_pending:
+        print("--all: re-ingesting every PDF in the batch, including already-written "
+              "ones. This APPENDS duplicate venue rows to table 36.", file=sys.stderr)
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("ANTHROPIC_API_KEY is not set. It must be the SAME key that submitted "
@@ -49,7 +57,7 @@ def main():
         sys.exit(1)
 
     final = None
-    for item in ingest_batch_by_id(batch_id, wait_secs=wait_secs):
+    for item in ingest_batch_by_id(batch_id, wait_secs=wait_secs, only_pending=only_pending):
         if isinstance(item, dict):
             final = item
         else:
