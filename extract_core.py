@@ -89,8 +89,17 @@ RERUNNABLE_STATUSES = ('failed', 'batch_submitted', 'skipped_non_venue')
 PHOTO_HOUR_BANDS = ["6 Hours or Less", "7-10 Hours", "11+ Hours"]
 
 # Photography package kind. Orthogonal to hours — an elopement package can be 4 hours —
-# so this is its own filter facet, not mixed into the hour buckets.
+# so this stays its own column, and Timing_List (below) is what merges the two for the UI.
 PHOTO_PACKAGE_TYPES = ["Wedding Day", "Engagement", "Elopement", "Other"]
+
+# The subset of PHOTO_PACKAGE_TYPES that also appears in the WeWeb "Package Timing" panel
+# alongside the hour bands, and therefore gets copied into Timing_List. "Wedding Day" and
+# "Other" are deliberately excluded: the panel offers no such checkbox, so tagging them
+# would inflate the ep119 facet tally with options the UI can never present.
+# Added 2026-08-02 — before this, Engagement/Elopement were bound to the same WeWeb
+# variable as the hour bands but only ever existed in Package_Type, so both checkboxes
+# filtered a column that structurally could not contain them and always returned zero.
+_TIMING_PACKAGE_TYPES = ("Engagement", "Elopement")
 
 # What a photography package includes, or offers for a fee. One vocabulary, two slots:
 # included_services (in the price) and addon_services (costs extra). The UI panel is
@@ -1163,6 +1172,23 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
         add_parts = [x for x in addons.split(';') if x]
         offers = inc_parts + [x for x in add_parts if x not in inc_parts]
 
+        # Coverage_Band is PHOTOGRAPHY ONLY now — Entertainment dropped coverage-time
+        # filtering, so leave it empty there rather than writing a value nothing reads.
+        row_band = _hours_band(hours) if category == CAT_PHOTOGRAPHY else ""
+        row_pkg_type = (_normalize_vocab(val('package_type', p), PHOTO_PACKAGE_TYPES)
+                        if category == CAT_PHOTOGRAPHY else "")
+
+        # Timing_List is what ep119's pricing_models filters (v16+). The WeWeb "Package
+        # Timing" panel mixes hour bands with Engagement/Elopement in ONE checkbox group,
+        # but those live in two orthogonal columns — so a package carries BOTH tags and a
+        # 5-hour elopement matches "Elopement" AND "6 Hours or Less". Wedding Day / Other
+        # are never tagged: neither appears in the panel, and tagging them would make the
+        # facet counts claim options the UI cannot offer. Derived here from values already
+        # computed above, never asked of the model.
+        timing = ([row_pkg_type] if row_pkg_type in _TIMING_PACKAGE_TYPES else [])
+        if row_band:
+            timing.append(row_band)
+
         pkg_name = _clean(val('package_name', p))
         entries.append({
             'pdf_id':                   {"value": pdf_id,        "confidence": "high"},
@@ -1185,16 +1211,9 @@ def _build_package_entries(parsed, pdf_id, vendor_id, vendor_name, category,
             'currency':                 {"value": _clean(val('currency', p)).upper() or "USD",
                                          "confidence": "high"},
             'hours_included':           {"value": hours,                          "confidence": "high"},
-            # Coverage_Band is PHOTOGRAPHY ONLY now — Entertainment dropped coverage-time
-            # filtering, so leave it empty there rather than writing a value nothing reads.
-            'coverage_band':            {"value": (_hours_band(hours)
-                                                   if category == CAT_PHOTOGRAPHY else ""),
-                                         "confidence": "high"},
-            'package_type':             {"value": (_normalize_vocab(
-                                                       val('package_type', p),
-                                                       PHOTO_PACKAGE_TYPES)
-                                                   if category == CAT_PHOTOGRAPHY else ""),
-                                         "confidence": "high"},
+            'coverage_band':            {"value": row_band,     "confidence": "high"},
+            'package_type':             {"value": row_pkg_type, "confidence": "high"},
+            'timing_list':              {"value": ";".join(timing), "confidence": "high"},
             'hourly_rate':              {"value": val('hourly_rate', p),          "confidence": "high"},
             'overtime_hourly_rate':     {"value": val('overtime_hourly_rate', p), "confidence": "high"},
             'team_size':                {"value": val('team_size', p),            "confidence": "high"},
@@ -1343,11 +1362,16 @@ def _hours_band(hours):
         return ""
     if h <= 0:
         return ""
+    # Indexed off PHOTO_HOUR_BANDS rather than repeating the literals: until 2026-08-02
+    # the constant was declared and never referenced, so editing it changed nothing and
+    # the real buckets lived only here. Xano's Timing_List backfill mirrors these same
+    # thresholds — keep the two in step.
+    small, mid, large = PHOTO_HOUR_BANDS
     if h >= 11:
-        return "11+ Hours"
+        return large
     if h >= 7:
-        return "7-10 Hours"
-    return "6 Hours or Less"
+        return mid
+    return small
 
 
 # Table 11's Type_of_Entertainment is user-submitted at upload time and drifts in
@@ -1636,6 +1660,10 @@ _MEANINGFUL_PACKAGE_FIELDS = (
     # "USD", so either one would make every row look meaningful and silently disable
     # this guard — which is what let 448 blank rows be marked "extracted" on 2026-07-28.
     "package_type", "addon_services", "addons_detail", "package_notes", "vendor_blurb",
+    # timing_list is EXCLUDED for the same reason (added 2026-08-02): it is derived from
+    # coverage_band + package_type, both already listed above, so it can never be the only
+    # signal that a row is meaningful — but it CAN be non-empty on an otherwise blank row
+    # whenever hours_included alone parsed, which would defeat the guard.
 )
 
 
@@ -1909,6 +1937,9 @@ def _post_packages(entries, timestamp, log=None):
             "Hours_Included":       v('hours_included'),
             "Coverage_Band":        v('coverage_band'),
             "Package_Type":         v('package_type'),
+            # Timing_List merges the two above into the single facet the WeWeb "Package
+            # Timing" panel filters on. See _TIMING_PACKAGE_TYPES.
+            "Timing_List":          _split_multi(v('timing_list')),
             "Hourly_Rate":          v('hourly_rate'),
             "Overtime_Hourly_Rate": v('overtime_hourly_rate'),
             "Team_Size":            v('team_size'),
