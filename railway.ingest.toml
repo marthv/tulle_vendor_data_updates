@@ -1,0 +1,14 @@
+# One-shot batch ingest service. Point a Railway service's Config File at this,
+# set INGEST_BATCH_ID to the msgbatch_… id, and redeploy to run it.
+#
+# ANTHROPIC_API_KEY must be the key that SUBMITTED the batch — Message Batches are
+# workspace-scoped, and a different key reports the batch as "not found". Reference
+# the dashboard's key rather than copying it:
+#     ANTHROPIC_API_KEY = ${{Tulle Admin Dash.ANTHROPIC_API_KEY}}
+#
+# Safe to redeploy repeatedly: ingest_batch.py only writes PDFs still sitting in
+# 'batch_submitted', so a run that dies partway is resumed, not duplicated.
+# See BATCH_RECOVERY.md.
+[deploy]
+startCommand = "python ingest_batch.py $INGEST_BATCH_ID"
+restartPolicyType = "NEVER"

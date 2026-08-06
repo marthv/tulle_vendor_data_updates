@@ -1,0 +1,18 @@
+# Auto-ingest cron. Point a Railway service's Config File at this to run
+# batch_worker.py every 15 minutes: it polls Anthropic for ENDED extraction batches
+# and ingests them into Xano, so results land without anyone clicking through the
+# dashboard. Without this, every batch needs a human — which is how 2,190 PDFs sat
+# stranded in 'batch_submitted' on 2026-08-06.
+#
+# ANTHROPIC_API_KEY must be the key batches are submitted with (the dashboard's):
+#     ANTHROPIC_API_KEY = ${{Tulle Admin Dash.ANTHROPIC_API_KEY}}
+#
+# Idempotent: _batch_already_ingested skips any batch whose PDFs have left
+# 'batch_submitted', and fails CLOSED when Xano reads fail (skip and retry next
+# cycle) rather than risking a duplicate ingest. Note that guard is all-or-nothing
+# per batch — a PARTIALLY ingested batch may be skipped, so those still need the
+# manual recovery path in BATCH_RECOVERY.md §3.
+[deploy]
+startCommand = "python batch_worker.py"
+restartPolicyType = "NEVER"
+cronSchedule = "*/15 * * * *"
