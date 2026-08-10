@@ -319,6 +319,14 @@ def render_roadmap_orders_tab(xano_base):
                                 help="Paste a shareable link to the finished PDF. "
                                      "Direct file upload needs a Xano storage endpoint "
                                      "we haven't built.")
+        pdf_url = pdf_url.strip()
+        # The delivery email is nothing but a link to this URL, and it can only ever be sent
+        # once (delivered_at is stamped on the first transition). So a bad URL here means the
+        # customer gets a dead button and no way to re-send. Xano enforces non-empty; the
+        # http check lives here because XanoScript has no starts_with/strpos filter.
+        pdf_url_ok = pdf_url.lower().startswith(("http://", "https://"))
+        if pdf_url and not pdf_url_ok:
+            st.warning("That doesn't look like a link — it needs to start with https://")
         notes = st.text_area("Internal notes (not shown to the customer)",
                              value=row.get("admin_notes") or "", key=f"ro_notes_{sel}")
 
@@ -331,11 +339,12 @@ def render_roadmap_orders_tab(xano_base):
             else:
                 st.error(f"Update failed: {res}")
 
-        deliver_disabled = not pdf_url.strip()
+        deliver_disabled = not pdf_url_ok
         if b[1].button("✅ Mark delivered", key=f"ro_del_{sel}",
                        disabled=deliver_disabled,
-                       help="Add the PDF URL first" if deliver_disabled else
-                            "Stamps delivered_at and fires roadmap_delivered"):
+                       help="Add a valid PDF link first — the delivery email is just this link, "
+                            "and it can only be sent once" if deliver_disabled else
+                            "Emails the customer, stamps delivered_at, fires roadmap_delivered"):
             ok, res = _update_order(xano_base, sel, status="delivered",
                                     pdf_url=pdf_url, admin_notes=notes)
             if ok:
