@@ -302,7 +302,21 @@ assume a grid layout exists.
   * Return "" if only one pricing tier exists.
   * List each month individually, comma-separated. No ranges.
 
-- F&B Spend Min Type: "Per Person Min" or "Overall Min Spend".
+- F&B Spend Min Type: describes THE NUMBER YOU PUT IN "F&B Min Highest
+  Saturday" — not how the venue quotes its menu. Two values only:
+  * "Per Person Min" — the minimum is itself a per-head rate, i.e. it
+    gets multiplied by the guest count.
+  * "Overall Min Spend" — the minimum is one whole-wedding total.
+  A per-person MENU PRICE combined with a guest minimum is an
+  "Overall Min Spend". "$240pp with a 100 guest minimum" means the
+  binding floor is 240 x 100 = 24,000 TOTAL, so F&B Min = 24000 and
+  the type is "Overall Min Spend" — the 240 belongs in Per Person F&B.
+  Typing that as "Per Person Min" makes downstream math multiply the
+  24,000 by the guest count a second time.
+  Sanity check before answering: if your F&B Min divided by your
+  Per Person F&B is roughly the guest minimum, it is an Overall Min
+  Spend. A genuine "Per Person Min" is a small number — a per-head
+  figure, rarely above a few hundred dollars.
   Return "" if no F&B minimum applies.
 
 - Base Menu Per Person: The lowest-tier plated/buffet food package
@@ -445,7 +459,13 @@ OUTPUT FIELD RULES:
 - Meal_Type: "Dinner" unless explicitly stated. Ignore breakfast.
 - Venue_Fee / FB_Min / Per_Person_FB: "Not listed" if absent.
 - Venue_Fee_Type: "Flat" or "Per Person"
-- FB_Min_Type: "Overall Min Spend" or "Per Person Min"
+- FB_Min_Type: describes the number in FB_Min, not how the menu is quoted.
+  "Per Person Min" = the minimum is a per-head rate (multiplied by guests).
+  "Overall Min Spend" = the minimum is one whole-wedding total.
+  A per-person menu price plus a guest minimum is an Overall Min Spend:
+  "$240pp, 100 guest minimum" -> FB_Min 24000, "Overall Min Spend",
+  Per_Person_FB 240. If FB_Min / Per_Person_FB is about the guest minimum,
+  it is an Overall Min Spend.
 - Admin_Fee_Pct / Tax_Pct / Service_Fee_Pct: number only. "Not listed" if absent.
 - All repeated fields (fees, ceremony, admin): same value on every row.
 - Use "Not listed" for any absent value.
@@ -507,7 +527,13 @@ FIELDS TO EXTRACT per row:
 - Venue_Fee: room rental fee if applicable
 - Venue_Fee_Type: "Flat" or "Per Person"
 - FB_Min: food & beverage minimum spend if applicable
-- FB_Min_Type: "Overall Min Spend" or "Per Person Min"
+- FB_Min_Type: describes the number in FB_Min, not how the menu is quoted.
+  "Per Person Min" = the minimum is a per-head rate (multiplied by guests).
+  "Overall Min Spend" = the minimum is one whole-wedding total.
+  A per-person menu price plus a guest minimum is an Overall Min Spend:
+  "$240pp, 100 guest minimum" -> FB_Min 24000, "Overall Min Spend",
+  Per_Person_FB 240. If FB_Min / Per_Person_FB is about the guest minimum,
+  it is an Overall Min Spend.
 - Per_Person_FB: combined per-person food + bar cost if applicable
 - Base_Menu_Per_Person: lowest-tier food package per person
 - Base_Bar_Per_Person: standard open bar per person
@@ -1756,11 +1782,61 @@ def _post_summary(entries, classification, timestamp):
             "confidentiality_flag":                                    _is_yes(e.get("confidentiality_risk", {}).get("value", "")),
             "last_extracted_at":                                       timestamp[:10],
         }
+        _fix_fb_min_type(payload)
         if _post_row(summary_endpoint, payload):
             ok += 1
         else:
             fail += 1
     return ok, fail
+
+
+# A per-head food minimum above this is not a per-head figure. National median is
+# $160/head and NY p75 is $285 (Xano table 63), so this sits ~7x above the priciest
+# real market. Kept identical to the PP_CEILING in fn54 rebuild_venue_spaces.
+_FB_PER_HEAD_CEILING = 2000
+
+
+def _fix_fb_min_type(payload):
+    """Force FB_Spend_Min_Type to 'Overall Min Spend' when the minimum is plainly a total.
+
+    The prompt asks the model which of two things the F&B minimum is, and it gets this
+    wrong in the expensive direction: a venue quoting "$240pp with a 100 guest minimum"
+    has a 24,000 TOTAL floor, but the model sees a per-person quote and answers
+    "Per Person Min". Downstream, fn56 computes
+        food = per_person ? max(pp*g, fb_min*g) : max(pp*g, fb_min)
+    so the 24,000 is multiplied by the guest count a second time. Please Touch Museum
+    (V2371) rendered $1,200,000 of food at 50 guests instead of $24,000, and re-extraction
+    runs on 2026-06-04 and 2026-06-25 put 112 rows into this state.
+
+    Two rules, matching fn54's guard so the two layers cannot disagree:
+      1. The minimum is above a plausible per-head ceiling.
+      2. The minimum equals per-head x guest-minimum, i.e. it is a derived total.
+
+    Mutates payload in place. Deliberately does NOT touch a minimum below the ceiling
+    that fails rule 2 - genuine per-head minimums exist (~5,700 rows) and are correct.
+    """
+    if str(payload.get("FB_Spend_Min_Type", "")).strip().lower()[:10] != "per person":
+        return
+
+    def _num(key):
+        try:
+            return float(payload.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    fb_min = _num("Food_and_Beverage_Min_on_a_Peak_Season_Saturday")
+    if fb_min <= 0:
+        return
+
+    per_head = _num("Per_Person_Food_and_Beverage_on_a_Peak_Season_Saturday")
+    guest_min = _num("Guest_Min_Highest_Sat")
+
+    is_total = fb_min > _FB_PER_HEAD_CEILING
+    if not is_total and per_head > 0 and guest_min > 0:
+        is_total = abs(fb_min - per_head * guest_min) <= max(1.0, 0.01 * fb_min)
+
+    if is_total:
+        payload["FB_Spend_Min_Type"] = "Overall Min Spend"
 
 
 def _post_row(endpoint, payload, attempts=4):
