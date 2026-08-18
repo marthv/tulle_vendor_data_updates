@@ -28,6 +28,8 @@ Status vocabulary for submissions:
     approved  — the content is good, but has NOT been copied into live tables
     applied   — someone has since copied it in by hand
     rejected  — not accepted, note explains why
+    withdrawn — the VENDOR retracted it before review. Not a decision you made, and
+                not a delete: the payload is still on the row. Nothing to action.
 Do not collapse approved and applied: the gap between them is the only record of what has
 actually landed.
 
@@ -82,6 +84,8 @@ SUBMISSION_STATUS_LABEL = {
     "approved": "✅ Approved — not yet applied",
     "applied": "📥 Applied to live data",
     "rejected": "🚫 Rejected",
+    # Vendor-initiated, not a review outcome. Their payload is still on the row.
+    "withdrawn": "↩️ Withdrawn by the vendor",
 }
 
 CLAIM_STATUS_LABEL = {
@@ -390,7 +394,9 @@ def _render_submissions(submissions, accounts_by_id, actor):
 
     f1, f2 = st.columns(2)
     status_filter = f1.selectbox(
-        "Status", ["pending", "approved", "applied", "rejected", "all"], index=0,
+        "Status",
+        ["pending", "approved", "applied", "rejected", "withdrawn", "all"],
+        index=0,
         key="vport_status",
     )
     kinds = sorted({s.get("kind") for s in submissions if s.get("kind")})
@@ -407,7 +413,9 @@ def _render_submissions(submissions, accounts_by_id, actor):
 
     st.caption(
         f"{len(rows)} shown. Approving records a decision — it does **not** write to "
-        f"table 11 or 36. Copy the change across by hand, then mark it applied."
+        f"table 11 or 36. Copy the change across by hand, then mark it applied. "
+        f"Withdrawn ones were retracted by the vendor before anyone looked; there is "
+        f"nothing to do with them."
     )
 
     for s in rows:
@@ -524,6 +532,9 @@ do yourself — which is why every submission is shown beside what we currently 
 Statuses: *pending* (unseen) → *approved* (content is good, not yet copied across) →
 *applied* (copied in by hand). The gap between approved and applied is the only record of
 what has actually landed, so don't skip straight to applied unless you really did it.
+
+*withdrawn* is the vendor retracting something before you looked — a typo fix, usually.
+It is not a delete: their payload is still on the row, it has just left your queue.
 
 Two levels of access: an approved **account** says we know who someone is; an approved
 **claim** says they may speak for one venue. Approving a claim lifts the account too.
