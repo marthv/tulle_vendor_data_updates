@@ -49,6 +49,7 @@ from extract_core import (run_extraction, get_pipeline_status,
                           list_recent_batches, ingest_batch_by_id, validate_merge)
 from cohorts import render_cohorts_tab
 from roadmap_orders import render_roadmap_orders_tab
+from vendor_portal import render_vendor_portal_tab
 import theme
 
 
@@ -726,14 +727,21 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-tab_ro, tab_co, tab_vp, tab2, tab5 = st.tabs([
-    "🗺️ Roadmap Orders", "📈 Cohorts", "💰 Venue Pricing",
+# NOTE: tab_vp is Venue Pricing (long-standing). The vendor portal queue is tab_vendor —
+# the two are easy to confuse and are entirely unrelated.
+tab_ro, tab_vendor, tab_co, tab_vp, tab2, tab5 = st.tabs([
+    "🗺️ Roadmap Orders", "🏛️ Vendor Portal", "📈 Cohorts", "💰 Venue Pricing",
     "🔍 Google Data & Images", "📄 PDF Extraction"
 ])
 
 # Fulfilment queue first — it's the only tab with a customer waiting on an SLA.
 with tab_ro:
     render_roadmap_orders_tab(XANO_BASE)
+
+# Vendor portal review queue second: vendors are also waiting on us, and an unapproved
+# claim means someone is sitting on a screen that says "we'll be in touch".
+with tab_vendor:
+    render_vendor_portal_tab(user_email)
 
 
 # ── (legacy Admin-tab helpers — the Admin tab was removed 2026-07-27; kept because
