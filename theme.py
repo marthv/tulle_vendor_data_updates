@@ -297,7 +297,8 @@ _STYLESHEET = """
     [data-testid="stExpander"] summary,
     [data-testid="stExpander"] summary p,
     .stRadio label, .stCheckbox label, .stSelectbox label,
-    .stTabs [data-baseweb="tab"] {
+    .stTabs [data-baseweb="tab"],
+    .stTabs [role="tab"] {
         color: var(--tt-text) !important;
     }
     [data-testid="stCaptionContainer"],
@@ -336,7 +337,14 @@ _STYLESHEET = """
        Rebuilt as a segmented control. Streamlit's default is a thin underline in
        the accent colour, which at six tabs gave almost no signal about where you
        were. Sticky so the answer stays on screen down a long tab. */
-    .stTabs [data-baseweb="tab-list"] {
+    /* SELECTORS ARE DOUBLED ON PURPOSE — data-baseweb AND the ARIA roles.
+       Streamlit drops/renames its data-baseweb attributes between versions (the
+       `data-baseweb="select"` rule in this sheet is already inert for exactly
+       that reason), and on the deployed build the tab rules matched nothing while
+       the rest of the sheet applied. role="tablist"/"tab" are part of the
+       accessibility contract, so they survive those renames. */
+    .stTabs [data-baseweb="tab-list"],
+    .stTabs [role="tablist"] {
         /* display/align are set explicitly rather than inherited: this rule now
            owns the tab bar's box (padding, radius, background), and relying on
            Streamlit's own default flex here would break the bar into a vertical
@@ -352,7 +360,8 @@ _STYLESHEET = """
         position: sticky; top: 0; z-index: 99;
         overflow-x: auto;
     }
-    .stTabs [data-baseweb="tab"] {
+    .stTabs [data-baseweb="tab"],
+    .stTabs [role="tab"] {
         height: auto;
         padding: 9px 17px;
         border-radius: 999px;          /* pills, not boxes */
@@ -361,7 +370,8 @@ _STYLESHEET = """
         white-space: nowrap;
         transition: background .15s, color .15s;
     }
-    .stTabs [data-baseweb="tab"]:hover { background: var(--tt-surface); }
+    .stTabs [data-baseweb="tab"]:hover,
+    .stTabs [role="tab"]:hover { background: var(--tt-surface); }
     .stTabs [aria-selected="true"] {
         background: var(--tt-surface);
         color: var(--tt-brand) !important;
@@ -369,7 +379,9 @@ _STYLESHEET = """
     }
     /* Kill the default underline + baseline now that selection is shown by fill. */
     .stTabs [data-baseweb="tab-highlight"],
-    .stTabs [data-baseweb="tab-border"] { display: none !important; }
+    .stTabs [data-baseweb="tab-border"],
+    .stTabs [class*="tab-highlight"],
+    .stTabs [class*="tab-border"] { display: none !important; }
 
     /* ── Inputs ── */
     .stTextInput input, .stTextArea textarea, .stNumberInput input {
