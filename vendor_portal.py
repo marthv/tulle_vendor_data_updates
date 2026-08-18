@@ -3,8 +3,11 @@
 
 Self-contained: dashboard.py just does
     from vendor_portal import render_vendor_portal_tab
-    with tab_vp:
-        render_vendor_portal_tab()
+    with tab_vendor:
+        render_vendor_portal_tab(user_email)
+
+NOT tab_vp — that is the Venue Pricing tab, which is a different thing entirely and
+already owns the vp_* widget-key namespace. See the note above KIND_LABEL.
 
 Backs the vendor portal at vendors.tulletogether.com (repo marthv/tulle-vendor-portal),
 where vendors claim their venue, see the data we hold, and PROPOSE additions.
@@ -58,6 +61,12 @@ EXPORT_SECRET = os.environ.get(
     "ANALYTICS_EXPORT_SECRET",
     "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
 )
+
+# WIDGET KEYS: every key in this module is prefixed `vport_`.
+# The Venue Pricing tab in dashboard.py already owns the entire `vp_*` namespace
+# (vp_refresh, vp_state, vp_year, ...). Streamlit keys are global across the whole
+# app, not scoped per tab, so `key="vp_refresh"` here crashed the page with
+# StreamlitDuplicateElementKey the moment both tabs rendered. vp = Venue Pricing.
 
 KIND_LABEL = {
     "pdfs": "📄 Pricing PDFs",
@@ -295,9 +304,9 @@ def _render_claims(claims, accounts_by_id, actor):
                 )
 
             b1, b2, _ = st.columns([1, 1, 3])
-            if b1.button("Approve", key=f"claim_ok_{c['id']}", type="primary"):
+            if b1.button("Approve", key=f"vport_claim_ok_{c['id']}", type="primary"):
                 _after_write(*_update_claim(c["id"], "approved", actor, True))
-            if b2.button("Reject", key=f"claim_no_{c['id']}"):
+            if b2.button("Reject", key=f"vport_claim_no_{c['id']}"):
                 _after_write(*_update_claim(c["id"], "rejected", actor, False))
 
     decided = [c for c in claims if c.get("status") != "pending"]
@@ -382,10 +391,10 @@ def _render_submissions(submissions, accounts_by_id, actor):
     f1, f2 = st.columns(2)
     status_filter = f1.selectbox(
         "Status", ["pending", "approved", "applied", "rejected", "all"], index=0,
-        key="vp_status",
+        key="vport_status",
     )
     kinds = sorted({s.get("kind") for s in submissions if s.get("kind")})
-    kind_filter = f2.selectbox("Type", ["all"] + kinds, index=0, key="vp_kind")
+    kind_filter = f2.selectbox("Type", ["all"] + kinds, index=0, key="vport_kind")
 
     rows = [
         s for s in submissions
@@ -439,15 +448,15 @@ def _render_submissions(submissions, accounts_by_id, actor):
             note = st.text_area(
                 "Note back to the vendor (they see this)",
                 value=s.get("review_note") or "",
-                key=f"note_{s['id']}",
+                key=f"vport_note_{s['id']}",
                 height=80,
             )
             b1, b2, b3, _ = st.columns([1, 1, 1, 2])
-            if b1.button("Approve", key=f"sub_ok_{s['id']}", type="primary"):
+            if b1.button("Approve", key=f"vport_sub_ok_{s['id']}", type="primary"):
                 _after_write(*_update_submission(s["id"], "approved", actor, note))
-            if b2.button("Mark applied", key=f"sub_app_{s['id']}"):
+            if b2.button("Mark applied", key=f"vport_sub_app_{s['id']}"):
                 _after_write(*_update_submission(s["id"], "applied", actor, note))
-            if b3.button("Reject", key=f"sub_no_{s['id']}"):
+            if b3.button("Reject", key=f"vport_sub_no_{s['id']}"):
                 _after_write(*_update_submission(s["id"], "rejected", actor, note))
 
 
@@ -477,9 +486,9 @@ def _render_messages(messages, actor):
                 f"Slack: {'delivered' if m.get('slack_delivered') else 'NOT delivered'}"
             )
             notes = st.text_input(
-                "Internal note", value=m.get("admin_notes") or "", key=f"msg_n_{m['id']}"
+                "Internal note", value=m.get("admin_notes") or "", key=f"vport_msg_n_{m['id']}"
             )
-            if st.button("Mark handled", key=f"msg_h_{m['id']}", type="primary"):
+            if st.button("Mark handled", key=f"vport_msg_h_{m['id']}", type="primary"):
                 _after_write(*_update_message(m["id"], "handled", actor, notes))
 
     done = [m for m in messages if m.get("status") == "handled"]
@@ -521,7 +530,7 @@ Two levels of access: an approved **account** says we know who someone is; an ap
 """
         )
 
-    if st.button("🔄 Refresh", key="vp_refresh"):
+    if st.button("🔄 Refresh", key="vport_refresh"):
         st.cache_data.clear()
         st.rerun()
 
