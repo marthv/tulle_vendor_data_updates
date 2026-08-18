@@ -207,6 +207,20 @@ def load_snapshot(vendor_id):
     )
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def load_calendars():
+    """Connected vendor calendars.
+
+    include_urls is deliberately NOT set. That flag is for the sync job, which has
+    to open the feed; this table only renders status, and pulling vendor calendar
+    credentials into a browser session to draw a status column would be careless.
+    """
+    d = _xget(f"{VENDOR_BASE}/vendor_admin/calendars?secret={EXPORT_SECRET}")
+    if not isinstance(d, dict):
+        return []
+    return d.get("calendars") or []
+
+
 def _update_claim(claim_id, status, actor, also_approve_account=True):
     return _xpost(f"{VENDOR_BASE}/vendor_admin/claim_update", {
         "secret": EXPORT_SECRET,
@@ -515,6 +529,63 @@ def _render_messages(messages, actor):
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
+def _render_calendars(calendars, accounts_by_id):
+    """Calendar connections and their sync health.
+
+    READ ONLY ON PURPOSE. There is no approve/reject here because a calendar is
+    not a submission: it proposes nothing about pricing, feeds no benchmark, and
+    a vendor misreporting their own availability only costs them bookings. What
+    this table is actually for is spotting a feed that has silently stopped
+    syncing — which looks exactly like a vendor with no bookings unless someone
+    is watching last_sync_at.
+    """
+    st.markdown("### 📅 Calendar connections")
+    st.caption(
+        "Vendors paste a secret iCal address; we read busy dates only, nightly. "
+        "Not shown to couples yet."
+    )
+
+    if not calendars:
+        st.info("No vendor has connected a calendar yet.")
+        return
+
+    stale, errored = [], []
+    for c in calendars:
+        if (c.get("status") or "") == "error":
+            errored.append(c)
+        else:
+            age = _age_hours(c.get("last_sync_at"))
+            if age is not None and age > 48:
+                stale.append(c)
+
+    if errored:
+        st.warning(
+            f"⚠️ {len(errored)} calendar(s) failed to sync. Their dates are frozen at the "
+            "last good read."
+        )
+    if stale:
+        st.warning(
+            f"⏳ {len(stale)} calendar(s) have not synced in over 48h — check the nightly job."
+        )
+
+    rows = []
+    for c in calendars:
+        acct = accounts_by_id.get(c.get("vendor_account_id")) or {}
+        rows.append({
+            "id": c.get("id"),
+            "Venue": c.get("vendor_id") or "—",
+            "Vendor": acct.get("email") or f"account {c.get('vendor_account_id')}",
+            "Label": c.get("label") or "—",
+            "Covers": c.get("represents") or "—",
+            "Status": c.get("status") or "—",
+            "Dates taken": c.get("busy_count") or 0,
+            "Last synced": _fmt_dt(c.get("last_sync_at")) or "never",
+            "Error": (c.get("last_sync_error") or "")[:120],
+        })
+
+    st.dataframe(rows, hide_index=True, use_container_width=True)
+
+
 def render_vendor_portal_tab(actor=""):
     """actor is the signed-in admin email; it is stamped on every decision."""
     st.header("🏛️ Vendor Portal")
@@ -560,3 +631,5 @@ Two levels of access: an approved **account** says we know who someone is; an ap
     _render_submissions(data["submissions"], accounts_by_id, actor)
     st.divider()
     _render_messages(data["messages"], actor)
+    st.divider()
+    _render_calendars(load_calendars(), accounts_by_id)
