@@ -15,8 +15,8 @@
 # canvas and read their colours from here, not from CSS.
 [theme]
 base                     = "light"
-primaryColor             = "#1B7A4A"   # Tulle green — also replaces Streamlit's default red accent
-backgroundColor          = "#F8F9FA"   # matches the .stApp background in theme.py's light palette
+primaryColor             = "#0F7348"   # Tulle --g700 — also replaces Streamlit's default red accent
+backgroundColor          = "#FAF8F4"   # Tulle --cream; matches .stApp in theme.py's light palette
 secondaryBackgroundColor = "#FFFFFF"
 textColor                = "#18191A"
 

@@ -45,19 +45,25 @@ _STATE_KEY = "tulle_theme_mode"
 # all three modes — they carry their own ink, so they stay legible everywhere.
 PALETTES: dict[str, dict[str, str]] = {
     "light": {
-        "bg": "#F8F9FA",
-        "surface": "#FFFFFF",
-        "surface_alt": "#F1F3F5",
-        "text": "#18191A",
-        "text_muted": "#52555C",
-        "border": "#E1E4E8",
-        "brand": "#1B7A4A",
-        "brand_hover": "#155F39",
+        # Aligned to the Tulle product palette (see CLAUDE.md) 2026-08-18 so the
+        # admin tool reads like the app rather than a generic B2B dashboard:
+        # --cream canvas, --ink text, --g700 brand, --g50 tints. The greens are
+        # the AA-safe end of the brand ramp — --g500 #00A368 is the fill colour in
+        # the app, but at ~2.9:1 on white it cannot carry small text, and here the
+        # brand colour is used for tab labels and section rules.
+        "bg": "#FAF8F4",          # --cream
+        "surface": "#FFFFFF",     # --white
+        "surface_alt": "#F1EEE7",  # warm tint of the cream, for tab bar / hovers
+        "text": "#18191A",        # --ink
+        "text_muted": "#52555C",  # --ink3
+        "border": "#E8EAEE",      # --ink7
+        "brand": "#0F7348",       # --g700, 5.9:1 on white
+        "brand_hover": "#0A3D24",  # --g900
         "brand_ink": "#FFFFFF",
         "log_bg": "#0F172A",
         "log_fg": "#E2E8F0",
         "log_border": "#1E293B",
-        "track": "#EEF2F0",
+        "track": "#EDF9F3",       # --g50
         "input_bg": "#FFFFFF",
     },
     "sepia": {
@@ -185,6 +191,9 @@ _FONT_STACK = (
     "'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
     "'Helvetica Neue', Arial, sans-serif"
 )
+# Lora carries headings, venue names and prices in the product (CLAUDE.md §5.2).
+# Using it here is what stops the dashboard reading as a generic B2B tool.
+_DISPLAY_STACK = "'Lora', Georgia, 'Times New Roman', serif"
 _MONO_STACK = "'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace"
 
 
@@ -228,20 +237,23 @@ def _root_vars(mode: str) -> str:
         --tt-log-fg:      {p['log_fg']};
         --tt-log-border:  {p['log_border']};
 
-        --tt-font:  {_FONT_STACK};
-        --tt-mono:  {_MONO_STACK};
+        --tt-font:     {_FONT_STACK};
+        --tt-display:  {_DISPLAY_STACK};
+        --tt-mono:     {_MONO_STACK};
 
-        --tt-radius:    10px;
-        --tt-radius-sm: 7px;
-        --tt-shadow-sm: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
-        --tt-shadow-md: 0 2px 4px rgba(16,24,40,.05), 0 4px 12px rgba(16,24,40,.07);
+        /* Rounder and softer than a typical admin tool on purpose — these match
+           --r12/--r16 and the --sh1/--sh2 shadows in the product design system. */
+        --tt-radius:    14px;
+        --tt-radius-sm: 10px;
+        --tt-shadow-sm: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+        --tt-shadow-md: 0 4px 16px rgba(0,0,0,.09), 0 1px 4px rgba(0,0,0,.04);
     }}
     """
 
 
 # Everything below is palette-agnostic — it only reads the custom properties above.
 _STYLESHEET = """
-    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Sora:wght@400;500;600;700&display=swap');
 
     /* ── Global ──
        Width: was 92vw, which on a wide monitor produced ~2300px paragraphs and
@@ -295,14 +307,18 @@ _STYLESHEET = """
        The tabs mix ##, ###, #### and ##### fairly freely, so the levels are given
        clearly distinct sizes and weights: the existing markup then reads as a
        hierarchy without having to rewrite every heading in dashboard.py. */
-    [data-testid="stMarkdownContainer"] p { font-size: 14px; line-height: 1.55; }
-    .stApp h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 .5rem; }
-    .stApp h2 { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3;  margin: 1.6rem 0 .6rem; }
-    .stApp h3 { font-size: 16.5px; font-weight: 650; line-height: 1.35; margin: 1.5rem 0 .55rem; }
-    .stApp h4 { font-size: 14px; font-weight: 650; line-height: 1.4;  margin: 1.2rem 0 .4rem; }
+    [data-testid="stMarkdownContainer"] p { font-size: 14.5px; line-height: 1.6; }
+    /* Headings are set in Lora, as they are in the product. A serif at these
+       sizes is the main thing that stops the page reading as a control panel. */
+    .stApp h1, .stApp h2, .stApp h3 { font-family: var(--tt-display); }
+    .stApp h1 { font-size: 29px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 .5rem; }
+    .stApp h2 { font-size: 23px; font-weight: 600; line-height: 1.3;  margin: 1.7rem 0 .65rem; }
+    .stApp h3 { font-size: 18.5px; font-weight: 600; line-height: 1.35; margin: 1.6rem 0 .6rem; }
+    .stApp h4 { font-size: 14.5px; font-weight: 650; line-height: 1.4;  margin: 1.3rem 0 .45rem; }
+    /* Sentence case, not the uppercase micro-label of a B2B dashboard. */
     .stApp h5,
-    .stApp h6 { font-size: 12.5px; font-weight: 650; line-height: 1.4; margin: 1rem 0 .35rem;
-                text-transform: uppercase; letter-spacing: .06em;
+    .stApp h6 { font-size: 13px; font-weight: 600; line-height: 1.4; margin: 1.1rem 0 .4rem;
+                letter-spacing: 0;
                 color: var(--tt-text-muted) !important; }
 
     /* Section markers: a brand rule beside h3 makes the page scannable at a
@@ -335,8 +351,8 @@ _STYLESHEET = """
     }
     .stTabs [data-baseweb="tab"] {
         height: auto;
-        padding: 9px 15px;
-        border-radius: 8px;
+        padding: 9px 17px;
+        border-radius: 999px;          /* pills, not boxes */
         font-size: 13.5px;
         font-weight: 600;
         white-space: nowrap;
@@ -372,10 +388,11 @@ _STYLESHEET = """
     [data-testid="stWidgetLabel"] p { font-size: 13px; font-weight: 600; }
 
     /* ── Header ── */
-    .tulle-logo { font-size: 22px; font-weight: 700; color: var(--tt-brand); letter-spacing: -0.3px; }
+    .tulle-logo { font-family: var(--tt-display); font-size: 24px; font-weight: 600; color: var(--tt-brand); letter-spacing: -0.2px; }
     .tulle-user { font-size: 13px; color: var(--tt-text-muted); }
-    .tulle-rule { border: none; border-top: 2px solid var(--tt-brand); margin: 4px 0 16px; }
-    .tulle-login-title { font-size: 26px; font-weight: 700; color: var(--tt-text); }
+    /* Hairline rather than a 2px brand bar — the wordmark carries the brand. */
+    .tulle-rule { border: none; border-top: 1px solid var(--tt-border); margin: 10px 0 18px; }
+    .tulle-login-title { font-family: var(--tt-display); font-size: 28px; font-weight: 600; color: var(--tt-text); }
 
     /* ── Native st.metric as a card ──
        These are used across tabs and previously rendered as bare floating numbers
@@ -387,11 +404,15 @@ _STYLESHEET = """
         padding: 13px 15px;
         box-shadow: var(--tt-shadow-sm);
     }
+    /* Sentence case rather than uppercase micro-caps — friendlier, and the
+       numbers are already doing the work of drawing the eye. */
     [data-testid="stMetricLabel"] p {
-        font-size: 11.5px !important; font-weight: 600 !important;
-        text-transform: uppercase; letter-spacing: .05em;
+        font-size: 13px !important; font-weight: 500 !important; letter-spacing: 0;
     }
-    [data-testid="stMetricValue"] { font-size: 25px !important; font-weight: 700 !important; }
+    [data-testid="stMetricValue"] {
+        font-family: var(--tt-display);
+        font-size: 30px !important; font-weight: 600 !important;
+    }
 
     /* ── Metric chips (hand-built cards in dashboard.py / cohorts.py) ──
        Tinted status chips. Each pairs a light background with its own dark ink, so
@@ -401,8 +422,8 @@ _STYLESHEET = """
         text-align: center; margin-bottom: 8px;
     }
     .metric-card .metric-icon  { font-size: 20px; margin-bottom: 4px; }
-    .metric-card .metric-value { font-size: 30px; font-weight: 700; margin: 4px 0; }
-    .metric-card .metric-label { font-size: 12px; opacity: 0.75; }
+    .metric-card .metric-value { font-family: var(--tt-display); font-size: 32px; font-weight: 600; margin: 4px 0; }
+    .metric-card .metric-label { font-size: 12.5px; opacity: 0.8; }
     .card-green  { background: #d1fae5; color: #065f46; border: 1.5px solid #6ee7b7; }
     .card-amber  { background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; }
     .card-purple { background: #ede9fe; color: #4c1d95; border: 1.5px solid #c4b5fd; }
@@ -432,13 +453,14 @@ _STYLESHEET = """
        they are toned down to left-accent notes instead of six competing colour
        blocks fighting the actual content. */
     [data-testid="stAlert"] {
-        border-radius: var(--tt-radius-sm);
+        border-radius: var(--tt-radius);
         border: 1px solid var(--tt-border);
         border-left: 3px solid var(--tt-brand);
+        background: var(--tt-track);   /* soft --g50 wash rather than stark white */
         box-shadow: none;
-        padding: 10px 14px;
+        padding: 12px 16px;
     }
-    [data-testid="stAlert"] p { font-size: 13.5px; line-height: 1.5; }
+    [data-testid="stAlert"] p { font-size: 13.5px; line-height: 1.55; }
 
     /* ── Log box ── */
     .log-box {
@@ -480,8 +502,8 @@ _STYLESHEET = """
        width:100% is load-bearing — the tabs lay buttons out in st.columns and
        rely on them filling the cell. Only the styling is changed. */
     .stButton>button {
-        width: 100%; border-radius: var(--tt-radius-sm); font-weight: 600;
-        font-size: 13.5px; padding: .5rem .9rem;
+        width: 100%; border-radius: 999px; font-weight: 600;
+        font-size: 13.5px; padding: .55rem 1.1rem;
         font-family: var(--tt-font);
         transition: background .15s, border-color .15s, box-shadow .15s;
     }
