@@ -1948,6 +1948,23 @@ def _vp_dedup_latest(rows):
     return list(best.values()) + passthrough
 
 
+# Venue "vibes" = table 36 Venue_Attributes, a semicolon-separated string whose vocabulary
+# is fixed in extract_core.py ("Historic Architecture", "Waterfront", "Ballroom", ...).
+# It can also literally read "Not listed", which is not a vibe.
+_VP_VIBE_NOT_A_VALUE = {"", "not listed", "none", "n/a", "na"}
+
+
+def _vp_vibes(raw):
+    """Split a Venue_Attributes cell into clean tokens. Separator is ';' but the data
+    carries both 'A;B' and 'A; B', so every token is trimmed."""
+    out = []
+    for tok in str(raw or "").split(";"):
+        tok = tok.strip()
+        if tok and tok.lower() not in _VP_VIBE_NOT_A_VALUE and tok not in out:
+            out.append(tok)
+    return out
+
+
 def _vp_join(t36_dedup):
     """Shape deduped pricing rows for the tab. The venue join (name/state via
     WPTP Updated Mappings, Category == Venue) already happened server-side in
@@ -1962,6 +1979,7 @@ def _vp_join(t36_dedup):
             "name":       str(r.get("venue_name") or "").strip() or (r.get("VENUE_NAME") or "").strip(),
             "state":      str(r.get("venue_state") or "").strip(),
             "venue_type": (r.get("Venue_Type") or "").strip(),
+            "vibes":      _vp_vibes(r.get("Venue_Attributes")),
             "year":       str(r.get("Pricing_Year") or "").strip(),
             "space":      (r.get("Venue_Space_Name") or "").strip(),
             "pdf_id":     r.get("PDF_ID"),
@@ -2083,6 +2101,28 @@ Do NOT explain what we did. Format as plain text, no markdown."""
         return f"Analysis unavailable ({type(e).__name__})"
 
 
+def _vp_vibe_options(joined, min_rows=20):
+    """Vibe filter options, most-used first.
+
+    Ordered by row count rather than alphabetically on purpose: this is an analysis cut,
+    so how much data sits behind a vibe is the useful thing to see first.
+
+    `min_rows` drops the long tail of extraction strays. The vocabulary is a closed list in
+    extract_core.py, but the classifier occasionally emits something off-list - measured
+    2026-08-27 over 20k rows, the ten real vibes all have 306+ rows and the next token down
+    has 14 ("Barn & Rustic", which is a CATEGORY value leaking in, and which the prompt
+    explicitly forbids as an attribute). A floor is used instead of hardcoding the ten so
+    this keeps working if the vocabulary is ever extended.
+    """
+    counts = {}
+    for r in joined:
+        for v in r["vibes"]:
+            counts[v] = counts.get(v, 0) + 1
+    keep = [(n, v) for v, n in counts.items() if n >= min_rows]
+    keep.sort(key=lambda t: (-t[0], t[1]))
+    return [v for _, v in keep]
+
+
 @st.cache_data(ttl=600)
 def _vp_load():
     """Pull + dedup + join (venues only) + PDF links. Cached 10 min; _vp_load.clear() to refresh.
@@ -2102,12 +2142,14 @@ def _vp_load():
                    "pdf_vendors": len(pdf_map)},
         "states":      sorted({r["state"] for r in joined if r["state"]}),
         "venue_types": sorted({r["venue_type"] for r in joined if r["venue_type"]}),
+        "vibes":       _vp_vibe_options(joined),
         "years":       sorted({r["year"] for r in joined if r["year"]}),
     }
     return joined, pdf_map, meta
 
 
-def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search, price_mode="All-in formula"):
+def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search,
+                        price_mode="All-in formula", f_vibes=None):
     """One representative ('from') estimate per venue + quote count, after filters."""
     by_vendor = {}
     for r in joined:
@@ -2121,8 +2163,23 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search, 
         by_vendor.setdefault(r["vendor_id"], []).append(r)
 
     q = (search or "").strip().lower()
+    want_vibes = set(f_vibes or [])
     vendors = []
     for vid, rows in by_vendor.items():
+        # VIBES ARE FILTERED PER VENUE, NOT PER ROW - deliberately unlike state/type above.
+        # A vibe is a property of the venue, but it is stored per extracted PDF, so one
+        # venue's rows disagree all the time (only ~65% of rows carry any attribute at all).
+        # Dropping rows here would quietly change the answer: the estimate is the cheapest
+        # qualifying SPACE, so filtering rows first would price the cheapest *waterfront-
+        # tagged PDF* rather than the venue. Union the tags, gate the venue, keep every row.
+        venue_vibes = []
+        for r in rows:
+            for v in r["vibes"]:
+                if v not in venue_vibes:
+                    venue_vibes.append(v)
+        if want_vibes and not (want_vibes & set(venue_vibes)):
+            continue
+
         qualify = [r for r in rows if r["guest_min"] <= G and (r["max_cap"] == 0 or G <= r["max_cap"])]
         cand = qualify or rows
         # Representative = cheapest qualifying space; keep ITS breakdown so the
@@ -2152,6 +2209,7 @@ def _vp_compute_vendors(joined, G, f_state, f_type, f_year, min_quotes, search, 
             "Venue":    name,
             "State":    rows[0]["state"] or "—",
             "Type":     rows[0]["venue_type"] or "—",
+            "Vibes":    ", ".join(sorted(venue_vibes)) or "—",
             "Capacity": cap,                              # numeric (sortable)
             "Quotes":   n_quotes,                         # numeric
             "Year":     max(years) if years else None,    # numeric
@@ -2202,15 +2260,21 @@ with tab_vp:
     else:
         # ── Filters — staged: nothing recomputes until you click Apply ────────
         st.markdown("#### Filters")
-        c1, c2, c3, c4, c5 = st.columns([1.0, 1.4, 1.6, 1.2, 1.1])
+        c1, c2, c3, c4, c5, c6 = st.columns([0.9, 1.2, 1.4, 1.4, 1.0, 1.0])
         guests  = c1.selectbox("Guest count", [50, 75, 100, 125, 150, 175, 200, 250, 300],
                                index=4, key="vp_guests")
         f_state = c2.multiselect("State", vp_meta["states"], key="vp_state",
                                  placeholder="All states")
         f_type  = c3.multiselect("Venue type", vp_meta["venue_types"], key="vp_type",
                                  placeholder="All types")
-        f_year  = c4.selectbox("Year", ["All"] + vp_meta["years"], key="vp_year")
-        min_q   = c5.number_input("Min quotes", min_value=0, value=0, step=1, key="vp_minq")
+        f_vibes = c4.multiselect("Venue vibes", vp_meta["vibes"], key="vp_vibes",
+                                 placeholder="All vibes",
+                                 help="Aesthetic features from the pricing PDFs, most common "
+                                      "first. A venue matches if ANY selected vibe applies to "
+                                      "it. Roughly 1 venue in 8 carries no vibe tag at all and "
+                                      "is excluded whenever this filter is set.")
+        f_year  = c5.selectbox("Year", ["All"] + vp_meta["years"], key="vp_year")
+        min_q   = c6.number_input("Min quotes", min_value=0, value=0, step=1, key="vp_minq")
         search  = st.text_input("Filter by venue name", key="vp_search", placeholder="e.g. Mansion")
 
         price_mode = st.radio(
@@ -2227,7 +2291,8 @@ with tab_vp:
 
         if apply:
             st.session_state["vp_vendors"] = _vp_compute_vendors(
-                vp_joined, guests, f_state, f_type, f_year, int(min_q), search, price_mode)
+                vp_joined, guests, f_state, f_type, f_year, int(min_q), search, price_mode,
+                f_vibes=f_vibes)
             st.session_state["vp_guests_applied"] = guests
             st.session_state["vp_price_mode_applied"] = price_mode
             st.session_state.pop("vp_drill", None)  # reset drill on a fresh compute
@@ -2288,7 +2353,8 @@ to see its exact numbers and pricing PDFs.
 
             _mode_applied = st.session_state.get("vp_price_mode_applied", "All-in formula")
             if _mode_applied == "Base fee only":
-                _vp_order = ["Venue", "State", "Type", "Capacity", "Quotes", "Year", "Estimate"]
+                _vp_order = ["Venue", "State", "Type", "Vibes", "Capacity", "Quotes",
+                             "Year", "Estimate"]
                 _vp_colcfg = {
                     "Capacity": st.column_config.NumberColumn("Capacity", format="%.0f"),
                     "Quotes":   st.column_config.NumberColumn("Quotes",   format="%.0f"),
@@ -2296,7 +2362,7 @@ to see its exact numbers and pricing PDFs.
                     "Estimate": st.column_config.NumberColumn("Base fee", format="$%.0f"),
                 }
             else:
-                _vp_order = ["Venue", "State", "Type", "Capacity", "Quotes", "Year",
+                _vp_order = ["Venue", "State", "Type", "Vibes", "Capacity", "Quotes", "Year",
                              "Base fee", "F&B", "Admin", "Ceremony", "Estimate"]
                 _vp_colcfg = {
                     "Capacity": st.column_config.NumberColumn("Capacity", format="%.0f"),
