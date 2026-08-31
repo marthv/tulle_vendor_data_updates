@@ -59,6 +59,17 @@ CHECKS = [
     ("admin/google/coverage (ep191)", "xano", "admin/google/coverage",
      {},
      "🔍 Google Data & Images", "still anonymous — candidate for the secret gate"),
+    # PIPELINE dependencies, not the dashboard's own. They are checked here because this is
+    # the only place anyone looks: on 2026-08-30 wptp_pdfs was switched to auth="user" and
+    # the batch-ingest service died with "INGEST FAILED - 401 Unauthorized", which surfaced
+    # nowhere until someone noticed the Railway service had crashed hours later.
+    ("wptp_pdfs (ep146) — PIPELINE", "xano", "wptp_pdfs",
+     {"secret": "<SECRET>"},
+     "batch-ingest / extraction", "secret-gated; ~8.6MB/call, streamed here. NOT user auth."),
+    ("wptp_venue_categories (ep177) — PIPELINE", "xano", "wptp_venue_categories",
+     {"page": 1, "per_page": 1},
+     "batch-ingest / extraction", "anonymous; _fetch_vendor_categories FAILS CLOSED, so "
+                                  "gating this aborts every extraction run"),
     ("vendor_admin/queue (group 13)", "vendor", "vendor_admin/queue",
      {"secret": "<SECRET>"},
      "🏛️ Vendor Portal", "secret-gated; note the BjliGATR base, not GynP5T1B"),
@@ -77,10 +88,15 @@ WRITE_DEPS = [
 ]
 
 
-def _probe(base, path, params, timeout=25):
-    """One read-only GET. Returns (status_label, detail). Never raises."""
+def _probe(base, path, params, timeout=90):   # coverage (ep191) legitimately takes ~60s
+    """One read-only GET. Returns (status_label, detail). Never raises.
+
+    Streamed and closed immediately: we only need the status line, and one of these
+    endpoints (wptp_pdfs) returns ~8.6 MB per call — downloading that on every health check
+    would make the check itself the most expensive thing on the page."""
     try:
-        r = requests.get(f"{base}/{path}", params=params, timeout=timeout)
+        r = requests.get(f"{base}/{path}", params=params, timeout=timeout, stream=True)
+        r.close()
     except Exception as e:
         return "UNREACHABLE", str(e)[:120]
 

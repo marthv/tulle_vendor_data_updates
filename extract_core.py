@@ -2089,8 +2089,24 @@ def _post_pricing_grid(rows, pdf_id, vendor_id, venue_name, timestamp):
     return ok, fail
 
 
+# Shared machine-caller secret. Several of the endpoints this pipeline reads were gated on
+# 2026-08-30 (wptp_pdfs alone returns ~8.6 MB including every Drive link, and was anonymous).
+# The pipeline holds no Xano USER token, so those endpoints use the secret convention rather
+# than auth="user" — putting user auth on wptp_pdfs is what took batch-ingest down with
+# "INGEST FAILED - 401 Unauthorized". Same value as the dashboard's ANALYTICS_EXPORT_SECRET.
+XANO_MACHINE_SECRET = os.environ.get(
+    "ANALYTICS_EXPORT_SECRET",
+    "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
+)
+
+
 def _fetch_xano_pages(endpoint, per_page=500):
-    """Fetch all pages from a Xano endpoint. Yields (all_rows_so_far, page_num) tuples for progress."""
+    """Fetch all pages from a Xano endpoint. Yields (all_rows_so_far, page_num) tuples for progress.
+
+    Sends the machine secret on every call. Endpoints that declare no `secret` input ignore
+    the extra query param, and because Xano's response cache keys on declared INPUTS only, an
+    ignored param cannot fragment their cache — so this is safe to send unconditionally
+    rather than maintaining a list of which endpoints are gated."""
     all_rows = []
     page = 1
     while True:
@@ -2099,7 +2115,12 @@ def _fetch_xano_pages(endpoint, per_page=500):
         # with up to ~30s backoff rides out blips lasting a couple of minutes.
         for attempt in range(8):
             try:
-                resp = requests.get(endpoint, params={"page": page, "per_page": per_page}, timeout=30)
+                resp = requests.get(
+                    endpoint,
+                    params={"page": page, "per_page": per_page,
+                            "secret": XANO_MACHINE_SECRET},
+                    timeout=30,
+                )
                 resp.raise_for_status()
                 break
             except Exception:
@@ -2252,6 +2273,10 @@ def _fetch_vendor_categories():
         all_rows = []
         for all_rows, _ in _fetch_xano_pages(endpoint):
             pass
+        if not all_rows:
+            # Answered, but with nothing. Distinct from the exception path below and
+            # just as fatal, so say which one it was.
+            print(f"⚠ vendor categories: endpoint returned 0 rows — {endpoint}", flush=True)
         out = {}
         for r in all_rows:
             vid = str(r.get('Vendor_ID') or r.get('vendor_id') or '').strip()
@@ -2265,7 +2290,19 @@ def _fetch_vendor_categories():
                         r.get('Type_of_Entertainment') or ''),
                 }
         return out          # {} here means the endpoint answered with nothing → fatal
-    except Exception:
+    except Exception as e:
+        # Say WHAT broke, not just that something did. Callers turn {} into
+        # "vendor category map unavailable" and abort — a correct but undiagnosable
+        # message. On 2026-08-06 that message was the ONLY symptom of endpoint 177
+        # returning 502 (table 11 had grown to ~191 MB per unpaginated scan), and it
+        # cost three failed ingest attempts and an afternoon to trace, because the
+        # status code was swallowed right here. The HTTP status is the whole clue.
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        print(f"⚠ vendor categories FETCH FAILED — {type(e).__name__}"
+              f"{f' HTTP {status}' if status else ''}: {str(e)[:200]}\n"
+              f"   endpoint: {endpoint}\n"
+              f"   Callers will abort (fail-closed). Curl that URL directly to confirm.",
+              flush=True)
         return {}
 
 
