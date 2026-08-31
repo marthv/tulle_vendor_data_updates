@@ -49,7 +49,8 @@ from extract_core import (run_extraction, get_pipeline_status,
                           list_recent_batches, ingest_batch_by_id, validate_merge)
 from cohorts import render_cohorts_tab
 from roadmap_orders import render_roadmap_orders_tab
-from vendor_portal import render_vendor_portal_tab
+from vendor_portal import render_vendor_portal_tab, VENDOR_BASE
+from endpoint_health import render_endpoint_health
 import theme
 
 
@@ -734,6 +735,12 @@ EXPORT_SECRET = os.environ.get(
 )
 
 
+# Preflight, above the tabs on purpose: a broken Xano dependency shows up as an empty or
+# erroring tab with no explanation, and the cause (an endpoint switched to user auth this
+# app cannot satisfy) is invisible from inside that tab. Collapsed — costs nothing closed.
+render_endpoint_health(XANO_BASE, VENDOR_BASE, EXPORT_SECRET)
+
+
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
 # NOTE: tab_vp is Venue Pricing (long-standing). The vendor portal queue is tab_vendor —
@@ -1061,7 +1068,8 @@ with tab2:
             try:
                 resp = requests.get(
                     f"{XANO_BASE}/google_data_batch",
-                    params={"starting_index": int(gd_start), "ending_index": int(gd_end)},
+                    params={"starting_index": int(gd_start), "ending_index": int(gd_end),
+                            "secret": EXPORT_SECRET},
                     timeout=300,
                 )
                 if resp.status_code == 200:
