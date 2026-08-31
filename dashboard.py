@@ -724,6 +724,15 @@ st.markdown('<hr class="tulle-rule" />', unsafe_allow_html=True)
 
 XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B")
 
+# ep199 (/venue_pricing_dashboard) became secret-gated on 2026-08-30. It was anonymous and
+# honoured per_page=5000, so six unauthenticated requests pulled 27,287 pricing rows across
+# 10,777 vendors — the whole corpus. Same shared secret as cohorts.py / roadmap_orders.py /
+# vendor_portal.py; set ANALYTICS_EXPORT_SECRET in Railway to rotate it in one place.
+EXPORT_SECRET = os.environ.get(
+    "ANALYTICS_EXPORT_SECRET",
+    "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
+)
+
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
@@ -1778,10 +1787,12 @@ with tab5:
                     _q = "&".join(f"pdf_ids[]={pid}" for pid in sorted(run_pdf_ids))
                     _ts = int(time.time())
                     ep_resp = requests.get(
-                        f"{XANO_BASE}/venue_pricing_dashboard?section=raw_extracted&{_q}&ts={_ts}",
+                        f"{XANO_BASE}/venue_pricing_dashboard?section=raw_extracted&{_q}&ts={_ts}"
+                        f"&secret={EXPORT_SECRET}",
                         timeout=60)
                     vp_resp = requests.get(
-                        f"{XANO_BASE}/venue_pricing_dashboard?section=raw_pricing&{_q}&ts={_ts}",
+                        f"{XANO_BASE}/venue_pricing_dashboard?section=raw_pricing&{_q}&ts={_ts}"
+                        f"&secret={EXPORT_SECRET}",
                         timeout=60)
 
                     if ep_resp.status_code == 200:
@@ -1901,7 +1912,8 @@ def _vp_fetch_paged(section, breaker=None, per_page=5000):
         if breaker is not None and breaker.get("down"):
             return rows, "503"
         url = (f"{XANO_BASE}/venue_pricing_dashboard"
-               f"?section={section}&page={page}&per_page={per_page}")
+               f"?section={section}&page={page}&per_page={per_page}"
+               f"&secret={EXPORT_SECRET}")
         data, last = None, ""
         for attempt in range(3):
             try:
