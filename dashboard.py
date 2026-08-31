@@ -50,6 +50,7 @@ from extract_core import (run_extraction, get_pipeline_status,
 from cohorts import render_cohorts_tab
 from roadmap_orders import render_roadmap_orders_tab
 from vendor_portal import render_vendor_portal_tab, VENDOR_BASE
+from feedback_triage import render_feedback_triage_tab
 from endpoint_health import render_endpoint_health
 from drive_protect import render_drive_protect_panel
 import theme
@@ -749,9 +750,9 @@ render_endpoint_health(XANO_BASE, VENDOR_BASE, EXPORT_SECRET)
 
 # NOTE: tab_vp is Venue Pricing (long-standing). The vendor portal queue is tab_vendor —
 # the two are easy to confuse and are entirely unrelated.
-tab_ro, tab_vendor, tab_co, tab_vp, tab2, tab5 = st.tabs([
-    "🗺️ Roadmap Orders", "🏛️ Vendor Portal", "📈 Cohorts", "💰 Venue Pricing",
-    "🔍 Google Data & Images", "📄 PDF Extraction"
+tab_ro, tab_vendor, tab_fb, tab_co, tab_vp, tab2, tab5 = st.tabs([
+    "🗺️ Roadmap Orders", "🏛️ Vendor Portal", "🗣️ Feedback", "📈 Cohorts",
+    "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction"
 ])
 
 # Fulfilment queue first — it's the only tab with a customer waiting on an SLA.
@@ -762,6 +763,12 @@ with tab_ro:
 # claim means someone is sitting on a screen that says "we'll be in touch".
 with tab_vendor:
     render_vendor_portal_tab(user_email)
+
+# Feedback triage third: a user who wrote in is also waiting, and until now nothing recorded
+# whether anyone ever answered them. See feedback_triage.py for why hide/show is not a
+# neutral toggle.
+with tab_fb:
+    render_feedback_triage_tab(XANO_BASE, user_email)
 
 
 # ── (legacy Admin-tab helpers — the Admin tab was removed 2026-07-27; kept because
