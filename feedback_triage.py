@@ -43,6 +43,18 @@ Endpoints (all secret-gated with ANALYTICS_EXPORT_SECRET, group 10):
     POST /admin/feedback_update     (ep 274)
     GET  /admin/user_lookup         (ep 275) — the reporter's entitlement
     POST /admin/user_field_update   (ep 276) — railed write to the user row
+    GET  /admin/audit_log           (ep 277) — what has actually been done, read-only
+
+HOW A FIX GETS RECORDED
+-----------------------
+    the data change itself       -> admin_audit, automatically, on Apply, with old -> new
+    a non-database action        -> the report's notes ("refunded in Stripe")
+    you replied to the reporter  -> last_email_at, on a real send
+    the report is done           -> Feedback.completed, via Close
+
+The trail was being written from the first version but nothing read it back, so a report
+could be fixed and closed with no way to see what was done. ep277 and the per-report history
+close that: an audit log nobody can read is just overhead.
 
 EVERY WRITE GOES THROUGH ONE CONFIRM GATE
 -----------------------------------------
@@ -365,6 +377,48 @@ def _load_user(xano_base: str, email: str):
         f"&email={requests.utils.quote(email)}"
     )
     return (rows or [None])[0]
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _load_audit(xano_base: str, feedback_id: int = 0, limit: int = 50):
+    """The append-only trail of what has actually been done. feedback_id=0 = everything."""
+    return _xget(
+        f"{xano_base}/admin/audit_log?secret={EXPORT_SECRET}"
+        f"&feedback_id={int(feedback_id)}&limit={int(limit)}"
+    ) or []
+
+
+_ACTION_LABEL = {
+    "vendor_field_update": "edited vendor",
+    "vendor_hide":         "🚫 hid vendor from search",
+    "vendor_show":         "👁️ restored vendor to search",
+    "user_field_update":   "edited account",
+    "user_grant_access":   "🔓 changed access",
+    "feedback_update":     "changed report status",
+    "feedback_email":      "✉️ replied to reporter",
+}
+
+
+def _render_audit_rows(rows, show_report=False):
+    """One line per recorded change. Old → new, always, because that is what makes it
+    reversible; a log that only says 'something was edited' is decoration."""
+    if not rows:
+        st.caption("Nothing has been done to this report yet.")
+        return
+    for r in rows:
+        who = r.get("actor") or "unknown"
+        what = _ACTION_LABEL.get(r.get("action"), r.get("action") or "changed")
+        tgt = f"{r.get('target_table')}/{r.get('target_id')}"
+        col = r.get("column_name") or ""
+        old, new = r.get("old_value") or "", r.get("new_value") or ""
+        head = f"**{_ts(r.get('created_at'))}** · {what} · `{tgt}`"
+        if show_report and r.get("feedback_id"):
+            head += f" · report #{r['feedback_id']}"
+        st.markdown(head)
+        if col:
+            same = " *(no change)*" if old == new else ""
+            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;`{col}`: `{old or '∅'}` → `{new or '∅'}`{same}")
+        st.caption(f"    by {who}" + (f" — {r['note']}" if r.get("note") else ""))
 
 
 def _vendor_search(xano_base: str, q: str, limit: int = 15):
@@ -738,6 +792,7 @@ def _refresh():
     load_queue.clear()
     _hydrate_vendors.clear()
     _load_user.clear()
+    _load_audit.clear()
     st.rerun()
 
 
@@ -992,12 +1047,21 @@ def _panel_freetext(rid, user, vendor):
 
 
 # ── One report ────────────────────────────────────────────────────────────────
-def _render_report(xano_base, row, actor, vendors):
+def _render_report(xano_base, row, actor, vendors, audit_by_report=None):
     rid = int(row["id"])
     closed = bool(row.get("completed"))
     emailed = int(row.get("last_email_at") or 0) > 0
     sev = int(row.get("severity") or 0)
     bucket = row.get("bucket") or "other"
+
+    # History comes from ONE bulk audit load done by the tab, not a call per report — a
+    # Streamlit expander executes its body whether or not it is open, so a per-report fetch
+    # would fire 25 requests on every rerun.
+    history = (audit_by_report or {}).get(rid, [])
+    # Only real data changes count as a fix; open/closed flips are bookkeeping.
+    fixes = [h for h in history
+             if h.get("action") not in ("feedback_update", "feedback_email")
+             and (h.get("old_value") or "") != (h.get("new_value") or "")]
 
     head = (
         f"{'✅ Closed' if closed else '🔴 Open'} · #{rid} · "
@@ -1006,6 +1070,8 @@ def _render_report(xano_base, row, actor, vendors):
     )
     if sev:
         head += f" · severity {sev}"
+    if fixes:
+        head += f" · 🔧 {len(fixes)} fix{'es' if len(fixes) > 1 else ''} applied"
     if not emailed and not closed:
         head += " · ✉️ never answered"
 
@@ -1121,6 +1187,20 @@ def _render_report(xano_base, row, actor, vendors):
             if n3.button("✉️ Draft reply", key=f"fbt_email_{rid}"):
                 _email_dialog(xano_base, row, actor)
 
+            # ── what has actually been done ───────────────────────────────────
+            # The trail is written automatically by every Apply. Showing it back is the
+            # difference between "we keep an audit log" and being able to answer "was this
+            # actually fixed, and how?" without opening Xano.
+            st.markdown("**What's been done to this report**")
+            _render_audit_rows(history)
+            if row.get("admin_notes"):
+                st.info(f"📝 Note: {row['admin_notes']}")
+            if emailed:
+                st.caption(
+                    f"✉️ Last reply {_ts(row.get('last_email_at'))}"
+                    + (f" — “{row.get('last_email_subject')}”" if row.get("last_email_subject") else "")
+                )
+
 
 # ── Tab ───────────────────────────────────────────────────────────────────────
 def render_feedback_triage_tab(xano_base: str, user_email: str = ""):
@@ -1146,8 +1226,21 @@ def render_feedback_triage_tab(xano_base: str, user_email: str = ""):
             "(the wipe overwrites rather than versions, so there is no prior value), or touch "
             "a password, role or session token. Support tooling that can take over an account "
             "is not support tooling.\n\n"
-            f"Replies send from `{FROM_EMAIL}`, and every write lands in `admin_audit` with "
-            "the value it replaced."
+            "**How a fix gets recorded** — three separate things, and you only press one of "
+            "them by hand:\n\n"
+            "| What | Where it lands | How |\n"
+            "|---|---|---|\n"
+            "| the data change itself | `admin_audit` — who, when, old → new, why | "
+            "**automatic** on Apply |\n"
+            "| something that is *not* a database change (\"refunded in Stripe\", \"escalated "
+            "to Des\") | the report's notes | type it, **Save notes** |\n"
+            "| you replied to the person | `last_email_at` | **Send**, or **Mark as replied** |\n"
+            "| the report is done | the report's status | **Close** |\n\n"
+            "So the normal flow is: Apply the fix → add a note only if you did something "
+            "outside the database → reply → Close. Each report shows its own history under "
+            "**What's been done to this report**, and the header counts the fixes applied to "
+            "it, so \"was this actually fixed, and how?\" is answerable without opening Xano.\n\n"
+            f"Replies send from `{FROM_EMAIL}`."
         )
 
     try:
@@ -1230,6 +1323,25 @@ def render_feedback_triage_tab(xano_base: str, user_email: str = ""):
         st.warning(f"Could not load linked vendors: {e}")
         vendors = {}
 
+    # One bulk audit load for the whole tab. Feeds both the per-report history and the
+    # "N fixes applied" badge, so neither costs a request per row.
+    audit_by_report, audit_recent = {}, []
+    try:
+        audit_recent = _load_audit(xano_base, 0, 500)
+        for a in audit_recent:
+            audit_by_report.setdefault(int(a.get("feedback_id") or 0), []).append(a)
+    except Exception as e:
+        st.caption(f"Could not load the change history: {e}")
+
+    with st.expander(f"🧾 Recent activity — the last {len(audit_recent)} change(s) "
+                     f"made from this dashboard", expanded=False):
+        st.caption(
+            "Written automatically on every Apply, with the value it replaced. Append-only: "
+            "there is no endpoint that edits or deletes it, because an audit log you can edit "
+            "is not an audit log."
+        )
+        _render_audit_rows(audit_recent[:60], show_report=True)
+
     show_n = st.selectbox("Show", [25, 50, 100, 500], index=0, key="fbt_pagesize")
     for _, row in view.head(int(show_n)).iterrows():
-        _render_report(xano_base, row, actor, vendors)
+        _render_report(xano_base, row, actor, vendors, audit_by_report)
