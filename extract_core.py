@@ -1638,7 +1638,8 @@ def _update_pdf_status(xano_id, status, error="", cost_usd=0.0,
     last = "no attempt"
     for i in range(3):
         try:
-            r = requests.patch(url, json=payload, timeout=10)
+            r = requests.patch(url, json=payload,
+                               params={"secret": XANO_MACHINE_SECRET}, timeout=10)
             if r.status_code in (200, 201, 204):
                 return f"ok ({r.status_code}) → {url}"
             if r.status_code < 500:
@@ -1852,7 +1853,8 @@ def _post_row(endpoint, payload, attempts=4):
     delay = 1.0
     for attempt in range(attempts):
         try:
-            r = requests.post(endpoint, json=payload, timeout=20)
+            r = requests.post(endpoint, json=payload,
+                              params={"secret": XANO_MACHINE_SECRET}, timeout=20)
             if r.status_code in (200, 201):
                 return True
             # 4xx other than 429 is a bad payload — retrying will not help.
@@ -1916,7 +1918,8 @@ def _purge_package_rows(pdf_id, vendor_id, category, log=None):
     deleted = failed = 0
     for row in doomed:
         try:
-            d = requests.delete(f"{base}/{row['id']}", timeout=30)
+            d = requests.delete(f"{base}/{row['id']}",
+                                params={"secret": XANO_MACHINE_SECRET}, timeout=30)
             if d.status_code in (200, 201, 204):
                 deleted += 1
             else:

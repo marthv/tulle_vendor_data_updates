@@ -98,7 +98,8 @@ def _post_job_status(job_type: str, status: str, user_email: str,
     # a lost-response retry is harmless — resume dedups by batch_id.)
     for i in range(4):
         try:
-            r = requests.post(job_endpoint, json=payload, timeout=10)
+            r = requests.post(job_endpoint, json=payload,
+                              params={"secret": EXPORT_SECRET}, timeout=10)
             if r.status_code == 200:
                 try:
                     _get_active_job.clear()   # job state changed — drop the 15s cache
@@ -1109,6 +1110,7 @@ with tab2:
             resp = requests.post(
                 endpoint,
                 json={"starting_index": int(img_start), "ending_index": int(img_end)},
+                params={"secret": EXPORT_SECRET},
                 timeout=300,
             )
             return resp.status_code, resp.json() if resp.headers.get("content-type","").startswith("application/json") else resp.text
