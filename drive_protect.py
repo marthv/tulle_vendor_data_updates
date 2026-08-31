@@ -116,6 +116,41 @@ def service_account_email():
         return ""
 
 
+def check_access(roots):
+    """Per-root access preflight. Returns [(root_id, title, ok, detail)].
+
+    Exists because the failure mode is otherwise unreadable: the service account is a separate
+    principal that inherits nobody's Drive access, so an unshared folder does not error
+    loudly — `files.list` happily returns an empty page and the sweep reports a clean pass
+    over zero files. Naming the unreachable folder turns that into one obvious action.
+    """
+    svc, err = _drive_service()
+    if err:
+        return [(r, "?", False, err) for r in roots]
+
+    out = []
+    for r in roots:
+        title = "?"
+        try:
+            meta = svc.files().get(fileId=r, fields="name",
+                                   supportsAllDrives=True).execute()
+            title = meta.get("name", "?")
+            svc.files().list(
+                q=f"'{r}' in parents and trashed = false",
+                fields="files(id)", pageSize=1,
+                supportsAllDrives=True, includeItemsFromAllDrives=True,
+            ).execute()
+            out.append((r, title, True, "readable"))
+        except Exception as e:
+            msg = str(e)
+            if "404" in msg or "notFound" in msg:
+                msg = "not visible to the service account — share this folder with it"
+            elif "403" in msg:
+                msg = "403 — shared, but not with enough access; grant Editor"
+            out.append((r, title, False, msg[:180]))
+    return out
+
+
 def sweep(roots, audit_only=True, state=None, max_seconds=DEFAULT_MAX_SECONDS,
           progress=None):
     """Walk the tree and (unless audit_only) set copyRequiresWriterPermission.
@@ -227,6 +262,25 @@ def render_drive_protect_panel():
     if sa_email:
         st.caption(f"Running as **{sa_email}** — that address must be an Editor on the folder, "
                    "and the service account needs the Drive scope. Without both, every update 403s.")
+
+    if st.button("🔑 Check Drive access", key="dp_check"):
+        with st.spinner("Checking each root…"):
+            st.session_state["dp_access"] = check_access(roots)
+
+    acc = st.session_state.get("dp_access")
+    if acc:
+        for r, title, ok, detail in acc:
+            if ok:
+                st.success(f"**{title}** — reachable (`{r[:20]}…`)")
+            else:
+                st.error(f"**{title}** — {detail}\n\n`{r}`")
+        if any(not ok for _r, _t, ok, _d in acc):
+            st.info(
+                f"Open the folder in Drive → Share → add **{sa_email or 'the service account'}** "
+                "as **Editor**. A service account is its own principal: it inherits nothing "
+                "from your account, and an unshared folder returns an EMPTY listing rather "
+                "than an error — so the sweep would report a clean pass over zero files."
+            )
 
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
