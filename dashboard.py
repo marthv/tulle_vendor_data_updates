@@ -51,6 +51,7 @@ from cohorts import render_cohorts_tab
 from roadmap_orders import render_roadmap_orders_tab
 from vendor_portal import render_vendor_portal_tab, VENDOR_BASE
 from endpoint_health import render_endpoint_health
+from drive_protect import render_drive_protect_panel
 import theme
 
 
@@ -1156,6 +1157,12 @@ with tab2:
 # ── TAB 5: PIPELINE ───────────────────────────────────────────────────────────
 
 with tab5:
+    # Download protection lives here rather than in Apps Script: the 6-minute Apps Script
+    # cap is what left a silent tail of unprotected PDFs after every run. Railway has no
+    # such cap, so a pass can actually finish. Collapsed — audit before protecting.
+    with st.expander("🔒 PDF download protection (Drive)", expanded=False):
+        render_drive_protect_panel()
+
     st.subheader("PDF Extraction Pipeline")
     st.caption(
         "Track extraction status across all PDFs in wptp_pdfs. "
