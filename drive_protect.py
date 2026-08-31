@@ -42,7 +42,27 @@ SETUP (both steps are required — without them every update returns 403)
   2. The PDF root folder must be SHARED WITH THE SERVICE ACCOUNT'S EMAIL as an Editor.
      A service account is a separate principal — it does not inherit anyone's Drive access,
      so the sweep will list nothing until the folder is shared with it.
-  3. DRIVE_PDF_FOLDER_ID — the root folder holding the pricing PDFs. Subfolders are walked.
+  3. DRIVE_PDF_FOLDER_ID — comma-separated root folder id(s). Subfolders are walked.
+
+THERE ARE TWO ROOTS, AND THAT IS THE POINT
+------------------------------------------
+Resolved 2026-08-30 by taking Drive file ids straight out of wptp_pdfs (15,274 of them) and
+asking Drive for their parents. The corpus lives in two separate trees:
+
+    1qzOZqR4oocYai2QbHAuUUZgm21iCNwHrmIXCjP3wDGmcpbuBVvqEgVHACJedaYNtCEkobykd
+        "Pricing PDF's Tulle Together"  - created 2025-09-06, still receiving files
+    1T9iWk5QKm5NP16kUQD_dawUGk-LQUTFx
+        "Tulle PDFs - ACTIVE IN WPTP"   - created 2024-12-29, inside Shared Drive
+                                          0AKgvfwqJGti8Uk9PVA
+
+They have NO common ancestor, so a single root id cannot reach both — and a sweep pointed at
+one of them silently protects half the corpus and reports a clean pass over that half. If the
+Apps Script version was ever configured with just one FOLDER_ID, that alone would leave a
+permanent, invisible gap independent of the 6-minute cap. Hence a list, and hence the
+per-root breakdown in the results.
+
+Both roots must be shared with the service account; they are owned by hello@tulletogether.com
+and the newer one arrives via "shared with me", which a service account does not inherit.
 """
 
 import json
@@ -55,6 +75,20 @@ DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
 PAGE_SIZE = 100
 MIME_FILTER = "application/pdf"   # set to None to cover every non-folder file
 DEFAULT_MAX_SECONDS = 900         # soft cap, keeps the websocket alive; not an API limit
+
+# Discovered from wptp_pdfs' own Drive ids (see module docstring). Defaults so the panel works
+# out of the box; override with DRIVE_PDF_FOLDER_ID if the layout changes.
+DEFAULT_FOLDER_IDS = [
+    "1qzOZqR4oocYai2QbHAuUUZgm21iCNwHrmIXCjP3wDGmcpbuBVvqEgVHACJedaYNtCEkobykd",
+    "1T9iWk5QKm5NP16kUQD_dawUGk-LQUTFx",
+]
+
+
+def folder_ids():
+    """Configured roots, or the two discovered ones. Comma-separated env value."""
+    raw = os.environ.get("DRIVE_PDF_FOLDER_ID", "")
+    ids = [x.strip() for x in raw.split(",") if x.strip()]
+    return ids or DEFAULT_FOLDER_IDS
 
 
 def _drive_service():
@@ -82,7 +116,7 @@ def service_account_email():
         return ""
 
 
-def sweep(folder_id, audit_only=True, state=None, max_seconds=DEFAULT_MAX_SECONDS,
+def sweep(roots, audit_only=True, state=None, max_seconds=DEFAULT_MAX_SECONDS,
           progress=None):
     """Walk the tree and (unless audit_only) set copyRequiresWriterPermission.
 
@@ -98,17 +132,24 @@ def sweep(folder_id, audit_only=True, state=None, max_seconds=DEFAULT_MAX_SECOND
     if err:
         return (state or {}), err
 
+    if isinstance(roots, str):
+        roots = [roots]
+
     started = time.time()
     if not state:
-        state = {"queue": [folder_id], "page_token": None,
+        # Queue entries carry their root so coverage can be reported PER ROOT. A single
+        # combined number hides the failure that matters here: one tree fully swept and the
+        # other never reached still looks like a clean pass.
+        state = {"queue": [[r, r] for r in roots], "page_token": None,
                  "scanned": 0, "fixed": 0, "failed": 0,
+                 "per_root": {r: {"scanned": 0, "fixed": 0} for r in roots},
                  "unprotected": [], "errors": [], "done": False}
 
     while state["queue"]:
         if time.time() - started > max_seconds:
             return state, None                      # cursor preserved; resume to continue
 
-        current = state["queue"][0]
+        root, current = state["queue"][0]
         try:
             page = svc.files().list(
                 q=f"'{current}' in parents and trashed = false",
@@ -124,12 +165,13 @@ def sweep(folder_id, audit_only=True, state=None, max_seconds=DEFAULT_MAX_SECOND
 
         for f in page.get("files", []):             # v3 shape; v2's "items" would look empty
             if f.get("mimeType") == "application/vnd.google-apps.folder":
-                state["queue"].append(f["id"])
+                state["queue"].append([root, f["id"]])
                 continue
             if MIME_FILTER and f.get("mimeType") != MIME_FILTER:
                 continue
 
             state["scanned"] += 1
+            state["per_root"].setdefault(root, {"scanned": 0, "fixed": 0})["scanned"] += 1
             if f.get("copyRequiresWriterPermission") is True:
                 continue                            # already protected
 
@@ -144,6 +186,7 @@ def sweep(folder_id, audit_only=True, state=None, max_seconds=DEFAULT_MAX_SECOND
                     supportsAllDrives=True,
                 ).execute()
                 state["fixed"] += 1
+                state["per_root"][root]["fixed"] += 1
             except Exception as e:
                 state["failed"] += 1
                 if len(state["errors"]) < 50:
@@ -170,11 +213,17 @@ def render_drive_protect_panel():
         "not reading."
     )
 
-    folder_id = os.environ.get("DRIVE_PDF_FOLDER_ID", "")
+    roots = folder_ids()
+    folder_id = bool(roots)
     sa_email = service_account_email()
 
-    if not folder_id:
-        st.warning("`DRIVE_PDF_FOLDER_ID` is not set — add the PDF root folder id in Railway.")
+    st.caption(
+        f"Sweeping **{len(roots)} root folder(s)**. The corpus lives in two separate trees "
+        "(*Pricing PDF's Tulle Together* and *Tulle PDFs - ACTIVE IN WPTP*, the latter inside "
+        "a Shared Drive) with no common ancestor — a sweep pointed at only one silently "
+        "protects half the corpus and still reports a clean pass. Override with a "
+        "comma-separated `DRIVE_PDF_FOLDER_ID`."
+    )
     if sa_email:
         st.caption(f"Running as **{sa_email}** — that address must be an Editor on the folder, "
                    "and the service account needs the Drive scope. Without both, every update 403s.")
@@ -201,7 +250,7 @@ def render_drive_protect_panel():
                               f"failed {s['failed']:,}")
 
         with st.spinner("Running…"):
-            state, err = sweep(folder_id, audit_only=run_audit, state=resume,
+            state, err = sweep(roots, audit_only=run_audit, state=resume,
                                max_seconds=max_min * 60, progress=_tick)
         bar.empty()
         st.session_state["dp_state"] = None if state.get("done") else state
@@ -219,8 +268,18 @@ def render_drive_protect_panel():
         c2.metric("Protected this pass", f"{state.get('fixed', 0):,}")
         c3.metric("Failed", f"{state.get('failed', 0):,}")
 
+        # Per-root, because the number that matters is coverage of EACH tree. A root that
+        # scanned 0 while the other scanned thousands is the silent-half-corpus failure.
+        pr = state.get("per_root") or {}
+        if len(pr) > 1:
+            st.markdown("**Per root folder**")
+            for r, v in pr.items():
+                warn = " ⚠️ nothing scanned in this tree" if v["scanned"] == 0 else ""
+                st.markdown(f"- `{r[:24]}…` — scanned **{v['scanned']:,}**, "
+                            f"protected **{v['fixed']:,}**{warn}")
+
         if state.get("done"):
-            st.success("Full pass complete — the whole tree was walked.")
+            st.success("Full pass complete — every root was walked.")
         else:
             st.warning("Hit the time cap. Press **Protect files** again to resume from the "
                        "saved cursor — nothing is rescanned unnecessarily.")
