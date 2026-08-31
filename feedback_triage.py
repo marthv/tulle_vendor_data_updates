@@ -247,10 +247,21 @@ def is_business_email(email: str) -> bool:
     return bool(dom) and dom not in _FREEMAIL
 
 
-# Internal addresses. Matched against the EMAIL only — see the note in classify().
+# Internal addresses — the team's own, plus the contractor test accounts.
+#
+# This is a LABEL, not a filter. An earlier version classified anything from these addresses
+# as a test row, and "Hide test rows" then hid it by default. That was wrong twice over: it
+# hid the submissions you would use to check the dashboard itself, and it buried two real bug
+# reports from Des (#48 "page is pretty glitchy, laggy", #21 "nav bar auto-opens on mobile
+# and eats half the screen") for months. Who sent a report says nothing about whether it is
+# actionable — the BODY does. Only a body that actually reads as a test is bucketed as one.
 _INTERNAL_EMAIL = re.compile(
     r"@infiwebsolutions\.com|desi\.gaddis@|katebeckman|vivek\.marthi", re.I
 )
+
+
+def is_internal(email: str) -> bool:
+    return bool(_INTERNAL_EMAIL.search(email or ""))
 
 # Anything left that reads like a malfunction is a bug; the rest stays unclassified rather
 # than being forced into a bucket that would open the wrong panel first.
@@ -265,15 +276,19 @@ _BUG_HINT = re.compile(
 def classify(details: str, email: str = "") -> str:
     """Pick which fix panel opens first. Never triggers an action on its own.
 
-    The email is matched SEPARATELY from the body, not concatenated onto it. Concatenating
-    was a real bug: several rules are `$`-anchored to catch one-word rows like "test", and
-    appending the address to the text pushed the end of the string past the anchor, so every
-    internal test row classified as "other" and stayed in the queue.
-    """
-    if _INTERNAL_EMAIL.search(email or ""):
-        return "test"
+    Classified on the BODY alone. The sender's address is deliberately not an input: it is
+    surfaced as an "internal" label instead (see is_internal), because who wrote a report says
+    nothing about whether it is actionable, and treating a colleague's address as noise hid
+    two real bug reports for months.
 
+    An earlier version also concatenated the email onto the body. That broke the `$`-anchored
+    rules that catch one-word rows like "test": appending the address pushed the end of the
+    string past the anchor, so every one of them classified as "other".
+    """
     body = (details or "").strip().lower()
+    if not body:
+        # Nothing was written. There is no report to action.
+        return "test"
     for bucket, patterns in _BUCKET_RULES:
         for p in patterns:
             if re.search(p, body, re.I):
@@ -347,10 +362,8 @@ def load_queue(xano_base: str):
         for col in ("handled_at", "last_email_at"):
             reports[col] = reports.get(col, 0).fillna(0)
 
-    reports["bucket"] = [
-        classify(d, e)
-        for d, e in zip(reports["details"].fillna(""), reports["user_email"].fillna(""))
-    ]
+    reports["bucket"] = [classify(d) for d in reports["details"].fillna("")]
+    reports["internal"] = [is_internal(e) for e in reports["user_email"].fillna("")]
     return reports
 
 
@@ -1065,7 +1078,8 @@ def _render_report(xano_base, row, actor, vendors, audit_by_report=None):
 
     head = (
         f"{'✅ Closed' if closed else '🔴 Open'} · #{rid} · "
-        f"{BUCKET_LABEL.get(bucket, bucket)} · {row.get('user_email') or 'no email'} · "
+        f"{BUCKET_LABEL.get(bucket, bucket)} · {row.get('user_email') or 'no email'}"
+        f"{' 🧪 internal' if row.get('internal') else ''} · "
         f"{row.get('page') or 'unknown page'} · {_age_days(row.get('created_at'))}d old"
     )
     if sev:
@@ -1287,12 +1301,24 @@ def render_feedback_triage_tab(xano_base: str, user_email: str = ""):
         search = g1.text_input("Search the reports", key="fbt_search",
                                placeholder="words in the report, or a reporter's email")
         min_sev = g2.slider("Min severity", 0, 10, 0, key="fbt_sev", help=_SEVERITY_HELP)
-        hide_test = g3.checkbox("Hide test rows", value=True, key="fbt_hidetest")
+        hide_test = g3.checkbox(
+            "Hide test rows", value=True, key="fbt_hidetest",
+            help="Hides reports whose BODY is a test string ('test', '123', 'asdf') or is "
+                 "empty. It does not hide anything based on who sent it.",
+        )
+        hide_internal = g3.checkbox(
+            "Hide internal senders", value=False, key="fbt_hideinternal",
+            help="Off by default on purpose. Reports from the team's own addresses are "
+                 "labelled 🧪 internal, not hidden — hiding them buried two real bug reports "
+                 "from Des and made your own submissions invisible while you tested this tab.",
+        )
         only_unanswered = g3.checkbox("Never answered only", key="fbt_unans")
 
     view = df.copy()
     if hide_test:
         view = view[view["bucket"] != "test"]
+    if hide_internal:
+        view = view[~view["internal"].astype(bool)]
     if status == "Open":
         view = view[~view["completed"].astype(bool)]
     elif status == "Closed":
