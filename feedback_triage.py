@@ -8,11 +8,30 @@ Self-contained: dashboard.py just does
 
 WHAT THIS REPLACES
 ------------------
-Reports land in Slack #feedback via a bot and then stop. There is no queue, no owner, no
-state, and — the part that actually costs money — no record of whether anyone ever replied
-to the person who wrote in. 112 reports, none of them closed. This tab is that record.
+Reports land in Slack #feedback via a bot and then stop. No queue, no owner, no state, and
+no record of whether anyone ever replied. 112 reports, none closed. This tab is that record —
+and, more to the point, the place the report gets FIXED.
 
-Slack keeps only the notification role. State lives in Xano:
+WHAT THE REPORTS ACTUALLY ASK FOR (classified over all 112, 2026-08-31)
+-----------------------------------------------------------------------
+The first build assumed feedback was about vendors. It mostly is not:
+
+    38  paid but still locked out     the single biggest bucket, by a wide margin
+    20  internal test rows            noise that should never have been in the queue
+    13  refund / billing              several genuinely double-charged
+    11  feature requests              no data fix exists; reply and close
+     6  bugs                          same
+     5  a VENUE writing about its own listing
+     4  saved venues lost             the known ep109 favorites wipe
+     4  a specific venue's data is wrong
+     1  a security report             sitting unread since it arrived
+     1  account detail change
+
+So the fix lives on the USER row far more often than on a vendor. Both are here, and the
+two escalation buckets (venue reps, security) are surfaced rather than left to be found.
+
+WHERE STATE LIVES
+-----------------
     Feedback (table 35).completed          — open / closed. The ONE place status lives.
     feedback_triage_state (table 73)       — vendor link, notes, who handled it, last reply.
     admin_audit (table 72)                 — every write this tab makes, append-only.
@@ -20,25 +39,29 @@ Slack keeps only the notification role. State lives in Xano:
 Endpoints (all secret-gated with ANALYTICS_EXPORT_SECRET, group 10):
     GET  /admin/feedback_queue      (ep 271)
     GET  /admin/vendor_lookup       (ep 272) — mode=search | mode=ids
-    POST /admin/vendor_field_update (ep 273) — the ONLY live-data write path
+    POST /admin/vendor_field_update (ep 273) — railed write to vendor data
     POST /admin/feedback_update     (ep 274)
+    GET  /admin/user_lookup         (ep 275) — the reporter's entitlement
+    POST /admin/user_field_update   (ep 276) — railed write to the user row
 
-THE TWO THINGS TO UNDERSTAND BEFORE USING IT
---------------------------------------------
+EVERY WRITE GOES THROUGH ONE CONFIRM GATE
+-----------------------------------------
+A quick-fix button and the free-text box do the same thing: they STAGE a proposal. Nothing is
+written until the diff is on screen and you press Apply. The value shown in that diff is sent
+back as `expected_old`, and the server refuses the write if the row moved since — so what you
+approved is what lands, or nothing does. That is why the preview is not decoration.
+
+THE TWO THINGS TO UNDERSTAND
+----------------------------
 1. A feedback row does not know which vendor it is about. Nothing in table 35 references a
-   vendor — the reporter never told us. Linking a report to a venue is a judgement a human
-   makes by reading the complaint, which is why the vendor picker is a search box and not a
-   lookup, and why the chosen id is stored back so the judgement is not made twice.
+   vendor — the reporter never told us. Linking is a judgement a human makes by reading the
+   complaint, which is why the vendor picker is a search box, and why the pick is stored back.
 
 2. Hiding a vendor is not a neutral undo. `Validated_Data` = "0" removes it from Vendor
    Discovery (ep119 filters `Validated_Data == 1`). When a report says "this venue has no
-   pricing", there are two very different causes, and the picker labels which one you have:
-       nothing worth showing  — no pricing rows, or every price is zero. Hiding is right.
-       the data is fine       — real prices exist and are not reaching the user. Hiding
-                                deletes correct, expensively-extracted data to fix what is
-                                actually a display or link bug.
-   The second case is the expensive mistake, so it is called out in red rather than left for
-   you to infer from four numbers.
+   pricing" there are two very different causes, and the picker labels which one you have —
+   hiding a vendor that HAS real pricing deletes correct, expensively-extracted data to work
+   around what is actually a display bug.
 
 Deliberately cached for only 60s: someone is waiting on a reply.
 """
@@ -46,6 +69,7 @@ Deliberately cached for only 60s: someone is waiting on a reply.
 import base64
 import json
 import os
+import re
 import time
 import datetime as _dt
 from email.message import EmailMessage
@@ -66,33 +90,185 @@ FROM_EMAIL = os.environ.get("FEEDBACK_FROM_EMAIL", "hello@tulletogether.com")
 # the whole app, not scoped per tab — `vp_*` is Venue Pricing and `vport_*` is Vendor Portal,
 # and colliding with either crashes the page with StreamlitDuplicateElementKey.
 
-# Mirror of the server-side allowlist in ep273. The server is the authority — this copy exists
-# so the UI can offer a sensible dropdown and reject obvious mistakes before a round trip.
-# Keep the two in step: adding a column here without adding it there produces a confusing
-# "not writable from the admin dashboard" error at apply time.
-ALLOWED_COLUMNS = {
-    "Validated_Data":       "Visible in search (1 = shown, 0 = hidden)",
-    "Name":                 "Vendor name",
-    "Website":              "Website URL",
-    "Address":              "Street address",
-    "State":                "State (comma-separated for multi-state)",
-    "Country":              "Country",
-    "Category":             "Category (Venue, Photographer, …)",
-    "Venue_Type":           "Venue type (All-inclusive, Semi-inclusive, …)",
-    "Max_Capacity_Seated":  "Max seated capacity (number)",
-    "Description":          "Description",
-    "Contact_Information":  "Contact information",
-    "Flags":                "Flags",
-    "Place_ID":             "Google Place ID",
-    "Type_of_Photography":  "Type of photography",
+# Mirrors of the server-side allowlists (ep273 / ep276). The server is the authority; these
+# copies exist so the UI can label fields and reject obvious mistakes before a round trip.
+# Keep them in step — a column here but not there fails confusingly at apply time.
+VENDOR_COLUMNS = {
+    "Validated_Data":        "Visible in search (1 = shown, 0 = hidden)",
+    "Name":                  "Vendor name",
+    "Website":               "Website URL",
+    "Address":               "Street address",
+    "State":                 "State (comma-separated for multi-state)",
+    "Country":               "Country",
+    "Category":              "Category (Venue, Photographer, …)",
+    "Venue_Type":            "Venue type (All-inclusive, Semi-inclusive, …)",
+    "Max_Capacity_Seated":   "Max seated capacity (number)",
+    "Description":           "Description",
+    "Contact_Information":   "Contact information",
+    "Flags":                 "Flags",
+    "Place_ID":              "Google Place ID",
+    "Type_of_Photography":   "Type of photography",
     "Type_of_Entertainment": "Type of entertainment",
-    "Type_of_Beauty":       "Type of beauty",
+    "Type_of_Beauty":        "Type of beauty",
 }
 
+USER_COLUMNS = {
+    "date_until_access":        "Access expires (YYYY-MM-DD)",
+    "forever_access_purchased": "Lifetime access (1 / 0)",
+    "FreeViewsRemaining":       "Free PDF views remaining",
+    "total_vendor_views":       "Vendor views counted",
+    "total_amount_paid":        "Total paid, dollars",
+    "total_payments":           "Number of payments",
+    "email":                    "Email address",
+    "name":                     "Name",
+    "Wedding_Guest_Count":      "Guest count",
+    "Wedding_Budget":           "Budget",
+    "Wedding_Location":         "Wedding location",
+}
+
+# Pricing Intelligence is gated on total_amount_paid >= 50 (ep230 v7) and reads NO date.
+# A $30 buyer therefore has PDF access and no PI — a support question, not a bug.
+PI_THRESHOLD = 50
+
 _SEVERITY_HELP = (
-    "Severity is what the reporter chose, 1–10. It is self-reported, so treat it as a hint "
-    "about how annoyed they are, not about how broken the product is."
+    "Severity is what the reporter chose, 1–10. Self-reported, so it says how annoyed they "
+    "are, not how broken the product is."
 )
+
+
+# ── Buckets ───────────────────────────────────────────────────────────────────
+# Keyword classification, deliberately transparent and deliberately dumb. It picks which fix
+# panel opens FIRST; every panel stays reachable regardless, so a wrong guess costs a click
+# rather than hiding the tool you needed. It never triggers an action on its own.
+_BUCKET_RULES = [
+    ("test", [
+        r"^\s*(test|testing|123|abc|asdf|\d+)\b.{0,12}$",
+    ]),
+    # Checked early and deliberately: a venue writing about its own listing is a
+    # relationship and sometimes a legal matter, not a support ticket, and it must never sit
+    # in the queue behind feature requests. See report #79 (Union Station Dallas, from a
+    # @hyatt.com address) and #63 (Alexander Mansion).
+    ("vendor_rep", [
+        r"\bi represent\b", r"\bon behalf of\b",
+        r"\bi(?:'m| am) the (director|owner|manager|gm|general manager|coordinator|"
+        r"sales|event)", r"\bdirector of (events|sales|catering)",
+        r"\b(my|our) (venue|property|hotel|business|listing)\b",
+        r"person who submitted my pricing",
+        r"how do i modify what is showing",
+    ]),
+    ("security", [
+        r"\b(admin dashboard|admin panel|someone else'?s (account|data))\b",
+        r"\bi (randomly )?have access to\b.*\badmin\b",
+        r"\b(security|vulnerab|exposed|leak)\w*\b",
+    ]),
+    ("refund", [
+        r"\brefund\b", r"charged? (me )?(2|two|twice|double)", r"\b2x\b",
+        r"double charge", r"\bcancel (my )?(account|subscription)\b",
+        r"\$\d+ worth of charges",
+    ]),
+    ("access", [
+        r"\b(paid|bought|purchas\w+|subscrib\w+)\b.{0,80}\b(access|lock|pricing|filter|"
+        r"reflect|not work|didn'?t work|still|no longer|gone|nothing)",
+        r"still (locked|unable|can'?t)", r"not (being )?reflect", r"don'?t have access",
+        r"no access\b", r"unlock my access", r"advanced filters? (still )?(are |is )?lock",
+        r"asks? me to (pick|choose) a plan", r"trying to have me pay again",
+        r"(can'?t|cannot|unable to|no way to) (purchase|buy|pay)",
+        r"will not process", r"keep getting requests to submit a pdf",
+        r"unable to access my free", r"free (week|access).{0,40}(haven'?t|not)",
+        r"submitted a pdf.{0,60}(free|access).{0,60}(haven'?t|no email|no update)",
+    ]),
+    ("favorites", [
+        r"saved? (venues?|vendors?).{0,40}(disappear|gone|missing|empty)",
+        r"(disappear|gone|missing).{0,40}(saved?|liked?|favorit)",
+        r"\bsaved?\b.{0,25}\bdisappear",
+        r"liked? list", r"favorit\w* (are |all )?(gone|disappear)",
+        r"no venues saved",
+    ]),
+    ("account", [
+        r"(update|change) (the |my )?email", r"change my (name|password|details)",
+        r"wrong email on my account",
+    ]),
+    ("vendor_data", [
+        r"\b(inaccurate|incorrect|wrong)\b.{0,40}\b(info|information|data|price|pricing|"
+        r"listing|link|website)",
+        r"take\w* down", r"not for this business", r"wrong location",
+        r"pricing link does not", r"this venue.{0,30}(closed|no longer)",
+    ]),
+    ("feature", [
+        r"\b(sort|filter) (view )?option", r"would (be great|love|like) if",
+        r"(please|able to) add\b", r"feature request", r"can you make it so",
+        r"^filter international", r"\bwish\b.{0,30}\bcould\b",
+        r"i'?d like to be able to", r"would (be )?so helpful", r"is there a way to",
+        r"wondering if you wanted to consider",
+    ]),
+]
+
+BUCKET_LABEL = {
+    "access":      "🔓 Access / paid-but-locked",
+    "refund":      "💸 Refund / billing",
+    "favorites":   "💔 Saved venues lost",
+    "vendor_rep":  "🚨 Venue rep — about their OWN listing",
+    "vendor_data": "🏛️ Vendor data wrong",
+    "security":    "🔒 Security report",
+    "account":     "🧾 Account detail change",
+    "feature":     "💡 Feature request",
+    "bug":         "🐛 Bug report",
+    "test":        "🧪 Internal / test",
+    "other":       "❔ Other",
+}
+
+# Buckets that should never wait behind a feature request.
+PRIORITY_BUCKETS = ("vendor_rep", "security", "refund", "access")
+
+# Mailbox providers that tell you nothing. Anything else hints the reporter wrote in from a
+# work address, which for this product usually means a venue — worth surfacing, never worth
+# acting on alone.
+_FREEMAIL = {
+    "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com",
+    "me.com", "live.com", "msn.com", "comcast.net", "proton.me", "protonmail.com",
+    "verizon.net", "sbcglobal.net", "att.net", "mac.com", "ymail.com", "googlemail.com",
+}
+
+
+def is_business_email(email: str) -> bool:
+    dom = (email or "").split("@")[-1].strip().lower()
+    return bool(dom) and dom not in _FREEMAIL
+
+
+# Internal addresses. Matched against the EMAIL only — see the note in classify().
+_INTERNAL_EMAIL = re.compile(
+    r"@infiwebsolutions\.com|desi\.gaddis@|katebeckman|vivek\.marthi", re.I
+)
+
+# Anything left that reads like a malfunction is a bug; the rest stays unclassified rather
+# than being forced into a bucket that would open the wrong panel first.
+_BUG_HINT = re.compile(
+    r"nothing happens|doesn'?t work|does not work|not working|hasn'?t worked|getting errors?"
+    r"|\berrors?\b|broken|\bbug\b|won'?t let me|signed out|glitch\w*|not loading|won'?t load"
+    r"|auto takes you",
+    re.I,
+)
+
+
+def classify(details: str, email: str = "") -> str:
+    """Pick which fix panel opens first. Never triggers an action on its own.
+
+    The email is matched SEPARATELY from the body, not concatenated onto it. Concatenating
+    was a real bug: several rules are `$`-anchored to catch one-word rows like "test", and
+    appending the address to the text pushed the end of the string past the anchor, so every
+    internal test row classified as "other" and stayed in the queue.
+    """
+    if _INTERNAL_EMAIL.search(email or ""):
+        return "test"
+
+    body = (details or "").strip().lower()
+    for bucket, patterns in _BUCKET_RULES:
+        for p in patterns:
+            if re.search(p, body, re.I):
+                return bucket
+    if _BUG_HINT.search(body):
+        return "bug"
+    return "other"
 
 
 # ── HTTP (same retry shape as cohorts.py / roadmap_orders.py) ──────────────────
@@ -113,9 +289,9 @@ def _xget(url, tries=4, timeout=30):
 def _xpost(url, payload, tries=3, timeout=30):
     """POST and return (ok, parsed_or_error_text).
 
-    Xano answers a rejected precondition with a 4xx and a JSON body carrying the message we
-    wrote in the endpoint — those messages explain the rails, so they are surfaced verbatim
-    rather than collapsed into "failed".
+    Xano answers a rejected precondition with a 4xx and a JSON body carrying the message the
+    endpoint wrote — those messages explain the rails, so they are surfaced verbatim rather
+    than collapsed into "failed".
     """
     last = None
     for i in range(tries):
@@ -159,6 +335,10 @@ def load_queue(xano_base: str):
         for col in ("handled_at", "last_email_at"):
             reports[col] = reports.get(col, 0).fillna(0)
 
+    reports["bucket"] = [
+        classify(d, e)
+        for d, e in zip(reports["details"].fillna(""), reports["user_email"].fillna(""))
+    ]
     return reports
 
 
@@ -172,6 +352,19 @@ def _hydrate_vendors(xano_base: str, ids_key: str):
     qs = "&".join(f"ids[]={requests.utils.quote(i)}" for i in ids)
     rows = _xget(f"{xano_base}/admin/vendor_lookup?secret={EXPORT_SECRET}&mode=ids&{qs}")
     return {r["Vendor_ID"]: r for r in (rows or [])}
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _load_user(xano_base: str, email: str):
+    """The reporter's account. 30s cache — short, because entitlement is what gets edited."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    rows = _xget(
+        f"{xano_base}/admin/user_lookup?secret={EXPORT_SECRET}"
+        f"&email={requests.utils.quote(email)}"
+    )
+    return (rows or [None])[0]
 
 
 def _vendor_search(xano_base: str, q: str, limit: int = 15):
@@ -213,9 +406,8 @@ def _age_days(ms) -> int:
 def _pricing_verdict(v: dict):
     """(label, tone, explanation) for whether hiding this vendor destroys real data.
 
-    Reads the recompute_vendor_filter_aggregates denorms on table 11 rather than scanning
-    table 36 — one indexed read instead of a full pricing scan, and the same numbers ep119
-    itself filters on.
+    Reads the recompute_vendor_filter_aggregates denorms on table 11 — one indexed read
+    instead of a table-36 scan, and the same numbers ep119 itself filters on.
     """
     rows = int(v.get("flt_space_count") or 0)
     fee = int(v.get("flt_min_venue_fee") or 0)
@@ -223,17 +415,11 @@ def _pricing_verdict(v: dict):
     fbmin = int(v.get("flt_min_fbmin") or 0)
 
     if rows == 0:
-        return (
-            "Nothing to show",
-            "ok",
-            "No pricing rows at all. Hiding this costs the user nothing.",
-        )
+        return ("Nothing to show", "ok",
+                "No pricing rows at all. Hiding this costs the user nothing.")
     if not (fee or ppfb or fbmin):
-        return (
-            "Nothing to show",
-            "ok",
-            f"{rows} pricing row(s), but every price is zero. Hiding this costs the user nothing.",
-        )
+        return ("Nothing to show", "ok",
+                f"{rows} pricing row(s), but every price is zero. Hiding costs the user nothing.")
     parts = []
     if fee:
         parts.append(f"venue fee from ${fee:,}")
@@ -241,13 +427,68 @@ def _pricing_verdict(v: dict):
         parts.append(f"per-person F&B from ${ppfb:,}")
     if fbmin:
         parts.append(f"F&B minimum from ${fbmin:,}")
-    return (
-        "Real pricing exists",
-        "warn",
-        f"{rows} pricing row(s) with " + ", ".join(parts) + ". If a user says they see "
-        "nothing here, the data is fine and the LINK is broken — hiding it deletes correct "
-        "pricing instead of fixing the bug.",
-    )
+    return ("Real pricing exists", "warn",
+            f"{rows} pricing row(s) with " + ", ".join(parts) + ". If a user says they see "
+            "nothing here, the data is fine and the LINK is broken — hiding it deletes correct "
+            "pricing instead of fixing the bug.")
+
+
+def _today() -> _dt.date:
+    return _dt.date.today()
+
+
+def _parse_date(s):
+    if not s:
+        return None
+    try:
+        return _dt.date.fromisoformat(str(s)[:10])
+    except Exception:
+        return None
+
+
+def _entitlement(u: dict):
+    """(lines, problems) — what this account can actually do, and what looks wrong.
+
+    Three questions, deliberately separate, because a user can pass one and fail another —
+    which is precisely why "I paid but I'm locked out" keeps arriving:
+      PDF / general access : forever_access_purchased, OR date_until_access >= today
+      Pricing Intelligence : forever_access_purchased, OR total_amount_paid >= 50 (no date)
+      Free PDF meter       : FreeViewsRemaining
+    """
+    forever = bool(u.get("forever_access_purchased"))
+    until = _parse_date(u.get("date_until_access"))
+    paid = int(u.get("total_amount_paid") or 0)
+    pays = int(u.get("total_payments") or 0)
+    views = int(u.get("FreeViewsRemaining") or 0)
+
+    has_access = forever or (until is not None and until >= _today())
+    has_pi = forever or paid >= PI_THRESHOLD
+
+    lines = [
+        f"**Access:** {'✅ lifetime' if forever else ('✅ until ' + until.isoformat() if has_access else ('🚫 expired ' + until.isoformat() if until else '🚫 never had it'))}",
+        f"**Pricing Intelligence:** {'✅ yes' if has_pi else f'🚫 no — needs lifetime or ${PI_THRESHOLD}+ paid'}",
+        f"**Paid:** ${paid} across {pays} payment(s) · **free PDF views left:** {views}",
+    ]
+
+    problems = []
+    if pays > 0 and not has_access:
+        problems.append(
+            f"They paid {pays} time(s) (${paid}) and have no access right now. This is the "
+            "complaint. Note that `date_until_access` doubles as the free-PDF meter's kill "
+            "switch, so an expired date does not by itself mean the payment failed."
+        )
+    if pays > 1 and paid and not forever:
+        problems.append(
+            f"{pays} separate payments totalling ${paid} — check for a double charge before "
+            "replying about a refund."
+        )
+    if has_access and not has_pi and paid:
+        problems.append(
+            f"They have access but NOT Pricing Intelligence (paid ${paid}, threshold "
+            f"${PI_THRESHOLD}). If they are complaining that pricing is still hidden, "
+            "extending the date will not fix it — that is the bucket to address."
+        )
+    return lines, problems
 
 
 # ── Gmail ─────────────────────────────────────────────────────────────────────
@@ -256,10 +497,9 @@ def _gmail_token():
 
     Two paths, in order of how little setup they need:
       1. GMAIL_SEND_REFRESH_TOKEN — a refresh token for the FROM_EMAIL mailbox with the
-         gmail.send scope, exchanged against the dashboard's existing OAuth client. No
-         Workspace admin involvement.
-      2. GOOGLE_SERVICE_ACCOUNT_JSON + GMAIL_IMPERSONATE — domain-wide delegation. Needs a
-         Workspace admin to grant the service account the gmail.send scope.
+         gmail.send scope, exchanged against the dashboard's existing OAuth client.
+      2. GOOGLE_SERVICE_ACCOUNT_JSON + GMAIL_IMPERSONATE — domain-wide delegation, which
+         needs a Workspace admin to grant the service account that scope org-wide.
     """
     rt = os.environ.get("GMAIL_SEND_REFRESH_TOKEN", "").strip()
     cid = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
@@ -268,12 +508,8 @@ def _gmail_token():
         try:
             r = requests.post(
                 "https://oauth2.googleapis.com/token",
-                data={
-                    "client_id": cid,
-                    "client_secret": cs,
-                    "refresh_token": rt,
-                    "grant_type": "refresh_token",
-                },
+                data={"client_id": cid, "client_secret": cs,
+                      "refresh_token": rt, "grant_type": "refresh_token"},
                 timeout=20,
             )
             if r.status_code == 200 and r.json().get("access_token"):
@@ -326,39 +562,117 @@ def _gmail_send(to_addr: str, subject: str, body: str):
         return False, f"send failed: {e}"
 
     # A 200 with no message id is not a send. Gmail answers errors with 4xx + a JSON reason,
-    # so branch on the status rather than assuming the absence of an exception means delivery.
+    # so branch on status rather than assuming no exception means delivery.
     if r.status_code == 200 and (r.json() or {}).get("id"):
         return True, f"sent via {how} (message {r.json()['id']})"
     return False, f"HTTP {r.status_code}: {r.text[:300]}"
 
 
-# ── The natural-language rail ─────────────────────────────────────────────────
-_PROPOSE_SYSTEM = """You turn a wedding-venue ops instruction into ONE proposed database edit.
+# ── The one confirm gate ──────────────────────────────────────────────────────
+# Quick-fix buttons and the free-text box both STAGE a proposal here. Nothing reaches the
+# database until the diff has been rendered and approved, and the old value in that diff is
+# sent back as `expected_old` so the server can refuse a write against a row that has moved.
+def _stage(rid, target, target_id, column, new_value, old_value, why, label=None):
+    st.session_state[f"fbt_stage_{rid}"] = {
+        "target": target,          # "user" | "vendor"
+        "target_id": target_id,
+        "column": column,
+        "new_value": str(new_value),
+        "old_value": "" if old_value is None else str(old_value),
+        "why": why,
+        "label": label or column,
+    }
 
-You are given the current row from the vendor table and an instruction from an admin. Return
-the single column that should change and its new value.
+
+def _apply_staged(xano_base, rid, actor):
+    s = st.session_state.get(f"fbt_stage_{rid}")
+    if not s:
+        return False, "nothing staged"
+    if s["target"] == "user":
+        url = f"{xano_base}/admin/user_field_update"
+        payload = {"user_id": int(s["target_id"])}
+    else:
+        url = f"{xano_base}/admin/vendor_field_update"
+        payload = {"vendor_id": str(s["target_id"])}
+    payload.update({
+        "secret": EXPORT_SECRET,
+        "column": s["column"],
+        "new_value": s["new_value"],
+        "expected_old": s["old_value"],
+        "actor": actor,
+        "feedback_id": int(rid or 0),
+        "note": s.get("why") or "",
+    })
+    return _xpost(url, payload)
+
+
+def _render_confirm(xano_base, rid, actor):
+    """The gate. Renders the staged diff and the only two buttons that end it."""
+    s = st.session_state.get(f"fbt_stage_{rid}")
+    if not s:
+        return
+
+    st.markdown("---")
+    st.markdown("#### ⚠️ Confirm this change")
+    where = (f"user `{s['target_id']}`" if s["target"] == "user"
+             else f"vendor `{s['target_id']}`")
+    st.markdown(f"**{s['label']}** (`{s['column']}`) on {where}")
+
+    c1, c2 = st.columns(2)
+    c1.text_area("Current", value=s["old_value"], disabled=True, height=90,
+                 key=f"fbt_cold_{rid}")
+    c2.text_area("After this change", value=s["new_value"], disabled=True, height=90,
+                 key=f"fbt_cnew_{rid}")
+    if s.get("why"):
+        st.caption(s["why"])
+
+    if s["old_value"] == s["new_value"]:
+        st.info("That is already the current value — nothing would change.")
+
+    a1, a2 = st.columns([1, 1])
+    if a1.button("✅ Apply", type="primary", key=f"fbt_capply_{rid}"):
+        ok, res = _apply_staged(xano_base, rid, actor)
+        if ok:
+            st.session_state.pop(f"fbt_stage_{rid}", None)
+            st.success(
+                f"Applied — {res.get('column')} on {res.get('email') or res.get('name') or res.get('vendor_id')}: "
+                f"{res.get('old_value')!r} → {res.get('new_value')!r} (audit #{res.get('audit_id')})"
+            )
+            _refresh()
+        else:
+            st.error(res)
+    if a2.button("Discard", key=f"fbt_cdiscard_{rid}"):
+        st.session_state.pop(f"fbt_stage_{rid}", None)
+        st.rerun()
+
+
+# ── The natural-language rail ─────────────────────────────────────────────────
+_PROPOSE_SYSTEM = """You turn a wedding-platform ops instruction into ONE proposed database edit.
+
+You are given the current row and an instruction from an admin. Return the single column that
+should change and its new value.
 
 Rules:
 - You may only propose a column from the allowed list you are given. Never invent one.
 - Propose exactly one column. If the instruction needs several, pick the single most important
   one and say so in `reason`.
-- `new_value` is always a string. For Max_Capacity_Seated give digits only.
-- Validated_Data is "1" (visible in search) or "0" (hidden).
+- `new_value` is always a string. Dates are "YYYY-MM-DD". Booleans are "1" or "0". Numbers are
+  digits only.
 - If the instruction is unclear, or asks for something no allowed column can express, set
-  `column` to "" and explain why in `reason`. Refusing is a correct answer — a human reads
-  this before anything is written.
+  `column` to "" and explain why in `reason`. Refusing is a correct answer — a human reads this
+  before anything is written.
 - Do not restate the old value as the new value.
 
 Reply with ONLY a JSON object, no prose and no code fence:
 {"column": "...", "new_value": "...", "reason": "one sentence"}"""
 
 
-def _propose_edit(instruction: str, vendor: dict):
+def _propose_edit(instruction: str, row: dict, allowed: dict, today_note: str = ""):
     """Ask Claude for a proposed edit. Returns (proposal_dict, error_str).
 
-    This never writes anything. It produces a suggestion a human reads and approves; the
-    approval is what triggers the write, and the write is separately guarded server-side by
-    the column allowlist and an optimistic lock on the value shown here.
+    This never writes. It produces a suggestion a human reads and approves; the approval is
+    what stages it, and the write is separately guarded server-side by the column allowlist
+    and an optimistic lock on the value shown in the diff.
     """
     try:
         from anthropic import Anthropic
@@ -368,15 +682,16 @@ def _propose_edit(instruction: str, vendor: dict):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None, "ANTHROPIC_API_KEY is not set on this deployment."
 
-    facts = {k: vendor.get(k) for k in ALLOWED_COLUMNS if k in vendor}
-    facts["Vendor_ID"] = vendor.get("Vendor_ID")
-    facts["Name"] = vendor.get("Name")
+    facts = {k: row.get(k) for k in allowed if k in row}
+    for k in ("Vendor_ID", "Name", "id", "email", "name"):
+        if k in row:
+            facts[k] = row.get(k)
 
     user = (
-        f"Allowed columns: {json.dumps(list(ALLOWED_COLUMNS.keys()))}\n\n"
-        f"Current vendor row (only the allowed columns are shown):\n"
-        f"{json.dumps(facts, indent=2)}\n\n"
-        f"Admin instruction:\n{instruction.strip()}"
+        f"Allowed columns: {json.dumps(list(allowed.keys()))}\n\n"
+        f"Current row (only relevant columns shown):\n{json.dumps(facts, indent=2, default=str)}\n\n"
+        + (f"Today is {today_note}.\n\n" if today_note else "")
+        + f"Admin instruction:\n{instruction.strip()}"
     )
 
     try:
@@ -387,7 +702,8 @@ def _propose_edit(instruction: str, vendor: dict):
             system=_PROPOSE_SYSTEM,
             messages=[{"role": "user", "content": user}],
         )
-        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
+        text = "".join(b.text for b in resp.content
+                       if getattr(b, "type", "") == "text").strip()
     except Exception as e:
         return None, f"model call failed: {e}"
 
@@ -404,43 +720,24 @@ def _propose_edit(instruction: str, vendor: dict):
     col = (prop.get("column") or "").strip()
     if not col:
         return None, prop.get("reason") or "The instruction did not map to an editable field."
-    if col not in ALLOWED_COLUMNS:
-        return None, (
-            f"Proposed a column that is not writable from here ({col}). "
-            "Nothing was changed."
-        )
+    if col not in allowed:
+        return None, f"Proposed a column that is not writable from here ({col}). Nothing changed."
     prop["column"] = col
     prop["new_value"] = str(prop.get("new_value", ""))
     return prop, None
 
 
-# ── Writes ────────────────────────────────────────────────────────────────────
+# ── Writes on the feedback row itself ─────────────────────────────────────────
 def _save_feedback(xano_base, feedback_id, actor, **fields):
     payload = {"secret": EXPORT_SECRET, "feedback_id": int(feedback_id), "actor": actor}
     payload.update({k: v for k, v in fields.items() if v is not None})
     return _xpost(f"{xano_base}/admin/feedback_update", payload)
 
 
-def _write_vendor_field(xano_base, vendor_id, column, new_value, expected_old,
-                        actor, feedback_id, note):
-    return _xpost(
-        f"{xano_base}/admin/vendor_field_update",
-        {
-            "secret": EXPORT_SECRET,
-            "vendor_id": vendor_id,
-            "column": column,
-            "new_value": str(new_value),
-            "expected_old": "" if expected_old is None else str(expected_old),
-            "actor": actor,
-            "feedback_id": int(feedback_id or 0),
-            "note": note or "",
-        },
-    )
-
-
 def _refresh():
     load_queue.clear()
     _hydrate_vendors.clear()
+    _load_user.clear()
     st.rerun()
 
 
@@ -456,19 +753,17 @@ def _email_dialog(xano_base, row, actor):
     else:
         st.warning(
             f"Sending is not configured on this deployment ({how}). You can still write the "
-            f"reply, copy it, send it yourself, and then mark it as replied so the queue "
-            f"stays honest.\n\nTo enable sending: set **GMAIL_SEND_REFRESH_TOKEN** (a refresh "
-            f"token for {FROM_EMAIL} with the `gmail.send` scope, against the dashboard's "
-            f"existing GOOGLE_CLIENT_ID/SECRET), or **GMAIL_IMPERSONATE={FROM_EMAIL}** with "
-            f"domain-wide delegation on GOOGLE_SERVICE_ACCOUNT_JSON."
+            f"reply, copy it, send it yourself, and mark it as replied so the queue stays "
+            f"honest.\n\nTo enable: set **GMAIL_SEND_REFRESH_TOKEN** (run "
+            f"`mint_gmail_token.py` once, signed in as {FROM_EMAIL}), or "
+            f"**GMAIL_IMPERSONATE={FROM_EMAIL}** with domain-wide delegation."
         )
 
     c1, c2 = st.columns(2)
     c1.text_input("From", value=FROM_EMAIL, disabled=True, key=f"fbt_from_{rid}")
     to_val = c2.text_input("To", value=to_addr, key=f"fbt_to_{rid}")
-
-    default_subject = "Re: your Tulle Together feedback"
-    subject = st.text_input("Subject", value=default_subject, key=f"fbt_subj_{rid}")
+    subject = st.text_input("Subject", value="Re: your Tulle Together feedback",
+                            key=f"fbt_subj_{rid}")
 
     quoted = "\n".join("> " + ln for ln in str(row.get("details") or "").splitlines())
     default_body = (
@@ -480,7 +775,7 @@ def _email_dialog(xano_base, row, actor):
     body = st.text_area("Body", value=default_body, height=280, key=f"fbt_body_{rid}")
 
     st.divider()
-    b1, b2, b3 = st.columns([1, 1, 1])
+    b1, b2, b3 = st.columns(3)
 
     if b1.button("Send", type="primary", key=f"fbt_send_{rid}", disabled=not token):
         if not to_val.strip():
@@ -490,9 +785,7 @@ def _email_dialog(xano_base, row, actor):
             if ok:
                 # Stamp last_email_at only now — after a real message id came back. A
                 # timestamp written on intent would answer "did we reply?" wrongly.
-                _save_feedback(
-                    xano_base, rid, actor, email_sent="1", email_subject=subject
-                )
+                _save_feedback(xano_base, rid, actor, email_sent="1", email_subject=subject)
                 st.success(detail)
                 _refresh()
             else:
@@ -511,19 +804,205 @@ def _email_dialog(xano_base, row, actor):
         st.rerun()
 
 
+# ── Fix panels ────────────────────────────────────────────────────────────────
+def _panel_account(xano_base, rid, row, user):
+    """Entitlement, plus the one-click grants. Every button stages; none writes."""
+    if not user:
+        st.info(
+            f"No account found for `{row.get('user_email')}`. They may have written in from a "
+            "different address than they signed up with, or never signed up at all."
+        )
+        return
+
+    lines, problems = _entitlement(user)
+    st.markdown(f"`user {user['id']}` **{user.get('name') or '—'}** · {user.get('email')}")
+    for ln in lines:
+        st.markdown("- " + ln)
+    for p in problems:
+        st.warning(p)
+
+    until = _parse_date(user.get("date_until_access"))
+    base = max(until, _today()) if until else _today()
+    paid = int(user.get("total_amount_paid") or 0)
+
+    st.markdown("**Grant access** — extends from whichever is later, today or their current expiry.")
+    g1, g2, g3, g4 = st.columns(4)
+    for col, weeks, label in ((g1, 1, "+1 week"), (g2, 4, "+4 weeks"), (g3, 12, "+12 weeks")):
+        if col.button(label, key=f"fbt_grant{weeks}_{rid}"):
+            new = (base + _dt.timedelta(weeks=weeks)).isoformat()
+            _stage(rid, "user", user["id"], "date_until_access", new,
+                   user.get("date_until_access") or "",
+                   f"Granting {label.strip('+')} from {base.isoformat()} in response to "
+                   f"report #{rid}.",
+                   label="Access expires")
+            st.rerun()
+    if g4.button("Lifetime", key=f"fbt_grantforever_{rid}"):
+        _stage(rid, "user", user["id"], "forever_access_purchased", "1",
+               "1" if user.get("forever_access_purchased") else "0",
+               f"Granting lifetime access in response to report #{rid}. Note this also "
+               f"unlocks Pricing Intelligence, which the date-based grants do not.",
+               label="Lifetime access")
+        st.rerun()
+
+    f1, f2 = st.columns(2)
+    if paid and paid < PI_THRESHOLD:
+        if f1.button(f"Unlock Pricing Intelligence (set paid to ${PI_THRESHOLD})",
+                     key=f"fbt_pi_{rid}",
+                     help=f"PI is gated on total_amount_paid >= {PI_THRESHOLD} and reads no "
+                          f"date. Extending access will NOT unlock it."):
+            _stage(rid, "user", user["id"], "total_amount_paid", str(PI_THRESHOLD), str(paid),
+                   f"Raising recorded spend to the ${PI_THRESHOLD} Pricing Intelligence "
+                   f"threshold in response to report #{rid}. This changes a revenue figure — "
+                   f"only do it when the payment is real and under-recorded.",
+                   label="Total paid, dollars")
+            st.rerun()
+    views = int(user.get("FreeViewsRemaining") or 0)
+    if f2.button("Reset free PDF views to 3", key=f"fbt_views_{rid}"):
+        _stage(rid, "user", user["id"], "FreeViewsRemaining", "3", str(views),
+               f"Restoring the free PDF allowance in response to report #{rid}.",
+               label="Free PDF views remaining")
+        st.rerun()
+
+
+def _panel_favorites(user):
+    n = len(user.get("favorited_vendors") or []) if user else 0
+    st.warning(
+        f"This account currently has **{n}** saved vendor(s). Their previous list is not "
+        "recoverable from here — the wipe overwrites the array rather than versioning it, so "
+        "there is no prior value to restore. Treat this as an apology-and-explain reply, not "
+        "a fix, and check whether the underlying ep109 favorites bug is still live."
+    )
+
+
+def _panel_billing(user):
+    if not user:
+        return
+    pays = int(user.get("total_payments") or 0)
+    paid = int(user.get("total_amount_paid") or 0)
+    st.warning(
+        f"Recorded: **{pays} payment(s), ${paid} total**. Refunds are not issued from this "
+        "dashboard — the Stripe integration here is read-only, so issue it in Stripe and note "
+        "it below. Two or more payments with no lifetime flag is the double-charge signature."
+    )
+
+
+def _panel_vendor(xano_base, rid, row, actor, vendors):
+    vendor_id = str(row.get("vendor_id") or "")
+    vendor = vendors.get(vendor_id) if vendor_id else None
+
+    if vendor:
+        label, tone, why = _pricing_verdict(vendor)
+        visible = str(vendor.get("Validated_Data") or "") == "1"
+        st.markdown(
+            f"`{vendor['Vendor_ID']}` **{vendor.get('Name')}** — "
+            f"{vendor.get('State') or '—'} · {vendor.get('Category') or '—'} · "
+            f"{'👁️ visible in search' if visible else '🚫 hidden from search'}"
+        )
+        (st.warning if tone == "warn" else st.info)(f"**{label}.** {why}")
+
+        v1, v2, v3 = st.columns(3)
+        if visible:
+            if v1.button("🚫 Hide from search", key=f"fbt_hide_{rid}"):
+                _stage(rid, "vendor", vendor["Vendor_ID"], "Validated_Data", "0",
+                       vendor.get("Validated_Data"),
+                       f"Hiding {vendor.get('Name')} from Vendor Discovery in response to "
+                       f"report #{rid}. {why}",
+                       label="Visible in search")
+                st.rerun()
+        else:
+            if v1.button("👁️ Show in search", type="primary", key=f"fbt_show_{rid}"):
+                _stage(rid, "vendor", vendor["Vendor_ID"], "Validated_Data", "1",
+                       vendor.get("Validated_Data"),
+                       f"Restoring {vendor.get('Name')} to Vendor Discovery in response to "
+                       f"report #{rid}.",
+                       label="Visible in search")
+                st.rerun()
+
+        if v2.button("Unlink vendor", key=f"fbt_unlink_{rid}"):
+            ok, res = _save_feedback(xano_base, rid, actor, vendor_id="-")
+            if ok:
+                _refresh()
+            else:
+                st.error(res)
+        if vendor.get("Website"):
+            v3.link_button("Open website", vendor["Website"])
+        return vendor
+
+    q = st.text_input(
+        "Search by venue name or Vendor_ID", key=f"fbt_vq_{rid}",
+        placeholder="e.g. Union Station, or V3488",
+        help="Feedback rows carry no vendor reference — the reporter never told us which "
+             "venue. Read the complaint and pick it.",
+    )
+    if q:
+        hits = _vendor_search(xano_base, q)
+        if not hits:
+            st.caption("No matches.")
+        for h in hits[:10]:
+            hc1, hc2 = st.columns([5, 1])
+            vis = "👁️" if str(h.get("Validated_Data")) == "1" else "🚫"
+            hc1.write(
+                f"{vis} `{h['Vendor_ID']}` **{h.get('Name')}** — {h.get('State') or '—'} · "
+                f"{h.get('Category') or '—'} · {int(h.get('flt_space_count') or 0)} pricing row(s)"
+            )
+            if hc2.button("Link", key=f"fbt_link_{rid}_{h['Vendor_ID']}"):
+                ok, res = _save_feedback(xano_base, rid, actor, vendor_id=h["Vendor_ID"])
+                if ok:
+                    _refresh()
+                else:
+                    st.error(res)
+    return None
+
+
+def _panel_freetext(rid, user, vendor):
+    """Anything the buttons don't cover. Same confirm gate, no exceptions."""
+    targets = []
+    if user:
+        targets.append(("This reporter's account", "user"))
+    if vendor:
+        targets.append(("The linked vendor", "vendor"))
+    if not targets:
+        st.caption("Link a vendor, or find the reporter's account, to enable free-text edits.")
+        return
+
+    tgt_label = st.radio("Change what?", [t[0] for t in targets], horizontal=True,
+                         key=f"fbt_tgt_{rid}")
+    tgt = dict((a, b) for a, b in targets)[tgt_label]
+    row = user if tgt == "user" else vendor
+    allowed = USER_COLUMNS if tgt == "user" else VENDOR_COLUMNS
+    tid = row["id"] if tgt == "user" else row["Vendor_ID"]
+
+    instruction = st.text_input(
+        "Describe the change", key=f"fbt_instr_{rid}",
+        placeholder="e.g. give them access through the end of September — their payment "
+                    "went through but the webhook missed it",
+    )
+    if st.button("Preview change", key=f"fbt_preview_{rid}",
+                 disabled=not instruction.strip()):
+        with st.spinner("Working out what that means…"):
+            prop, err = _propose_edit(instruction, row, allowed, _today().isoformat())
+        if err:
+            st.warning(err)
+        else:
+            _stage(rid, tgt, tid, prop["column"], prop["new_value"],
+                   row.get(prop["column"]),
+                   f"{instruction.strip()} — {prop.get('reason') or ''}".strip(" —"),
+                   label=allowed.get(prop["column"], prop["column"]))
+            st.rerun()
+
+
 # ── One report ────────────────────────────────────────────────────────────────
 def _render_report(xano_base, row, actor, vendors):
     rid = int(row["id"])
     closed = bool(row.get("completed"))
-    vendor_id = str(row.get("vendor_id") or "")
     emailed = int(row.get("last_email_at") or 0) > 0
     sev = int(row.get("severity") or 0)
+    bucket = row.get("bucket") or "other"
 
-    badge = "✅ Closed" if closed else "🔴 Open"
-    age = _age_days(row.get("created_at"))
     head = (
-        f"{badge} · #{rid} · {row.get('user_email') or 'no email'} · "
-        f"{row.get('page') or 'unknown page'} · {age}d old"
+        f"{'✅ Closed' if closed else '🔴 Open'} · #{rid} · "
+        f"{BUCKET_LABEL.get(bucket, bucket)} · {row.get('user_email') or 'no email'} · "
+        f"{row.get('page') or 'unknown page'} · {_age_days(row.get('created_at'))}d old"
     )
     if sev:
         head += f" · severity {sev}"
@@ -534,37 +1013,97 @@ def _render_report(xano_base, row, actor, vendors):
         st.markdown(f"**{head}**")
         st.write(row.get("details") or "_(no details)_")
 
-        meta = [
-            f"submitted {_ts(row.get('created_at'))}",
-            f"category: {row.get('category') or '—'}",
-            f"{row.get('operating_system') or '—'} · {row.get('device_width_size') or '—'}px",
-        ]
+        meta = [f"submitted {_ts(row.get('created_at'))}",
+                f"category: {row.get('category') or '—'}",
+                f"{row.get('operating_system') or '—'} · {row.get('device_width_size') or '—'}px"]
         if emailed:
             meta.append(f"last reply {_ts(row.get('last_email_at'))}")
         if row.get("handled_by"):
             meta.append(f"last touched by {row['handled_by']}")
         st.caption(" · ".join(meta))
 
-        with st.expander("Address this report", expanded=False):
-            # ── notes + status ────────────────────────────────────────────────
-            notes = st.text_area(
-                "Internal notes",
-                value=str(row.get("admin_notes") or ""),
-                key=f"fbt_notes_{rid}",
-                height=80,
-                help="Never shown to the reporter.",
+        # Two buckets are not support tickets and must not read like one.
+        if bucket == "vendor_rep":
+            st.error(
+                "**This is the venue writing about its own listing.** That is a relationship "
+                "and sometimes a legal matter, not a queue item — the data they are objecting "
+                "to is data we published about them. Read it before touching anything, and "
+                "reply as a person rather than closing it."
             )
-            n1, n2, n3 = st.columns([1, 1, 1])
+        elif bucket == "security":
+            st.error(
+                "**Someone is reporting a security problem.** Verify it before it is closed, "
+                "and treat the reporter as having done you a favour."
+            )
+        elif is_business_email(row.get("user_email")) and bucket in ("vendor_data", "other"):
+            st.info(
+                f"Written from a business address (`{str(row.get('user_email')).split('@')[-1]}`). "
+                "Often a venue rather than a couple — worth reading in that light before "
+                "replying, though the address alone proves nothing."
+            )
+
+        with st.expander("Fix this report", expanded=bool(st.session_state.get(f"fbt_stage_{rid}"))):
+            # The staged diff comes FIRST — if something is waiting for approval it should not
+            # be below three panels of controls.
+            _render_confirm(xano_base, rid, actor)
+
+            user = None
+            try:
+                user = _load_user(xano_base, row.get("user_email"))
+            except Exception as e:
+                st.caption(f"Could not load the reporter's account: {e}")
+
+            # Panels are ordered by the bucket, but all of them stay reachable — the classifier
+            # picks what opens first, never what is possible.
+            order = {
+                "access":      ["account", "vendor", "free"],
+                "refund":      ["billing", "account", "free"],
+                "favorites":   ["favorites", "account", "free"],
+                "vendor_data": ["vendor", "account", "free"],
+                "vendor_rep":  ["vendor", "account", "free"],
+            }.get(bucket, ["account", "vendor", "free"])
+
+            names = {
+                "account":   "🔓 Reporter's account",
+                "billing":   "💸 Billing",
+                "favorites": "💔 Saved venues",
+                "vendor":    "🏛️ Vendor",
+                "free":      "✍️ Anything else",
+            }
+            tabs = st.tabs([names[o] for o in order])
+            vendor = None
+            for t, name in zip(tabs, order):
+                with t:
+                    if name == "account":
+                        _panel_account(xano_base, rid, row, user)
+                    elif name == "billing":
+                        _panel_billing(user)
+                    elif name == "favorites":
+                        _panel_favorites(user)
+                    elif name == "vendor":
+                        vendor = _panel_vendor(xano_base, rid, row, actor, vendors)
+                    elif name == "free":
+                        vid = str(row.get("vendor_id") or "")
+                        _panel_freetext(rid, user, vendors.get(vid) if vid else None)
+
+            st.divider()
+
+            # ── notes + status + reply ────────────────────────────────────────
+            notes = st.text_area(
+                "Internal notes", value=str(row.get("admin_notes") or ""),
+                key=f"fbt_notes_{rid}", height=70,
+                help="Never shown to the reporter. For the part of the resolution that is not "
+                     "a database change — 'refunded in Stripe', 'escalated to Des', 'waiting "
+                     "on the venue'. Data changes record themselves in the audit log.",
+            )
+            n1, n2, n3 = st.columns(3)
             if n1.button("Save notes", key=f"fbt_savenotes_{rid}"):
-                ok, res = _save_feedback(
-                    xano_base, rid, actor, admin_notes=(notes or "-")
-                )
+                ok, res = _save_feedback(xano_base, rid, actor, admin_notes=(notes or "-"))
                 if ok:
                     st.success("Saved.")
                     _refresh()
                 else:
                     st.error(res)
-
             if closed:
                 if n2.button("Reopen", key=f"fbt_reopen_{rid}"):
                     ok, res = _save_feedback(xano_base, rid, actor, set_completed="0")
@@ -579,159 +1118,8 @@ def _render_report(xano_base, row, actor, vendors):
                         _refresh()
                     else:
                         st.error(res)
-
             if n3.button("✉️ Draft reply", key=f"fbt_email_{rid}"):
                 _email_dialog(xano_base, row, actor)
-
-            st.divider()
-
-            # ── vendor link ───────────────────────────────────────────────────
-            st.markdown("**Vendor this report is about**")
-            vendor = vendors.get(vendor_id) if vendor_id else None
-
-            if vendor:
-                label, tone, why = _pricing_verdict(vendor)
-                visible = str(vendor.get("Validated_Data") or "") == "1"
-                st.markdown(
-                    f"`{vendor['Vendor_ID']}` **{vendor.get('Name')}** — "
-                    f"{vendor.get('State') or '—'} · {vendor.get('Category') or '—'} · "
-                    f"{'👁️ visible in search' if visible else '🚫 hidden from search'}"
-                )
-                (st.warning if tone == "warn" else st.info)(f"**{label}.** {why}")
-
-                v1, v2, v3 = st.columns([1, 1, 1])
-                if visible:
-                    if v1.button("🚫 Hide from search", key=f"fbt_hide_{rid}"):
-                        ok, res = _write_vendor_field(
-                            xano_base, vendor["Vendor_ID"], "Validated_Data", "0",
-                            vendor.get("Validated_Data"), actor, rid,
-                            f"Hidden from the feedback queue, report #{rid}",
-                        )
-                        if ok:
-                            st.success(f"{vendor.get('Name')} is now hidden from search.")
-                            _refresh()
-                        else:
-                            st.error(res)
-                else:
-                    if v1.button("👁️ Show in search", type="primary", key=f"fbt_show_{rid}"):
-                        ok, res = _write_vendor_field(
-                            xano_base, vendor["Vendor_ID"], "Validated_Data", "1",
-                            vendor.get("Validated_Data"), actor, rid,
-                            f"Restored from the feedback queue, report #{rid}",
-                        )
-                        if ok:
-                            st.success(f"{vendor.get('Name')} is visible in search again.")
-                            _refresh()
-                        else:
-                            st.error(res)
-
-                if v2.button("Unlink vendor", key=f"fbt_unlink_{rid}"):
-                    ok, res = _save_feedback(xano_base, rid, actor, vendor_id="-")
-                    if ok:
-                        _refresh()
-                    else:
-                        st.error(res)
-
-                if vendor.get("Website"):
-                    v3.link_button("Open website", vendor["Website"])
-
-                st.divider()
-                _render_field_fix(xano_base, rid, vendor, actor)
-
-            else:
-                q = st.text_input(
-                    "Search by venue name or Vendor_ID",
-                    key=f"fbt_vq_{rid}",
-                    placeholder="e.g. Raritan Inn, or V3488",
-                    help="Feedback rows carry no vendor reference — the reporter never told "
-                         "us which venue. Read the complaint and pick it.",
-                )
-                if q:
-                    hits = _vendor_search(xano_base, q)
-                    if not hits:
-                        st.caption("No matches.")
-                    for h in hits[:10]:
-                        hc1, hc2 = st.columns([5, 1])
-                        vis = "👁️" if str(h.get("Validated_Data")) == "1" else "🚫"
-                        hc1.write(
-                            f"{vis} `{h['Vendor_ID']}` **{h.get('Name')}** — "
-                            f"{h.get('State') or '—'} · {h.get('Category') or '—'} · "
-                            f"{int(h.get('flt_space_count') or 0)} pricing row(s)"
-                        )
-                        if hc2.button("Link", key=f"fbt_link_{rid}_{h['Vendor_ID']}"):
-                            ok, res = _save_feedback(
-                                xano_base, rid, actor, vendor_id=h["Vendor_ID"]
-                            )
-                            if ok:
-                                _refresh()
-                            else:
-                                st.error(res)
-
-
-def _render_field_fix(xano_base, rid, vendor, actor):
-    """The free-text rail: describe the change, read the diff, then approve it.
-
-    The preview is not decoration. The value shown here is sent back as `expected_old` and the
-    server refuses the write if the row has moved since — so what you approve is what lands,
-    or nothing does.
-    """
-    st.markdown("**Fix a field on this vendor**")
-    st.caption(
-        "Describe the change in plain English. Nothing is written until you approve the diff."
-    )
-
-    prop_key = f"fbt_prop_{rid}"
-    instruction = st.text_input(
-        "What needs changing?",
-        key=f"fbt_instr_{rid}",
-        placeholder="e.g. the website should be https://example.com — the current one is a dead link",
-    )
-
-    pc1, pc2 = st.columns([1, 3])
-    if pc1.button("Preview change", key=f"fbt_preview_{rid}", disabled=not instruction.strip()):
-        with st.spinner("Working out what that means…"):
-            prop, err = _propose_edit(instruction, vendor)
-        if err:
-            st.session_state.pop(prop_key, None)
-            st.warning(err)
-        else:
-            prop["instruction"] = instruction
-            st.session_state[prop_key] = prop
-
-    prop = st.session_state.get(prop_key)
-    if prop:
-        col = prop["column"]
-        old = vendor.get(col)
-        old_disp = "" if old is None else str(old)
-        st.markdown(
-            f"**{ALLOWED_COLUMNS.get(col, col)}** (`{col}`) on `{vendor['Vendor_ID']}`"
-        )
-        d1, d2 = st.columns(2)
-        d1.text_area("Current", value=old_disp, disabled=True, height=90,
-                     key=f"fbt_old_{rid}")
-        d2.text_area("Proposed", value=prop["new_value"], disabled=True, height=90,
-                     key=f"fbt_new_{rid}")
-        st.caption(prop.get("reason") or "")
-
-        if old_disp == prop["new_value"]:
-            st.info("That is already the current value — nothing to write.")
-            return
-
-        a1, a2 = st.columns([1, 1])
-        if a1.button("Apply this change", type="primary", key=f"fbt_apply_{rid}"):
-            ok, res = _write_vendor_field(
-                xano_base, vendor["Vendor_ID"], col, prop["new_value"], old_disp,
-                actor, rid, prop.get("instruction") or "",
-            )
-            if ok:
-                st.session_state.pop(prop_key, None)
-                st.success(f"{col} updated on {vendor.get('Name')}.")
-                _refresh()
-            else:
-                st.error(res)
-        if a2.button("Discard", key=f"fbt_discard_{rid}"):
-            st.session_state.pop(prop_key, None)
-            st.rerun()
 
 
 # ── Tab ───────────────────────────────────────────────────────────────────────
@@ -742,19 +1130,24 @@ def render_feedback_triage_tab(xano_base: str, user_email: str = ""):
 
     with st.expander("ℹ️ What this queue is for", expanded=False):
         st.markdown(
-            "Every in-app feedback report, with an owner and a state. Three things happen "
-            "here that could not happen in Slack:\n\n"
-            "- **Open / closed per report**, stored on the Feedback row itself, so the "
-            "backlog is a number rather than a scroll.\n"
-            "- **Hide or show the vendor** a report is about. Hiding sets `Validated_Data` "
-            "to `0`, which removes it from Vendor Discovery search. The picker tells you "
-            "first whether that vendor actually has real pricing — if it does, hiding it "
-            "destroys good data to work around a display bug.\n"
-            "- **Reply to the reporter**, from "
-            f"`{FROM_EMAIL}`, with the send recorded. The question this answers is *did "
-            "anyone ever get back to this person* — which today has no answer at all.\n\n"
-            "Every write from this tab lands in the `admin_audit` table with the value it "
-            "replaced, so a bad change can be found and undone."
+            "Every in-app feedback report, with an owner, a state, and the tools to actually "
+            "fix it.\n\n"
+            "**Each report is bucketed** by what it asks for — the biggest bucket by far is "
+            "*paid but still locked out*, which is fixed on the user's row, not a vendor's. "
+            "The bucket decides which panel opens first; every panel stays reachable, so a "
+            "wrong guess costs a click.\n\n"
+            "**Every write goes through one confirm gate.** Quick-fix buttons and the "
+            "free-text box both stage a proposal; nothing reaches the database until the diff "
+            "is on screen and you press Apply. The value in that diff is sent back to the "
+            "server, which refuses the write if the row has changed since — so what you "
+            "approved is what lands, or nothing does.\n\n"
+            "**Three things the buttons deliberately will not do:** issue a Stripe refund "
+            "(read-only integration — do it in Stripe and note it), restore lost favourites "
+            "(the wipe overwrites rather than versions, so there is no prior value), or touch "
+            "a password, role or session token. Support tooling that can take over an account "
+            "is not support tooling.\n\n"
+            f"Replies send from `{FROM_EMAIL}`, and every write lands in `admin_audit` with "
+            "the value it replaced."
         )
 
     try:
@@ -767,66 +1160,65 @@ def render_feedback_triage_tab(xano_base: str, user_email: str = ""):
         st.info("No feedback reports.")
         return
 
-    # ── headline numbers ──────────────────────────────────────────────────────
-    total = len(df)
-    open_n = int((~df["completed"].astype(bool)).sum())
-    never_answered = int(
-        ((df["last_email_at"].fillna(0).astype("int64") <= 0)
-         & (~df["completed"].astype(bool))).sum()
-    )
-    linked = int((df["vendor_id"].astype(str) != "").sum())
+    real = df[df["bucket"] != "test"]
+    total = len(real)
+    open_n = int((~real["completed"].astype(bool)).sum())
+    never_answered = int(((real["last_email_at"].fillna(0).astype("int64") <= 0)
+                          & (~real["completed"].astype(bool))).sum())
+    access_n = int((real["bucket"] == "access").sum())
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Reports", total)
+    escalate_n = int(real["bucket"].isin(("vendor_rep", "security")).sum())
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Reports", total, help="Excludes internal test rows.")
     m2.metric("Open", open_n)
-    m3.metric("Open & never answered", never_answered)
-    m4.metric("Linked to a vendor", linked)
+    m3.metric("Never answered", never_answered, help="Open, and nobody has ever replied.")
+    m4.metric("Paid-but-locked", access_n, help="The biggest actionable bucket.")
+    m5.metric("Needs a person", escalate_n,
+              help="Venues writing about their own listing, plus security reports. These are "
+                   "not support tickets and should never sit behind a feature request.")
 
-    # ── filters ───────────────────────────────────────────────────────────────
     with st.container(border=True):
-        f1, f2, f3 = st.columns([1, 1, 1])
-        status = f1.radio(
-            "Status", ["Open", "Closed", "All"], horizontal=True, key="fbt_status"
+        f1, f2, f3 = st.columns(3)
+        status = f1.radio("Status", ["Open", "Closed", "All"], horizontal=True,
+                          key="fbt_status")
+        buckets_present = [b for b in BUCKET_LABEL if b in set(df["bucket"])]
+        pick_buckets = f2.multiselect(
+            "Bucket", buckets_present, format_func=lambda b: BUCKET_LABEL[b],
+            key="fbt_buckets",
         )
-        cats = sorted({c for c in df["category"].fillna("").astype(str) if c})
-        pick_cats = f2.multiselect("Category", cats, key="fbt_cats")
         pages = sorted({p for p in df["page"].fillna("").astype(str) if p})
         pick_pages = f3.multiselect("Page", pages, key="fbt_pages")
 
         g1, g2, g3 = st.columns([2, 1, 1])
-        search = g1.text_input(
-            "Search the reports", key="fbt_search",
-            placeholder="words in the report, or a reporter's email",
-        )
+        search = g1.text_input("Search the reports", key="fbt_search",
+                               placeholder="words in the report, or a reporter's email")
         min_sev = g2.slider("Min severity", 0, 10, 0, key="fbt_sev", help=_SEVERITY_HELP)
+        hide_test = g3.checkbox("Hide test rows", value=True, key="fbt_hidetest")
         only_unanswered = g3.checkbox("Never answered only", key="fbt_unans")
-        only_linked = g3.checkbox("Linked to a vendor only", key="fbt_linked")
 
     view = df.copy()
+    if hide_test:
+        view = view[view["bucket"] != "test"]
     if status == "Open":
         view = view[~view["completed"].astype(bool)]
     elif status == "Closed":
         view = view[view["completed"].astype(bool)]
-    if pick_cats:
-        view = view[view["category"].isin(pick_cats)]
+    if pick_buckets:
+        view = view[view["bucket"].isin(pick_buckets)]
     if pick_pages:
         view = view[view["page"].isin(pick_pages)]
     if min_sev:
         view = view[view["severity"].fillna(0).astype(int) >= min_sev]
     if only_unanswered:
         view = view[view["last_email_at"].fillna(0).astype("int64") <= 0]
-    if only_linked:
-        view = view[view["vendor_id"].astype(str) != ""]
     if search.strip():
         s = search.strip().lower()
-        hay = (
-            view["details"].fillna("").astype(str).str.lower()
-            + " "
-            + view["user_email"].fillna("").astype(str).str.lower()
-        )
+        hay = (view["details"].fillna("").astype(str).str.lower() + " "
+               + view["user_email"].fillna("").astype(str).str.lower())
         view = view[hay.str.contains(s, regex=False)]
 
-    st.caption(f"Showing {len(view)} of {total} reports.")
+    st.caption(f"Showing {len(view)} of {len(df)} reports.")
     if view.empty:
         return
 
