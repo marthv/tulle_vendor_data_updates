@@ -129,7 +129,7 @@ def _get_active_job(job_type: str):
     jobs_endpoint = os.environ.get("XANO_JOBS_ENDPOINT", "")
     if not jobs_endpoint:
         return None
-    data = _xano_get_with_retry(f"{jobs_endpoint}?job_type={job_type}&is_active=true")
+    data = _xano_get_with_retry(f"{jobs_endpoint}?job_type={job_type}&is_active=true&secret={EXPORT_SECRET}")
     if isinstance(data, list) and len(data) > 0:
         return data[0]
     return None
@@ -158,7 +158,8 @@ def _get_job_history(job_type: str, limit: int = 20):
     if not jobs_endpoint:
         return []
     data = _xano_get_with_retry(
-        f"{jobs_endpoint}?job_type={job_type}&is_active=false&limit={limit}")
+        f"{jobs_endpoint}?job_type={job_type}&is_active=false&limit={limit}"
+        f"&secret={EXPORT_SECRET}")
     return data if isinstance(data, list) else []
 
 
@@ -188,7 +189,8 @@ def _get_google_coverage():
     """Coverage counts for Google data + images across WPTP Updated Mappings.
     Returns the coverage dict from admin/google/coverage, or None on failure."""
     try:
-        r = requests.get(f"{XANO_BASE}/admin/google/coverage", timeout=90)
+        r = requests.get(f"{XANO_BASE}/admin/google/coverage",
+                         params={"secret": EXPORT_SECRET}, timeout=90)
         if r.status_code == 200 and isinstance(r.json(), dict):
             return r.json()
     except Exception:

@@ -39,6 +39,41 @@ def _env_flag(name):
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
 
 
+def _require_explicit_confirmation():
+    """Refuse to spend money unless this run was actually asked for.
+
+    This launcher starts a PAID extraction the moment it runs, and on Railway it
+    runs on every deploy of the `extraction-batch` service. There is no inert
+    configuration: with no env vars at all it still defaults to BATCH_START=0 /
+    BATCH_SIZE=500 / BATCH_WORKERS=8 and extracts the first 500 rows. So "clearing
+    the env vars to make it safe" makes it MORE dangerous, not less.
+
+    On 2026-08-06 an unrelated docs-only commit auto-deployed this service and it
+    began submitting a batch off leftover BATCH_*/FORCE_ALL vars from a previous
+    run. It aborted only because Xano happened to be down that minute — luck, not a
+    safeguard. Railway watch patterns help, but they do not survive someone clearing
+    them and do not block a manual redeploy.
+
+    Hence a deliberate, code-level interlock: set CONFIRM_EXTRACTION_RUN=1 (or pass
+    --confirm) when you actually intend to spend. Anything else exits 0 without
+    touching Anthropic. Exit 0, not 1, so a no-op deploy is not reported as a crash.
+    """
+    if _env_flag("CONFIRM_EXTRACTION_RUN") or "--confirm" in sys.argv:
+        return
+    print(
+        "REFUSING TO RUN — this launcher starts a paid extraction and was not "
+        "explicitly confirmed.\n"
+        "  Nothing was uploaded and no credits were spent.\n"
+        "  To run deliberately: set CONFIRM_EXTRACTION_RUN=1 on the service (or pass "
+        "--confirm locally),\n"
+        "  check BATCH_START / BATCH_SIZE / BATCH_PDF_IDS / FORCE_ALL first, and "
+        "UNSET it again afterwards\n"
+        "  so the next deploy cannot re-fire the same run.",
+        flush=True,
+    )
+    sys.exit(0)
+
+
 def _prefetch_shared_state():
     """One set of Xano scans for the whole launch. Workers read the disk cache
     instead of each full-scanning wptp_pdfs + summary + venue categories at
@@ -52,6 +87,9 @@ def _prefetch_shared_state():
 
 
 def main():
+    # Before ANY Xano scan or Anthropic call — an unconfirmed deploy must be a no-op,
+    # not a cheaper version of the same accident.
+    _require_explicit_confirmation()
     _prefetch_shared_state()
     # ── Targeted IDs mode: rerun an explicit PDF_ID set in parallel. ──
     # Source: --ids-file <path> (CLI) or BATCH_PDF_IDS env (comma/newline list).

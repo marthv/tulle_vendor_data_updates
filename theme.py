@@ -530,6 +530,29 @@ _STYLESHEET = """
         border-color: var(--tt-brand-hover) !important;
         color: var(--tt-brand-ink) !important;
     }
+    /* The label is NOT a text node on the <button> — Streamlit wraps it in
+       <div data-testid="stMarkdownContainer"><p>…</p></div>, and config.toml's textColor
+       lands on that <p> directly. A `color` on the button therefore never reaches it, so the
+       label rendered dark-on-dark-green and the button read as disabled. Paint the
+       descendants explicitly. `kind` was also renamed across Streamlit versions
+       (primary -> stBaseButton-primary), so both selectors are matched — an unmatched one
+       is inert, an unmatched one that is the ONLY one is an invisible regression on upgrade. */
+    .stButton>button[kind="primary"] *,
+    .stButton>button[kind="primary"] p,
+    .stButton>button[data-testid="stBaseButton-primary"],
+    .stButton>button[data-testid="stBaseButton-primary"] *,
+    .stButton>button[data-testid="stBaseButton-primary"] p {
+        color: var(--tt-brand-ink) !important;
+    }
+    .stButton>button[data-testid="stBaseButton-primary"] {
+        background: var(--tt-brand) !important;
+        border-color: var(--tt-brand) !important;
+        box-shadow: var(--tt-shadow-sm);
+    }
+    .stButton>button[data-testid="stBaseButton-primary"]:hover {
+        background: var(--tt-brand-hover) !important;
+        border-color: var(--tt-brand-hover) !important;
+    }
     .stButton>button[kind="secondary"] {
         background: var(--tt-surface) !important;
         color: var(--tt-text) !important;
@@ -537,6 +560,15 @@ _STYLESHEET = """
     }
     .stButton>button[kind="secondary"]:hover {
         border-color: var(--tt-brand) !important;
+        color: var(--tt-brand) !important;
+    }
+    /* Same wrapper problem: without this the secondary hover tint never reached the label. */
+    .stButton>button[kind="secondary"] *,
+    .stButton>button[data-testid="stBaseButton-secondary"] * {
+        color: inherit !important;
+    }
+    .stButton>button[kind="secondary"]:hover *,
+    .stButton>button[data-testid="stBaseButton-secondary"]:hover * {
         color: var(--tt-brand) !important;
     }
 

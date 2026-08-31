@@ -3071,7 +3071,8 @@ def _list_submitted_batches(limit=40):
     if not jobs_endpoint:
         return []
     data = _xano_get_json(
-        f"{jobs_endpoint}?job_type=extraction&is_active=false&limit={limit}")
+        f"{jobs_endpoint}?job_type=extraction&is_active=false&limit={limit}"
+        f"&secret={XANO_MACHINE_SECRET}")
     out, seen = [], set()
     for job in (data or []):
         summary = job.get("result_summary") or {}
