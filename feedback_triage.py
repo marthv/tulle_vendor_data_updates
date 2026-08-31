@@ -44,6 +44,7 @@ Endpoints (all secret-gated with ANALYTICS_EXPORT_SECRET, group 10):
     GET  /admin/user_lookup         (ep 275) — the reporter's entitlement
     POST /admin/user_field_update   (ep 276) — railed write to the user row
     GET  /admin/audit_log           (ep 277) — what has actually been done, read-only
+    POST /admin/send_feedback_reply (ep 278) — replies to the reporter, via Brevo
 
 HOW A FIX GETS RECORDED
 -----------------------
@@ -605,8 +606,44 @@ def _gmail_token():
     return None, "not configured"
 
 
+def _brevo_send(xano_base, feedback_id, to_addr, to_name, subject, body, actor):
+    """Send via Brevo through Xano. Returns (ok, detail).
+
+    THE DEFAULT PATH, because it needs no setup: Xano already holds the Brevo key and
+    hello@tulletogether.com is already a verified, active sender on the account. Gmail would
+    need the Gmail API enabled, a gmail.send scope on the consent screen, a redirect URI, a
+    refresh token minted by the mailbox owner, and a new Railway variable.
+
+    ep278 stamps last_email_at ONLY on a 2xx from Brevo, so a rejected send records nothing.
+    Note the wording it comes back with: Brevo's 201 means ACCEPTED, not delivered — a
+    bounce happens afterwards and is not visible here. Saying "sent" would overclaim.
+    """
+    ok, res = _xpost(
+        f"{xano_base}/admin/send_feedback_reply",
+        {
+            "secret": EXPORT_SECRET,
+            "feedback_id": int(feedback_id),
+            "to_email": to_addr,
+            "to_name": to_name or "",
+            "subject": subject,
+            "body": body,
+            "actor": actor,
+        },
+        timeout=45,
+    )
+    if not ok:
+        return False, str(res)
+    if not res.get("ok"):
+        return False, f"Brevo rejected it (HTTP {res.get('status')}): {res.get('error')}"
+    return True, f"accepted by Brevo — message {res.get('message_id') or '?'}"
+
+
 def _gmail_send(to_addr: str, subject: str, body: str):
-    """(ok, detail). Only a real Gmail message id counts as sent."""
+    """(ok, detail). Only a real Gmail message id counts as sent.
+
+    Kept as the alternative path. Gmail puts the thread in the real mailbox, which is nicer
+    for a conversation, but needs the console work described in mint_gmail_token.py.
+    """
     token, how = _gmail_token()
     if not token:
         return False, how
@@ -815,16 +852,31 @@ def _email_dialog(xano_base, row, actor):
     rid = int(row["id"])
     to_addr = str(row.get("user_email") or "")
 
-    token, how = _gmail_token()
-    if token:
-        st.caption(f"Sending is live — authorised via {how}, as {FROM_EMAIL}.")
+    gmail_token, gmail_how = _gmail_token()
+
+    # Brevo is the default because it needs no setup: Xano already holds the key and
+    # hello@tulletogether.com is already a verified sender. Gmail is offered only when it has
+    # actually been configured, so the picker never presents a choice that would fail.
+    channels = ["Brevo"]
+    if gmail_token:
+        channels.append("Gmail")
+    channel = (st.radio("Send via", channels, horizontal=True, key=f"fbt_chan_{rid}")
+               if len(channels) > 1 else "Brevo")
+
+    if channel == "Brevo":
+        st.caption(
+            f"Sends from {FROM_EMAIL} via Brevo, with replies coming back to that inbox. "
+            "Brevo accepting a message is not the same as delivering it — a bounce happens "
+            "afterwards and is not visible here."
+        )
     else:
-        st.warning(
-            f"Sending is not configured on this deployment ({how}). You can still write the "
-            f"reply, copy it, send it yourself, and mark it as replied so the queue stays "
-            f"honest.\n\nTo enable: set **GMAIL_SEND_REFRESH_TOKEN** (run "
-            f"`mint_gmail_token.py` once, signed in as {FROM_EMAIL}), or "
-            f"**GMAIL_IMPERSONATE={FROM_EMAIL}** with domain-wide delegation."
+        st.caption(f"Sending via Gmail — authorised by {gmail_how}, as {FROM_EMAIL}.")
+
+    if not gmail_token:
+        st.caption(
+            f"Gmail is not configured ({gmail_how}) and is not needed. To add it later as an "
+            f"alternative — it puts the thread in the real mailbox — run "
+            f"`mint_gmail_token.py`."
         )
 
     c1, c2 = st.columns(2)
@@ -845,14 +897,24 @@ def _email_dialog(xano_base, row, actor):
     st.divider()
     b1, b2, b3 = st.columns(3)
 
-    if b1.button("Send", type="primary", key=f"fbt_send_{rid}", disabled=not token):
+    if b1.button("Send", type="primary", key=f"fbt_send_{rid}"):
         if not to_val.strip():
             st.error("No recipient.")
+        elif channel == "Brevo":
+            # ep278 does the send AND the stamp together, and stamps only on a 2xx from
+            # Brevo — so a rejected send cannot leave the queue claiming we replied.
+            ok, detail = _brevo_send(xano_base, rid, to_val.strip(),
+                                     row.get("user_email"), subject, body, actor)
+            if ok:
+                st.success(detail)
+                _refresh()
+            else:
+                st.error(f"Not sent — {detail}. Nothing was marked as replied.")
         else:
             ok, detail = _gmail_send(to_val.strip(), subject, body)
             if ok:
-                # Stamp last_email_at only now — after a real message id came back. A
-                # timestamp written on intent would answer "did we reply?" wrongly.
+                # Stamp only now — after a real message id came back. A timestamp written
+                # on intent would answer "did we reply?" wrongly.
                 _save_feedback(xano_base, rid, actor, email_sent="1", email_subject=subject)
                 st.success(detail)
                 _refresh()
@@ -1240,6 +1302,13 @@ def render_feedback_triage_tab(xano_base: str, user_email: str = ""):
             "(the wipe overwrites rather than versions, so there is no prior value), or touch "
             "a password, role or session token. Support tooling that can take over an account "
             "is not support tooling.\n\n"
+            f"**Replies send via Brevo** from `{FROM_EMAIL}`, with no setup — Xano already "
+            "holds the Brevo key and that address is already a verified sender. Brevo "
+            "*accepting* a message is not the same as delivering it, so the queue records "
+            "\"accepted\", and only on a 2xx: a rejected send leaves no stamp, because a "
+            "timestamp written on intent answers \"did anyone reply to this person?\" wrongly. "
+            "Gmail stays available as an alternative if you ever want the thread in the real "
+            "mailbox.\n\n"
             "**How a fix gets recorded** — three separate things, and you only press one of "
             "them by hand:\n\n"
             "| What | Where it lands | How |\n"
@@ -1254,7 +1323,6 @@ def render_feedback_triage_tab(xano_base: str, user_email: str = ""):
             "outside the database → reply → Close. Each report shows its own history under "
             "**What's been done to this report**, and the header counts the fixes applied to "
             "it, so \"was this actually fixed, and how?\" is answerable without opening Xano.\n\n"
-            f"Replies send from `{FROM_EMAIL}`."
         )
 
     try:
