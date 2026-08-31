@@ -57,8 +57,12 @@ CHECKS = [
      {"starting_index": 1, "ending_index": 1, "secret": "<SECRET>"},
      "🔍 Google Data & Images", "secret-gated 2026-08-30 (briefly had user auth — broke this tab)"),
     ("admin/google/coverage (ep191)", "xano", "admin/google/coverage",
-     {},
-     "🔍 Google Data & Images", "still anonymous — candidate for the secret gate"),
+     {"secret": "<SECRET>"},
+     "🔍 Google Data & Images", "secret-gated 2026-08-30; a dozen full-table counts per call"),
+    ("admin/pipeline/jobs (ep187)", "xano", "admin/pipeline/jobs",
+     {"job_type": "extraction", "is_active": "true", "secret": "<SECRET>"},
+     "📄 PDF Extraction / pipeline", "secret-gated 2026-08-30; read by BOTH the dashboard and "
+                                    "the pipeline via XANO_JOBS_ENDPOINT"),
     # PIPELINE dependencies, not the dashboard's own. They are checked here because this is
     # the only place anyone looks: on 2026-08-30 wptp_pdfs was switched to auth="user" and
     # the batch-ingest service died with "INGEST FAILED - 401 Unauthorized", which surfaced
