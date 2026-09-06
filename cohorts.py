@@ -212,7 +212,9 @@ def _metrics(sub):
     n = int(len(sub))
     if n == 0:
         return dict(signups=0, payers=0, payment_rate=0.0, arpu=0.0, rev_per_signup=0.0,
-                    revenue=0.0, viewed_vendor=0, viewed_pdf=0, view_rate=0.0, pdf_rate=0.0)
+                    revenue=0.0, viewed_vendor=0, viewed_pdf=0, view_rate=0.0, pdf_rate=0.0,
+                    vendor_views_pp=0.0, pdf_views_pp=0.0,
+                    vendor_views_pp_engaged=0.0, pdf_views_pp_engaged=0.0)
     payers = int(sub["is_payer"].sum())
     amt = float(sub["total_amount_paid"].sum())
     vv = int(sub["viewed_vendor"].sum())
@@ -224,6 +226,13 @@ def _metrics(sub):
         rev_per_signup=amt / n,                          # blended
         revenue=amt, viewed_vendor=vv, viewed_pdf=vp,
         view_rate=vv / n, pdf_rate=vp / n,
+        # Views per person. Both cuts are needed: the all-user mean is dominated
+        # by the majority who view nothing, so it mostly re-reports view_rate;
+        # the engaged mean is the one that shows depth of browsing moving.
+        vendor_views_pp=float(sub["total_vendor_views"].sum()) / n,
+        pdf_views_pp=float(sub["total_pdf_views"].sum()) / n,
+        vendor_views_pp_engaged=(float(sub["total_vendor_views"].sum()) / vv) if vv else 0.0,
+        pdf_views_pp_engaged=(float(sub["total_pdf_views"].sum()) / vp) if vp else 0.0,
     )
 
 
@@ -318,7 +327,10 @@ def _table(sub, dim):
                      "pay_rate_%": round(m["payment_rate"] * 100, 2),
                      "ARPU_$": round(m["arpu"], 2), "revenue_$": round(m["revenue"], 0),
                      "rev_share_%": round(m["revenue"] / total_rev * 100, 1),
-                     "viewed_pdf_%": round(m["pdf_rate"] * 100, 1), "payers": m["payers"]})
+                     "viewed_pdf_%": round(m["pdf_rate"] * 100, 1),
+                     "vendor_views_pp": round(m["vendor_views_pp"], 2),
+                     "pdf_views_pp": round(m["pdf_views_pp"], 2),
+                     "payers": m["payers"]})
     return pd.DataFrame(rows).sort_values("signups", ascending=False).head(40)
 
 
@@ -450,6 +462,22 @@ def render_cohorts_tab(xano_base):
     t2[0].metric("Revenue", f"${m['revenue']:,.0f}")
     t2[1].metric("Rev / signup", f"${m['rev_per_signup']:,.2f}")
     t2[2].metric("Viewed a PDF", f"{m['pdf_rate']*100:.1f}%")
+
+    st.markdown("#### Views per person")
+    t3 = st.columns(4)
+    t3[0].metric("Vendor views / user", f"{m['vendor_views_pp']:.2f}")
+    t3[1].metric("Vendor views / viewer", f"{m['vendor_views_pp_engaged']:.2f}",
+                 help="Averaged over the users who viewed at least one vendor.")
+    t3[2].metric("PDF views / user", f"{m['pdf_views_pp']:.2f}")
+    t3[3].metric("PDF views / PDF viewer", f"{m['pdf_views_pp_engaged']:.2f}",
+                 help="Averaged over the users who viewed at least one PDF.")
+    st.caption(
+        "Lifetime counters on the Xano user row, not a time series — good for "
+        "comparing cohorts, useless as a weekly trend. Two known biases: "
+        "`total_vendor_views` (ep150) dedupes only CONSECUTIVE views, so A→B→A "
+        "counts twice; and `total_pdf_views` under-counts mobile, where the "
+        "View-PDF workflows patch `total_views` instead."
+    )
 
     # Funnel
     st.markdown("#### Funnel")
