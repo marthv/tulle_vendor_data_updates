@@ -49,8 +49,6 @@ from extract_core import (run_extraction, get_pipeline_status,
                           list_recent_batches, ingest_batch_by_id, validate_merge)
 from cohorts import render_cohorts_tab
 from roadmap_orders import render_roadmap_orders_tab
-from vendor_portal import render_vendor_portal_tab, VENDOR_BASE
-from feedback_triage import render_feedback_triage_tab
 from endpoint_health import render_endpoint_health
 from drive_protect import render_drive_protect_panel
 import theme
@@ -733,7 +731,7 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 # ep199 (/venue_pricing_dashboard) became secret-gated on 2026-08-30. It was anonymous and
 # honoured per_page=5000, so six unauthenticated requests pulled 27,287 pricing rows across
 # 10,777 vendors — the whole corpus. Same shared secret as cohorts.py / roadmap_orders.py /
-# vendor_portal.py; set ANALYTICS_EXPORT_SECRET in Railway to rotate it in one place.
+# set ANALYTICS_EXPORT_SECRET in Railway to rotate it in one place.
 EXPORT_SECRET = os.environ.get(
     "ANALYTICS_EXPORT_SECRET",
     "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
@@ -743,32 +741,21 @@ EXPORT_SECRET = os.environ.get(
 # Preflight, above the tabs on purpose: a broken Xano dependency shows up as an empty or
 # erroring tab with no explanation, and the cause (an endpoint switched to user auth this
 # app cannot satisfy) is invisible from inside that tab. Collapsed — costs nothing closed.
-render_endpoint_health(XANO_BASE, VENDOR_BASE, EXPORT_SECRET)
+render_endpoint_health(XANO_BASE, EXPORT_SECRET)
 
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-# NOTE: tab_vp is Venue Pricing (long-standing). The vendor portal queue is tab_vendor —
-# the two are easy to confuse and are entirely unrelated.
-tab_ro, tab_vendor, tab_fb, tab_co, tab_vp, tab2, tab5 = st.tabs([
-    "🗺️ Roadmap Orders", "🏛️ Vendor Portal", "🗣️ Feedback", "📈 Cohorts",
+# The 🏛️ Vendor Portal and 🗣️ Feedback tabs were removed 2026-09-08 (with vendor_portal.py
+# and feedback_triage.py). tab_vp below is Venue Pricing — a different, long-standing tab.
+tab_ro, tab_co, tab_vp, tab2, tab5 = st.tabs([
+    "🗺️ Roadmap Orders", "📈 Cohorts",
     "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction"
 ])
 
 # Fulfilment queue first — it's the only tab with a customer waiting on an SLA.
 with tab_ro:
     render_roadmap_orders_tab(XANO_BASE)
-
-# Vendor portal review queue second: vendors are also waiting on us, and an unapproved
-# claim means someone is sitting on a screen that says "we'll be in touch".
-with tab_vendor:
-    render_vendor_portal_tab(user_email)
-
-# Feedback triage third: a user who wrote in is also waiting, and until now nothing recorded
-# whether anyone ever answered them. See feedback_triage.py for why hide/show is not a
-# neutral toggle.
-with tab_fb:
-    render_feedback_triage_tab(XANO_BASE, user_email)
 
 
 # ── (legacy Admin-tab helpers — the Admin tab was removed 2026-07-27; kept because

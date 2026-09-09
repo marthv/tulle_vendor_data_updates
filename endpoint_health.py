@@ -35,7 +35,6 @@ import streamlit as st
 
 # (label, base_key, path, params, tab, note)
 #   base_key: "xano"  -> group 10, WeWeb Transparency Project (api:GynP5T1B)
-#             "vendor"-> group 13, Vendor Portal (api:BjliGATR) — different canonical base
 #   params with the literal "<SECRET>" get the shared ANALYTICS_EXPORT_SECRET substituted.
 CHECKS = [
     ("venue_pricing_dashboard (ep199)", "xano", "venue_pricing_dashboard",
@@ -74,12 +73,6 @@ CHECKS = [
      {"page": 1, "per_page": 1},
      "batch-ingest / extraction", "anonymous; _fetch_vendor_categories FAILS CLOSED, so "
                                   "gating this aborts every extraction run"),
-    ("vendor_admin/queue (group 13)", "vendor", "vendor_admin/queue",
-     {"secret": "<SECRET>"},
-     "🏛️ Vendor Portal", "secret-gated; note the BjliGATR base, not GynP5T1B"),
-    ("vendor_admin/calendars (group 13)", "vendor", "vendor_admin/calendars",
-     {"secret": "<SECRET>"},
-     "🏛️ Vendor Portal", "secret-gated"),
 ]
 
 # Endpoints the dashboard writes through. Listed for completeness, never probed — a health
@@ -88,7 +81,6 @@ CHECKS = [
 WRITE_DEPS = [
     ("roadmap_orders_admin_update (ep214)", "POST", "secret", "🗺️ Roadmap Orders"),
     ("update_vendor_image_one/two/three (ep132-134)", "POST", "anonymous", "🔍 Google Data & Images"),
-    ("vendor_admin/submission_update, claim_update, message_update", "POST", "secret", "🏛️ Vendor Portal"),
 ]
 
 
@@ -117,9 +109,9 @@ def _probe(base, path, params, timeout=90):   # coverage (ep191) legitimately ta
     return "UNEXPECTED", f"{r.status_code}: {r.text[:100]}"
 
 
-def run_checks(xano_base, vendor_base, secret):
+def run_checks(xano_base, secret):
     """Probe every read dependency in parallel. Returns a DataFrame."""
-    bases = {"xano": xano_base, "vendor": vendor_base}
+    bases = {"xano": xano_base}
 
     def one(chk):
         label, base_key, path, params, tab, note = chk
@@ -133,7 +125,7 @@ def run_checks(xano_base, vendor_base, secret):
     return pd.DataFrame(rows)
 
 
-def render_endpoint_health(xano_base, vendor_base, secret):
+def render_endpoint_health(xano_base, secret):
     """Collapsed panel. Cheap when closed — nothing runs until the button is pressed."""
     with st.expander("🔐 Endpoint health — check every Xano dependency", expanded=False):
         st.caption(
@@ -144,7 +136,7 @@ def render_endpoint_health(xano_base, vendor_base, secret):
 
         if st.button("▶ Run endpoint health check", key="eh_run"):
             with st.spinner("Probing…"):
-                df = run_checks(xano_base, vendor_base, secret)
+                df = run_checks(xano_base, secret)
             st.session_state["eh_df"] = df
 
         df = st.session_state.get("eh_df")
