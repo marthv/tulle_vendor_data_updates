@@ -1072,8 +1072,26 @@ with tab2:
                 )
                 if resp.status_code == 200:
                     data = resp.json()
-                    count = len(data) if isinstance(data, list) else "?"
-                    st.success(f"Done — {count} vendors processed")
+                    # v2 of the Xano endpoint returns real counters. Until 2026-09-11 it
+                    # returned the candidate list and every Google fetch silently 401'd, so
+                    # "N vendors processed" meant "N vendors it MEANT to process". Report
+                    # updated/failed now, and never call a zero-write run a success.
+                    if isinstance(data, dict) and "updated" in data:
+                        upd = data.get("updated", 0)
+                        fail = data.get("failed", 0)
+                        cand = data.get("candidates", 0)
+                        if upd:
+                            st.success(f"Done — {upd} of {cand} vendors updated"
+                                       + (f", {fail} failed" if fail else ""))
+                        elif cand == 0:
+                            st.info("Nothing to do — every vendor in that range already has "
+                                    "Google data, or none of them has a Place ID.")
+                        else:
+                            st.error(f"0 of {cand} vendors updated — {fail} failed. "
+                                     "See the response below.")
+                    else:
+                        count = len(data) if isinstance(data, list) else "?"
+                        st.success(f"Done — {count} vendors processed")
                     with st.expander("Xano response", expanded=False):
                         st.json(data)
                 else:
@@ -1126,7 +1144,12 @@ with tab2:
                     code, data = run_image_endpoint(slot)
                 if code == 200:
                     count = data.get("processed_count", "?") if isinstance(data, dict) else "?"
-                    st.success(f"Image {slot} done — {count} vendors")
+                    if count == 0:
+                        st.warning(f"Image {slot} — 0 vendors. Nothing in that ID range has "
+                                   "cached Google data with a free image slot. Run Google Data "
+                                   "above first and check it reports vendors *updated*.")
+                    else:
+                        st.success(f"Image {slot} done — {count} vendors")
                     with st.expander(f"Image {slot} response", expanded=False):
                         st.json(data)
                 else:
@@ -1143,7 +1166,11 @@ with tab2:
                 code, data = run_image_endpoint(slot)
             if code == 200:
                 count = data.get("processed_count", "?") if isinstance(data, dict) else "?"
-                st.success(f"Image {slot} — {count} vendors updated")
+                if count == 0:
+                    st.warning(f"Image {slot} — 0 vendors updated. Nothing in that ID range has "
+                               "cached Google data with a free image slot; run Google Data first.")
+                else:
+                    st.success(f"Image {slot} — {count} vendors updated")
             else:
                 st.error(f"Image {slot} failed — {'timeout' if code is None else f'status {code}'}")
                 if isinstance(data, str):
