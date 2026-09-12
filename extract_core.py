@@ -1890,7 +1890,13 @@ def _purge_package_rows(pdf_id, vendor_id, category, log=None):
     base = os.environ["XANO_SUMMARY_ENDPOINT"]
 
     try:
-        r = requests.get(base, params={"vendor_id": vendor_id}, timeout=30)
+        # The secret is REQUIRED: this endpoint was secret-gated on 2026-08-30 and this
+        # one call site was missed, so every P/E purge lookup 401'd ("purge: lookup
+        # failed (401)") and silently disabled the re-run guard below — while the DELETE
+        # a few lines down kept sending it. Without the secret the purge never runs and
+        # re-extracting a PDF duplicates its package tiers (the V3961 symptom).
+        r = requests.get(base, params={"vendor_id": vendor_id,
+                                       "secret": XANO_MACHINE_SECRET}, timeout=30)
         if r.status_code != 200:
             say(f"   ⚠  purge: lookup failed ({r.status_code}) — not purging, "
                 f"re-run may duplicate rows")
@@ -2518,11 +2524,16 @@ def run_extraction_batch(
         log.append(line)
         return (line,)
 
+    # Both scans below are whole-table walks (~29 pages of wptp_pdfs, ~55 of the
+    # summary table) and used to swallow every page with `pass` — so the UI sat on
+    # "Fetching PDF work list..." for minutes with no output and looked hung. Report
+    # every 10th page: enough to show progress, not enough to flood the log box.
     yield from emit("Fetching PDF work list...")
     try:
         rows_raw = []
-        for rows_raw, _ in _fetch_xano_pages(os.environ.get("XANO_GET_ENDPOINT", "")):
-            pass
+        for rows_raw, _page in _fetch_xano_pages(os.environ.get("XANO_GET_ENDPOINT", "")):
+            if _page % 10 == 0:
+                yield from emit(f"   …{len(rows_raw)} rows scanned (page {_page})")
     except Exception as e:
         yield from emit(f"Failed to fetch PDF list: {e}")
         yield {"batch_submitted": False, "error": str(e)}
@@ -2544,10 +2555,12 @@ def run_extraction_batch(
         # end_row are inclusive id bounds. end_row 0/None = no upper bound. This is
         # what the user reads in the table — NOT a position in Xano's return order.
         batch = _select_by_id_range(rows_with_links, start_row, end_row)
+        yield from emit(f"   {len(batch)} rows in id range — checking which are already extracted…")
         try:
             done_rows = []
-            for done_rows, _ in _fetch_xano_pages(os.environ.get("XANO_SUMMARY_ENDPOINT", "")):
-                pass
+            for done_rows, _page in _fetch_xano_pages(os.environ.get("XANO_SUMMARY_ENDPOINT", "")):
+                if _page % 10 == 0:
+                    yield from emit(f"   …{len(done_rows)} extracted rows scanned (page {_page})")
             already = {str(r.get('PDF_ID') or r.get('pdf_id') or '').strip()
                        for r in done_rows if r.get('PDF_ID') or r.get('pdf_id')}
             batch = [r for r in batch
@@ -2689,7 +2702,10 @@ def run_extraction_batch(
     else:
         submitted_as = f"rows {start_row}–{end_row if end_row else 'end'} ({len(pdf_map)} PDFs)"
     try:
-        from dashboard import _post_job_status
+        # NOT `from dashboard import ...` — under Streamlit that re-executes
+        # dashboard.py and raises StreamlitDuplicateElementKey, which orphaned every
+        # batch submitted from the dashboard. See job_status.py.
+        from job_status import post_job_status as _post_job_status
         _post_job_status(
             "extraction", "completed",
             os.environ.get("LOGGED_IN_USER", "extraction-batch"),
@@ -3559,7 +3575,7 @@ def run_extraction(
         now = time.time()
         if now - last_progress_update >= progress_update_interval:
             try:
-                from dashboard import _post_job_status
+                from job_status import post_job_status as _post_job_status
                 user_email = os.environ.get("LOGGED_IN_USER", "extraction-batch")
                 # Count current results by status
                 ok = sum(1 for r in results_log if r.get('status') == 'OK')

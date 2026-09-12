@@ -47,6 +47,7 @@ from anthropic import Anthropic
 from extract_core import (run_extraction, get_pipeline_status,
                           run_extraction_batch, process_batch_results,
                           list_recent_batches, ingest_batch_by_id, validate_merge)
+from job_status import post_job_status
 from cohorts import render_cohorts_tab
 from roadmap_orders import render_roadmap_orders_tab
 from endpoint_health import render_endpoint_health
@@ -79,39 +80,20 @@ def _post_job_status(job_type: str, status: str, user_email: str,
     """
     Post job status to Xano for persistence across logouts.
     Returns True if successful, False otherwise.
+
+    The HTTP write itself lives in job_status.py, NOT here, because extract_core
+    also needs it and `from dashboard import ...` inside a Streamlit run re-executes
+    this whole file and raises StreamlitDuplicateElementKey — see job_status.py.
+    This wrapper adds only the Streamlit-side cache invalidation.
     """
-    job_endpoint = os.environ.get("XANO_JOB_STATUS_ENDPOINT", "")
-    if not job_endpoint:
-        return False
-    payload = {
-        "job_type": job_type,
-        "status": status,
-        "user_email": user_email,
-        "result_summary": result_summary,
-        "batch_id": batch_id,
-    }
-    # Retry on transient 5xx / network errors. This write is load-bearing for
-    # batches: it persists the batch_id + pdf_map, and if it's lost the dashboard
-    # can't map results back (the batch is orphaned). A Xano 503 blip must not
-    # orphan a batch, so retry with backoff. (Upsert endpoint, so a duplicate from
-    # a lost-response retry is harmless — resume dedups by batch_id.)
-    for i in range(4):
+    ok = post_job_status(job_type, status, user_email,
+                         result_summary=result_summary, batch_id=batch_id)
+    if ok:
         try:
-            r = requests.post(job_endpoint, json=payload,
-                              params={"secret": EXPORT_SECRET}, timeout=10)
-            if r.status_code == 200:
-                try:
-                    _get_active_job.clear()   # job state changed — drop the 15s cache
-                except Exception:
-                    pass
-                return True
-            if r.status_code < 500:
-                return False  # 4xx won't self-heal
+            _get_active_job.clear()   # job state changed — drop the 15s cache
         except Exception:
             pass
-        if i < 3:
-            time.sleep(min(8, 1.5 * (i + 1)))
-    return False
+    return ok
 
 
 @st.cache_data(ttl=15, show_spinner=False)
