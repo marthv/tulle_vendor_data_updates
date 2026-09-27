@@ -512,8 +512,9 @@ SLOW_S = 3.0
 # warmer bucket slower than this on the SERVER is one the warmer probably gave up on.
 WARMER_CLIENT_TIMEOUT_S = 10.0
 # task 8 went 15 -> 42 buckets at 2026-09-27 21:30 UTC (top-12 state first pages). Keep in step
-# with the task. Runs before that sent 15, so the 2026-09-28 report flags them once as short.
+# with the task. Runs before that sent 15 by design and are not judged on the count.
 WARMER_BUCKETS = 42
+WARMER_BUCKETS_SINCE = "2026-09-27 21"   # first hour-bucket (YYYY-MM-DD HH) of the 42-bucket task
 
 
 def query_shape(it):
@@ -641,8 +642,9 @@ def warmer_audit(items):
                                        if i["duration"] >= WARMER_CLIENT_TIMEOUT_S),
             "slowest_s": round(max(i["duration"] for i in its), 1),
         })
-    bad = [r for r in out if r["sent"] < WARMER_BUCKETS or r["non_2xx"]
-           or r["over_client_timeout"]]
+    # Runs before the 15 -> 42 change sent 15 by design; only judge the count after it.
+    bad = [r for r in out if (r["sent"] < WARMER_BUCKETS and r["run"] >= WARMER_BUCKETS_SINCE)
+           or r["non_2xx"] or r["over_client_timeout"]]
     return {"runs": len(out), "bad_runs": bad,
             "bucket_p50": round(pct([i["duration"] for i in rows], .5), 2),
             "bucket_max": round(max((i["duration"] for i in rows), default=0), 1)}
@@ -761,6 +763,49 @@ def format_health(health, warm, coverage_h, window_h, history_note, sessions=Non
     return "\n".join(L)
 
 
+def format_health_short(health, warm, sessions, coverage_h, window_h, history_note):
+    """The Slack version: one traffic-light line per thing a customer would notice. The full
+    breakdown (queries, slow drivers, per-run warmer detail) is in the dashboard Health tab.
+    Thresholds are deliberately plain so a line changes colour only when it matters."""
+    def light(v, amber, red):
+        return ":red_circle:" if v >= red else (":large_yellow_circle:" if v >= amber else ":large_green_circle:")
+
+    L = [f":stethoscope: *Endpoint health — last {window_h}h*"]
+    if coverage_h < window_h - 0.5:
+        L.append(f":warning: only {coverage_h:.1f}h of history was available")
+    names = {"119": "Search", "121": "Map"}
+    # Map failures are signed-out users hitting a login-required endpoint; ~3-4% is accepted
+    # (2026-09-27 decision to keep ep121 authenticated), so its bar is looser than search's.
+    fail_bars = {"121": (5, 10)}
+    for h in health:
+        name = names.get(h["qid"], f"ep{h['qid']}")
+        if not h["n"]:
+            L.append(f":white_circle: *{name}* — no traffic")
+            continue
+        why = ""
+        if h["failures"]:
+            why = f" — mostly: {next(iter(h['fail_reasons']))}"
+        amber, red = fail_bars.get(h["qid"], (2, 5))
+        L.append(f"{light(h['fail_pct'], amber, red)} *{name} reliability* — {h['failures']} of "
+                 f"{h['n']:,} failed ({h['fail_pct']}%){why}")
+        slow_pct = 100 * h["slow_n"] / h["n"]
+        driver = ""
+        if h["slow_drivers"]:
+            d = h["slow_drivers"][0]
+            driver = f"; biggest cause `{d['shape']}` ({d['slow_share_pct']:.0f}% of slow time)"
+        L.append(f"{light(slow_pct, 10, 20)} *{name} speed* — {slow_pct:.0f}% took over "
+                 f"{SLOW_S:.0f}s, worst {h['max']}s, typical {h['p50']}s{driver}")
+    if sessions is not None:
+        L.append(f"{light(sessions['expired'], 10, 50)} *Logins* — {sessions['expired']} users "
+                 f"signed out by an expired token · {sessions['logins']} logins")
+    if warm is not None:
+        bad = len(warm["bad_runs"])
+        L.append(f"{light(bad, 1, 3)} *Cache warmer* — {warm['runs'] - bad} of {warm['runs']} "
+                 f"runs clean")
+    L.append(f"_Details: Tulle Admin → 🩺 Health tab · {history_note}_")
+    return "\n".join(L)
+
+
 def run_health(write_history=True):
     """write_history=False for on-demand dashboard runs: only the daily cron appends to the
     history table, so clicking the button cannot create duplicate days."""
@@ -820,7 +865,9 @@ def build_health(items, slo, token=None, write_history=True):
             note += " Could not read prior days."
 
     sessions = session_audit(items, app_host)
-    return health, warm, format_health(health, warm, coverage_h, window_h, note, sessions)
+    return (health, warm,
+            format_health(health, warm, coverage_h, window_h, note, sessions),
+            format_health_short(health, warm, sessions, coverage_h, window_h, note))
 
 
 def _slack_to_markdown(text):
@@ -888,7 +935,10 @@ def render_health_report():
 def main():
     if "--health" in sys.argv:
         try:
-            health, warm, text = run_health()
+            # Slack gets the short traffic-light version; the full text is in the logs and
+            # in the dashboard's Health tab.
+            health, warm, full, text = run_health()
+            print(full)
         except Exception as e:
             print(f"health report failed: {e}", file=sys.stderr)
             text = f":warning: *Endpoint health report could not run*: {e}"
