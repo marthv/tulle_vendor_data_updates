@@ -941,7 +941,10 @@ def send_health(text):
     Preferred: a DIRECT MESSAGE to one person (HEALTH_SLACK_USER_ID) from the Tulle Bot app
     (HEALTH_SLACK_BOT_TOKEN, an xoxb token with chat:write). A DM notifies on phone and
     desktop like any other, which is the point: this is a personal morning check, not a
-    channel post. Posting chat.postMessage to a user ID opens the app's DM with them.
+    channel post. HEALTH_SLACK_USER_ID is the EXISTING DM conversation id (D...), not the
+    user id (U...): posting to a user id makes Slack open a new IM, which needs the im:write
+    scope that Tulle Bot lacks (missing_scope, 2026-09-27), and adding it means a reinstall
+    that can re-mint the incoming-webhook URLs Xano depends on.
 
     Fallback: the channel webhook (HEALTH_SLACK_WEBHOOK_URL). Used when the DM is not
     configured, or FAILS - in which case the post says why, so a revoked token or a missing
@@ -970,7 +973,10 @@ def send_health(text):
     if not url:
         return
     if dm_error:
-        text = (f":warning: _Could not DM this report to <@{user}> ({dm_error}) — posting here "
+        # HEALTH_SLACK_USER_ID may be a user (U...) or an existing DM conversation (D...);
+        # only a user id renders as an @mention.
+        who = f"<@{user}>" if user.startswith("U") else f"DM {user}"
+        text = (f":warning: _Could not DM this report to {who} ({dm_error}) — posting here "
                 f"instead._\n\n{text}")
     try:
         requests.post(url, json={"text": text}, timeout=20)
