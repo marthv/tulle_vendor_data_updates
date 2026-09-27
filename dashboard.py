@@ -49,7 +49,6 @@ from extract_core import (run_extraction, get_pipeline_status,
                           list_recent_batches, ingest_batch_by_id, validate_merge)
 from job_status import post_job_status
 from cohorts import render_cohorts_tab
-from roadmap_orders import render_roadmap_orders_tab
 from endpoint_health import render_endpoint_health
 from drive_protect import render_drive_protect_panel
 import theme
@@ -730,14 +729,12 @@ render_endpoint_health(XANO_BASE, EXPORT_SECRET)
 
 # The 🏛️ Vendor Portal and 🗣️ Feedback tabs were removed 2026-09-08 (with vendor_portal.py
 # and feedback_triage.py). tab_vp below is Venue Pricing — a different, long-standing tab.
-tab_ro, tab_co, tab_vp, tab2, tab5 = st.tabs([
-    "🗺️ Roadmap Orders", "📈 Cohorts",
+# The 🗺️ Roadmap Orders tab was removed 2026-09-27 — the Budget Roadmap offer was killed.
+# roadmap_orders.py is kept on disk so it can be re-wired if the offer ever comes back.
+tab_co, tab_vp, tab2, tab5 = st.tabs([
+    "📈 Cohorts",
     "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction"
 ])
-
-# Fulfilment queue first — it's the only tab with a customer waiting on an SLA.
-with tab_ro:
-    render_roadmap_orders_tab(XANO_BASE)
 
 
 # ── (legacy Admin-tab helpers — the Admin tab was removed 2026-07-27; kept because

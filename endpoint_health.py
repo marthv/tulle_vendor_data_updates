@@ -49,9 +49,6 @@ CHECKS = [
     ("analytics_hub_stats (ep206)", "xano", "analytics_hub_stats",
      {"secret": "<SECRET>"},
      "📈 Cohorts", "secret-gated"),
-    ("roadmap_orders_admin (ep213)", "xano", "roadmap_orders_admin",
-     {"secret": "<SECRET>"},
-     "🗺️ Roadmap Orders", "secret-gated"),
     ("google_data_batch (ep122)", "xano", "google_data_batch",
      {"starting_index": 1, "ending_index": 1, "secret": "<SECRET>"},
      "🔍 Google Data & Images", "secret-gated 2026-08-30 (briefly had user auth — broke this tab)"),
@@ -79,7 +76,6 @@ CHECKS = [
 # check must not mutate production. update_vendor_image_* were still anonymous as of
 # 2026-08-30; if they are ever gated, they need the secret passed at their call site too.
 WRITE_DEPS = [
-    ("roadmap_orders_admin_update (ep214)", "POST", "secret", "🗺️ Roadmap Orders"),
     ("update_vendor_image_one/two/three (ep132-134)", "POST", "anonymous", "🔍 Google Data & Images"),
 ]
 
