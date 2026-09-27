@@ -178,7 +178,10 @@ def endpoint_path(it):
     m = re.match(r"https?://[^/]+/(api:[^/]+)/([^?]*)", it.get("uri") or "")
     if not m:
         return f"qid{it['query_id']}"
-    return f"{m.group(1)}/{re.sub(r'/\d+(?=/|$)', '/{id}', m.group(2))}"
+    # Built outside the f-string: Railway runs Python 3.11 (runtime.txt), which rejects a
+    # backslash inside an f-string expression. 3.12+ accepts it, so a local compile passes.
+    path = re.sub(r"/\d+(?=/|$)", "/{id}", m.group(2))
+    return f"{m.group(1)}/{path}"
 
 
 # --------------------------------------------------------------------------- analysis
