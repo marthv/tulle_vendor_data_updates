@@ -510,7 +510,10 @@ SLOW_S = 3.0
 # The warmer's api.request sets no timeout, and the two alerting runs on 2026-09-24/25 each
 # cost ~12s extra per failed bucket — the signature of a client-side timeout near 10s. A
 # warmer bucket slower than this on the SERVER is one the warmer probably gave up on.
-WARMER_CLIENT_TIMEOUT_S = 10.0
+# Since 2026-09-27 21:30 the task sets an explicit `timeout = 30`, so a 10-30s bucket now
+# SUCCEEDS; only >=30s is a warmer-side failure. (Before that, the implicit ~10s limit made
+# every slow bucket a "FAILED" alert even though ep119 returned 200.)
+WARMER_CLIENT_TIMEOUT_S = 30.0
 # task 8 went 15 -> 42 buckets at 2026-09-27 21:30 UTC (top-12 state first pages). Keep in step
 # with the task. Runs before that sent 15 by design and are not judged on the count.
 WARMER_BUCKETS = 42
