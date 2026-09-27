@@ -103,6 +103,42 @@ MAX_PAGES = 40
 
 # --------------------------------------------------------------------------- fetching
 
+def _post_with_retry(url, headers, body, tries=4):
+    """Xano's gateway 502s under heavy history reads (first --health run, 2026-09-27: 502
+    after 52s on a 500-row all-endpoint page). Retry 5xx with backoff; raise on the last."""
+    import time
+    for attempt in range(tries):
+        r = requests.post(url, headers=headers, json=body, timeout=120)
+        if r.status_code < 500 or attempt == tries - 1:
+            r.raise_for_status()
+            return r
+        time.sleep(5 * (attempt + 1))
+
+
+def fetch_endpoint_history(token, hours, query_id, per_page=200):
+    """Like fetch_history, but for ONE endpoint (server-side query_id filter), in smaller
+    pages with retries. The daily health report only needs a handful of endpoints, and
+    pulling all traffic with full headers is what made Xano's gateway time out."""
+    cutoff = dt.datetime.utcnow() - dt.timedelta(hours=hours)
+    headers = {"Authorization": f"Bearer {token}"}
+    rows, page = {}, 1
+    while page <= 200:
+        body = _post_with_retry(
+            f"{META_BASE}/workspace/{WORKSPACE_ID}/request_history/search", headers,
+            {"page": page, "per_page": per_page, "query_id": int(query_id),
+             "sort": {"created_at": "desc"}},
+        ).json()
+        items = body.get("items", [])
+        if not items:
+            break
+        for it in items:
+            rows[it["id"]] = it
+        if parse_ts(items[-1]) < cutoff or not body.get("nextPage"):
+            break
+        page += 1
+    return [it for it in rows.values() if parse_ts(it) >= cutoff]
+
+
 def fetch_history(token, hours):
     """Every request logged in the last `hours`, newest first.
 
@@ -411,8 +447,9 @@ def render_perf_digest(default_hours=24):
     with st.expander("📊 Performance digest — what real users actually experienced", expanded=False):
         st.caption(
             "Read from Xano's own request history, scoped to browser traffic on the live "
-            "app. Budgets live in `perf_slo.json`; the same check runs on a 2-hourly cron "
-            "and posts to Slack on breach."
+            "app. Budgets live in `perf_slo.json`. The daily endpoint health report "
+            "(`perf_digest.py --health`) runs on the `health-report-cron` service at 13:32 UTC "
+            "and posts to #tulle-users. Needs XANO_METADATA_TOKEN on this service."
         )
         hours = st.slider("Window (hours)", 1, 72, default_hours, key="pd_hours")
 
@@ -732,7 +769,13 @@ def run_health():
     with open(SLO_PATH, encoding="utf-8") as f:
         slo = json.load(f)
     window_h = slo.get("window_hours", 24)
-    items = fetch_history(token, window_h)
+    # Only the endpoints this report reads: the watched ones, auth/me (3) and the six
+    # login/signup endpoints for the session audit.
+    qids = list(dict.fromkeys(slo.get("health_watch", ["119", "121"])
+                              + ["3", "1", "2", "5", "6", "7", "18"]))
+    items = []
+    for q in qids:
+        items += fetch_endpoint_history(token, window_h, q)
     return build_health(items, slo, token=token)
 
 
