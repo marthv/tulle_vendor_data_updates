@@ -50,7 +50,7 @@ from extract_core import (run_extraction, get_pipeline_status,
 from job_status import post_job_status
 from cohorts import render_cohorts_tab
 from endpoint_health import render_endpoint_health
-from perf_digest import render_perf_digest
+from perf_digest import render_perf_digest, render_health_report
 from drive_protect import render_drive_protect_panel
 import theme
 
@@ -720,27 +720,29 @@ EXPORT_SECRET = os.environ.get(
 )
 
 
-# Preflight, above the tabs on purpose: a broken Xano dependency shows up as an empty or
-# erroring tab with no explanation, and the cause (an endpoint switched to user auth this
-# app cannot satisfy) is invisible from inside that tab. Collapsed — costs nothing closed.
-render_endpoint_health(XANO_BASE, EXPORT_SECRET)
-
-# Its sibling: endpoint_health asks "can we still reach our dependencies", this asks "how
-# did the site feel to use". Also collapsed, and nothing runs until the button is pressed —
-# it pages through Xano's request history, which is too expensive to do on every rerun.
-render_perf_digest()
-
-
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
 # The 🏛️ Vendor Portal and 🗣️ Feedback tabs were removed 2026-09-08 (with vendor_portal.py
 # and feedback_triage.py). tab_vp below is Venue Pricing — a different, long-standing tab.
 # The 🗺️ Roadmap Orders tab was removed 2026-09-27 — the Budget Roadmap offer was killed.
 # roadmap_orders.py is kept on disk so it can be re-wired if the offer ever comes back.
-tab_co, tab_vp, tab2, tab5 = st.tabs([
+tab_co, tab_vp, tab2, tab5, tab_health = st.tabs([
     "📈 Cohorts",
-    "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction"
+    "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction", "🩺 Health",
 ])
+
+# Health lives in its own tab (2026-09-27, was above every tab). All three panels are
+# collapsed and button-driven: they page Xano's request history, which is too expensive to
+# run on every Streamlit rerun.
+with tab_health:
+    # "Can we still reach our dependencies": a broken dependency otherwise shows up as an
+    # empty tab with no explanation.
+    render_endpoint_health(XANO_BASE, EXPORT_SECRET)
+    # The daily ep119/ep121 report that health-report-cron posts to #tulle-users, on demand,
+    # plus its day-by-day history (Xano table 78).
+    render_health_report()
+    # "How did the site feel to use": every endpoint against the budgets in perf_slo.json.
+    render_perf_digest()
 
 
 # ── (legacy Admin-tab helpers — the Admin tab was removed 2026-07-27; kept because

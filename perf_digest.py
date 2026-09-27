@@ -95,10 +95,11 @@ SLO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "perf_slo.js
 # load's fan-out without spanning a genuine sign-out-then-sign-in.
 RACE_WINDOW_S = 120
 
-# Xano's history is paged newest-first. 500/page is its maximum; 40 pages is ~20k requests,
-# far more than a day of current traffic, and the loop stops at the window edge anyway.
-PER_PAGE = 500
-MAX_PAGES = 40
+# Xano's history is paged newest-first. 500/page is its maximum, but a 500-row page with full
+# headers made Xano's gateway 502 (2026-09-27), so pages are 200. 150 pages is ~30k requests,
+# more than a day of current traffic, and the loop stops at the window edge anyway.
+PER_PAGE = 200
+MAX_PAGES = 150
 
 
 # --------------------------------------------------------------------------- fetching
@@ -153,14 +154,10 @@ def fetch_history(token, hours):
     rows, page = {}, 1
 
     while page <= MAX_PAGES:
-        r = requests.post(
-            f"{META_BASE}/workspace/{WORKSPACE_ID}/request_history/search",
-            headers=headers,
-            json={"page": page, "per_page": PER_PAGE, "sort": {"created_at": "desc"}},
-            timeout=120,
-        )
-        r.raise_for_status()
-        body = r.json()
+        body = _post_with_retry(
+            f"{META_BASE}/workspace/{WORKSPACE_ID}/request_history/search", headers,
+            {"page": page, "per_page": PER_PAGE, "sort": {"created_at": "desc"}},
+        ).json()
         items = body.get("items", [])
         if not items:
             break
@@ -514,7 +511,9 @@ SLOW_S = 3.0
 # cost ~12s extra per failed bucket — the signature of a client-side timeout near 10s. A
 # warmer bucket slower than this on the SERVER is one the warmer probably gave up on.
 WARMER_CLIENT_TIMEOUT_S = 10.0
-WARMER_BUCKETS = 15
+# task 8 went 15 -> 42 buckets at 2026-09-27 21:30 UTC (top-12 state first pages). Keep in step
+# with the task. Runs before that sent 15, so the 2026-09-28 report flags them once as short.
+WARMER_BUCKETS = 42
 
 
 def query_shape(it):
@@ -762,7 +761,9 @@ def format_health(health, warm, coverage_h, window_h, history_note, sessions=Non
     return "\n".join(L)
 
 
-def run_health():
+def run_health(write_history=True):
+    """write_history=False for on-demand dashboard runs: only the daily cron appends to the
+    history table, so clicking the button cannot create duplicate days."""
     token = os.environ.get("XANO_METADATA_TOKEN", "")
     if not token:
         raise RuntimeError("XANO_METADATA_TOKEN is not set.")
@@ -776,10 +777,10 @@ def run_health():
     items = []
     for q in qids:
         items += fetch_endpoint_history(token, window_h, q)
-    return build_health(items, slo, token=token)
+    return build_health(items, slo, token=token, write_history=write_history)
 
 
-def build_health(items, slo, token=None):
+def build_health(items, slo, token=None, write_history=True):
     """Pure-ish core so it can be tested against a saved history dump (token=None)."""
     window_h = slo.get("window_hours", 24)
     app_host = slo.get("app_host", "tulletogether.app")
@@ -803,20 +804,85 @@ def build_health(items, slo, token=None):
         errs = []
         today = newest.strftime("%Y-%m-%d")
         for h in health:
-            if not h["n"]:
+            if not h["n"] or not write_history:
                 continue
             try:
                 save_history(token, table_id, today, h)
             except Exception as e:
                 errs.append(f"ep{h['qid']}: {e}")
-        note = (f"Recorded to Xano table {table_id} for trend history."
-                if not errs else
-                f"History write FAILED ({'; '.join(errs)[:200]}) — today is not recorded.")
+        if not write_history:
+            note = "On-demand run — not recorded (only the daily cron writes history)."
+        elif not errs:
+            note = f"Recorded to Xano table {table_id} for trend history."
+        else:
+            note = f"History write FAILED ({'; '.join(errs)[:200]}) — today is not recorded."
         if past is None:
             note += " Could not read prior days."
 
     sessions = session_audit(items, app_host)
     return health, warm, format_health(health, warm, coverage_h, window_h, note, sessions)
+
+
+def _slack_to_markdown(text):
+    """The report is written for Slack. Streamlit's markdown differs in two ways that matter:
+    *x* is italic (Slack: bold), and a 4-space indent is a code block (Slack: just indent)."""
+    out = []
+    for line in text.split("\n"):
+        line = re.sub(r"(?<![\w*])\*(\S[^*]*?\S|\S)\*(?![\w*])", r"**\1**", line)
+        if line.startswith("• "):
+            line = "- " + line[2:]
+        elif line.startswith("    "):
+            line = "    - " + line.strip()
+        out.append(line)
+    return "\n".join(out)
+
+
+def render_health_report():
+    """Dashboard panel for the daily endpoint health report (ep119 / ep121): the same text
+    health-report-cron posts to #tulle-users, on demand, plus the saved daily history.
+
+    On-demand runs never write to the history table — only the cron does, once a day.
+    """
+    import pandas as pd_
+    import streamlit as st
+
+    with st.expander("🩺 Daily endpoint health — search (ep119) and map (ep121)", expanded=False):
+        st.caption(
+            "Failures and why, response times, most common queries, what makes searches slow, "
+            "and the cache warmer. Posted daily to #tulle-users at 13:32 UTC by "
+            "health-report-cron; run it here any time. Reads the last 24h of Xano request "
+            "history (all Xano keeps)."
+        )
+        if st.button("▶ Run health report now", key="hr_run"):
+            with st.spinner("Reading request history for ep119, ep121 and auth…"):
+                try:
+                    st.session_state["hr_result"] = run_health(write_history=False)
+                except Exception as e:
+                    st.session_state["hr_result"] = e
+        res = st.session_state.get("hr_result")
+        if isinstance(res, Exception):
+            st.error(f"Health report could not run: {res}")
+        elif res is not None:
+            st.markdown(_slack_to_markdown(res[2]))
+
+        st.markdown("**History** — one row per endpoint per day, written by the daily cron")
+        token = os.environ.get("XANO_METADATA_TOKEN", "")
+        table_id = os.environ.get("HEALTH_TABLE_ID", "78")
+        if not token:
+            st.info("XANO_METADATA_TOKEN is not set on this service.")
+            return
+        rows = load_history(token, table_id, days=30)
+        if rows is None:
+            st.warning(f"Could not read history table {table_id}.")
+        elif not rows:
+            st.info("No history yet — the first row lands after the next 13:32 UTC run.")
+        else:
+            cols = ["report_date", "query_id", "requests", "failures", "fail_pct", "tokenless",
+                    "p50_s", "p95_s", "p99_s", "cache_hit_pct"]
+            df = pd_.DataFrame(rows)
+            st.dataframe(df[[c for c in cols if c in df.columns]]
+                         .sort_values(["report_date", "query_id"], ascending=[False, True]),
+                         use_container_width=True, hide_index=True)
 
 
 def main():
