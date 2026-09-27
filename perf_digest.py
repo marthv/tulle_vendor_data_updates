@@ -935,6 +935,49 @@ def render_health_report():
                          use_container_width=True, hide_index=True)
 
 
+def send_health(text):
+    """Deliver the daily report.
+
+    Preferred: a DIRECT MESSAGE to one person (HEALTH_SLACK_USER_ID) from the Tulle Bot app
+    (HEALTH_SLACK_BOT_TOKEN, an xoxb token with chat:write). A DM notifies on phone and
+    desktop like any other, which is the point: this is a personal morning check, not a
+    channel post. Posting chat.postMessage to a user ID opens the app's DM with them.
+
+    Fallback: the channel webhook (HEALTH_SLACK_WEBHOOK_URL). Used when the DM is not
+    configured, or FAILS - in which case the post says why, so a revoked token or a missing
+    scope shows up in the channel instead of the report silently disappearing.
+    """
+    token = os.environ.get("HEALTH_SLACK_BOT_TOKEN", "")
+    user = os.environ.get("HEALTH_SLACK_USER_ID", "")
+    dm_error = None
+    if token and user:
+        try:
+            r = requests.post("https://slack.com/api/chat.postMessage",
+                              headers={"Authorization": f"Bearer {token}"},
+                              json={"channel": user, "text": text, "unfurl_links": False},
+                              timeout=20)
+            body = r.json()
+            if body.get("ok"):
+                print(f"health report sent as a DM to {user}")
+                return
+            dm_error = body.get("error", f"HTTP {r.status_code}")
+        except Exception as e:
+            dm_error = str(e)
+        print(f"DM failed ({dm_error}); falling back to the channel webhook", file=sys.stderr)
+
+    url = (os.environ.get("HEALTH_SLACK_WEBHOOK_URL")
+           or os.environ.get("SLACK_WEBHOOK_URL", ""))
+    if not url:
+        return
+    if dm_error:
+        text = (f":warning: _Could not DM this report to <@{user}> ({dm_error}) — posting here "
+                f"instead._\n\n{text}")
+    try:
+        requests.post(url, json={"text": text}, timeout=20)
+    except Exception as e:
+        print(f"slack post failed: {e}", file=sys.stderr)
+
+
 def main():
     if "--health" in sys.argv:
         try:
@@ -947,13 +990,7 @@ def main():
             text = f":warning: *Endpoint health report could not run*: {e}"
             health = None
         print(text)
-        url = (os.environ.get("HEALTH_SLACK_WEBHOOK_URL")
-               or os.environ.get("SLACK_WEBHOOK_URL", ""))
-        if url:
-            try:
-                requests.post(url, json={"text": text}, timeout=20)
-            except Exception as e:
-                print(f"slack post failed: {e}", file=sys.stderr)
+        send_health(text)
         return 2 if health is None else 0
 
     try:
