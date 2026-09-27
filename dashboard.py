@@ -50,6 +50,7 @@ from extract_core import (run_extraction, get_pipeline_status,
 from job_status import post_job_status
 from cohorts import render_cohorts_tab
 from endpoint_health import render_endpoint_health
+from perf_digest import render_perf_digest
 from drive_protect import render_drive_protect_panel
 import theme
 
@@ -723,6 +724,11 @@ EXPORT_SECRET = os.environ.get(
 # erroring tab with no explanation, and the cause (an endpoint switched to user auth this
 # app cannot satisfy) is invisible from inside that tab. Collapsed — costs nothing closed.
 render_endpoint_health(XANO_BASE, EXPORT_SECRET)
+
+# Its sibling: endpoint_health asks "can we still reach our dependencies", this asks "how
+# did the site feel to use". Also collapsed, and nothing runs until the button is pressed —
+# it pages through Xano's request history, which is too expensive to do on every rerun.
+render_perf_digest()
 
 
 # ── TABS ──────────────────────────────────────────────────────────────────────

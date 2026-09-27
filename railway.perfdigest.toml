@@ -1,0 +1,29 @@
+# Performance digest cron. Point a Railway service's Config File at this to run
+# perf_digest.py every 2 hours: it reads Xano's own request history, measures what real
+# users actually experienced, and posts to Slack ONLY when a budget in perf_slo.json is
+# breached. The run that lands on PERF_DIGEST_HOUR (default 08:00 UTC) posts a summary
+# whether or not anything is wrong — that daily line is also the trend record, since a cron
+# container keeps no state between runs. Set PERF_DIGEST_HOUR=-1 for breach-only.
+#
+# Two hours is deliberate. The check is a read of history, not a probe, so running it more
+# often does not detect anything sooner than the traffic itself reveals it, and each run
+# pages through up to 20k history records. If you later want faster outage detection, that
+# is the synthetic-probe layer's job, not this one's.
+#
+# Reference the dashboard's existing credentials rather than copying them:
+#     XANO_METADATA_TOKEN = ${{Tulle Admin Dash.XANO_METADATA_TOKEN}}
+#     SLACK_WEBHOOK_URL   = ${{Tulle Admin Dash.SLACK_WEBHOOK_URL}}
+#
+# The token is used read-only. Exit code 1 means "budgets breached", which Railway shows as
+# a failed run — that is intentional, so a breach is visible in the deploy list too, not
+# only in Slack. Exit 2 means the check itself could not run (missing token, Xano
+# unreachable); treat that as louder than a breach, because it means you are flying blind.
+#
+# NOTE: three budgets are expected to breach until the two known frontend fixes ship (the
+# token-wait guards, and normalizing the search params). Until then this will page every
+# run. If that is too noisy before the fixes land, raise those three budgets to just above
+# current values in a commit and lower them again with the fix, rather than muting the job.
+[deploy]
+startCommand = "python perf_digest.py"
+restartPolicyType = "NEVER"
+cronSchedule = "0 */2 * * *"

@@ -1,0 +1,23 @@
+# Daily endpoint health report (perf_digest.py --health) -> #tulle-users.
+#
+# For each endpoint in perf_slo.json's health_watch (ep119 search, ep121 map): failure count,
+# failure %, WHY each failed, avg/p50/p95/p99 response time, most common queries, and which
+# query shapes cause the most slow time. Plus a server-side audit of the ep119 cache warmer.
+#
+# Scheduled 2 minutes after the 13:30 UTC cache-warmer run (task 8 runs at :30 on odd UTC
+# hours), so the report includes that run. 13:32 UTC = 9:32 ET.
+#
+# Xano keeps only ~24h of request history, so each run appends one row per endpoint to a
+# Xano table (HEALTH_TABLE_ID) and compares against the prior 7 days — that table is the
+# long-term record of failure shapes.
+#
+# Variables:
+#     XANO_METADATA_TOKEN      = ${{Tulle Admin Dash.XANO_METADATA_TOKEN}}
+#     HEALTH_SLACK_WEBHOOK_URL = incoming webhook for #tulle-users
+#     HEALTH_TABLE_ID          = 78   (endpoint_health_daily, created 2026-09-27)
+#
+# Exit 2 = the report could not run (it still posts a warning to Slack).
+[deploy]
+startCommand = "python perf_digest.py --health"
+restartPolicyType = "NEVER"
+cronSchedule = "32 13 * * *"

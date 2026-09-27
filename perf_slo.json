@@ -1,0 +1,98 @@
+{
+  "_comment": [
+    "Latency and error budgets for the endpoints a real user waits on. perf_digest.py",
+    "reads this, measures the last N hours of ACTUAL production traffic from Xano's request",
+    "history, and alerts only on a breach.",
+    "",
+    "Raising a budget here is a decision to accept that experience — make it in a reviewed",
+    "commit, not to silence an alert. Budgets were set from the 2026-09-12 baseline (2,997",
+    "requests, 05:58-15:32 UTC): roughly 'a bit worse than a good day', so normal variance",
+    "is quiet and a real regression is not.",
+    "",
+    "Three budgets start RED on purpose - ep119 p95, ep119 cache hit rate, and the global",
+    "race-401 rate. They encode the two known open problems so that fixing them is what",
+    "turns the check green, and so a fix cannot silently regress later."
+  ],
+
+  "window_hours": 24,
+  "app_host": "tulletogether.app",
+
+  "_health_watch_comment": "Endpoints that get the daily deep-dive (perf_digest.py --health): failure reasons, top queries, slow-time drivers, and a row per day in the HEALTH_TABLE_ID history table.",
+  "health_watch": ["119", "121"],
+
+  "global": {
+    "_comment": "Applied across all app traffic in the window.",
+    "max_5xx_count": 0,
+    "max_race_401_pct": 2.0,
+    "min_requests_for_latency": 20
+  },
+
+  "endpoints": {
+    "119": {
+      "name": "wptp_updated_mappings_search",
+      "note": "Discovery search. Highest-volume call a user waits on. Real users saw 45.7% cache hits on the 2026-09-12 baseline because task 8 was warming 23 keys that shared ZERO overlap with the 89 keys the app requests; it was realigned to 9 observed keys the same day.",
+      "p95_s": 3.0,
+
+      "_cache_note": "55, not 60. Of 89 keys seen in a day, 80 were requested by exactly ONE visitor, and a key's first request is a miss by definition — so ~78 of 102 daily misses are unwarmable in principle and the ceiling from warming alone is about 58%. A 60% budget would be permanently unreachable, and a budget you cannot meet is one you learn to ignore. 55% sits above the realigned expectation and well above the 45.7% broken state, so it catches drift without crying wolf. Raising the ceiling itself means making the UNCACHED path faster, which is an ep119 change.",
+      "min_cache_hit_pct": 55.0
+    },
+    "121": {
+      "name": "wptp_map_light",
+      "note": "Map. Wide bounding boxes are the slow path.",
+      "p95_s": 3.0
+    },
+    "149": {
+      "name": "vendor/benchmarks",
+      "note": "Vendor detail benchmarks.",
+      "p95_s": 1.5
+    },
+    "230": {
+      "name": "venue/pricing_intelligence_full",
+      "note": "PI panel, gated (total_amount_paid >= 50).",
+      "p95_s": 1.0
+    },
+    "231": {
+      "name": "venue/pricing_intelligence",
+      "note": "PI panel, free/range view.",
+      "p95_s": 1.0
+    },
+    "258": {
+      "name": "venue/suggest_index",
+      "note": "Discovery type-ahead. p50 is ~40ms on a warm cache; the misses are the 6-11s tail.",
+      "p95_s": 1.0
+    },
+    "3": {
+      "name": "auth/me",
+      "note": "Session restore. Its catch calls logout(), so a 401 here destroys the session.",
+      "p95_s": 0.8,
+      "max_race_401_pct": 2.0
+    },
+    "1": { "name": "auth/login",  "p95_s": 1.0 },
+    "2": { "name": "auth/signup", "p95_s": 1.0 },
+    "142": {
+      "name": "extracted_pdf_data",
+      "note": "Highest call volume overall.",
+      "p95_s": 1.0
+    },
+    "93": { "name": "wptp_updated_mappings_pdf_specific", "p95_s": 1.0 },
+    "41": { "name": "wptp_updated_mappings/{id}",         "p95_s": 1.0 },
+    "74": {
+      "name": "wptp_updated_mappings_favorites",
+      "p95_s": 1.0,
+      "max_race_401_pct": 5.0
+    },
+    "216": {
+      "name": "my_access_summary",
+      "note": "Tier-aware access badge. 81% of calls 401'd on the 2026-09-12 baseline; 40 sessions never rendered it at all. The token-wait fix is built and waiting on a WeWeb publish.",
+      "p95_s": 1.5,
+      "max_race_401_pct": 5.0
+    },
+    "284": {
+      "name": "upgrade_offer",
+      "note": "Drives the upgrade banner.",
+      "p95_s": 1.5,
+      "max_race_401_pct": 5.0
+    },
+    "150": { "name": "user/update_vendor_views", "p95_s": 1.0 }
+  }
+}
