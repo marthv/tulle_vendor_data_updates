@@ -995,6 +995,13 @@ def main():
             print(f"health report failed: {e}", file=sys.stderr)
             text = f":warning: *Endpoint health report could not run*: {e}"
             health = None
+        # Oct 2026 geo-pricing/BNPL experiment. Its own try: a failure here must never cost
+        # the endpoint report.
+        try:
+            import bnpl_watch
+            text += "\n\n" + bnpl_watch.build(os.environ.get("XANO_METADATA_TOKEN", ""))
+        except Exception as e:
+            text += f"\n\n:warning: _BNPL experiment section failed: {e}_"
         print(text)
         send_health(text)
         return 2 if health is None else 0
