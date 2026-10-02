@@ -24,6 +24,11 @@ What this reports, and why each number:
     cannot read the channel, the section says so instead of guessing.
   * ep30 (Stripe webhook) non-200s in the last 24h - a failed webhook = paid but no access.
 
+PHASE 2 (2026-10-02): raised arm also pays 1 week $39 / 4 weeks $69. Set BNPL_PHASE2_FROM_MS
+(env) or PHASE2_FROM_MS to the publish time; the revenue table then splits phase 1 / phase 2 and
+the routing check also bands 1w/4w amounts. Revenue/day and revenue/buyer per arm over ALL
+plans is the headline - Forever counts alone miss buyers who traded down to short passes.
+
 Upgrades ("forever" type, priced by fn63 with a credit) are counted separately and not
 arm-compared: their amounts depend on what the buyer already paid.
 """
@@ -49,6 +54,34 @@ TULLE_USERS_CHANNEL = os.environ.get("BNPL_SLACK_CHANNEL_ID", "C07D9U0FZF0")
 PRICE_149_MIN = 145.0
 
 ARMS = ("raised", "control", "baseline")
+
+# PHASE 2 (2026-10-02, #payments): the raised arm ALSO gets 1 week $39 (was $30) and 4 weeks $69
+# (was $55); Texas control and baseline keep $30/$55. It goes live when the WeWeb publish lands,
+# so the boundary is set by hand (or env) once that time is known. None = not live yet.
+_p2 = os.environ.get("BNPL_PHASE2_FROM_MS", "").strip()
+PHASE2_FROM_MS = int(_p2) if _p2 else None
+# Amount includes sales tax (NY 8.875%, US max ~10.25%): $30 -> <= $33.1, $39 -> >= $39 before
+# promo codes; $55 -> <= $60.7, $69 -> >= $69. The cut points sit in the gaps.
+P2_1W_NEW_MIN = 38.0
+P2_4W_NEW_MIN = 65.0
+PLANS = ("1 week", "4 weeks", "forever weeks", "forever")
+PLAN_SHORT = {"1 week": "1w", "4 weeks": "4w", "forever weeks": "F", "forever": "up"}
+
+
+def plan_of(r):
+    t = (r.get("Type") or "").strip().lower()
+    return "1 week" if t == "1 weeks" else t
+
+
+def poisson_cdf(k, lam):
+    """P(X <= k) for X ~ Poisson(lam). Tiny k only, so the direct sum is exact enough."""
+    import math
+    term, tot = math.exp(-lam), 0.0
+    for i in range(k + 1):
+        if i:
+            term *= lam / i
+        tot += term
+    return tot
 
 
 def arm_for(location):
@@ -164,7 +197,7 @@ def build(token, now_ms=None):
     pre_start = LAUNCH_MS - PRE_DAYS * 86400000
     rows = fetch_payments(token, pre_start)
     forever = [r for r in rows if (r.get("Type") or "").strip().lower() in ("forever weeks", "forever")]
-    uids = {str(r.get("Client_Reference_ID") or "").strip() for r in forever}
+    uids = {str(r.get("Client_Reference_ID") or "").strip() for r in rows}
     uids.discard("")
     locs = fetch_locations(token, sorted(uids))
 
@@ -209,6 +242,42 @@ def build(token, now_ms=None):
         if sum(cpost.values()) < 30:
             lines.append("_Too few post-launch buys to call a direction (need ~30+); watch the trend, don't act on it._")
 
+    # ARPU by arm and window, ALL plans. This is the team's headline ("ARPU has shifted"): the
+    # raised arm can lose Forever buyers yet hold revenue/day by selling more short passes.
+    p2 = PHASE2_FROM_MS if (PHASE2_FROM_MS and now_ms >= PHASE2_FROM_MS) else None
+    windows = [("pre 28d", pre_start, LAUNCH_MS)]
+    if live:
+        windows.append(("phase 1", LAUNCH_MS, p2 or now_ms))
+    if p2:
+        windows.append(("phase 2", p2, now_ms))
+    lines.append("Revenue by arm, all plans (rev/day | rev/buyer | mix 1w/4w/F/up):")
+    lines.append("```")
+    for wname, w0, w1 in windows:
+        days = max((w1 - w0) / 86400000, 1e-9)
+        lines.append(f"{wname} ({days:.1f}d)")
+        for a in ARMS:
+            rs = [r for r in rows if w0 <= (r["Time_of_Payment"] or 0) < w1 and arm(r) == a
+                  and plan_of(r) in PLANS]
+            rev = sum(float(r.get("Amount") or 0) for r in rs)
+            buyers = {str(r.get("Client_Reference_ID") or "").strip() for r in rs}
+            mix = "/".join(str(sum(1 for r in rs if plan_of(r) == pl)) for pl in PLANS)
+            per_b = rev / len(buyers) if buyers else 0.0
+            lines.append(f"  {a:<9}${rev / days:>7.2f}/d  ${per_b:>6.2f}  {mix}")
+    lines.append("```")
+    if PHASE2_FROM_MS is None:
+        lines.append("_Phase 2 ($39/$69 for raised arm) not live yet - set BNPL_PHASE2_FROM_MS at publish._")
+
+    # Poisson sanity on new-Forever buys: what we'd expect at each arm's pre-launch rate.
+    if live:
+        pz = []
+        for a in ARMS:
+            lam = cpre[a] / PRE_DAYS * post_days
+            if lam >= 0.5:
+                pz.append(f"{a} {cpost[a]} vs {lam:.1f} expected (P<=obs {poisson_cdf(cpost[a], lam):.0%})")
+        if pz:
+            lines.append("Forever buys vs pre-launch rate: " + "; ".join(pz)
+                         + " _- below ~5% would be a real drop._")
+
     # Routing check: amount band vs arm.
     mism = []
     for r in post:
@@ -217,6 +286,18 @@ def build(token, now_ms=None):
             mism.append(f"raised buyer paid ${amt:.2f} (row {r['id']}) - $129 link? or promo code")
         elif a != "raised" and amt >= PRICE_149_MIN:
             mism.append(f"{a} buyer paid ${amt:.2f} (row {r['id']}) - $149 leaked outside raised arm?")
+    if p2:
+        for r in rows:
+            if (r["Time_of_Payment"] or 0) < p2:
+                continue
+            pl, a, amt = plan_of(r), arm(r), float(r.get("Amount") or 0)
+            cut = {"1 week": P2_1W_NEW_MIN, "4 weeks": P2_4W_NEW_MIN}.get(pl)
+            if cut is None or amt <= 0:
+                continue
+            if a == "raised" and amt < cut:
+                mism.append(f"raised {pl} paid ${amt:.2f} (row {r['id']}) - old link? or promo code")
+            elif a != "raised" and amt >= cut:
+                mism.append(f"{a} {pl} paid ${amt:.2f} (row {r['id']}) - raised price leaked?")
     unresolved = sum(1 for u in uids if locs.get(u) is None)
     if live:
         lines.append(f"Routing check: {len(mism)} to look at" + (":" if mism else " :white_check_mark:"))
