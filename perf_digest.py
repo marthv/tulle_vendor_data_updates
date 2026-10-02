@@ -95,6 +95,17 @@ SLO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "perf_slo.js
 # load's fan-out without spanning a genuine sign-out-then-sign-in.
 RACE_WINDOW_S = 120
 
+# ep119/ep121 are login-required (ep121 since 2026-09-27, ep119 since 2026-09-29), so a
+# tokenless 401 there is a signed-out visitor being refused BY DESIGN, not a failure. Only a
+# tokenless 401 this close to an authenticated success from the same browser looks like a
+# pre-auth race (WeWeb firing before the token is restored). Measured 2026-10-02: of 232
+# tokenless ep119 401s, none had a token call within 3s; median gap to sign-in was 24s.
+AUTH_REQUIRED_QIDS = {"119", "121"}
+PREAUTH_RACE_S = 3
+SIGNED_IN_AFTER_S = 600
+# Possible-race share of all app calls that turns the refusals line amber.
+RACE_AMBER_PCT = 0.5
+
 # Xano's history is paged newest-first. 500/page is its maximum, but a 500-row page with full
 # headers made Xano's gateway 502 (2026-09-27), so pages are 200. 150 pages is ~30k requests,
 # more than a day of current traffic, and the loop stops at the window edge anyway.
@@ -174,6 +185,11 @@ def parse_ts(it):
     return dt.datetime.strptime(it["created_at"][:19], "%Y-%m-%d %H:%M:%S")
 
 
+def start_ts(it):
+    """When the request STARTED. Xano's created_at is when it finished."""
+    return parse_ts(it) - dt.timedelta(seconds=float(it.get("duration") or 0))
+
+
 # --------------------------------------------------------------------------- helpers
 
 def hdr(it, key, which="request_headers"):
@@ -185,6 +201,14 @@ def hdr(it, key, which="request_headers"):
 
 
 def client_ip(it):
+    """The browser's IP: the FIRST X-Forwarded-For hop. By 2026-10 X-Real-Ip held an
+    internal 10.x proxy address (5 distinct values a day for ~250 real visitors), which
+    collapsed every visitor into a handful of "IPs" and made race detection meaningless."""
+    xff = hdr(it, "X-Forwarded-For")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
     return hdr(it, "X-Real-Ip")
 
 
@@ -561,10 +585,31 @@ def endpoint_health(items, qid, app_host):
         return {"qid": str(qid), "n": 0}
 
     fails = [i for i in app if i["status"] >= 400]
+    # On a login-required endpoint, split tokenless 401s (expected refusals) out of the
+    # failure count, so the headline answers "did signed-in people get their results".
+    refused = []
+    if str(qid) in AUTH_REQUIRED_QIDS:
+        refused = [i for i in fails if i["status"] == 401 and not had_token(i)]
+        rid = {i["id"] for i in refused}
+        fails = [i for i in fails if i["id"] not in rid]
     reasons = {}
     for i in fails:
         r = failure_reason(i)
         reasons[r] = reasons.get(r, 0) + 1
+
+    authed_ok = {}
+    for i in app:
+        if i["status"] == 200 and had_token(i) and client_ip(i):
+            authed_ok.setdefault(client_ip(i), []).append(start_ts(i))
+    race_n = later_n = 0
+    for i in refused:
+        t = start_ts(i)
+        gaps = [(o - t).total_seconds() for o in authed_ok.get(client_ip(i), [])]
+        if any(abs(g) <= PREAUTH_RACE_S for g in gaps):
+            race_n += 1
+        elif any(0 <= g <= SIGNED_IN_AFTER_S for g in gaps):
+            later_n += 1
+    counted = len(app) - len(refused)
 
     ok = [i["duration"] for i in app if i["status"] < 400]
     hits = [i["duration"] for i in app if cache_state(i) == "1"]
@@ -601,8 +646,14 @@ def endpoint_health(items, qid, app_host):
     return {
         "qid": str(qid), "path": endpoint_path(app[0]),
         "n": len(app), "n_all_sources": len(rows),
+        # failures / fail_pct EXCLUDE expected signed-out refusals on login-required
+        # endpoints from 2026-10-02; earlier table-78 rows include them.
         "failures": len(fails),
-        "fail_pct": round(100 * len(fails) / len(app), 2),
+        "fail_pct": round(100 * len(fails) / counted, 2) if counted else 0.0,
+        "signed_in_n": counted,
+        "refused": len(refused),
+        "refused_race": race_n,
+        "refused_then_signed_in": later_n,
         "fail_reasons": dict(sorted(reasons.items(), key=lambda x: -x[1])),
         # Sent with no Authorization header. On a public endpoint these still succeed, so
         # this is the number that says whether requiring auth would empty people's results.
@@ -675,7 +726,11 @@ def save_history(token, table_id, report_date, h):
     row = {
         "report_date": report_date, "query_id": int(h["qid"]), "path": h.get("path", ""),
         "requests": h["n"], "failures": h.get("failures", 0),
-        "fail_pct": h.get("fail_pct", 0), "fail_reasons": h.get("fail_reasons", {}),
+        "fail_pct": h.get("fail_pct", 0),
+        # Refusals ride inside the existing JSON column so table 78 needs no new columns.
+        "fail_reasons": dict(h.get("fail_reasons", {}), **(
+            {"_signed_out_refused": h["refused"], "_possible_preauth_race": h["refused_race"]}
+            if h.get("refused") else {})),
         "mean_s": h.get("mean", 0), "p50_s": h.get("p50", 0), "p95_s": h.get("p95", 0),
         "p99_s": h.get("p99", 0), "max_s": h.get("max", 0),
         "cache_hit_pct": h.get("cache_hit_pct") or 0, "tokenless": h.get("tokenless", 0),
@@ -728,6 +783,11 @@ def format_health(health, warm, coverage_h, window_h, history_note, sessions=Non
             L.append(f"• *Failures: {h['failures']} ({h['fail_pct']}%)* — {why}")
         else:
             L.append("• Failures: 0")
+        if h.get("refused"):
+            L.append(f"• Signed-out refusals (expected, login required): {h['refused']} — "
+                     f"{h['refused_then_signed_in']} signed in within 10 min, "
+                     f"{h['refused_race']} had a token call within {PREAUTH_RACE_S}s "
+                     f"(possible pre-auth race)")
         L.append(f"• Sent with no login token: {h['tokenless']} "
                  f"({100 * h['tokenless'] / h['n']:.1f}%)")
         cache = ("" if h["cache_hit_pct"] is None else
@@ -777,9 +837,9 @@ def format_health_short(health, warm, sessions, coverage_h, window_h, history_no
     if coverage_h < window_h - 0.5:
         L.append(f":warning: only {coverage_h:.1f}h of history was available")
     names = {"119": "Search", "121": "Map"}
-    # Map failures are signed-out users hitting a login-required endpoint; ~3-4% is accepted
-    # (2026-09-27 decision to keep ep121 authenticated), so its bar is looser than search's.
-    fail_bars = {"121": (5, 10)}
+    # Signed-out refusals are no longer counted as failures (AUTH_REQUIRED_QIDS), so Map no
+    # longer needs the looser bar it had while they were.
+    fail_bars = {}
     for h in health:
         name = names.get(h["qid"], f"ep{h['qid']}")
         if not h["n"]:
@@ -789,8 +849,15 @@ def format_health_short(health, warm, sessions, coverage_h, window_h, history_no
         if h["failures"]:
             why = f" — mostly: {next(iter(h['fail_reasons']))}"
         amber, red = fail_bars.get(h["qid"], (2, 5))
-        L.append(f"{light(h['fail_pct'], amber, red)} *{name} reliability* — {h['failures']} of "
-                 f"{h['n']:,} failed ({h['fail_pct']}%){why}")
+        L.append(f"{light(h['fail_pct'], amber, red)} *{name} reliability* (signed in) — "
+                 f"{h['failures']} of {h.get('signed_in_n', h['n']):,} failed "
+                 f"({h['fail_pct']}%){why}")
+        if h.get("refused"):
+            race_pct = 100 * h["refused_race"] / h["n"]
+            dot = ":large_yellow_circle:" if race_pct >= RACE_AMBER_PCT else ":white_circle:"
+            L.append(f"{dot} {name} signed-out refusals (expected) — {h['refused']} calls, "
+                     f"{h['refused_then_signed_in']} signed in within 10 min, "
+                     f"{h['refused_race']} possible pre-auth race")
         slow_pct = 100 * h["slow_n"] / h["n"]
         driver = ""
         if h["slow_drivers"]:
@@ -986,10 +1053,12 @@ def send_health(text):
 
 def main():
     if "--health" in sys.argv:
+        # --dry-run: print both versions, write no history, post nothing.
+        dry = "--dry-run" in sys.argv
         try:
             # Slack gets the short traffic-light version; the full text is in the logs and
             # in the dashboard's Health tab.
-            health, warm, full, text = run_health()
+            health, warm, full, text = run_health(write_history=not dry)
             print(full)
         except Exception as e:
             print(f"health report failed: {e}", file=sys.stderr)
@@ -1003,7 +1072,8 @@ def main():
         except Exception as e:
             text += f"\n\n:warning: _BNPL experiment section failed: {e}_"
         print(text)
-        send_health(text)
+        if not dry:
+            send_health(text)
         return 2 if health is None else 0
 
     try:
