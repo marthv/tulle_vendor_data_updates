@@ -89,7 +89,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
                      {"kind": kind, "status": status, "forever": paid, "has_access": access, "source": "rec_service"})
         code = 402 if status == "blocked_free_limit" else (503 if status in ("killed", "blocked_global_cap") else 429)
-        raise HTTPException(code, {"status": status, "upsell": "forever",
+        raise HTTPException(code, {"status": status, "upsell": "forever", "free_limit": config.FREE_REFINES,
                                    "free_refines_left": guards.free_refines_left(paid, rows)})
     try:
         result, usage = agent.run(token, user, access, messages, memory_notes=f_notes.result(),
@@ -112,7 +112,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
     return dict(result, paid=paid, has_access=access, upsell="forever",
                 free_refines_left=guards.free_refines_left(paid, used),
                 forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),
-                forever_daily_limit=config.PAID_DAILY_REFINES)
+                forever_daily_limit=config.PAID_DAILY_REFINES, free_limit=config.FREE_REFINES)
 
 
 @app.post("/rec/opening")
@@ -184,7 +184,7 @@ def status(authorization: str = Header(None)):
     rows = xano.user_usage(user["id"])
     return {"paid": paid, "has_access": xano.has_paid_access(user), "upsell": "forever",
             "forever_left_today": guards.forever_left_today(paid, rows, xano.today()),
-            "forever_daily_limit": config.PAID_DAILY_REFINES, "free_refines_left": guards.free_refines_left(paid, rows),
+            "forever_daily_limit": config.PAID_DAILY_REFINES, "free_limit": config.FREE_REFINES, "free_refines_left": guards.free_refines_left(paid, rows),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"])}
 
 
