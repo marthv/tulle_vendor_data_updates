@@ -1071,6 +1071,12 @@ def main():
             text += "\n\n" + bnpl_watch.build(os.environ.get("XANO_METADATA_TOKEN", ""))
         except Exception as e:
             text += f"\n\n:warning: _BNPL experiment section failed: {e}_"
+        # Oct 2026 recommendation engine (rec_service). Same isolation rule.
+        try:
+            import rec_watch
+            text += "\n\n" + rec_watch.build(os.environ.get("XANO_METADATA_TOKEN", ""))
+        except Exception as e:
+            text += f"\n\n:warning: _Recommendation engine section failed: {e}_"
         print(text)
         if not dry:
             send_health(text)

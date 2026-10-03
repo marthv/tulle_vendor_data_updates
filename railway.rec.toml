@@ -1,4 +1,7 @@
-# Recommendation engine API (rec_service/). WeWeb /recommendations calls it with the user's Xano token.
+# Recommendation engine API (rec_service/).
+# NOTE 2026-10-03: Railway now rejects a config-file path on new services, so the LIVE settings
+# (root /rec_service, start uvicorn, healthcheck /health, region us-east4) were set on the
+# "rec-engine" service directly. This file documents them; edit the service, not this file. WeWeb /recommendations calls it with the user's Xano token.
 #
 # Variables:
 #     ANTHROPIC_API_KEY     = Anthropic key for this service (separate key recommended, so spend is visible)
