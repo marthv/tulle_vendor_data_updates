@@ -13,11 +13,11 @@ def ok(kind, free=False, day=T):
     return {"status": "ok", "kind": kind, "counted_as_free": free, "usage_day": day}
 
 
-def test_free_user_gets_one_free_opening_then_exactly_three_questions_lifetime():
+def test_free_user_gets_one_free_opening_then_exactly_N_questions_lifetime():
     rows = []
     assert guards.decide("opening", False, rows, 0, T) == (True, "ok", False)
     rows.append(ok("opening"))
-    for i in range(3):
+    for i in range(config.FREE_REFINES):
         allowed, status, free = guards.decide("refine", False, rows, 0, T)
         assert allowed and free, i
         rows.append(ok("refine", True))
@@ -26,7 +26,7 @@ def test_free_user_gets_one_free_opening_then_exactly_three_questions_lifetime()
 
 
 def test_no_daily_reset_for_free_users():
-    rows = [ok("opening", day="2026-09-01")] + [ok("refine", True, day="2026-09-01")] * 3
+    rows = [ok("opening", day="2026-09-01")] + [ok("refine", True, day="2026-09-01")] * config.FREE_REFINES
     assert guards.decide("refine", False, rows, 0, T)[1] == "blocked_free_limit"
     assert guards.decide("opening", False, rows, 0, T)[1] == "blocked_free_limit"
 
@@ -35,7 +35,7 @@ def test_second_opening_spends_a_question():
     rows = [ok("opening")]
     assert guards.decide("opening", False, rows, 0, T) == (True, "ok", True)
     rows.append(ok("opening", True))
-    assert guards.free_refines_left(False, rows) == 2
+    assert guards.free_refines_left(False, rows) == config.FREE_REFINES - 1
 
 
 def test_errors_do_not_use_up_free_questions():
