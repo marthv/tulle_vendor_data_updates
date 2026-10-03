@@ -18,7 +18,7 @@ EFFORT = os.environ.get("REC_EFFORT", "low")   # v2 speed pass 2026-10-03; was m
 MAX_TOOL_ROUNDS = int(os.environ.get("REC_MAX_TOOL_ROUNDS", "6"))
 
 # User decision 2026-10-03: opening recs free, then 3 free refinements, then the plan paywall.
-FREE_REFINES = int(os.environ.get("REC_FREE_REFINES", "5"))   # user decision 2026-10-03: 3 -> 5 free questions (lifetime)
+FREE_REFINES = int(os.environ.get("REC_FREE_REFINES", "3"))   # 2026-10-03 evening: back to 3 (Kate: 5 x 3 picks = too many free recs; user agreed)
 # Forever: prompts per UTC day, openings + questions combined (user decision 2026-10-03: 40).
 PAID_DAILY_REFINES = int(os.environ.get("REC_PAID_DAILY_REFINES", "40"))
 # Anyone: max opening generations per UTC day (each profile change regenerates).

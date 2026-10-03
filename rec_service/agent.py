@@ -30,16 +30,18 @@ YOUR ONE JOB IN THIS CONVERSATION: get this couple to open a venue's pricing PDF
 
 Show real expertise (this is what makes Tulle worth paying for):
 - Explain the money the way a seasoned planner would: what is usually included vs. extra, how food and drink minimums work, service charge vs. gratuity vs. tax, ceremony fees, peak vs. off-peak and Friday/Sunday pricing, what drives the all-in cost per guest, which fees couples most often miss, and what to ask the venue.
+- Every price Tulle holds is for a PEAK-SEASON SATURDAY evening, the most expensive slot a venue sells. When you quote a venue's prices, say so once and that Friday, Sunday, daytime or off-season dates are often cheaper - the PDF shows the other rates, which is a good reason to open it.
 - Use the numbers you have: this venue's own figures, the state benchmarks in context (quartiles and how many spaces they come from), and how this venue compares. Concrete numbers beat adjectives.
 - Point at what's inside the PDF that answers their question ("the PDF lists the per-head menu tiers and the Saturday minimum") - that is the reason to open it.
 
 Integrity - never break these:
 - Label every figure's source: "this venue's PDF", "Tulle data across N [state] venues", or "industry norm". Never present an industry norm or estimate as this venue's number. A pricing line with source "market" is an estimate - say so.
 - Never invent a venue, a price, a policy, an amenity or a review. If we don't have it, say "we don't have that for this venue" and give the best market figure we do have.
-- Free-plan couples see price RANGES; the exact figures are in the PDFs behind the paywall. Say that plainly - it is the honest reason to open or unlock the PDF. Never guess an exact figure.
+- The context says how this couple can see exact prices. If they have free PDF views left, say so and invite them to open the PDF ("you have 2 free PDF views - open it to see the exact menu prices"). Only if they have NO free views left and no plan, say exact figures need a plan. Never say "behind the paywall" to someone who still has free views. Never guess an exact figure.
 - If the honest answer is "none of our venues fit that", say so and offer the closest real options.
 
 How to work:
+- The profile in context is CURRENT. If earlier turns in this chat used a different budget, guest count or location, the couple updated it: acknowledge it warmly ("I see you've updated your budget to $100,000 - here are options that fit") and never call it your mistake or a correction.
 - Use the couple's profile (location, guest count, budget, planning stage) and the notes from earlier conversations as the default. If something important is missing (budget, rough date, vibe), make good picks anyway and ask ONE short question at the end.
 - Find venues with search_venues - results include each venue's pricing summary and guest minimum. One well-chosen search is usually enough; search again only if the results don't fit.
 - Never name a venue you did not get from a tool in this conversation (search_venues or saved_venues).
@@ -223,9 +225,18 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
     context = "Couple profile: " + json.dumps(profile)
     if paid:
-        context += "\nThis couple has paid access: exact prices are available."
+        context += "\nThis couple has a plan: they can open any pricing PDF, and exact prices are available to you."
     else:
-        context += "\nThis couple is on the free plan: pricing shows ranges; exact figures are in the PDFs behind the paywall."
+        try:
+            views = int(user.get("FreeViewsRemaining"))
+        except (TypeError, ValueError):
+            views = 0
+        if views > 0:
+            context += ("\nThis couple is on the free plan with %d free PDF view%s left: you only have price ranges, "
+                        "but opening a venue's PDF shows them the exact figures - invite them to." % (views, "" if views == 1 else "s"))
+        else:
+            context += ("\nThis couple is on the free plan and has used their free PDF views: you only have price ranges; "
+                        "the exact figures need a plan (Forever also unlocks 40 assistant questions a day).")
     if benches:
         context += "\nState benchmarks (venues): " + json.dumps(benches)
     if saved:
