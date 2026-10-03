@@ -125,13 +125,24 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
                 forever_daily_limit=config.PAID_DAILY_REFINES, free_limit=config.FREE_REFINES)
 
 
+def _opening_title(user):
+    """'Venue picks · Arizona, 80 guests' so a list of opening-only chats is tellable apart."""
+    p = xano.profile_of(user)
+    loc = p.get("Wedding_Location_Updated") or []
+    loc = [loc] if isinstance(loc, str) else loc
+    bits = [", ".join([l for l in loc if l][:2])] if loc else []
+    if p.get("Wedding_Guest_Count"):
+        bits.append("%s guests" % p["Wedding_Guest_Count"])
+    return "Venue picks" + (" · " + ", ".join(b for b in bits if b) if any(bits) else "")
+
+
 @app.post("/rec/opening")
 def opening(background: BackgroundTasks, authorization: str = Header(None)):
     token, user = _auth(authorization)
     # Create the chat only AFTER the guard allowed and the model answered - a blocked (402/429/503) or
     # failed opening must not leave an empty conversation behind. Costs ~0.3s.
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}])
-    chat = xano.create_chat(user["id"], "Venue picks for you")
+    chat = xano.create_chat(user["id"], _opening_title(user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], out["cards"], out["chips"])
     return dict(out, chat_id=chat["id"])
 
@@ -156,7 +167,7 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
             msgs = msgs[1:]
         msgs.append({"role": "user", "content": text})
         out = _run_guarded("refine", token, user, msgs, chat["id"])
-        if (chat.get("title") or "") == "Venue picks for you":
+        if (chat.get("title") or "").startswith("Venue picks"):
             chat["title"] = text[:80]
 
         def persist():   # after the response: user turn, then assistant turn, then bump the chat
