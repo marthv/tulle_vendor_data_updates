@@ -130,7 +130,8 @@ def _opening_title(user):
     p = xano.profile_of(user)
     loc = p.get("Wedding_Location_Updated") or []
     loc = [loc] if isinstance(loc, str) else loc
-    bits = [", ".join([l for l in loc if l][:2])] if loc else []
+    states = [x.strip() for l in loc if l for x in str(l).split(",") if x.strip()]   # some rows comma-pack states
+    bits = [", ".join(states[:2]) + (" +%d" % (len(states) - 2) if len(states) > 2 else "")] if states else []
     if p.get("Wedding_Guest_Count"):
         bits.append("%s guests" % p["Wedding_Guest_Count"])
     return "Venue picks" + (" · " + ", ".join(b for b in bits if b) if any(bits) else "")
