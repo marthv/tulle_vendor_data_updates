@@ -41,6 +41,13 @@ def decide(kind, paid, usage_rows, spend_today, today):
     return True, "ok", True                           # spends one of the 3 lifetime questions
 
 
+def forever_left_today(paid, usage_rows, today):
+    """Forever prompts left today (None for non-Forever users)."""
+    if not paid:
+        return None
+    return max(0, config.PAID_DAILY_REFINES - sum(1 for r in _ok(usage_rows) if r.get("usage_day") == today))
+
+
 def free_refines_left(paid, usage_rows):
     if paid:
         return None

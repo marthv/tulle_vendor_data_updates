@@ -101,8 +101,11 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
                         cache_write_tokens=usage["cache_write_tokens"], output_tokens=usage["output_tokens"],
                         tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"]))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
+    used_today = rows + [{"status": "ok", "usage_day": xano.today()}]
     return dict(result, paid=paid, has_access=access, upsell="forever",
-                free_refines_left=guards.free_refines_left(paid, used))
+                free_refines_left=guards.free_refines_left(paid, used),
+                forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),
+                forever_daily_limit=config.PAID_DAILY_REFINES)
 
 
 @app.post("/rec/opening")
@@ -171,7 +174,10 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
 def status(authorization: str = Header(None)):
     _, user = _auth(authorization)
     paid = xano.has_forever(user)
-    return {"paid": paid, "has_access": xano.has_paid_access(user), "upsell": "forever", "free_refines_left": guards.free_refines_left(paid, xano.user_usage(user["id"])),
+    rows = xano.user_usage(user["id"])
+    return {"paid": paid, "has_access": xano.has_paid_access(user), "upsell": "forever",
+            "forever_left_today": guards.forever_left_today(paid, rows, xano.today()),
+            "forever_daily_limit": config.PAID_DAILY_REFINES, "free_refines_left": guards.free_refines_left(paid, rows),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"])}
 
 
