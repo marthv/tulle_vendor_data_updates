@@ -2380,6 +2380,26 @@ def _upload_pdf_file(client, pdf_bytes, name):
     return None, str(last)
 
 
+def _recent_uploads(client, max_age_hours=24):
+    """{filename: file_id} for Files-API uploads newer than max_age_hours, newest kept
+    per filename. Lets a re-submit skip PDFs a failed batch create already uploaded.
+    Best effort: any listing error returns {} and the submit uploads as before."""
+    cutoff = datetime.now(timezone.utc).timestamp() - max_age_hours * 3600
+    out, seen_at = {}, {}
+    try:
+        for f in client.beta.files.list(limit=1000):
+            created = getattr(f, "created_at", None)
+            ts = created.timestamp() if hasattr(created, "timestamp") else 0
+            name = getattr(f, "filename", "") or ""
+            if ts < cutoff or not name:
+                continue
+            if ts > seen_at.get(name, 0):
+                out[name], seen_at[name] = f.id, ts
+    except Exception:
+        return {}
+    return out
+
+
 # Batch API custom_id rule is ^[a-zA-Z0-9_-]{1,64}$. The builders append at most 4
 # characters ("__p1"), so a PDF_ID is usable as long as it fits in 60.
 _CUSTOM_ID_SAFE = re.compile(r'^[a-zA-Z0-9_-]{1,60}$')
@@ -2616,6 +2636,9 @@ def run_extraction_batch(
     drive_service = get_drive_service()
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     all_requests, pdf_map = [], {}
+    recent_uploads = _recent_uploads(client)
+    if recent_uploads:
+        yield from emit(f"   {len(recent_uploads)} PDFs uploaded in the last 24h can be reused (no re-download)")
     timestamp = datetime.now(timezone.utc).isoformat()
 
     for i, row in enumerate(batch):
@@ -2636,33 +2659,40 @@ def run_extraction_batch(
             _update_pdf_status(xano_id, "failed",
                                error=f"invalid PDF_ID for batch custom_id: {pdf_id!r}")
             continue
-        pdf_bytes, err = download_pdf(pdf_link, drive_service)
-        if not pdf_bytes:
-            yield from emit(f"    Download failed: {err} — skipping")
-            # Record it. Without this the row keeps whatever status/last_error it
-            # already had, attempts never increments, and the PDF is indistinguishable
-            # from one that was never submitted (P874, 2026-07-28 pilot).
-            _update_pdf_status(xano_id, "failed", error=f"download failed: {err}")
-            continue
-        # Downsample very large PDFs (Files API allows 500MB, but huge PDFs blow
-        # past Claude's page limits and slow uploads).
-        raw_mb = len(pdf_bytes) / 1024 / 1024
-        if raw_mb > 38:
-            smaller = _downsample_pdf(pdf_bytes, target_b64_mb=25)
-            if smaller and len(smaller) < len(pdf_bytes):
-                pdf_bytes = smaller
-                raw_mb = len(pdf_bytes) / 1024 / 1024
-        if raw_mb > 40:
-            yield from emit(f"    Too large ({raw_mb:.0f}MB) — skipping")
-            _update_pdf_status(xano_id, "failed",
-                               error=f"too large ({raw_mb:.0f}MB) after downsample")
-            continue
+        # Reuse a Files-API upload of this PDF from the last 24h. A batch create that
+        # fails (e.g. one bad custom_id, 2026-10-02) leaves every upload in place; without
+        # this a re-submit re-downloads and re-uploads the whole range for nothing.
+        file_id = recent_uploads.get(f"{pdf_id}.pdf")
+        if file_id:
+            yield from emit("    Reusing PDF uploaded in the last 24h — no download")
+        else:
+            pdf_bytes, err = download_pdf(pdf_link, drive_service)
+            if not pdf_bytes:
+                yield from emit(f"    Download failed: {err} — skipping")
+                # Record it. Without this the row keeps whatever status/last_error it
+                # already had, attempts never increments, and the PDF is indistinguishable
+                # from one that was never submitted (P874, 2026-07-28 pilot).
+                _update_pdf_status(xano_id, "failed", error=f"download failed: {err}")
+                continue
+            # Downsample very large PDFs (Files API allows 500MB, but huge PDFs blow
+            # past Claude's page limits and slow uploads).
+            raw_mb = len(pdf_bytes) / 1024 / 1024
+            if raw_mb > 38:
+                smaller = _downsample_pdf(pdf_bytes, target_b64_mb=25)
+                if smaller and len(smaller) < len(pdf_bytes):
+                    pdf_bytes = smaller
+                    raw_mb = len(pdf_bytes) / 1024 / 1024
+            if raw_mb > 40:
+                yield from emit(f"    Too large ({raw_mb:.0f}MB) — skipping")
+                _update_pdf_status(xano_id, "failed",
+                                   error=f"too large ({raw_mb:.0f}MB) after downsample")
+                continue
 
-        file_id, up_err = _upload_pdf_file(client, pdf_bytes, f"{pdf_id}.pdf")
-        if not file_id:
-            yield from emit(f"    Upload failed: {up_err} — skipping")
-            _update_pdf_status(xano_id, "failed", error=f"files-api upload failed: {up_err}")
-            continue
+            file_id, up_err = _upload_pdf_file(client, pdf_bytes, f"{pdf_id}.pdf")
+            if not file_id:
+                yield from emit(f"    Upload failed: {up_err} — skipping")
+                _update_pdf_status(xano_id, "failed", error=f"files-api upload failed: {up_err}")
+                continue
 
         # Photography / Entertainment always take the single category prompt —
         # the 3-pass venue split (summary / pricing grid / classification) has no
