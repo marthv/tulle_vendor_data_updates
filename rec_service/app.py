@@ -66,12 +66,17 @@ def _auth(authorization):
     return token, user
 
 
-def _memory_notes(user_id):
+def _memory(user_id):
+    """(notes, user_context) for this user; ([], "") on any read problem - never block a request on it."""
     try:
-        row = xano.get_memory(user_id)
-        return [n.get("note") for n in (row or {}).get("notes") or [] if n.get("note")]
+        row = xano.get_memory(user_id) or {}
+        return [n.get("note") for n in row.get("notes") or [] if n.get("note")], (row.get("user_context") or "")
     except Exception:
-        return []
+        return [], ""
+
+
+def _memory_notes(user_id):
+    return _memory(user_id)[0]
 
 
 def _run_guarded(kind, token, user, messages, chat_id=0):
@@ -80,7 +85,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
     access = xano.has_paid_access(user)
     f_rows = _POOL.submit(xano.user_usage, user["id"])
     f_spend = _POOL.submit(xano.spend_today_usd)
-    f_notes = _POOL.submit(_memory_notes, user["id"])
+    f_mem = _POOL.submit(_memory, user["id"])
     rows = f_rows.result()
     allowed, status, counted_free = guards.decide(kind, paid, rows, f_spend.result(), xano.today())
     base = {"user_id": user["id"], "kind": kind, "chat_id": chat_id, "model": config.MODEL}
@@ -96,7 +101,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
         raise HTTPException(code, {"status": status, "upsell": "forever", "free_limit": config.FREE_REFINES, **extra,
                                    "free_refines_left": guards.free_refines_left(paid, rows)})
     try:
-        result, usage = agent.run(token, user, access, messages, memory_notes=f_notes.result(),
+        notes, user_context = f_mem.result()
+        result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
                                   on_note=lambda n: xano.add_memory_note(user["id"], n))
     except Exception as e:  # never charge a free refine for our own failure
         xano.log_usage(dict(base, status="error", error=str(e)[:500]))
@@ -179,6 +185,37 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
     if not chat:
         raise HTTPException(404, "conversation not found")
     return {"chat_id": chat["id"], "title": chat.get("title") or "", "turns": xano.get_messages(chat["id"])}
+
+
+class ContextBody(BaseModel):
+    context: str = ""
+
+
+class NoteDelete(BaseModel):
+    index: int
+
+
+@app.get("/rec/context")
+def get_context(authorization: str = Header(None)):
+    """What the assistant knows about the couple: their own context + the notes it saved."""
+    _, user = _auth(authorization)
+    notes, user_context = _memory(user["id"])
+    return {"context": user_context, "context_max": xano.CONTEXT_MAX, "notes": notes}
+
+
+@app.post("/rec/context")
+def set_context(body: ContextBody, authorization: str = Header(None)):
+    _, user = _auth(authorization)
+    saved = xano.set_user_context(user["id"], body.context)
+    _POOL.submit(xano.mp_track, user["id"], "rec_context_saved", {"chars": len(saved), "source": "rec_service"})
+    return {"context": saved, "context_max": xano.CONTEXT_MAX, "notes": _memory(user["id"])[0]}
+
+
+@app.post("/rec/notes/delete")
+def delete_note(body: NoteDelete, authorization: str = Header(None)):
+    _, user = _auth(authorization)
+    notes = xano.delete_memory_note(user["id"], body.index)
+    return {"notes": [n.get("note") for n in notes if n.get("note")]}
 
 
 @app.get("/rec/status")

@@ -312,3 +312,30 @@ def mp_track(user_id, event, props):
         requests.post("https://api.mixpanel.com/track?ip=0", json=body, timeout=10)
     except Exception:
         pass
+
+
+
+CONTEXT_MAX = 1000
+
+
+def set_user_context(user_id, text):
+    """The couple's own free-text context (max 1,000 chars), read into every conversation."""
+    text = (text or "").strip()[:CONTEXT_MAX]
+    row = get_memory(user_id)
+    now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
+    if row:
+        _put_full(MEMORY_TABLE, row, {"user_context": text, "updated_at": now_ms})
+    else:
+        _meta("POST", "/table/%d/content" % MEMORY_TABLE,
+              json={"user_id": int(user_id), "notes": [], "user_context": text})
+    return text
+
+
+def delete_memory_note(user_id, index):
+    row = get_memory(user_id)
+    notes = list((row or {}).get("notes") or [])
+    if not row or not (0 <= int(index) < len(notes)):
+        return notes
+    notes.pop(int(index))
+    _put_full(MEMORY_TABLE, row, {"notes": notes})
+    return notes
