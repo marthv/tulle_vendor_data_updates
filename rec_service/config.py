@@ -42,3 +42,7 @@ PRICES = {
 # Server-side Mixpanel event per AI request (rec_server_request). Public project token (Tulle - WeWeb,
 # 3963130) - the same value the client snippet and ep30 use. Empty string disables.
 MIXPANEL_TOKEN = os.environ.get("REC_MIXPANEL_TOKEN", "41be4c76431ca31c2a389e0f4bd1a290")
+
+# Forever: quiet monthly ceiling per user (calendar month, UTC), on top of the 40/day visible limit.
+# User decision 2026-10-03: 300/month caps worst-case AI cost at ~$10/user/month.
+FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))

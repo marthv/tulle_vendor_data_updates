@@ -52,13 +52,14 @@ def build(token, now=None):
     paywall = sum(1 for r in rows if r.get("status") == "blocked_free_limit")
     errors = sum(1 for r in rows if r.get("status") == "error")
     capped = sum(1 for r in rows if r.get("status") in ("blocked_global_cap", "killed"))
+    monthly = len({r.get("user_id") for r in rows if r.get("status") == "blocked_monthly_cap"})
     lat = [r.get("latency_ms") or 0 for r in ok if r.get("latency_ms")]
     light = ":red_circle:" if errors > max(2, 0.1 * len(rows)) or capped else ":large_green_circle:"
     lines = [
         "%s %s - %d users, %d opening + %d refine, $%.2f spent ($%.0f/day cap), $%.3f per user"
         % (light, head, len(users), opening, refine, spend, CAP, spend / max(len(users), 1)),
-        "Paywall shown (free limit hit): %d · errors: %d · blocked by cap/kill switch: %d · median %.1fs"
-        % (paywall, errors, capped, (st.median(lat) / 1000) if lat else 0),
+        "Paywall shown (free limit hit): %d · errors: %d · blocked by cap/kill switch: %d · Forever users at the "
+        "300/month cap: %d · median %.1fs" % (paywall, errors, capped, monthly, (st.median(lat) / 1000) if lat else 0),
     ]
     return "\n".join(lines)
 

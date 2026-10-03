@@ -89,7 +89,11 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
                      {"kind": kind, "status": status, "forever": paid, "has_access": access, "source": "rec_service"})
         code = 402 if status == "blocked_free_limit" else (503 if status in ("killed", "blocked_global_cap") else 429)
-        raise HTTPException(code, {"status": status, "upsell": "forever", "free_limit": config.FREE_REFINES,
+        extra = {}
+        if status == "blocked_monthly_cap":
+            t = dt.date.fromisoformat(xano.today())
+            extra["resets_on"] = (dt.date(t.year + (t.month == 12), t.month % 12 + 1, 1)).isoformat()
+        raise HTTPException(code, {"status": status, "upsell": "forever", "free_limit": config.FREE_REFINES, **extra,
                                    "free_refines_left": guards.free_refines_left(paid, rows)})
     try:
         result, usage = agent.run(token, user, access, messages, memory_notes=f_notes.result(),

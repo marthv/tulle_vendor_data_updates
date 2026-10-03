@@ -67,3 +67,10 @@ def test_global_cap_and_kill_switch_win():
 def test_cost():
     u = {"input_tokens": 1_000_000, "output_tokens": 100_000, "cache_read_tokens": 0, "cache_write_tokens": 0}
     assert guards.cost_usd("claude-sonnet-5-5", u) == 3.0
+
+
+def test_forever_monthly_cap_is_quiet_and_resets_next_month():
+    days = ["2026-10-%02d" % d for d in range(1, 31)]
+    rows = [ok("refine", day=days[i % 30]) for i in range(config.FOREVER_MONTHLY_CAP)]   # spread, never 40 in a day
+    assert guards.decide("refine", True, rows, 0, "2026-10-31") == (False, "blocked_monthly_cap", False)
+    assert guards.decide("refine", True, rows, 0, "2026-11-01") == (True, "ok", False)   # new month

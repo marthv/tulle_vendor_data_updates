@@ -4,7 +4,8 @@ FREE USERS - LIFETIME, NEVER RESETS (user decision 2026-10-03): the first openin
 3 questions, then the plan paywall. Any LATER opening (profile edit, a return visit that asks for fresh
 picks) spends one of those 3 questions. There is deliberately no daily reset: the engine's job is to get
 a couple to open a pricing PDF in their FIRST session, not to be a free tool they return to.
-FOREVER: 40 prompts per UTC day (openings + questions combined), shown to the user.
+FOREVER: 40 prompts per UTC day (openings + questions combined), shown to the user, plus a quiet
+300/calendar-month ceiling (blocked_monthly_cap) that bounds worst-case cost at ~$10/user/month.
 """
 import config
 
@@ -29,7 +30,11 @@ def decide(kind, paid, usage_rows, spend_today, today):
         return False, "blocked_global_cap", False
     ok = _ok(usage_rows)
     if paid:
-        # Forever: 40 prompts per UTC day, openings and questions combined (user decision 2026-10-03).
+        # Forever: quiet monthly ceiling first (calendar month, UTC), then 40 prompts per UTC day,
+        # openings and questions combined (user decisions 2026-10-03).
+        month = sum(1 for r in ok if (r.get("usage_day") or "")[:7] == today[:7])
+        if month >= config.FOREVER_MONTHLY_CAP:
+            return False, "blocked_monthly_cap", False
         n = sum(1 for r in ok if r.get("usage_day") == today)
         if n >= config.PAID_DAILY_REFINES:
             return False, "blocked_user_cap", False
