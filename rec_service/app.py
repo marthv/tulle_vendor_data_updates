@@ -104,9 +104,10 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
 @app.post("/rec/opening")
 def opening(background: BackgroundTasks, authorization: str = Header(None)):
     token, user = _auth(authorization)
-    f_chat = _POOL.submit(xano.create_chat, user["id"], "Venue picks for you")   # in parallel with the model
+    # Create the chat only AFTER the guard allowed and the model answered - a blocked (402/429/503) or
+    # failed opening must not leave an empty conversation behind. Costs ~0.3s.
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}])
-    chat = f_chat.result()
+    chat = xano.create_chat(user["id"], "Venue picks for you")
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], out["cards"], out["chips"])
     return dict(out, chat_id=chat["id"])
 
