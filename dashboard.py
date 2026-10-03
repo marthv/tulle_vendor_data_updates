@@ -432,7 +432,11 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 # ── Silent re-auth from the persistent cookie (survives redeploys/reconnects) ──
-if _USE_GOOGLE_AUTH and not st.session_state.authenticated and _cookies is not None:
+# Skipped after an explicit Sign out: the CookieManager deletes through a browser
+# component, so on the rerun right after the click the cookie is still readable and
+# this block used to sign the user straight back in.
+if (_USE_GOOGLE_AUTH and not st.session_state.authenticated and _cookies is not None
+        and not st.session_state.get("_signed_out")):
     try:
         _tok = _cookies.get("tulle_auth")
     except Exception:
@@ -460,6 +464,7 @@ if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
             st.session_state.user_email     = email
             st.session_state.user_name      = id_info.get("name", email)
             st.session_state.user_picture   = id_info.get("picture", "")
+            st.session_state.pop("_signed_out", None)
             theme.preserve_on_clear()   # a blanket clear() would drop ?theme= on every sign-in
             st.rerun()
         except Exception as e:
@@ -469,6 +474,15 @@ if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
 
 # ── Show login screen if not yet authenticated ────────────────────────────────
 if not st.session_state.authenticated:
+    # After Sign out, delete the login cookie during this (normal) render. The delete
+    # issued in the Sign out handler is followed by st.rerun(), which can abort the
+    # component before the browser runs it; here the script ends in st.stop(), so the
+    # component renders and the cookie is really gone - a refresh stays signed out.
+    if st.session_state.get("_signed_out") and _cookies is not None:
+        try:
+            _cookies.delete("tulle_auth", key="tulle_auth_del_gate")
+        except Exception:
+            pass
     _, login_col, _ = st.columns([2, 3, 2])
     with login_col:
         st.markdown("""
@@ -515,6 +529,7 @@ if not st.session_state.authenticated:
                 st.session_state.authenticated = True
                 st.session_state.user_email    = "local"
                 st.session_state.user_name     = "Local admin"
+                st.session_state.pop("_signed_out", None)
                 st.rerun()
             else:
                 st.error("Incorrect password.")
@@ -699,6 +714,8 @@ with _h_btn:
     if st.button("Sign out", use_container_width=True):
         for k in ["authenticated", "user_email", "user_name", "user_picture", "_auth_cookie_set"]:
             st.session_state.pop(k, None)
+        # Blocks the cookie re-auth for this session; the login screen finishes the delete.
+        st.session_state["_signed_out"] = True
         if _cookies is not None:
             try:
                 _cookies.delete("tulle_auth", key="tulle_auth_del")
