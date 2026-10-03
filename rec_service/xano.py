@@ -331,6 +331,15 @@ def set_user_context(user_id, text):
     return text
 
 
+def has_beta_feedback(user_id):
+    uid = int(user_id)
+    return any(int(r.get("user_id") or 0) == uid for r in _search_all(config.FEEDBACK_TABLE_ID, [{"user_id": uid}]))
+
+
+def add_beta_feedback(row):
+    return _meta("POST", "/table/%d/content" % config.FEEDBACK_TABLE_ID, json=row)
+
+
 def delete_memory_note(user_id, index):
     row = get_memory(user_id)
     notes = list((row or {}).get("notes") or [])

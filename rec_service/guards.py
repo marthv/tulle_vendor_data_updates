@@ -19,7 +19,20 @@ def free_used(usage_rows):
     return sum(1 for r in _ok(usage_rows) if r.get("counted_as_free"))
 
 
-def decide(kind, paid, usage_rows, spend_today, today):
+def forever_questions(usage_rows):
+    """Questions asked on Forever, lifetime: refines that did NOT spend a free question (those were asked
+    before upgrading, or on a 1-week / 4-week plan)."""
+    return sum(1 for r in _ok(usage_rows) if r.get("kind") == "refine" and not r.get("counted_as_free"))
+
+
+def beta_questions_left(paid, usage_rows, feedback_given):
+    """Forever questions left before the one-time feedback check-in; None when it doesn't apply."""
+    if not paid or feedback_given or config.BETA_FEEDBACK_AFTER <= 0:
+        return None
+    return max(0, config.BETA_FEEDBACK_AFTER - forever_questions(usage_rows))
+
+
+def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True):
     """Return (allowed, status, counted_as_free). status is what gets logged when blocked.
 
     Order matters: kill switch and global cap protect the bill first, then per-user rules.
@@ -35,6 +48,9 @@ def decide(kind, paid, usage_rows, spend_today, today):
         month = sum(1 for r in ok if (r.get("usage_day") or "")[:7] == today[:7])
         if month >= config.FOREVER_MONTHLY_CAP:
             return False, "blocked_monthly_cap", False
+        # Beta check-in: questions only - fresh opening picks never ask for feedback.
+        if kind == "refine" and beta_questions_left(paid, usage_rows, feedback_given) == 0:
+            return False, "feedback_required", False
         n = sum(1 for r in ok if r.get("usage_day") == today)
         if n >= config.PAID_DAILY_REFINES:
             return False, "blocked_user_cap", False

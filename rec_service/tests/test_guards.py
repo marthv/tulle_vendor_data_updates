@@ -74,3 +74,18 @@ def test_forever_monthly_cap_is_quiet_and_resets_next_month():
     rows = [ok("refine", day=days[i % 30]) for i in range(config.FOREVER_MONTHLY_CAP)]   # spread, never 40 in a day
     assert guards.decide("refine", True, rows, 0, "2026-10-31") == (False, "blocked_monthly_cap", False)
     assert guards.decide("refine", True, rows, 0, "2026-11-01") == (True, "ok", False)   # new month
+
+
+def test_forever_beta_feedback_checkin():
+    n = config.BETA_FEEDBACK_AFTER
+    five = [ok("refine")] * n
+    assert guards.decide("refine", True, five[:-1], 0, T, feedback_given=False) == (True, "ok", False)
+    assert guards.decide("refine", True, five, 0, T, feedback_given=False)[1] == "feedback_required"
+    assert guards.decide("opening", True, five, 0, T, feedback_given=False) == (True, "ok", False)   # picks never gated
+    assert guards.decide("refine", True, five, 0, T, feedback_given=True) == (True, "ok", False)    # unlocked
+    assert guards.beta_questions_left(True, five[:2], False) == n - 2
+    assert guards.beta_questions_left(True, five, True) is None
+    assert guards.beta_questions_left(False, five, False) is None
+    # questions asked on the free tier (counted_as_free) don't count toward the Forever check-in
+    free_era = [dict(ok("refine"), counted_as_free=True)] * 10
+    assert guards.decide("refine", True, free_era, 0, T, feedback_given=False) == (True, "ok", False)

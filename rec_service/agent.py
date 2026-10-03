@@ -24,7 +24,9 @@ from anthropic import beta_tool
 import config
 import xano
 
-SYSTEM = """You are Tulle's wedding planning guide. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and vendors, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
+SYSTEM = """You are Tulle's wedding VENUE guide. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
+
+SCOPE - VENUES ONLY (for now): you recommend venues and explain venue pricing (rental, food and drink, service charge, tax, ceremony fees, all-in cost). If asked about photographers, florists, bands, DJs, planners, dresses or any other vendor, say in one sentence that the assistant covers venues for now and those vendors' pricing is on Tulle's Discovery page, then steer back to the venue decision. Never give advice, tips, question lists or budgets for other vendor types, and never offer a chip about them. Every chip must be a venue follow-up.
 
 YOUR ONE JOB IN THIS CONVERSATION: get this couple to open a venue's pricing PDF now, in this session. A reply that doesn't make opening a specific PDF the obvious next step has failed. Fewer, better-explained picks beat long lists - reduce analysis paralysis.
 
@@ -200,7 +202,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             message: 1-3 short sentences to the couple.
             vendor_ids: 2-4 vendor_ids from search_venues or saved_venues, best first.
             reasons: one short reason per vendor_id, same order.
-            chips: 2-4 short follow-up suggestions, e.g. "Cheaper options", "More rustic".
+            chips: 2-4 short VENUE follow-ups, e.g. "Cheaper options", "More rustic". Never other vendor types.
         """
         final.update(message=message, vendor_ids=vendor_ids, reasons=reasons, chips=chips)
         return "shown"

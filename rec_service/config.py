@@ -45,4 +45,9 @@ MIXPANEL_TOKEN = os.environ.get("REC_MIXPANEL_TOKEN", "41be4c76431ca31c2a389e0f4
 
 # Forever: quiet monthly ceiling per user (calendar month, UTC), on top of the 40/day visible limit.
 # User decision 2026-10-03: 300/month caps worst-case AI cost at ~$10/user/month.
+# Forever beta check-in (Kate 2026-10-03, user: "the point is for beta testing"): after this many questions
+# a Forever user must leave feedback once to keep going. Whether they bother is the stickiness signal.
+# 0 turns it off. Feedback rows: Xano table 81 rec_feedback.
+BETA_FEEDBACK_AFTER = int(os.environ.get("REC_BETA_FEEDBACK_AFTER", "5"))
+FEEDBACK_TABLE_ID = int(os.environ.get("REC_FEEDBACK_TABLE_ID", "81"))
 FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))

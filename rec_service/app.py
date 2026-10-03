@@ -6,6 +6,7 @@ POST /rec/refine           -> {chat_id, message}: one refinement in that convers
 GET  /rec/chats            -> the user's conversations, newest first
 GET  /rec/chats/{chat_id}  -> one conversation's turns (text, cards, chips) to re-render it
 GET  /rec/status           -> free refinements left, paid flag, whether the service is on
+POST /rec/feedback         -> Forever beta check-in {rating, would_use, text}; unlocks questions after 5
 GET  /health
 
 Conversations live in Xano rec_chats (42) / rec_messages (43); durable notes the model saves
@@ -75,6 +76,14 @@ def _memory(user_id):
         return [], ""
 
 
+def _feedback_given(user_id):
+    """Fail OPEN: if the feedback table can't be read, never lock a paying customer out."""
+    try:
+        return xano.has_beta_feedback(user_id)
+    except Exception:
+        return True
+
+
 def _memory_notes(user_id):
     return _memory(user_id)[0]
 
@@ -86,15 +95,20 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
     f_rows = _POOL.submit(xano.user_usage, user["id"])
     f_spend = _POOL.submit(xano.spend_today_usd)
     f_mem = _POOL.submit(_memory, user["id"])
+    f_fb = _POOL.submit(_feedback_given, user["id"]) if paid else None
     rows = f_rows.result()
-    allowed, status, counted_free = guards.decide(kind, paid, rows, f_spend.result(), xano.today())
+    feedback_given = f_fb.result() if f_fb else True
+    allowed, status, counted_free = guards.decide(kind, paid, rows, f_spend.result(), xano.today(), feedback_given)
     base = {"user_id": user["id"], "kind": kind, "chat_id": chat_id, "model": config.MODEL}
     if not allowed:
         xano.log_usage(dict(base, status=status))
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
                      {"kind": kind, "status": status, "forever": paid, "has_access": access, "source": "rec_service"})
-        code = 402 if status == "blocked_free_limit" else (503 if status in ("killed", "blocked_global_cap") else 429)
+        code = (402 if status == "blocked_free_limit" else 403 if status == "feedback_required"
+                else 503 if status in ("killed", "blocked_global_cap") else 429)
         extra = {}
+        if status == "feedback_required":
+            extra.update(beta_feedback_after=config.BETA_FEEDBACK_AFTER, questions_used=guards.forever_questions(rows))
         if status == "blocked_monthly_cap":
             t = dt.date.fromisoformat(xano.today())
             extra["resets_on"] = (dt.date(t.year + (t.month == 12), t.month % 12 + 1, 1)).isoformat()
@@ -119,7 +133,10 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
         "cost_usd": cost, "latency_s": round(usage["latency_ms"] / 1000, 1), "tool_calls": usage["tool_calls"],
         "cards": len(result.get("cards") or []), "notes_saved": len(result.get("notes_saved") or []),
         "free_refines_left": guards.free_refines_left(paid, used), "model": usage["model"]})
+    used_fq = rows + ([{"status": "ok", "kind": "refine"}] if paid and kind == "refine" else [])
     return dict(result, paid=paid, has_access=access, upsell="forever",
+                beta_questions_left=guards.beta_questions_left(paid, used_fq, feedback_given),
+                beta_feedback_after=config.BETA_FEEDBACK_AFTER,
                 free_refines_left=guards.free_refines_left(paid, used),
                 forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),
                 forever_daily_limit=config.PAID_DAILY_REFINES, free_limit=config.FREE_REFINES)
@@ -230,12 +247,49 @@ def delete_note(body: NoteDelete, authorization: str = Header(None)):
     return {"notes": [n.get("note") for n in notes if n.get("note")]}
 
 
+class FeedbackBody(BaseModel):
+    rating: int = 0          # 1-5, how useful so far
+    would_use: str = ""      # yes / maybe / no
+    text: str = ""           # what's working, what isn't
+    chat_id: int = 0
+
+
+FEEDBACK_MIN_CHARS = 10
+
+
+@app.post("/rec/feedback")
+def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
+    """Forever beta check-in. One row per submission; the first one unlocks questions for good."""
+    _, user = _auth(authorization)
+    text = (body.text or "").strip()[:2000]
+    would = (body.would_use or "").strip().lower()
+    if not 1 <= body.rating <= 5:
+        raise HTTPException(400, {"status": "rating_required"})
+    if len(text) < FEEDBACK_MIN_CHARS:
+        raise HTTPException(400, {"status": "text_too_short", "min_chars": FEEDBACK_MIN_CHARS})
+    if would not in ("yes", "maybe", "no"):
+        would = ""
+    paid = xano.has_forever(user)
+    rows = xano.user_usage(user["id"])
+    used = guards.forever_questions(rows)
+    xano.add_beta_feedback({"user_id": int(user["id"]), "rating": body.rating, "would_use": would, "text": text,
+                            "questions_used": used, "chat_id": int(body.chat_id or 0)})
+    _POOL.submit(xano.mp_track, user["id"], "rec_beta_feedback", {
+        "rating": body.rating, "would_use": would, "chars": len(text), "forever": paid,
+        "questions_used": used, "source": "rec_service"})
+    return {"ok": True, "feedback_required": False, "beta_questions_left": None,
+            "forever_left_today": guards.forever_left_today(paid, rows, xano.today())}
+
+
 @app.get("/rec/status")
 def status(authorization: str = Header(None)):
     _, user = _auth(authorization)
     paid = xano.has_forever(user)
     rows = xano.user_usage(user["id"])
+    beta_left = guards.beta_questions_left(paid, rows, _feedback_given(user["id"]) if paid else True)
     return {"paid": paid, "has_access": xano.has_paid_access(user), "upsell": "forever",
+            "beta_questions_left": beta_left, "beta_feedback_after": config.BETA_FEEDBACK_AFTER,
+            "feedback_required": beta_left == 0,
             "forever_left_today": guards.forever_left_today(paid, rows, xano.today()),
             "forever_daily_limit": config.PAID_DAILY_REFINES, "free_limit": config.FREE_REFINES, "free_refines_left": guards.free_refines_left(paid, rows),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"])}
