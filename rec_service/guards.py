@@ -1,38 +1,50 @@
-"""Who may spend what. Pure functions over rec_usage rows so the rules are unit-testable offline."""
+"""Who may spend what. Pure functions over rec_usage rows so the rules are unit-testable offline.
+
+FREE USERS - LIFETIME, NEVER RESETS (user decision 2026-10-03): the first opening picks are free, then
+3 questions, then the plan paywall. Any LATER opening (profile edit, a return visit that asks for fresh
+picks) spends one of those 3 questions. There is deliberately no daily reset: the engine's job is to get
+a couple to open a pricing PDF in their FIRST session, not to be a free tool they return to.
+PAID USERS: no visible cap; hidden fair-use limits per UTC day stop abuse.
+"""
 import config
+
+
+def _ok(rows):
+    return [r for r in rows if r.get("status") == "ok"]
+
+
+def free_used(usage_rows):
+    """Free questions spent so far (lifetime)."""
+    return sum(1 for r in _ok(usage_rows) if r.get("counted_as_free"))
 
 
 def decide(kind, paid, usage_rows, spend_today, today):
     """Return (allowed, status, counted_as_free). status is what gets logged when blocked.
 
     Order matters: kill switch and global cap protect the bill first, then per-user rules.
-    Only successful (status ok) requests count toward limits - an error never costs the user a refine."""
+    Only successful (status ok) requests count toward limits - an error never costs the user a question."""
     if config.KILL_SWITCH:
         return False, "killed", False
     if spend_today >= config.GLOBAL_DAILY_USD:
         return False, "blocked_global_cap", False
-    ok = [r for r in usage_rows if r.get("status") == "ok"]
-    if kind == "opening":
-        n = sum(1 for r in ok if r.get("kind") == "opening" and r.get("usage_day") == today)
-        if n >= config.DAILY_OPENINGS:
-            return False, "blocked_user_cap", False
-        return True, "ok", False
+    ok = _ok(usage_rows)
     if paid:
-        n = sum(1 for r in ok if r.get("kind") == "refine" and r.get("usage_day") == today)
-        if n >= config.PAID_DAILY_REFINES:
+        n = sum(1 for r in ok if r.get("kind") == kind and r.get("usage_day") == today)
+        cap = config.DAILY_OPENINGS if kind == "opening" else config.PAID_DAILY_REFINES
+        if n >= cap:
             return False, "blocked_user_cap", False
         return True, "ok", False
-    used_free = sum(1 for r in ok if r.get("kind") == "refine" and r.get("counted_as_free"))
-    if used_free >= config.FREE_REFINES:
+    if kind == "opening" and not any(r.get("kind") == "opening" for r in ok):
+        return True, "ok", False                      # the one free opening, ever
+    if free_used(usage_rows) >= config.FREE_REFINES:
         return False, "blocked_free_limit", False
-    return True, "ok", True
+    return True, "ok", True                           # spends one of the 3 lifetime questions
 
 
 def free_refines_left(paid, usage_rows):
     if paid:
         return None
-    used = sum(1 for r in usage_rows if r.get("status") == "ok" and r.get("kind") == "refine" and r.get("counted_as_free"))
-    return max(0, config.FREE_REFINES - used)
+    return max(0, config.FREE_REFINES - free_used(usage_rows))
 
 
 def cost_usd(model, usage):
