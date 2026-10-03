@@ -66,6 +66,13 @@ def has_paid_access(user):
     return bool(until and until > dt.datetime.now(dt.timezone.utc))
 
 
+def has_forever(user):
+    """User decision 2026-10-03: the Planning Assistant is UNLIMITED only on Forever. Free users and
+    1-week / 4-week buyers get the opening picks + 3 questions for life, then a Forever upsell.
+    (1w/4w buyers still get exact prices in answers - has_paid_access - since they can open PDFs.)"""
+    return bool(user.get("forever_access_purchased"))
+
+
 PROFILE_FIELDS = ["first_name", "Planning_Phase", "Wedding_Location_Updated", "Wedding_Guest_Count",
                   "Wedding_Budget", "Wedding_Date", "Peak_Season", "Major_City", "Age_Range",
                   "wedding_vibes", "venue_customization"]

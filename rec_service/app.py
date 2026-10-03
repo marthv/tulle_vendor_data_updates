@@ -75,7 +75,9 @@ def _memory_notes(user_id):
 
 
 def _run_guarded(kind, token, user, messages, chat_id=0):
-    paid = xano.has_paid_access(user)
+    # `paid` (no cap) = Forever only; `access` (exact prices from ep230) = any active plan.
+    paid = xano.has_forever(user)
+    access = xano.has_paid_access(user)
     f_rows = _POOL.submit(xano.user_usage, user["id"])
     f_spend = _POOL.submit(xano.spend_today_usd)
     f_notes = _POOL.submit(_memory_notes, user["id"])
@@ -85,9 +87,10 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
     if not allowed:
         xano.log_usage(dict(base, status=status))
         code = 402 if status == "blocked_free_limit" else (503 if status in ("killed", "blocked_global_cap") else 429)
-        raise HTTPException(code, {"status": status, "free_refines_left": guards.free_refines_left(paid, rows)})
+        raise HTTPException(code, {"status": status, "upsell": "forever",
+                                   "free_refines_left": guards.free_refines_left(paid, rows)})
     try:
-        result, usage = agent.run(token, user, paid, messages, memory_notes=f_notes.result(),
+        result, usage = agent.run(token, user, access, messages, memory_notes=f_notes.result(),
                                   on_note=lambda n: xano.add_memory_note(user["id"], n))
     except Exception as e:  # never charge a free refine for our own failure
         xano.log_usage(dict(base, status="error", error=str(e)[:500]))
@@ -98,7 +101,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
                         cache_write_tokens=usage["cache_write_tokens"], output_tokens=usage["output_tokens"],
                         tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"]))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
-    return dict(result, paid=paid, free_refines_left=guards.free_refines_left(paid, used))
+    return dict(result, paid=paid, has_access=access, upsell="forever",
+                free_refines_left=guards.free_refines_left(paid, used))
 
 
 @app.post("/rec/opening")
@@ -166,8 +170,8 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
 @app.get("/rec/status")
 def status(authorization: str = Header(None)):
     _, user = _auth(authorization)
-    paid = xano.has_paid_access(user)
-    return {"paid": paid, "free_refines_left": guards.free_refines_left(paid, xano.user_usage(user["id"])),
+    paid = xano.has_forever(user)
+    return {"paid": paid, "has_access": xano.has_paid_access(user), "upsell": "forever", "free_refines_left": guards.free_refines_left(paid, xano.user_usage(user["id"])),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"])}
 
 
