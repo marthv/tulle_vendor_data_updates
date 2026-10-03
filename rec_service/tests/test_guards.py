@@ -48,7 +48,9 @@ def test_paid_user_daily_caps_reset_each_day():
     assert guards.decide("refine", True, rows, 0, T)[1] == "blocked_user_cap"
     old = [ok("refine", day="2026-10-02")] * config.PAID_DAILY_REFINES
     assert guards.decide("refine", True, old, 0, T) == (True, "ok", False)
-    assert guards.decide("opening", True, [ok("opening")] * config.DAILY_OPENINGS, 0, T)[1] == "blocked_user_cap"
+    mixed = [ok("opening")] * 10 + [ok("refine")] * (config.PAID_DAILY_REFINES - 10)
+    assert guards.decide("opening", True, mixed, 0, T)[1] == "blocked_user_cap"   # 40/day combined
+    assert guards.decide("refine", True, mixed[:-1], 0, T) == (True, "ok", False)
 
 
 def test_global_cap_and_kill_switch_win():

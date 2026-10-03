@@ -19,7 +19,7 @@ MAX_TOOL_ROUNDS = int(os.environ.get("REC_MAX_TOOL_ROUNDS", "6"))
 
 # User decision 2026-10-03: opening recs free, then 3 free refinements, then the plan paywall.
 FREE_REFINES = int(os.environ.get("REC_FREE_REFINES", "3"))
-# Paid users: quiet fair-use cap per UTC day.
+# Forever: prompts per UTC day, openings + questions combined (user decision 2026-10-03: 40).
 PAID_DAILY_REFINES = int(os.environ.get("REC_PAID_DAILY_REFINES", "40"))
 # Anyone: max opening generations per UTC day (each profile change regenerates).
 DAILY_OPENINGS = int(os.environ.get("REC_DAILY_OPENINGS", "5"))

@@ -4,7 +4,7 @@ FREE USERS - LIFETIME, NEVER RESETS (user decision 2026-10-03): the first openin
 3 questions, then the plan paywall. Any LATER opening (profile edit, a return visit that asks for fresh
 picks) spends one of those 3 questions. There is deliberately no daily reset: the engine's job is to get
 a couple to open a pricing PDF in their FIRST session, not to be a free tool they return to.
-PAID USERS: no visible cap; hidden fair-use limits per UTC day stop abuse.
+FOREVER: 40 prompts per UTC day (openings + questions combined), shown to the user.
 """
 import config
 
@@ -29,9 +29,9 @@ def decide(kind, paid, usage_rows, spend_today, today):
         return False, "blocked_global_cap", False
     ok = _ok(usage_rows)
     if paid:
-        n = sum(1 for r in ok if r.get("kind") == kind and r.get("usage_day") == today)
-        cap = config.DAILY_OPENINGS if kind == "opening" else config.PAID_DAILY_REFINES
-        if n >= cap:
+        # Forever: 40 prompts per UTC day, openings and questions combined (user decision 2026-10-03).
+        n = sum(1 for r in ok if r.get("usage_day") == today)
+        if n >= config.PAID_DAILY_REFINES:
             return False, "blocked_user_cap", False
         return True, "ok", False
     if kind == "opening" and not any(r.get("kind") == "opening" for r in ok):
