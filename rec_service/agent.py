@@ -90,6 +90,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     @beta_tool
     def search_venues(states: list[str], guests: int = 0, max_venue_fee: int = 0,
                       max_food_per_person: int = 0, venue_types: list[str] = None,
+                      vibes: list[str] = None, pricing_models: list[str] = None,
                       keyword: str = "", sort_by: str = "popular_desc") -> str:
         """Search Tulle's venues (only ones with real pricing PDFs). Each result includes its pricing
         summary (rental fee, food and drink, ceremony, service charge, guest minimum, state comparison).
@@ -99,13 +100,23 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             guests: venue must seat at least this many (0 = any).
             max_venue_fee: max rental fee in dollars (0 = any).
             max_food_per_person: max food and drink per guest in dollars (0 = any).
-            venue_types: optional, e.g. ["Barn", "Hotel", "Garden", "Restaurant", "Estate"].
-            keyword: optional free text, e.g. a city or "waterfront".
+            venue_types: optional, EXACT values only (any of = OR): "Dedicated Event Venue", "Hotel / Resort",
+                "Estate / Mansion", "Barn / Ranch", "Restaurant / Bar", "Country Club / Private Club",
+                "Winery / Brewery / Distillery", "Museum / Gallery", "Civic / Public", "Garden / Botanical Garden",
+                "Performing Arts Venue", "Religious". Map the couple's words: rustic/barn/farm -> "Barn / Ranch";
+                mansion/estate -> "Estate / Mansion"; vineyard -> "Winery / Brewery / Distillery".
+            vibes: optional style attributes, EXACT values only (any of = OR): "Scenic / Nature Views",
+                "Natural Light / Large Windows", "Historic Architecture", "Ballroom", "Tall / Vaulted Ceilings",
+                "Waterfront", "Tented", "Rooftop / Skyline Views", "Industrial / Warehouse", "Greenhouse".
+                beach/lake/river -> "Waterfront"; city views -> "Rooftop / Skyline Views"; loft -> "Industrial / Warehouse".
+            pricing_models: optional: "All-Inclusive" (catering + rentals included), "Semi-Inclusive", "Raw Space"
+                (bring your own caterer and rentals).
+            keyword: optional free text - a city or a venue name. Prefer the tag filters above for styles.
             sort_by: popular_desc (default), recent_desc, capacity_asc or capacity_desc.
         """
         r = xano.search_venues(token, states=states, guests=guests, max_venue_fee=max_venue_fee,
                                max_food_per_person=max_food_per_person, venue_types=venue_types,
-                               keyword=keyword, sort_by=sort_by)
+                               vibes=vibes, pricing_models=pricing_models, keyword=keyword, sort_by=sort_by)
         venues = r["venues"]
         prices = list(pool.map(pricing_or_none, [v["vendor_id"] for v in venues[:PRICED_PER_SEARCH]]))
         out = []

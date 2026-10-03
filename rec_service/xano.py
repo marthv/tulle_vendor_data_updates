@@ -124,8 +124,21 @@ def log_usage(row):
 
 # ---------------------------------------------------------------- data the tools read
 
+# Exact vocabularies of the denormalized tag columns ep119 filters on (measured 2026-10-03 over 12,323
+# validated venues). venue_types -> flt_venue_types (96% filled), vibes -> flt_venue_attributes (85%),
+# pricing_models -> flt_venue_offerings (96%). Values must match EXACTLY or the overlap matches nothing.
+VENUE_TYPES = ["Dedicated Event Venue", "Hotel / Resort", "Estate / Mansion", "Barn / Ranch", "Restaurant / Bar",
+               "Country Club / Private Club", "Winery / Brewery / Distillery", "Museum / Gallery", "Civic / Public",
+               "Garden / Botanical Garden", "Performing Arts Venue", "Religious"]
+VIBES = ["Scenic / Nature Views", "Natural Light / Large Windows", "Historic Architecture", "Ballroom",
+         "Tall / Vaulted Ceilings", "Waterfront", "Tented", "Rooftop / Skyline Views", "Industrial / Warehouse",
+         "Greenhouse"]
+PRICING_MODELS = ["All-Inclusive", "Semi-Inclusive", "Raw Space"]
+
+
 def search_venues(token, *, states, guests=0, max_venue_fee=0, max_food_per_person=0,
-                  venue_types=None, keyword="", sort_by="popular_desc", page_size=8):
+                  venue_types=None, vibes=None, pricing_models=None, keyword="", sort_by="popular_desc",
+                  page_size=8):
     """ep119 - the same search the Vendor Discovery grid uses. `states` match the multi-value State
     field server-side (never equality). max_capacity means 'seats AT LEAST N'."""
     params = {"Category_Input": "Venue", "page": 1, "page_size": max(1, min(int(page_size), 12)),
@@ -133,8 +146,15 @@ def search_venues(token, *, states, guests=0, max_venue_fee=0, max_food_per_pers
               "max_capacity": int(guests or 0), "capacity_ceiling": 10000,
               "base_fee_max": int(max_venue_fee or 0), "fb_per_person_max": int(max_food_per_person or 0),
               "Search_Input": keyword or "", "sort_by": sort_by or "", "fallback_all": "false"}
-    if venue_types:
-        params["venue_types[]"] = list(venue_types)
+    vt = [v for v in (venue_types or []) if v in VENUE_TYPES]
+    vb = [v for v in (vibes or []) if v in VIBES]
+    pm = [v for v in (pricing_models or []) if v in PRICING_MODELS]
+    if vt:
+        params["venue_types[]"] = vt
+    if vb:
+        params["vibes[]"] = vb
+    if pm:
+        params["pricing_models[]"] = pm
     d = _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_search", token, params)
     out = []
     for it in d.get("items", []):
