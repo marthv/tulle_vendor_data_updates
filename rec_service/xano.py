@@ -178,3 +178,75 @@ def saved_vendors(token):
         return []
     items = d if isinstance(d, list) else d.get("items", [])
     return [{"vendor_id": i.get("Vendor_ID"), "name": i.get("Name"), "category": i.get("Category")} for i in items][:30]
+
+
+# ---------------------------------------------------------------- conversations (tables 42/43) + memory (80)
+# Written by the SERVICE with the metadata token, never by the browser, and every read checks ownership,
+# so one couple can never load another couple's chat by guessing an id.
+
+CHATS_TABLE, MESSAGES_TABLE, MEMORY_TABLE = 42, 43, 80
+
+
+def create_chat(user_id, title):
+    return _meta("POST", "/table/%d/content" % CHATS_TABLE, json={"user_id": int(user_id), "title": title[:120]})
+
+
+def _put_full(table_id, row, changes):
+    """Metadata PATCH silently no-ops (memory: reference_xano_write_access) - PUT the full record."""
+    body = {k: v for k, v in row.items() if k not in ("id",)}
+    body.update(changes)
+    _meta("PUT", "/table/%d/content/%d" % (table_id, int(row["id"])), json=body)
+
+
+def touch_chat(chat_row):
+    _put_full(CHATS_TABLE, chat_row, {"updated_at": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)})
+
+
+def list_chats(user_id):
+    uid = int(user_id)
+    rows = [r for r in _search_all(CHATS_TABLE, [{"user_id": uid}]) if int(r.get("user_id") or 0) == uid]
+    rows.sort(key=lambda r: r.get("updated_at") or r.get("created_at") or 0, reverse=True)
+    return [{"id": r["id"], "title": r.get("title") or "", "updated_at": r.get("updated_at")} for r in rows]
+
+
+def get_chat(user_id, chat_id):
+    """Chat row if it belongs to this user, else None."""
+    try:
+        r = _meta("GET", "/table/%d/content/%d" % (CHATS_TABLE, int(chat_id)))
+    except XanoError:
+        return None
+    return r if r and int(r.get("user_id") or 0) == int(user_id) else None
+
+
+def add_message(chat_id, role, content, cards=None, chips=None):
+    _meta("POST", "/table/%d/content" % MESSAGES_TABLE,
+          json={"chat_id": int(chat_id), "role": role, "content": content or "",
+                "cards": cards or [], "chips": chips or []})
+
+
+def get_messages(chat_id):
+    cid = int(chat_id)
+    rows = [r for r in _search_all(MESSAGES_TABLE, [{"chat_id": cid}]) if int(r.get("chat_id") or 0) == cid]
+    rows.sort(key=lambda r: (r.get("created_at") or 0, r.get("id") or 0))
+    return [{"role": r["role"], "text": r.get("content") or "", "cards": r.get("cards") or [],
+             "chips": r.get("chips") or []} for r in rows]
+
+
+def get_memory(user_id):
+    uid = int(user_id)
+    rows = [r for r in _search_all(MEMORY_TABLE, [{"user_id": uid}]) if int(r.get("user_id") or 0) == uid]
+    return rows[0] if rows else None
+
+
+def add_memory_note(user_id, note, cap=20):
+    row = get_memory(user_id)
+    notes = list((row or {}).get("notes") or [])
+    note = note.strip()[:200]
+    if not note or any(n.get("note", "").lower() == note.lower() for n in notes):
+        return
+    notes = (notes + [{"note": note, "at": today()}])[-cap:]
+    now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
+    if row:
+        _put_full(MEMORY_TABLE, row, {"notes": notes, "updated_at": now_ms})
+    else:
+        _meta("POST", "/table/%d/content" % MEMORY_TABLE, json={"user_id": int(user_id), "notes": notes})

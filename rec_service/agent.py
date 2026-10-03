@@ -38,6 +38,7 @@ How to work:
 - Budget rule of thumb: the venue plus food and drink is usually 40-50% of the total wedding budget.
 - Lead with why these picks fit the couple (budget, guest count, style). Put caveats last.
 - If only one or two venues match a narrow request, include the closest alternatives (e.g. a farm or estate when barns are scarce) and say why they are close.
+- When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it.
 - Be warm, specific and brief. No filler, no exclamation marks.
 
 Finish EVERY reply by calling present_recommendations exactly once, with your short message, 2-4 vendor_ids in the order you recommend them, a one-line reason per vendor, and 2-4 short follow-up chips the couple might tap."""
@@ -59,8 +60,10 @@ def _states_of(profile):
     return [s for s in loc if s and s not in ("Not Sure",)][:2]
 
 
-def run(token, user, paid, messages, profile_override=None):
+def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
+    memory_notes: durable notes saved in earlier conversations (rec_memory).
+    on_note(text): called when the model saves a new durable note.
     Returns (result_dict, usage_dict)."""
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
     final = {}
@@ -127,6 +130,25 @@ def run(token, user, paid, messages, profile_override=None):
         """
         return json.dumps(xano.market_benchmarks(state))
 
+    saved_notes = []
+
+    @beta_tool
+    def save_note(note: str) -> str:
+        """Remember a DURABLE fact about this couple for future conversations: a style they want or
+        rule out, a must-have or dealbreaker, a venue budget, a date or season, a guest-count change,
+        a venue they loved or rejected. One short sentence. Do not save one-off questions.
+
+        Args:
+            note: e.g. "Wants a rustic barn or farm, no ballrooms" or "Venue budget about $8,000".
+        """
+        if on_note and len(saved_notes) < 3:
+            saved_notes.append(note)
+            try:
+                on_note(note)
+            except Exception:
+                pass
+        return "saved"
+
     @beta_tool
     def present_recommendations(message: str, vendor_ids: list[str], reasons: list[str],
                                 chips: list[str]) -> str:
@@ -166,6 +188,9 @@ def run(token, user, paid, messages, profile_override=None):
         context += "\nState benchmarks (venues): " + json.dumps(benches)
     if saved:
         context += "\nVendors they saved: " + json.dumps(saved)
+    if memory_notes:
+        context += ("\nWhat we learned in earlier conversations (use it, don't repeat it back): "
+                    + json.dumps(memory_notes))
     msgs = [dict(m) for m in messages]
     msgs[0] = {"role": msgs[0]["role"], "content": context + "\n\n" + msgs[0]["content"]}
 
@@ -176,7 +201,7 @@ def run(token, user, paid, messages, profile_override=None):
         model=config.MODEL,
         max_tokens=8000,
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        tools=[search_venues, venue_pricing, market_benchmarks, present_recommendations],
+        tools=[search_venues, venue_pricing, market_benchmarks, save_note, present_recommendations],
         messages=msgs,
         output_config={"effort": config.EFFORT},
         # If Sonnet declines on a safety classifier, the API re-runs on a fallback model in the same
@@ -209,5 +234,6 @@ def run(token, user, paid, messages, profile_override=None):
             reasons = final.get("reasons") or []
             cards.append(dict(seen[vid], reason=reasons[i] if i < len(reasons) else ""))
     result = {"text": final.get("message") or "", "cards": cards, "chips": final.get("chips") or [],
+              "notes_saved": saved_notes,
               "dropped_unverified_ids": [v for v in final.get("vendor_ids", []) if v not in seen]}
     return result, usage
