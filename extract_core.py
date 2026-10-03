@@ -2380,6 +2380,11 @@ def _upload_pdf_file(client, pdf_bytes, name):
     return None, str(last)
 
 
+# Batch API custom_id rule is ^[a-zA-Z0-9_-]{1,64}$. The builders append at most 4
+# characters ("__p1"), so a PDF_ID is usable as long as it fits in 60.
+_CUSTOM_ID_SAFE = re.compile(r'^[a-zA-Z0-9_-]{1,60}$')
+
+
 def _build_batch_requests(file_id, pdf_id, vendor_id, venue_name):
     """Return 3 batch request dicts for one PDF: Pass 1 (summary/Sonnet), Pass 3
     (pricing/Sonnet), Pass 4 (classification/Haiku).
@@ -2621,6 +2626,16 @@ def run_extraction_batch(
         xano_id   = row.get('id')
 
         yield from emit(f"  [{i+1}/{len(batch)}] {pdf_id} — {venue_name}")
+        # The PDF_ID becomes the batch custom_id ("<PDF_ID>__m" etc.), which the Batch API
+        # restricts to ^[a-zA-Z0-9_-]{1,64}$. ONE bad id rejects the WHOLE batch at create
+        # time (2026-10-02: "P 17425" with a space blocked 1,906 PDFs), so skip it here,
+        # before the download/upload, and record why. Fix the id in table 10, not here:
+        # the ingest maps results back by splitting the custom_id, so it must be the real id.
+        if not _CUSTOM_ID_SAFE.match(pdf_id):
+            yield from emit(f"    PDF_ID {pdf_id!r} can't be a batch custom_id — skipping (fix it in table 10)")
+            _update_pdf_status(xano_id, "failed",
+                               error=f"invalid PDF_ID for batch custom_id: {pdf_id!r}")
+            continue
         pdf_bytes, err = download_pdf(pdf_link, drive_service)
         if not pdf_bytes:
             yield from emit(f"    Download failed: {err} — skipping")
