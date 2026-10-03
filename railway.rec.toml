@@ -1,0 +1,17 @@
+# Recommendation engine API (rec_service/). WeWeb /recommendations calls it with the user's Xano token.
+#
+# Variables:
+#     ANTHROPIC_API_KEY     = Anthropic key for this service (separate key recommended, so spend is visible)
+#     XANO_METADATA_TOKEN   = ${{Tulle Admin Dash.XANO_METADATA_TOKEN}}   (writes rec_usage, reads benchmarks)
+#     REC_KILL_SWITCH       = 0   (1 = off immediately, no deploy)
+#     REC_GLOBAL_DAILY_USD  = 40  (stop spending above this per UTC day)
+#     REC_FREE_REFINES      = 3   (user decision 2026-10-03)
+#     REC_MODEL             = claude-sonnet-5-5 (user decision 2026-10-03)
+[build]
+builder = "NIXPACKS"
+buildCommand = "pip install -r rec_service/requirements.txt"
+
+[deploy]
+startCommand = "cd rec_service && uvicorn app:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+restartPolicyType = "ON_FAILURE"
