@@ -86,6 +86,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
     base = {"user_id": user["id"], "kind": kind, "chat_id": chat_id, "model": config.MODEL}
     if not allowed:
         xano.log_usage(dict(base, status=status))
+        _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
+                     {"kind": kind, "status": status, "forever": paid, "has_access": access, "source": "rec_service"})
         code = 402 if status == "blocked_free_limit" else (503 if status in ("killed", "blocked_global_cap") else 429)
         raise HTTPException(code, {"status": status, "upsell": "forever",
                                    "free_refines_left": guards.free_refines_left(paid, rows)})
@@ -102,6 +104,11 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
                         tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"]))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
     used_today = rows + [{"status": "ok", "usage_day": xano.today()}]
+    _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
+        "kind": kind, "status": "ok", "forever": paid, "has_access": access, "source": "rec_service",
+        "cost_usd": cost, "latency_s": round(usage["latency_ms"] / 1000, 1), "tool_calls": usage["tool_calls"],
+        "cards": len(result.get("cards") or []), "notes_saved": len(result.get("notes_saved") or []),
+        "free_refines_left": guards.free_refines_left(paid, used), "model": usage["model"]})
     return dict(result, paid=paid, has_access=access, upsell="forever",
                 free_refines_left=guards.free_refines_left(paid, used),
                 forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),

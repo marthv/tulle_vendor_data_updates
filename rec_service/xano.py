@@ -257,3 +257,19 @@ def add_memory_note(user_id, note, cap=20):
         _put_full(MEMORY_TABLE, row, {"notes": notes, "updated_at": now_ms})
     else:
         _meta("POST", "/table/%d/content" % MEMORY_TABLE, json={"user_id": int(user_id), "notes": notes})
+
+
+# ---------------------------------------------------------------- Mixpanel (server side)
+
+def mp_track(user_id, event, props):
+    """Fire-and-forget Mixpanel event, distinct_id = String(user.id) like the client. "ip": "0" so
+    Mixpanel doesn't geolocate the user to the Railway server. Never raises."""
+    if not config.MIXPANEL_TOKEN:
+        return
+    try:
+        body = [{"event": event, "properties": dict(props, token=config.MIXPANEL_TOKEN,
+                                                    distinct_id=str(user_id), ip="0",
+                                                    time=int(dt.datetime.now(dt.timezone.utc).timestamp()))}]
+        requests.post("https://api.mixpanel.com/track?ip=0", json=body, timeout=10)
+    except Exception:
+        pass

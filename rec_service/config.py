@@ -38,3 +38,7 @@ PRICES = {
     "claude-opus-5-5": {"in": 4.00, "out": 20.00, "cache_read": 0.20},
     "claude-haiku-4-5": {"in": 1.00, "out": 5.00, "cache_read": 0.10},
 }
+
+# Server-side Mixpanel event per AI request (rec_server_request). Public project token (Tulle - WeWeb,
+# 3963130) - the same value the client snippet and ep30 use. Empty string disables.
+MIXPANEL_TOKEN = os.environ.get("REC_MIXPANEL_TOKEN", "41be4c76431ca31c2a389e0f4bd1a290")
