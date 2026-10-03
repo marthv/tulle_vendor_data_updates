@@ -132,7 +132,8 @@ def search_venues(token, *, states, guests=0, max_venue_fee=0, max_food_per_pers
     out = []
     for it in d.get("items", []):
         out.append({
-            "vendor_id": it.get("Vendor_ID"), "name": it.get("Name"), "state": it.get("State"),
+            "vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"),  # page route needs both
+            "name": it.get("Name"), "state": it.get("State"),
             "address": it.get("Address"), "venue_type": it.get("Venue_Type"),
             "max_capacity_seated": it.get("Max_Capacity_Seated"),
             "venue_fee_range": [it.get("flt_min_venue_fee"), it.get("flt_max_venue_fee")],
