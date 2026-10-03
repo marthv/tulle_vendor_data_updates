@@ -198,13 +198,32 @@ def market_benchmarks(state):
             "note": "all_in_pg_N = all-in cost per guest at N guests, before tax and gratuity."}
 
 
-def saved_vendors(token):
-    try:
-        d = _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_favorites", token)
-    except XanoError:
-        return []
-    items = d if isinstance(d, list) else d.get("items", [])
-    return [{"vendor_id": i.get("Vendor_ID"), "name": i.get("Name"), "category": i.get("Category")} for i in items][:30]
+def saved_vendor_ids(user):
+    """The couple's saved vendors = user.favorited_vendors (what the Saved tab shows). 2026-10-03: the old
+    wptp_updated_mappings_favorites GET returned [] for a user with 4 saved vendors, so the assistant said
+    'I can't see a saved list'. auth/me already carries the list - read it from there."""
+    ids, seen = [], set()
+    for v in user.get("favorited_vendors") or []:
+        v = str(v).strip()
+        if v and v not in seen:
+            seen.add(v)
+            ids.append(v)
+    return ids[:30]
+
+
+def vendor_card(vendor_id):
+    """One vendor as a card (same shape search_venues returns), looked up by Vendor_ID in table 11."""
+    rows = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
+    if not rows:
+        return None
+    it = rows[0]
+    img = it.get("image_1")
+    return {"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"),
+            "state": it.get("State"), "address": it.get("Address"), "category": it.get("Category"),
+            "venue_type": it.get("flt_venue_types") or it.get("Venue_Type"),
+            "max_capacity_seated": it.get("Max_Capacity_Seated"),
+            "venue_fee_range": [it.get("flt_min_venue_fee"), it.get("flt_max_venue_fee")],
+            "image": img, "description": (it.get("Description") or "")[:300]}
 
 
 # ---------------------------------------------------------------- conversations (tables 42/43) + memory (80)

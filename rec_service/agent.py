@@ -42,7 +42,8 @@ Integrity - never break these:
 How to work:
 - Use the couple's profile (location, guest count, budget, planning stage) and the notes from earlier conversations as the default. If something important is missing (budget, rough date, vibe), make good picks anyway and ask ONE short question at the end.
 - Find venues with search_venues - results include each venue's pricing summary and guest minimum. One well-chosen search is usually enough; search again only if the results don't fit.
-- Never name a venue you did not get from a tool in this conversation.
+- Never name a venue you did not get from a tool in this conversation (search_venues or saved_venues).
+- You can see the couple's profile and their Saved list. Never say you can't see their saved vendors; if the list is empty, say they haven't saved any yet and suggest saving favourites with the heart.
 - State benchmarks for the couple's location are already in context. Use market_benchmarks only for a different state.
 - Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so.
 - Budget rule of thumb: venue plus food and drink is usually 40-50% of the total wedding budget.
@@ -77,6 +78,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     Returns (result_dict, usage_dict)."""
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
     final = {}
+    saved_cards_holder = {}
     # profile_override: eval runs only - real requests always use the verified user row.
     profile = profile_override if profile_override is not None else xano.profile_of(user)
     pool = ThreadPoolExecutor(max_workers=8)
@@ -141,6 +143,23 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return json.dumps(xano.venue_pricing(token, vendor_id, paid))
 
     @beta_tool
+    def saved_venues() -> str:
+        """The vendors this couple saved (their Saved list), each with its pricing summary and guest
+        minimum. Use it for "compare my saved venues", "which of my saved venues...", or to anchor
+        recommendations to what they already like."""
+        cards = saved_cards_holder.get("cards") or []
+        prices = list(pool.map(pricing_or_none, [c["vendor_id"] for c in cards[:PRICED_PER_SEARCH]]))
+        out = []
+        for i, c in enumerate(cards):
+            seen[c["vendor_id"]] = c
+            row = {k: c.get(k) for k in ("vendor_id", "name", "state", "address", "category", "venue_type",
+                                         "max_capacity_seated", "venue_fee_range")}
+            if i < len(prices) and prices[i]:
+                row["pricing"] = prices[i]
+            out.append(row)
+        return json.dumps({"saved_count": len(cards), "saved": out})
+
+    @beta_tool
     def market_benchmarks(state: str) -> str:
         """What venues typically cost in a state OTHER than the couple's (theirs is already in context):
         quartiles for rental fee, food and drink per guest, service charge, and all-in cost per guest
@@ -177,7 +196,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
         Args:
             message: 1-3 short sentences to the couple.
-            vendor_ids: 2-4 vendor_ids from search_venues, best first.
+            vendor_ids: 2-4 vendor_ids from search_venues or saved_venues, best first.
             reasons: one short reason per vendor_id, same order.
             chips: 2-4 short follow-up suggestions, e.g. "Cheaper options", "More rustic".
         """
@@ -188,7 +207,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # Prefetch in parallel: the couple's state benchmarks + saved vendors.
     states = _states_of(profile)
     bench_f = [pool.submit(xano.market_benchmarks, s) for s in states]
-    saved_f = pool.submit(lambda: [] if profile_override is not None else xano.saved_vendors(token))
+    saved_ids = [] if profile_override is not None else xano.saved_vendor_ids(user)
+    saved_f = pool.submit(lambda: [c for c in pool.map(xano.vendor_card, saved_ids) if c])
     benches = []
     for f in bench_f:
         try:
@@ -199,6 +219,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         saved = saved_f.result()
     except Exception:
         saved = []
+    saved_cards_holder["cards"] = saved
 
     context = "Couple profile: " + json.dumps(profile)
     if paid:
@@ -208,7 +229,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     if benches:
         context += "\nState benchmarks (venues): " + json.dumps(benches)
     if saved:
-        context += "\nVendors they saved: " + json.dumps(saved)
+        context += ("\nThey have SAVED %d vendors (their Saved list): " % len(saved)
+                    + json.dumps([{"vendor_id": c["vendor_id"], "name": c["name"], "state": c["state"],
+                                   "category": c.get("category")} for c in saved])
+                    + " - call saved_venues for their pricing when comparing or recommending around them.")
+    else:
+        context += "\nThey have not saved any vendors yet."
     if memory_notes:
         context += ("\nWhat we learned in earlier conversations (use it, don't repeat it back): "
                     + json.dumps(memory_notes))
@@ -222,7 +248,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         model=config.MODEL,
         max_tokens=8000,
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        tools=[search_venues, venue_pricing, market_benchmarks, save_note, present_recommendations],
+        tools=[search_venues, saved_venues, venue_pricing, market_benchmarks, save_note, present_recommendations],
         messages=msgs,
         output_config={"effort": config.EFFORT},
         # If Sonnet declines on a safety classifier, the API re-runs on a fallback model in the same
