@@ -55,6 +55,7 @@ BETA_FEEDBACK_AFTER = int(os.environ.get("REC_BETA_FEEDBACK_AFTER", "5"))
 # Beta feedback is also posted to Slack #feedback (private; Tulle Bot must be a member). Railway sets
 # REC_SLACK_BOT_TOKEN as a reference to health-report-cron's HEALTH_SLACK_BOT_TOKEN.
 SLACK_BOT_TOKEN = os.environ.get("REC_SLACK_BOT_TOKEN", "")
+FEEDBACK_SLACK_WEBHOOK = os.environ.get("REC_FEEDBACK_SLACK_WEBHOOK", "")   # Tulle Bot, preferred
 FEEDBACK_SLACK_CHANNEL = os.environ.get("REC_FEEDBACK_SLACK_CHANNEL", "C07JML6NMLM")
 FEEDBACK_TABLE_ID = int(os.environ.get("REC_FEEDBACK_TABLE_ID", "81"))
 FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))
