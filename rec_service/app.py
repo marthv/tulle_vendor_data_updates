@@ -118,7 +118,9 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
                                    "free_refines_left": guards.free_refines_left(paid, rows)})
     try:
         notes, user_context = f_mem.result()
+        # Detail (user 2026-10-03): only Forever gets figures; free and 1-week/4-week get fit, not numbers.
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
+                                  detail="full" if paid else "light",
                                   on_note=lambda n: xano.add_memory_note(user["id"], n))
     except Exception as e:  # never charge a free refine for our own failure
         xano.log_usage(dict(base, status="error", error=str(e)[:500]))

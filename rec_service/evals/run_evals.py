@@ -5,6 +5,7 @@ account (the search endpoint requires sign-in). Profiles come from cases.json, n
 Does NOT write rec_usage. Usage:  python evals/run_evals.py [--paid] [--only o01,r03] [--model claude-opus-5-5]
 Writes evals/results_<model>_<free|paid>.json and prints a summary table."""
 import json
+import re
 import os
 import pathlib
 import statistics as st
@@ -35,6 +36,7 @@ import agent  # noqa: E402
 import guards  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
+LIGHT = "--light" in sys.argv   # non-Forever detail level
 OPENING = ("Recommend 3 venues for us based on our profile, and tell us the single most useful next step "
            "for where we are in planning.")
 
@@ -50,6 +52,15 @@ def check(case, res):
         issues.append("no message (present_recommendations not called)")
     if not res["chips"]:
         issues.append("no chips")
+    if LIGHT:   # DETAIL: LIGHT must show no figures: no $, no %, no "N a head/per guest"
+        shown = " ".join([res["text"]] + [c.get("reason") or "" for c in res["cards"]])
+        leaks = re.findall(r"\$\s?\d[\d,.]*k?|\d+(?:\.\d+)?\s?%|\d[\d,]*\s(?:a head|per (?:guest|person|head))", shown)
+        own = re.sub(r"[^\d]", " ", json.dumps(case["profile"]) + " " + case.get("ask", "")).split()
+        leaks = [x for x in leaks if re.sub(r"[^\d]", "", x) not in own]   # the couple's own numbers are fine
+        if leaks:
+            issues.append("LIGHT leaked figures: %s" % leaks[:5])
+        if any("venue_fee_range" in c for c in res["cards"]):
+            issues.append("LIGHT card carries venue_fee_range")
     return issues
 
 
@@ -65,7 +76,8 @@ def main():
         msgs = [{"role": "user", "content": OPENING if c["kind"] == "opening" else c["ask"]}]
         t0 = time.time()
         try:
-            res, usage = agent.run(token, {"id": 0}, paid, msgs, profile_override=c["profile"])
+            res, usage = agent.run(token, {"id": 0}, paid, msgs, profile_override=c["profile"],
+                                   detail="light" if LIGHT else "full")
             cost = guards.cost_usd(usage["model"], usage)
             row = {"id": c["id"], "ok": True, "cost": cost, "secs": round(time.time() - t0, 1),
                    "tool_calls": usage["tool_calls"], "model": usage["model"], "issues": check(c, res), "result": res}
@@ -75,7 +87,7 @@ def main():
         print("%-4s %-5s $%-7s %5ss tools=%-2s %s" % (row["id"], "ok" if row["ok"] else "ERR", row.get("cost", "-"),
               row["secs"], row.get("tool_calls", "-"), "; ".join(row.get("issues", [])) or row.get("error", "")))
     ok = [r for r in out if r["ok"]]
-    name = HERE / ("results_%s_%s.json" % (config.MODEL, "paid" if paid else "free"))
+    name = HERE / ("results_%s_%s.json" % (config.MODEL, ("paid" if paid else "free") + ("_light" if LIGHT else "")))
     name.write_text(json.dumps(out, indent=1))
     if ok:
         print("\n%d/%d ran | clean (no issues) %d | mean $%.4f | p50 %.1fs | max %.1fs | total $%.2f" % (

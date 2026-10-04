@@ -15,6 +15,7 @@ of ~1-3s each. v2 cuts round trips instead of tokens:
   - effort defaults to low (retrieval + short writing, not hard reasoning).
 """
 import json
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -56,6 +57,8 @@ How to work:
 - When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it.
 - Warm, specific, confident, brief (about 80-140 words). No filler, no exclamation marks, no generic advice a search engine would give.
 
+DETAIL LEVEL: if the context says "DETAIL: LIGHT", this couple is not on Forever. You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them. Recommend on fit instead: style, capacity, whether the guest minimum works, all-inclusive or not, and how each cost line compares with their state (below average / typical / above average). Say once, plainly, that the full price breakdown is in the venue's PDF and that Forever unlocks it here in the assistant. The rule "concrete numbers beat adjectives" does not apply at this level. The opposite level, "DETAIL: FULL", means use every number you have.
+
 Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which venue's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them, a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips the couple might tap."""
 
 PRICED_PER_SEARCH = 6   # pricing fetched for the top N results of each search, in parallel
@@ -69,17 +72,42 @@ def _compact_pricing(p):
                        if v not in (None, "")} for l in p.get("lines", [])]}
 
 
+_DIGITS = re.compile(r"\d")
+
+
+def _light_pricing(p, guests):
+    """What a non-Forever couple's assistant may see (user decision 2026-10-03): the right venues, less
+    quantitative info. No amounts, no market figures (ep231 sentences quote them), only how each line
+    compares with the state. The model cannot leak a number it never received."""
+    out = {"lines": [{"line": l.get("line"), "vs_market": l.get("vs_market")}
+                     for l in p.get("lines") or [] if l.get("line") and l.get("vs_market")]}
+    gm = p.get("guest_minimum")
+    if gm and guests:
+        out["guest_minimum_fits"] = int(gm) <= int(guests)
+    verdict = p.get("verdict") or ""
+    if verdict and not _DIGITS.search(verdict):
+        out["verdict"] = verdict
+    return out
+
+
+def _light_card(v):
+    return {k: val for k, val in v.items() if k != "venue_fee_range"}
+
+
 def _states_of(profile):
     loc = profile.get("Wedding_Location_Updated") or []
     loc = [loc] if isinstance(loc, str) else loc
     return [s for s in loc if s and s not in ("Not Sure",)][:2]
 
 
-def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context=""):
+def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
+        detail="full"):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
+    detail: "full" (Forever) or "light" (everyone else - fit, not figures; see _light_pricing).
     Returns (result_dict, usage_dict)."""
+    light = detail == "light"
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
     final = {}
     saved_cards_holder = {}
@@ -87,9 +115,17 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     profile = profile_override if profile_override is not None else xano.profile_of(user)
     pool = ThreadPoolExecutor(max_workers=8)
 
+    try:
+        guests = int(profile.get("Wedding_Guest_Count") or 0)
+    except (TypeError, ValueError):
+        guests = 0
+
+    def shape(p):
+        return _light_pricing(p, guests) if light else _compact_pricing(p)
+
     def pricing_or_none(vid):
         try:
-            return _compact_pricing(xano.venue_pricing(token, vid, paid))
+            return shape(xano.venue_pricing(token, vid, paid and not light))
         except Exception:
             return None
 
@@ -127,10 +163,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         prices = list(pool.map(pricing_or_none, [v["vendor_id"] for v in venues[:PRICED_PER_SEARCH]]))
         out = []
         for i, v in enumerate(venues):
+            if light:
+                v = _light_card(v)
             if v.get("vendor_id"):
                 seen[v["vendor_id"]] = v
             row = {k: v.get(k) for k in ("vendor_id", "name", "state", "address", "venue_type",
-                                         "max_capacity_seated", "venue_fee_range", "description")}
+                                         "max_capacity_seated", "venue_fee_range", "description") if k in v}
             if i < len(prices) and prices[i]:
                 row["pricing"] = prices[i]
             out.append(row)
@@ -144,7 +182,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             vendor_id: a vendor_id returned by search_venues.
         """
-        return json.dumps(xano.venue_pricing(token, vendor_id, paid))
+        p = xano.venue_pricing(token, vendor_id, paid and not light)
+        return json.dumps(_light_pricing(p, guests) if light else p)
 
     @beta_tool
     def saved_venues() -> str:
@@ -155,9 +194,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         prices = list(pool.map(pricing_or_none, [c["vendor_id"] for c in cards[:PRICED_PER_SEARCH]]))
         out = []
         for i, c in enumerate(cards):
+            if light:
+                c = _light_card(c)
             seen[c["vendor_id"]] = c
             row = {k: c.get(k) for k in ("vendor_id", "name", "state", "address", "category", "venue_type",
-                                         "max_capacity_seated", "venue_fee_range")}
+                                         "max_capacity_seated", "venue_fee_range") if k in c}
             if i < len(prices) and prices[i]:
                 row["pricing"] = prices[i]
             out.append(row)
@@ -210,7 +251,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     t0 = time.time()
     # Prefetch in parallel: the couple's state benchmarks + saved vendors.
     states = _states_of(profile)
-    bench_f = [pool.submit(xano.market_benchmarks, s) for s in states]
+    bench_f = [] if light else [pool.submit(xano.market_benchmarks, s) for s in states]
     saved_ids = [] if profile_override is not None else xano.saved_vendor_ids(user)
     saved_f = pool.submit(lambda: [c for c in pool.map(xano.vendor_card, saved_ids) if c])
     benches = []
@@ -226,7 +267,14 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     saved_cards_holder["cards"] = saved
 
     context = "Couple profile: " + json.dumps(profile)
-    if paid:
+    if light:
+        context += ("\nDETAIL: LIGHT. This couple is not on Forever: recommend on fit and comparisons only, "
+                    "with no dollar figures (see DETAIL LEVEL). Forever unlocks the full price breakdown here.")
+    else:
+        context += "\nDETAIL: FULL."
+    if light:
+        pass
+    elif paid:
         context += "\nThis couple has a plan: they can open any pricing PDF, and exact prices are available to you."
     else:
         try:
@@ -266,7 +314,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         model=config.MODEL,
         max_tokens=8000,
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        tools=[search_venues, saved_venues, venue_pricing, market_benchmarks, save_note, present_recommendations],
+        tools=([search_venues, saved_venues, venue_pricing, save_note, present_recommendations] if light else
+               [search_venues, saved_venues, venue_pricing, market_benchmarks, save_note, present_recommendations]),
         messages=msgs,
         output_config={"effort": config.EFFORT},
         # If Sonnet declines on a safety classifier, the API re-runs on a fallback model in the same
