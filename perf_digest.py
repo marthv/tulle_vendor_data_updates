@@ -1064,19 +1064,31 @@ def main():
             print(f"health report failed: {e}", file=sys.stderr)
             text = f":warning: *Endpoint health report could not run*: {e}"
             health = None
-        # Oct 2026 geo-pricing/BNPL experiment. Its own try: a failure here must never cost
-        # the endpoint report.
+        # 2026-10-04: the DM is a short brief (daily_brief.py) - TL;DR + Decisions, endpoint
+        # health unchanged, pricing test cut to 2 lines, assistant + NPS one line each. The full
+        # pricing-test tables are still printed to the logs. If the brief itself fails, fall back
+        # to the old long sections so the report is never lost.
+        token = os.environ.get("XANO_METADATA_TOKEN", "")
         try:
             import bnpl_watch
-            text += "\n\n" + bnpl_watch.build(os.environ.get("XANO_METADATA_TOKEN", ""))
+            print(bnpl_watch.build(token))          # full tables -> logs only
         except Exception as e:
-            text += f"\n\n:warning: _BNPL experiment section failed: {e}_"
-        # Oct 2026 recommendation engine (rec_service). Same isolation rule.
+            print(f"bnpl full section failed: {e}", file=sys.stderr)
         try:
-            import rec_watch
-            text += "\n\n" + rec_watch.build(os.environ.get("XANO_METADATA_TOKEN", ""))
+            import daily_brief
+            text = daily_brief.compose(token, text)
         except Exception as e:
-            text += f"\n\n:warning: _Recommendation engine section failed: {e}_"
+            text += f"\n\n:warning: _Daily brief failed ({e}) - old format below._"
+            try:
+                import bnpl_watch
+                text += "\n\n" + bnpl_watch.build(token)
+            except Exception as e2:
+                text += f"\n\n:warning: _BNPL experiment section failed: {e2}_"
+            try:
+                import rec_watch
+                text += "\n\n" + rec_watch.build(token)
+            except Exception as e2:
+                text += f"\n\n:warning: _Recommendation engine section failed: {e2}_"
         print(text)
         if not dry:
             send_health(text)

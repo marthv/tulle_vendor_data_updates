@@ -191,8 +191,11 @@ def is_bnpl(method):
 
 # --------------------------------------------------------------------------- report
 
-def build(token, now_ms=None):
+def build(token, now_ms=None, short=False):
+    """short=True (daily brief, 2026-10-04): 2 lines, problems in `build.alerts`. The full
+    tables are still printed to the logs and shown in the dashboard."""
     now_ms = now_ms or int(dt.datetime.utcnow().timestamp() * 1000)
+    k = {"rev": {}, "p": {}}
     live = now_ms >= LAUNCH_MS
     pre_start = LAUNCH_MS - PRE_DAYS * 86400000
     rows = fetch_payments(token, pre_start)
@@ -263,6 +266,7 @@ def build(token, now_ms=None):
             mix = "/".join(str(sum(1 for r in rs if plan_of(r) == pl)) for pl in PLANS)
             per_b = rev / len(buyers) if buyers else 0.0
             lines.append(f"  {a:<9}${rev / days:>7.2f}/d  ${per_b:>6.2f}  {mix}")
+            k["rev"].setdefault(wname, {})[a] = rev / days
     lines.append("```")
     if PHASE2_FROM_MS is None:
         lines.append("_Phase 2 ($39/$69 for raised arm) not live yet - set BNPL_PHASE2_FROM_MS at publish._")
@@ -274,6 +278,7 @@ def build(token, now_ms=None):
             lam = cpre[a] / PRE_DAYS * post_days
             if lam >= 0.5:
                 pz.append(f"{a} {cpost[a]} vs {lam:.1f} expected (P<=obs {poisson_cdf(cpost[a], lam):.0%})")
+                k["p"][a] = (cpost[a], lam, poisson_cdf(cpost[a], lam))
         if pz:
             lines.append("Forever buys vs pre-launch rate: " + "; ".join(pz)
                          + " _- below ~5% would be a real drop._")
@@ -326,6 +331,7 @@ def build(token, now_ms=None):
             lines.append("BNPL share (BNPL/buys with a method): " + (", ".join(parts) or "none yet")
                          + (f" _({miss} buys had no matching Slack post)_" if miss else ""))
             leak = by_arm["baseline"][0]
+            k["leak"] = leak
             if leak:
                 lines.append(f":warning: {leak} BASELINE buyer(s) paid with BNPL - BNPL is leaking onto "
                              "the card-only link; that collapses the experiment. Check Stripe's "
@@ -334,6 +340,7 @@ def build(token, now_ms=None):
     # Webhook health.
     try:
         n30, bad30 = fetch_ep30_failures(token)
+        k["bad30"] = len(bad30)
         lines.append(f"Stripe webhook ep30, 24h: {n30} calls, {len(bad30)} non-200"
                      + (" :white_check_mark:" if not bad30 else
                         " :rotating_light: - " + ", ".join(sorted({str(b.get('status')) for b in bad30}))
@@ -342,7 +349,47 @@ def build(token, now_ms=None):
         lines.append(f"Stripe webhook ep30: could not read history ({e})")
 
     lines.append("_Kill switch (you run it): `python .claude/xano_backups/revert_geo_pricing.py --off`_")
-    return "\n".join(lines)
+    if not short:
+        return "\n".join(lines)
+    return _short(k, live, post_days, cpost, mism)
+
+
+KILL = "`python .claude/xano_backups/revert_geo_pricing.py --off`"
+
+
+def _short(k, live, post_days, cpost, mism):
+    """Two lines for the daily brief. Problems go to build.alerts for the Decisions list."""
+    alerts = []
+    build.alerts = alerts
+    if not live:
+        return "*Pricing test* - not live yet."
+    n = sum(cpost.values())
+    latest = list(k["rev"])[-1] if k["rev"] else None
+    rev = k["rev"].get(latest, {})
+    pre = k["rev"].get("pre 28d", {})
+    money = " · ".join(f"{a} ${rev.get(a, 0):.0f}/d (was ${pre.get(a, 0):.0f})" for a in ("raised", "baseline"))
+    fbuys = " · ".join(f"{a} {c} vs {lam:.1f} expected" for a, (c, lam, _) in k["p"].items() if a != "control")
+    l1 = f"*Pricing test* (day {post_days:.1f}) - revenue, {latest}: {money}. New Forever buys: {fbuys or 'none yet'}."
+    checks = []
+    if mism:
+        checks.append(f":warning: {len(mism)} price/arm mismatch(es)")
+        alerts.append(f"Pricing test: {len(mism)} buyer(s) paid another arm's price - look at the rows (dashboard has the list).")
+    if k.get("leak"):
+        checks.append(f":warning: {k['leak']} baseline BNPL buy(s)")
+        alerts.append("Pricing test: BNPL is reaching the card-only baseline arm - check Stripe's payment method settings.")
+    if k.get("bad30"):
+        checks.append(f":rotating_light: {k['bad30']} Stripe webhook failure(s)")
+        alerts.append(f"Stripe webhook ep30 failed {k['bad30']}x in 24h - someone may have paid without getting access.")
+    c_r = k["p"].get("raised")
+    if c_r and c_r[2] <= 0.05:
+        alerts.append(f"Pricing test: raised-arm Forever buys are well below the pre-launch rate ({c_r[0]} vs {c_r[1]:.1f}, "
+                      f"P={c_r[2]:.0%}). Decide: keep running or revert ({KILL}).")
+    if n >= 30:
+        alerts.append(f"Pricing test has {n} post-launch Forever buys - enough to read. Decide: keep the NY/CA/International "
+                      "prices or revert.")
+    l2 = ("Checks: " + (" · ".join(checks) if checks else "routing, BNPL, Stripe webhook OK :white_check_mark:")
+          + (f" · {n} of ~30 buys needed before calling it" if n < 30 else ""))
+    return l1 + "\n" + l2
 
 
 if __name__ == "__main__":
