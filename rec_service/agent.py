@@ -42,6 +42,7 @@ Integrity - never break these:
 - Never invent a venue, a price, a policy, an amenity or a review. If we don't have it, say "we don't have that for this venue" and give the best market figure we do have.
 - The context says how this couple can see exact prices. If they have free PDF views left, say so and invite them to open the PDF ("you have 2 free PDF views - open it to see the exact menu prices"). Only if they have NO free views left and no plan, say exact figures need a plan. Never say "behind the paywall" to someone who still has free views. Never guess an exact figure.
 - If the honest answer is "none of our venues fit that", say so and offer the closest real options.
+- Tulle does not yet track: overnight rooms or how many people a venue sleeps (beyond venue type "Hotel / Resort"), cultural or religious ceremony rules (kosher, halal, open flame, baraat, outside caterers), LGBTQ+ inclusion, or wheelchair access. If asked, say plainly that we don't have that data yet. Never guess or infer it from a venue's name, type or description. Then help with what we do have (e.g. "Hotel / Resort" venues for on-site rooms, Raw Space venues if they need their own caterer) and suggest they check the venue's PDF or ask the venue.
 
 How to work:
 - The profile in context is CURRENT. If earlier turns in this chat used a different budget, guest count or location, the couple updated it: acknowledge it warmly ("I see you've updated your budget to $100,000 - here are options that fit") and never call it your mistake or a correction.
@@ -49,6 +50,7 @@ How to work:
 - Find venues with search_venues - results include each venue's pricing summary and guest minimum. One well-chosen search is usually enough; search again only if the results don't fit.
 - Never name a venue you did not get from a tool in this conversation (search_venues or saved_venues).
 - You can see the couple's profile and their Saved list. Never say you can't see their saved vendors; if the list is empty, say they haven't saved any yet and suggest saving favourites with the heart.
+- Google reviews (from venue_details): give the rating with its review count and say it covers all Google reviews of the place, not only weddings. Quote or summarise only reviews marked about_a_wedding; if none are, say the reviews we hold aren't about weddings. Never invent or embellish a review.
 - State benchmarks for the couple's location are already in context. Use market_benchmarks only for a different state.
 - Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so.
 - Budget rule of thumb: venue plus food and drink is usually 40-50% of the total wedding budget.
@@ -59,7 +61,16 @@ How to work:
 
 DETAIL LEVEL: if the context says "DETAIL: LIGHT", this couple is not on Forever. You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them. Recommend on fit instead: style, capacity, whether the guest minimum works, all-inclusive or not, and how each cost line compares with their state (below average / typical / above average). Say once, plainly, that the full price breakdown is in the venue's PDF and that Forever unlocks it here in the assistant. The rule "concrete numbers beat adjectives" does not apply at this level. The opposite level, "DETAIL: FULL", means use every number you have.
 
-Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which venue's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them, a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips the couple might tap."""
+CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip must map to one of these:
+- a search filter: cheaper (lower max_venue_fee or max_food_per_person), a different state, more or fewer guests, a venue type from the search_venues list, a vibe from the search_venues list, all-inclusive / bring-your-own-caterer (pricing_models), or outdoor ceremony space (outdoor_ceremony);
+- a pricing line we hold: rental fee, food and drink per guest, service charge, tax, ceremony fee, guest minimum, all-in cost per guest (pick the line that matters most for THIS couple's picks - e.g. a high service charge or a guest minimum near their count);
+- venue_details for a venue you showed: menu or bar package per guest, cheaper dates (off-peak Saturday prices, peak vs. cheapest months), other fees, required vendors, or Google reviews - e.g. "Cheaper dates at The Barn?", "What do reviews say?". Only offer one of these if venue_details (or the pricing summary) actually has that fact for the venue;
+- how a venue compares with its state's benchmarks, e.g. "Is this a good price for Texas?";
+- their Saved list, e.g. "Compare my saved venues".
+Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or other vendor types. Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
+Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
+
+Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which venue's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them, a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips that follow the CHIPS rule."""
 
 PRICED_PER_SEARCH = 6   # pricing fetched for the top N results of each search, in parallel
 
@@ -133,7 +144,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     def search_venues(states: list[str], guests: int = 0, max_venue_fee: int = 0,
                       max_food_per_person: int = 0, venue_types: list[str] = None,
                       vibes: list[str] = None, pricing_models: list[str] = None,
-                      keyword: str = "", sort_by: str = "popular_desc") -> str:
+                      keyword: str = "", sort_by: str = "popular_desc", outdoor_ceremony: bool = False) -> str:
         """Search Tulle's venues (only ones with real pricing PDFs). Each result includes its pricing
         summary (rental fee, food and drink, ceremony, service charge, guest minimum, state comparison).
 
@@ -153,12 +164,15 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 beach/lake/river -> "Waterfront"; city views -> "Rooftop / Skyline Views"; loft -> "Industrial / Warehouse".
             pricing_models: optional: "All-Inclusive" (catering + rentals included), "Semi-Inclusive", "Raw Space"
                 (bring your own caterer and rentals).
+            outdoor_ceremony: true = only venues whose PDF lists an outdoor ceremony space (garden, lawn,
+                terrace, courtyard...). Use it when the couple wants an outdoor ceremony.
             keyword: optional free text - a city or a venue name. Prefer the tag filters above for styles.
             sort_by: popular_desc (default), recent_desc, capacity_asc or capacity_desc.
         """
         r = xano.search_venues(token, states=states, guests=guests, max_venue_fee=max_venue_fee,
                                max_food_per_person=max_food_per_person, venue_types=venue_types,
-                               vibes=vibes, pricing_models=pricing_models, keyword=keyword, sort_by=sort_by)
+                               vibes=vibes, pricing_models=pricing_models, keyword=keyword, sort_by=sort_by,
+                               outdoor_ceremony=outdoor_ceremony)
         venues = r["venues"]
         prices = list(pool.map(pricing_or_none, [v["vendor_id"] for v in venues[:PRICED_PER_SEARCH]]))
         out = []
@@ -205,6 +219,24 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return json.dumps({"saved_count": len(cards), "saved": out})
 
     @beta_tool
+    def venue_details(vendor_id: str) -> str:
+        """Extra facts from a venue's PDF and Google listing that the pricing summary leaves out: menu and
+        bar package per guest, off-peak (cheapest Saturday) prices and which months are peak vs. cheapest,
+        food-and-drink minimum type, other fees, preferred/required vendors, outdoor ceremony space, and its
+        Google rating with up to 5 review texts. Use it when the couple asks about menus, bar, cheaper
+        dates, reviews or fees for a specific venue.
+
+        Args:
+            vendor_id: a vendor_id returned by search_venues or saved_venues in this conversation.
+        """
+        if vendor_id not in seen:
+            return json.dumps({"error": "unknown vendor_id - search for the venue first"})
+        d = xano.venue_details(vendor_id, with_amounts=paid and not light)
+        if light and d.get("google"):   # LIGHT gets no figures: drop review texts that quote prices
+            d["google"]["reviews"] = [r for r in d["google"]["reviews"] if "$" not in r["text"]]
+        return json.dumps(d)
+
+    @beta_tool
     def market_benchmarks(state: str) -> str:
         """What venues typically cost in a state OTHER than the couple's (theirs is already in context):
         quartiles for rental fee, food and drink per guest, service charge, and all-in cost per guest
@@ -243,7 +275,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             message: 1-3 short sentences to the couple.
             vendor_ids: 2-4 vendor_ids from search_venues or saved_venues, best first.
             reasons: one short reason per vendor_id, same order.
-            chips: 2-4 short VENUE follow-ups, e.g. "Cheaper options", "More rustic". Never other vendor types.
+            chips: 2-4 short VENUE follow-ups that follow the CHIPS rule (each maps to a search filter, a
+                pricing line, a state comparison or the Saved list), e.g. "Cheaper options", "Barn / Ranch venues".
         """
         final.update(message=message, vendor_ids=vendor_ids, reasons=reasons, chips=chips)
         return "shown"
@@ -314,8 +347,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         model=config.MODEL,
         max_tokens=8000,
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        tools=([search_venues, saved_venues, venue_pricing, save_note, present_recommendations] if light else
-               [search_venues, saved_venues, venue_pricing, market_benchmarks, save_note, present_recommendations]),
+        tools=([search_venues, saved_venues, venue_pricing, venue_details, save_note, present_recommendations] if light else
+               [search_venues, saved_venues, venue_pricing, venue_details, market_benchmarks, save_note,
+                present_recommendations]),
         messages=msgs,
         output_config={"effort": config.EFFORT},
         # If Sonnet declines on a safety classifier, the API re-runs on a fallback model in the same
@@ -325,8 +359,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         max_iterations=config.MAX_TOOL_ROUNDS,
     )
     model_used = config.MODEL
+    last_text = ""
     try:
         for message in runner:
+            texts = [b.text for b in message.content if b.type == "text" and (b.text or "").strip()]
+            if texts:
+                last_text = "\n\n".join(texts)
             u = message.usage
             usage["input_tokens"] += u.input_tokens or 0
             usage["output_tokens"] += u.output_tokens or 0
@@ -338,6 +376,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 break
     finally:
         pool.shutdown(wait=False)
+    if not final and last_text:
+        # The model occasionally ends its turn with plain text instead of calling present_recommendations
+        # (1 of 3 runs of eval o12, 2026-10-04). Keep its answer rather than showing the couple nothing.
+        # Cards: venues from THIS request's searches that the text names (rule 1 still holds).
+        named = [vid for vid, v in seen.items() if v.get("name") and v["name"].lower() in last_text.lower()][:4]
+        final.update(message=last_text, vendor_ids=named, reasons=[""] * len(named), chips=[])
+        usage["no_present_fallback"] = True
     usage["latency_ms"] = int((time.time() - t0) * 1000)
     usage["model"] = model_used
 

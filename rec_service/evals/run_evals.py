@@ -41,10 +41,15 @@ OPENING = ("Recommend 3 venues for us based on our profile, and tell us the sing
            "for where we are in planning.")
 
 
+UNANSWERABLE_CHIP = re.compile(r"courtyard|parking|availab|open dates|lodging|overnight|rooms? (?:on|for)|accessib|"
+                               r"wheelchair|tasting|decor|photograph|florist|flowers|\bdj\b|\bband\b|kosher|halal|"
+                               r"lgbt|ceremony fee included", re.I)
+
+
 def check(case, res):
     """Automatic checks. Quality of the writing is judged by a human reading results_*.json."""
     issues = []
-    if len(res["cards"]) < 2 and case["id"] not in ("r04", "r11", "r13", "r14"):
+    if len(res["cards"]) < 2 and case["id"] not in ("r04", "r11", "r13", "r14", "r20", "r21"):
         issues.append("fewer than 2 venue cards")
     if res["dropped_unverified_ids"]:
         issues.append("model referenced ids not from search: %s" % res["dropped_unverified_ids"])
@@ -52,6 +57,9 @@ def check(case, res):
         issues.append("no message (present_recommendations not called)")
     if not res["chips"]:
         issues.append("no chips")
+    bad = [c for c in res["chips"] if UNANSWERABLE_CHIP.search(c)]
+    if bad:   # CHIPS rule (2026-10-04): never lead couples into data we don't hold
+        issues.append("unanswerable chips: %s" % bad)
     if LIGHT:   # DETAIL: LIGHT must show no figures: no $, no %, no "N a head/per guest"
         shown = " ".join([res["text"]] + [c.get("reason") or "" for c in res["cards"]])
         leaks = re.findall(r"\$\s?\d[\d,.]*k?|\d+(?:\.\d+)?\s?%|\d[\d,]*\s(?:a head|per (?:guest|person|head))", shown)

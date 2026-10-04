@@ -2,6 +2,7 @@
 per request. Data calls go out WITH THE USER'S OWN TOKEN, so Xano's existing auth and paywall
 rules apply unchanged - the service can never see more than the user could in the app."""
 import datetime as dt
+import re
 
 import requests
 
@@ -138,7 +139,7 @@ PRICING_MODELS = ["All-Inclusive", "Semi-Inclusive", "Raw Space"]
 
 def search_venues(token, *, states, guests=0, max_venue_fee=0, max_food_per_person=0,
                   venue_types=None, vibes=None, pricing_models=None, keyword="", sort_by="popular_desc",
-                  page_size=8):
+                  outdoor_ceremony=False, page_size=8):
     """ep119 - the same search the Vendor Discovery grid uses. `states` match the multi-value State
     field server-side (never equality). max_capacity means 'seats AT LEAST N'."""
     params = {"Category_Input": "Venue", "page": 1, "page_size": max(1, min(int(page_size), 12)),
@@ -155,6 +156,8 @@ def search_venues(token, *, states, guests=0, max_venue_fee=0, max_food_per_pers
         params["vibes[]"] = vb
     if pm:
         params["pricing_models[]"] = pm
+    if outdoor_ceremony:
+        params["outdoor_ceremony"] = "yes"   # ep119 -> flt_outdoor_ceremony == true (from table 36 Outside_Ceremony_Space)
     d = _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_search", token, params)
     out = []
     for it in d.get("items", []):
@@ -224,6 +227,60 @@ def vendor_card(vendor_id):
             "max_capacity_seated": it.get("Max_Capacity_Seated"),
             "venue_fee_range": [it.get("flt_min_venue_fee"), it.get("flt_max_venue_fee")],
             "image": img, "description": (it.get("Description") or "")[:300]}
+
+
+_WEDDING_WORDS = re.compile(r"wedding|reception|ceremony|bride|groom|married|our event|rehearsal", re.I)
+
+
+def venue_details(vendor_id, with_amounts):
+    """Facts we already extracted but the PI panel doesn't show: per-space menu/bar per person, off-peak
+    (lowest Saturday) prices, peak months, other fees, preferred vendors, outdoor ceremony space - from
+    table 36 (latest extraction per PDF) - plus Google rating/reviews from table 11's google_data_cache.
+
+    Reads tables directly with the metadata token, so the paywall is enforced HERE: amounts only when
+    with_amounts (Forever, DETAIL: FULL)."""
+    rows = [r for r in _search_all(36, [{"VENDOR_ID": vendor_id}]) if r.get("VENDOR_ID") == vendor_id]
+    latest = {}
+    for r in rows:   # dedupe: latest extraction per (PDF, space)
+        k = (r.get("PDF_ID"), r.get("Venue_Space_Name") or "")
+        if k not in latest or (r.get("last_extracted_at") or "") > (latest[k].get("last_extracted_at") or ""):
+            latest[k] = r
+    money = ("Venue_Fee_on_a_Peak_Season_Saturday", "Venue_Fee_on_Lowest_Saturday",
+             "Per_Person_Food_and_Beverage_on_a_Peak_Season_Saturday", "Per_Person_Food_and_Beverage_on_Lowest_Saturday",
+             "Food_and_Beverage_Min_on_a_Peak_Season_Saturday", "Food_and_Beverage_Min_on_Lowest_Saturday",
+             "Base_Menu_Fee_Per_Person", "Base_Bar_Package_Per_Person", "Ceremony_Fee", "Admin_Service_Fee")
+    plain = ("Months__Highest_Pricing", "Months__Lowest_Pricing", "FB_Spend_Min_Type", "Additional_Fees",
+             "Outside_Ceremony_Space", "Preferred_Vendors", "Guest_Min_Highest_Sat", "Guest_Min_Lowest_Sat",
+             "Max_Capacity_Seated", "Pricing_Year", "Venue_Offering")
+    spaces = []
+    for r in list(latest.values())[:6]:
+        sp = {"space": r.get("Venue_Space_Name") or ""}
+        for f in plain:
+            if r.get(f) not in (None, "", 0):
+                sp[f] = r[f]
+        desc = r.get("Additional_Fees_Description") or ""
+        if with_amounts:
+            for f in money:
+                if r.get(f) not in (None, "", 0):
+                    sp[f] = r[f]
+            if desc:
+                sp["Additional_Fees_Description"] = desc[:300]
+        spaces.append(sp)
+    out = {"vendor_id": vendor_id, "spaces": spaces,
+           "note": "Peak = peak-season Saturday; 'Lowest' = the cheapest Saturday rate in the PDF. 0/blank = not in the PDF."}
+    t11 = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
+    g = (t11[0].get("google_data_cache") or {}) if t11 else {}
+    if g.get("rating"):
+        revs = []
+        for rv in (g.get("reviews") or [])[:5]:
+            text = (rv.get("text") or "").strip()
+            if text:
+                revs.append({"rating": rv.get("rating"), "when": rv.get("relative_time_description"),
+                             "about_a_wedding": bool(_WEDDING_WORDS.search(text)), "text": text[:400]})
+        out["google"] = {"rating": g.get("rating"), "review_count": g.get("user_ratings_total"),
+                         "note": "Rating covers ALL Google reviews of the place, not only weddings; we hold at most 5 review texts.",
+                         "reviews": revs}
+    return out
 
 
 # ---------------------------------------------------------------- conversations (tables 42/43) + memory (80)
