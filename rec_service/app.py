@@ -24,6 +24,7 @@ from pydantic import BaseModel
 import agent
 import config
 import guards
+import notify
 import xano
 
 app = FastAPI(title="Tulle recommendations")
@@ -278,6 +279,7 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
     _POOL.submit(xano.mp_track, user["id"], "rec_beta_feedback", {
         "rating": body.rating, "would_use": would, "chars": len(text), "forever": paid,
         "questions_used": used, "source": "rec_service"})
+    _POOL.submit(notify.beta_feedback, user, body.rating, would, text, used)
     return {"ok": True, "feedback_required": False, "beta_questions_left": None,
             "forever_left_today": guards.forever_left_today(paid, rows, xano.today())}
 
