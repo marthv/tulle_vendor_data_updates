@@ -55,7 +55,7 @@ def check(case, res):
     if LIGHT:   # DETAIL: LIGHT must show no figures: no $, no %, no "N a head/per guest"
         shown = " ".join([res["text"]] + [c.get("reason") or "" for c in res["cards"]])
         leaks = re.findall(r"\$\s?\d[\d,.]*k?|\d+(?:\.\d+)?\s?%|\d[\d,]*\s(?:a head|per (?:guest|person|head))", shown)
-        own = re.sub(r"[^\d]", " ", json.dumps(case["profile"]) + " " + case.get("ask", "")).split()
+        own = re.sub(r"[^\d]", " ", (json.dumps(case["profile"]) + " " + case.get("ask", "")).replace(",", "")).split()
         leaks = [x for x in leaks if re.sub(r"[^\d]", "", x) not in own]   # the couple's own numbers are fine
         if leaks:
             issues.append("LIGHT leaked figures: %s" % leaks[:5])
