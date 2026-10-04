@@ -3,6 +3,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+os.environ.setdefault("REC_FOREVER_ONLY", "0")   # free-tier rules are tested with the beta gate off
 import config  # noqa: E402
 import guards  # noqa: E402
 
@@ -89,3 +90,15 @@ def test_forever_beta_feedback_checkin():
     # questions asked on the free tier (counted_as_free) don't count toward the Forever check-in
     free_era = [dict(ok("refine"), counted_as_free=True)] * 10
     assert guards.decide("refine", True, free_era, 0, T, feedback_given=False) == (True, "ok", False)
+
+
+def test_forever_only_beta_refuses_everyone_else():
+    os.environ["REC_FOREVER_ONLY"] = "1"
+    importlib.reload(config)
+    try:
+        assert guards.decide("opening", False, [], 0, T) == (False, "forever_only", False)
+        assert guards.decide("refine", False, [], 0, T) == (False, "forever_only", False)
+        assert guards.decide("refine", True, [], 0, T) == (True, "ok", False)      # Forever unaffected
+    finally:
+        os.environ["REC_FOREVER_ONLY"] = "0"
+        importlib.reload(config)

@@ -55,6 +55,8 @@ def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True):
         if n >= config.PAID_DAILY_REFINES:
             return False, "blocked_user_cap", False
         return True, "ok", False
+    if config.FOREVER_ONLY:
+        return False, "forever_only", False          # beta: Forever members only
     if kind == "opening" and not any(r.get("kind") == "opening" for r in ok):
         return True, "ok", False                      # the one free opening, ever
     if free_used(usage_rows) >= config.FREE_REFINES:

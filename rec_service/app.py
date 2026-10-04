@@ -1,6 +1,7 @@
 """Tulle recommendation service (Railway). WeWeb calls it with the user's Xano auth token.
 
-POST /rec/opening          -> new conversation with free opening picks; returns chat_id
+POST /rec/opening          -> new conversation with opening picks; returns chat_id
+                              (beta: Forever only - everyone else gets 402 forever_only)
 POST /rec/refine           -> {chat_id, message}: one refinement in that conversation (3 free, then 402)
                               legacy {messages:[...]} still accepted (no history saved)
 GET  /rec/chats            -> the user's conversations, newest first
@@ -104,7 +105,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
         xano.log_usage(dict(base, status=status))
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
                      {"kind": kind, "status": status, "forever": paid, "has_access": access, "source": "rec_service"})
-        code = (402 if status == "blocked_free_limit" else 403 if status == "feedback_required"
+        code = (402 if status in ("blocked_free_limit", "forever_only") else 403 if status == "feedback_required"
                 else 503 if status in ("killed", "blocked_global_cap") else 429)
         extra = {}
         if status == "feedback_required":
@@ -289,7 +290,7 @@ def status(authorization: str = Header(None)):
     beta_left = guards.beta_questions_left(paid, rows, _feedback_given(user["id"]) if paid else True)
     return {"paid": paid, "has_access": xano.has_paid_access(user), "upsell": "forever",
             "beta_questions_left": beta_left, "beta_feedback_after": config.BETA_FEEDBACK_AFTER,
-            "feedback_required": beta_left == 0,
+            "feedback_required": beta_left == 0, "forever_only": config.FOREVER_ONLY,
             "forever_left_today": guards.forever_left_today(paid, rows, xano.today()),
             "forever_daily_limit": config.PAID_DAILY_REFINES, "free_limit": config.FREE_REFINES, "free_refines_left": guards.free_refines_left(paid, rows),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"])}
