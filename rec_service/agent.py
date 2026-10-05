@@ -61,9 +61,21 @@ How to work:
 - Lead with why these picks fit (budget, guest count, style), then one or two expert insights, then caveats.
 - If only one or two venues match a narrow request, add the closest alternatives and say why they are close.
 - When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it.
-- Warm, specific, confident, brief (about 80-140 words). No filler, no exclamation marks, no generic advice a search engine would give.
+- Warm, specific, confident, brief (about 80-140 words, plain sentences, no bullet lists). Only a COST BREAKDOWN is longer (about 220 words) and itemized. Openings and picks are never breakdowns: give each pick's headline number, not its full math. No filler, no exclamation marks, no generic advice a search engine would give.
 
 DETAIL LEVEL: if the context says "DETAIL: LIGHT", this couple is not on Forever. You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them. Recommend on fit instead: style, capacity, whether the guest minimum works, all-inclusive or not, and how each cost line compares with their state (below average / typical / above average). Say once, plainly, that the full price breakdown is in the venue's PDF and that Forever unlocks it here in the assistant. The rule "concrete numbers beat adjectives" does not apply at this level. The opposite level, "DETAIL: FULL", means use every number you have.
+
+COST BREAKDOWN (DETAIL: FULL only): when the couple asks for a breakdown, the full or all-in cost, "realistic" numbers or "what will it really cost" for a venue, give an itemized estimate - never just a range plus "open the PDF". A breakdown is the reason to open the PDF, so the numbers come first. Get the venue's lines first (its search pricing, venue_pricing, and venue_details for menu, bar and other fees). Then one line per item, using the couple's guest count:
+- Rental fee
+- Ceremony fee
+- Food: $X a head x N guests = $Y
+- Bar: $X a head x N guests = $Y (or "included" / "not listed")
+- Other required fees the PDF lists
+- Service charge: X% of $Y = $Z
+- Tax: X% = $Z
+- Gratuity, only if the PDF suggests one (say it is separate from the service charge)
+- Estimated total, and per guest
+Every line names its source (this venue's PDF / Tulle data across N [state] venues / industry norm). If the PDF doesn't list a line, fill it from the state benchmark and mark it "estimate", or say "not listed" - never drop a line silently. Show the arithmetic so it can be checked. Write each item on its own line (a real line break) starting with "• ". The page shows plain text: no markdown, no bold, no "- " or "*" bullets. After the total, one sentence on what would move it most (bar package, guest count, a Friday or Sunday date), then what to confirm in the PDF. For a breakdown of one venue, present just that venue (1 vendor_id).
 
 CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip must map to one of these:
 - a search filter: cheaper (lower max_venue_fee or max_food_per_person), a different state, more or fewer guests, a venue type from the search_venues list, a vibe from the search_venues list, all-inclusive / bring-your-own-caterer (pricing_models), or outdoor ceremony space (outdoor_ceremony);
@@ -74,7 +86,7 @@ CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip 
 Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or other vendor types. Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
 
-Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which venue's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them, a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips that follow the CHIPS rule."""
+Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which venue's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them (1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips that follow the CHIPS rule."""
 
 PRICED_PER_SEARCH = 6   # pricing fetched for the top N results of each search, in parallel
 
@@ -116,14 +128,16 @@ def _states_of(profile):
 
 
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
-        detail="full"):
+        detail="full", prior_vendor_ids=()):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
     detail: "full" (Forever) or "light" (everyone else - fit, not figures; see _light_pricing).
+    prior_vendor_ids: venues earlier turns of this chat showed as cards (server-stored, so trusted).
     Returns (result_dict, usage_dict)."""
     light = detail == "light"
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
+    prior = set(prior_vendor_ids or ())   # shown earlier in this chat: may be presented again (looked up)
     final = {}
     saved_cards_holder = {}
     # profile_override: eval runs only - real requests always use the verified user row.
@@ -266,7 +280,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             vendor_id: a vendor_id returned by search_venues or saved_venues in this conversation.
         """
-        if vendor_id not in seen:
+        if vendor_id not in seen and vendor_id not in prior:
             return json.dumps({"error": "unknown vendor_id - search for the venue first"})
         d = xano.venue_details(vendor_id, with_amounts=paid and not light)
         if light and d.get("google"):   # LIGHT gets no figures: drop review texts that quote prices
@@ -309,8 +323,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         """Show your answer to the couple. Call exactly once, last.
 
         Args:
-            message: 1-3 short sentences to the couple.
-            vendor_ids: 2-4 vendor_ids from search_venues or saved_venues, best first.
+            message: your reply to the couple: 80-140 words of plain sentences, no lists. Only a COST
+                BREAKDOWN is longer (about 220 words) and uses the itemized "• " list.
+            vendor_ids: 2-4 vendor_ids from search_venues or saved_venues, best first (1 for a single-venue breakdown).
             reasons: one short reason per vendor_id, same order.
             chips: 2-4 short VENUE follow-ups that follow the CHIPS rule (each maps to a search filter, a
                 pricing line, a state comparison or the Saved list), e.g. "Cheaper options", "Barn / Ranch venues".
@@ -426,6 +441,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # Rule 1: drop anything the model did not get from a search in this request.
     cards = []
     for i, vid in enumerate(final.get("vendor_ids", [])):
+        if vid not in seen and vid in prior:
+            try:
+                c = xano.vendor_card(vid)
+            except Exception:
+                c = None
+            if c:
+                seen[vid] = _light_card(c) if light else c
         if vid in seen:
             reasons = final.get("reasons") or []
             cards.append(dict(seen[vid], reason=reasons[i] if i < len(reasons) else ""))

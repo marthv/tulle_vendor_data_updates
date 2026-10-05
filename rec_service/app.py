@@ -95,7 +95,7 @@ def _memory_notes(user_id):
     return _memory(user_id)[0]
 
 
-def _run_guarded(kind, token, user, messages, chat_id=0):
+def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
     # `paid` (no cap) = Forever only; `access` (exact prices from ep230) = any active plan.
     paid = xano.has_forever(user)
     access = xano.has_paid_access(user)
@@ -125,7 +125,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0):
         notes, user_context = f_mem.result()
         # Detail (user 2026-10-03): only Forever gets figures; free and 1-week/4-week get fit, not numbers.
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
-                                  detail="full" if paid else "light",
+                                  detail="full" if paid else "light", prior_vendor_ids=prior_ids,
                                   on_note=lambda n: xano.add_memory_note(user["id"], n))
     except Exception as e:  # never charge a free refine for our own failure
         xano.log_usage(dict(base, status="error", error=str(e)[:500]))
@@ -193,7 +193,10 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
         if msgs[0]["role"] != "user":
             msgs = msgs[1:]
         msgs.append({"role": "user", "content": text})
-        out = _run_guarded("refine", token, user, msgs, chat["id"])
+        # Venues this chat already showed (our own stored cards, not model output) may be shown again as
+        # cards - e.g. "break down <venue from the opening>" (2026-10-05: chat 24's breakdown had no card).
+        prior = [c.get("vendor_id") for t in history if t["role"] == "assistant" for c in (t.get("cards") or [])]
+        out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=[v for v in prior if v])
         out["chips"] = dedupe_chips(out.get("chips"), history)
         if (chat.get("title") or "").startswith("Venue picks"):
             chat["title"] = text[:80]

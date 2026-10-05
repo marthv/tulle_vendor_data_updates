@@ -49,7 +49,7 @@ UNANSWERABLE_CHIP = re.compile(r"courtyard|parking|availab|open dates|lodging|ov
 def check(case, res):
     """Automatic checks. Quality of the writing is judged by a human reading results_*.json."""
     issues = []
-    if len(res["cards"]) < 2 and case["id"] not in ("r04", "r11", "r13", "r14", "r20", "r21"):
+    if len(res["cards"]) < 2 and case["id"] not in ("r04", "r11", "r12", "r13", "r14", "r20", "r21"):
         issues.append("fewer than 2 venue cards")
     if res["dropped_unverified_ids"]:
         issues.append("model referenced ids not from search: %s" % res["dropped_unverified_ids"])
