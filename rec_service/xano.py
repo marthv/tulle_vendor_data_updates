@@ -172,7 +172,7 @@ def _search_one(token, *, states, guests=0, max_venue_fee=0, max_food_per_person
                 outdoor_ceremony=False, page_size=8):
     """ep119 - the same search the Vendor Discovery grid uses. `states` match the multi-value State
     field server-side (never equality). max_capacity means 'seats AT LEAST N'."""
-    params = {"Category_Input": "Venue", "page": 1, "page_size": max(1, min(int(page_size), 12)),
+    params = {"Category_Input": "Venue", "page": 1, "page_size": max(1, min(int(page_size), 20)),
               "states[]": list(states or []), "State_Input": (states or [""])[0],
               "max_capacity": int(guests or 0), "capacity_ceiling": 10000,
               "base_fee_max": int(max_venue_fee or 0), "fb_per_person_max": int(max_food_per_person or 0),
@@ -197,6 +197,8 @@ def _search_one(token, *, states, guests=0, max_venue_fee=0, max_food_per_person
             "address": it.get("Address"), "venue_type": it.get("Venue_Type"),
             "max_capacity_seated": it.get("Max_Capacity_Seated"),
             "venue_fee_range": [it.get("flt_min_venue_fee"), it.get("flt_max_venue_fee")],
+            # lowest peak-Saturday food & drink minimum across the venue's spaces; 0 = none OR not known
+            "food_minimum": it.get("min_fb_min_peak_sat") or 0,
             "at_a_glance": it.get("flt_glance"), "image": it.get("image_1"),
             "description": (it.get("Description") or "")[:300],
         })

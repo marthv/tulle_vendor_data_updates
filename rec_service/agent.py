@@ -54,7 +54,9 @@ How to work:
 - State benchmarks for the couple's location are already in context. Use market_benchmarks only for a different state.
 - If the profile lists several locations, the couple is choosing between them - they HAVE picked. Search them together in one search_venues call (it returns picks from each), cover each location in your picks, and never say they haven't chosen a state.
 - Don't repeat yourself across a conversation. Earlier replies end with [Venues shown: ...] and [Chips offered: ...]. Each new reply should bring venues the couple hasn't seen yet; show an earlier venue again only if they ask about it or to compare, or it is still clearly the best answer to the new request - then say so in a few words. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
-- Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so.
+- Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so. search_venues already leaves out venues whose known guest minimum is above the guests you pass, and venues whose known food and drink minimum is over half the couple's budget (left_out_for_minimums says how many).
+- If the profile has no guest count, don't assume a big wedding: make picks that work across sizes, say the count changes which venues fit, and make your one question how many guests they expect.
+- Small weddings and elopements (roughly under 30 guests): pass the real count as guests, prefer venues with no or low minimums (restaurants, raw spaces, small hotels), and if nothing in our data fits, say so plainly. Tulle doesn't track elopement packages or ceremony-only pricing yet - say that if asked, and point to the PDF for any small-party option a venue lists.
 - Budget rule of thumb: venue plus food and drink is usually 40-50% of the total wedding budget.
 - Lead with why these picks fit (budget, guest count, style), then one or two expert insights, then caveats.
 - If only one or two venues match a narrow request, add the closest alternatives and say why they are close.
@@ -104,7 +106,7 @@ def _light_pricing(p, guests):
 
 
 def _light_card(v):
-    return {k: val for k, val in v.items() if k != "venue_fee_range"}
+    return {k: val for k, val in v.items() if k not in ("venue_fee_range", "food_minimum")}
 
 
 def _states_of(profile):
@@ -132,15 +134,23 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         guests = int(profile.get("Wedding_Guest_Count") or 0)
     except (TypeError, ValueError):
         guests = 0
+    try:
+        budget = int(profile.get("Wedding_Budget") or 0)
+    except (TypeError, ValueError):
+        budget = 0
 
     def shape(p):
         return _light_pricing(p, guests) if light else _compact_pricing(p)
 
-    def pricing_or_none(vid):
+    def raw_pricing_or_none(vid):
         try:
-            return shape(xano.venue_pricing(token, vid, paid and not light))
+            return xano.venue_pricing(token, vid, paid and not light)
         except Exception:
             return None
+
+    def pricing_or_none(vid):
+        p = raw_pricing_or_none(vid)
+        return shape(p) if p else None
 
     @beta_tool
     def search_venues(states: list[str], guests: int = 0, max_venue_fee: int = 0,
@@ -152,7 +162,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
         Args:
             states: US states or 'International', e.g. ["New York"]. Use the couple's location if unsure.
-            guests: venue must seat at least this many (0 = any).
+            guests: the party size. Venues must seat at least this many, and venues whose guest minimum is
+                above it are left out (0 = any) - so for a small wedding or elopement pass the real count.
             max_venue_fee: max rental fee in dollars (0 = any).
             max_food_per_person: max food and drink per guest in dollars (0 = any).
             venue_types: optional, EXACT values only (any of = OR): "Dedicated Event Venue", "Hotel / Resort",
@@ -171,12 +182,31 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             keyword: optional free text - a city or a venue name. Prefer the tag filters above for styles.
             sort_by: popular_desc (default), recent_desc, capacity_asc or capacity_desc.
         """
+        # Small-wedding fit (2026-10-04, a 6-guest $10k elopement got 50-guest-minimum and $9,000-food-minimum
+        # venues): ep119 can't filter on minimums, so over-fetch and drop venues whose KNOWN minimum doesn't fit.
+        # A 0 / missing minimum means "none or not known" and is kept - never treat missing as "no minimum".
+        food_cap = budget // 2 if budget > 0 else 0      # venue + food is ~40-50% of the total budget
         r = xano.search_venues(token, states=states, guests=guests, max_venue_fee=max_venue_fee,
                                max_food_per_person=max_food_per_person, venue_types=venue_types,
                                vibes=vibes, pricing_models=pricing_models, keyword=keyword, sort_by=sort_by,
-                               outdoor_ceremony=outdoor_ceremony)
+                               outdoor_ceremony=outdoor_ceremony, page_size=16 if (guests or food_cap) else 8)
         venues = r["venues"]
-        prices = list(pool.map(pricing_or_none, [v["vendor_id"] for v in venues[:PRICED_PER_SEARCH]]))
+        removed = {"food_minimum_over_half_budget": 0, "guest_minimum_over_party": 0}
+        if food_cap:
+            kept = [v for v in venues if not (v.get("food_minimum") or 0) > food_cap]
+            removed["food_minimum_over_half_budget"] = len(venues) - len(kept)
+            venues = kept
+        n_priced = PRICED_PER_SEARCH + (4 if guests else 0)
+        raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in venues[:n_priced]]))
+        if guests:
+            # only priced venues have a known guest minimum, so keep just those and drop the ones that don't fit
+            pairs = [(v, p) for v, p in zip(venues, raws) if not (p and (p.get("guest_minimum") or 0) > guests)]
+            removed["guest_minimum_over_party"] = len(raws) - len(pairs)
+        else:
+            pairs = list(zip(venues, raws)) + [(v, None) for v in venues[len(raws):]]
+        pairs = pairs[:8]
+        venues = [v for v, _ in pairs]
+        prices = [shape(p) if p else None for _, p in pairs]
         out = []
         for i, v in enumerate(venues):
             if light:
@@ -189,6 +219,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 row["pricing"] = prices[i]
             out.append(row)
         res = {"total_matches": r["total_matches"], "venues": out}
+        if any(removed.values()):
+            res["left_out_for_minimums"] = removed
         if r.get("matches_by_state"):
             res["matches_by_state"] = r["matches_by_state"]
         return json.dumps(res)
