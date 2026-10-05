@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import agent
+from chips import dedupe_chips
 import config
 import guards
 import notify
@@ -47,6 +48,10 @@ def _turn_for_model(t):
     if t["role"] == "assistant" and t["cards"]:
         shown = "; ".join("%s (%s)" % (c.get("name"), c.get("vendor_id")) for c in t["cards"])
         text = (text + "\n[Venues shown: " + shown + "]").strip()
+    if t["role"] == "assistant" and t.get("chips"):
+        # The prompt says "don't repeat a chip from earlier in the chat" - the model can only follow it
+        # if it sees them (2026-10-04: user 31797 got "Is this a good price for California?" 5 times).
+        text = (text + "\n[Chips offered: " + "; ".join(t["chips"]) + "]").strip()
     return {"role": t["role"], "content": text or "(recommendations shown)"}
 
 
@@ -189,6 +194,7 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
             msgs = msgs[1:]
         msgs.append({"role": "user", "content": text})
         out = _run_guarded("refine", token, user, msgs, chat["id"])
+        out["chips"] = dedupe_chips(out.get("chips"), history)
         if (chat.get("title") or "").startswith("Venue picks"):
             chat["title"] = text[:80]
 

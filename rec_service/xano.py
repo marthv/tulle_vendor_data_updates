@@ -2,6 +2,7 @@
 per request. Data calls go out WITH THE USER'S OWN TOKEN, so Xano's existing auth and paywall
 rules apply unchanged - the service can never see more than the user could in the app."""
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 import re
 
 import requests
@@ -137,9 +138,38 @@ VIBES = ["Scenic / Nature Views", "Natural Light / Large Windows", "Historic Arc
 PRICING_MODELS = ["All-Inclusive", "Semi-Inclusive", "Raw Space"]
 
 
-def search_venues(token, *, states, guests=0, max_venue_fee=0, max_food_per_person=0,
-                  venue_types=None, vibes=None, pricing_models=None, keyword="", sort_by="popular_desc",
-                  outdoor_ceremony=False, page_size=8):
+def search_venues(token, *, states, page_size=8, **filters):
+    """Several states -> one ep119 search PER STATE, results interleaved. MEASURED 2026-10-04: a single
+    multi-state search sorted by popularity hands every slot to the most-clicked state (Georgia+Illinois
+    top 12 = 12 Illinois; Louisiana+California+Florida top 12 = 0 Louisiana), so couples comparing states
+    got picks from one of them and the model told them they hadn't picked a state."""
+    states = [s for s in (states or []) if s]
+    if len(states) <= 1:
+        return _search_one(token, states=states, page_size=page_size, **filters)
+    per = max(3, -(-int(page_size) // len(states)))
+    def one(s):   # one state failing (Xano blip) must not sink the others
+        try:
+            return _search_one(token, states=[s], page_size=per, **filters)
+        except Exception as e:
+            return e
+    with ThreadPoolExecutor(max_workers=len(states)) as ex:
+        got = list(ex.map(one, states))
+    if all(isinstance(r, Exception) for r in got):
+        raise got[0]
+    states, results = zip(*[(s, r) for s, r in zip(states, got) if not isinstance(r, Exception)])
+    venues, seen = [], set()
+    for i in range(per):
+        for r in results:
+            if i < len(r["venues"]) and r["venues"][i].get("vendor_id") not in seen:
+                seen.add(r["venues"][i].get("vendor_id"))
+                venues.append(r["venues"][i])
+    return {"total_matches": sum(r["total_matches"] or 0 for r in results),
+            "matches_by_state": {s: r["total_matches"] for s, r in zip(states, results)}, "venues": venues}
+
+
+def _search_one(token, *, states, guests=0, max_venue_fee=0, max_food_per_person=0,
+                venue_types=None, vibes=None, pricing_models=None, keyword="", sort_by="popular_desc",
+                outdoor_ceremony=False, page_size=8):
     """ep119 - the same search the Vendor Discovery grid uses. `states` match the multi-value State
     field server-side (never equality). max_capacity means 'seats AT LEAST N'."""
     params = {"Category_Input": "Venue", "page": 1, "page_size": max(1, min(int(page_size), 12)),

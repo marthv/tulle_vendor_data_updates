@@ -423,6 +423,44 @@
     "Planning_Phase": "Engaged and just started planning"
    },
    "ask": "We're having a Jewish wedding and need a kosher caterer. Which venues allow that?"
+  },
+  {
+   "id": "m01",
+   "kind": "opening",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "Louisiana",
+     "California",
+     "Florida"
+    ],
+    "Wedding_Guest_Count": 100,
+    "Wedding_Budget": 55000,
+    "Planning_Phase": "Not engaged... Yet"
+   }
+  },
+  {
+   "id": "m02",
+   "kind": "opening",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "Georgia",
+     "Illinois"
+    ],
+    "Wedding_Guest_Count": 200,
+    "Planning_Phase": "Engaged and just started planning"
+   }
+  },
+  {
+   "id": "m03",
+   "kind": "opening",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "California",
+     "Hawaii"
+    ],
+    "Wedding_Budget": 10000,
+    "Planning_Phase": "Engaged and just started planning"
+   }
   }
  ]
 }

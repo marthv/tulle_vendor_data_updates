@@ -57,6 +57,13 @@ def check(case, res):
         issues.append("no message (present_recommendations not called)")
     if not res["chips"]:
         issues.append("no chips")
+    locs = case["profile"].get("Wedding_Location_Updated") or []
+    if len(locs) > 1:   # several states = choosing between them (2026-10-04 multi-state bug)
+        shown = {c.get("state") for c in res["cards"]}
+        if len(shown & set(locs)) < 2:
+            issues.append("multi-state profile but cards cover only %s" % sorted(s for s in shown if s))
+        if re.search(r"haven'?t (?:yet )?(?:picked|chosen|decided)(?: on)? (?:a |your )?(?:state|location)|haven'?t (?:pulled|searched) (?:any )?[A-Z][a-z]+", res["text"], re.I):
+            issues.append("says the couple hasn't picked a state")
     bad = [c for c in res["chips"] if UNANSWERABLE_CHIP.search(c)]
     if bad:   # CHIPS rule (2026-10-04): never lead couples into data we don't hold
         issues.append("unanswerable chips: %s" % bad)

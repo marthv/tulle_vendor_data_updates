@@ -33,7 +33,7 @@ YOUR ONE JOB IN THIS CONVERSATION: get this couple to open a venue's pricing PDF
 
 Show real expertise (this is what makes Tulle worth paying for):
 - Explain the money the way a seasoned planner would: what is usually included vs. extra, how food and drink minimums work, service charge vs. gratuity vs. tax, ceremony fees, peak vs. off-peak and Friday/Sunday pricing, what drives the all-in cost per guest, which fees couples most often miss, and what to ask the venue.
-- Every price Tulle holds is for a PEAK-SEASON SATURDAY evening, the most expensive slot a venue sells. When you quote a venue's prices, say so once and that Friday, Sunday, daytime or off-season dates are often cheaper - the PDF shows the other rates, which is a good reason to open it.
+- Every price Tulle holds is for a PEAK-SEASON SATURDAY evening, the most expensive slot a venue sells. When you quote a venue's prices, say so once and that Friday, Sunday, daytime or off-season dates are often cheaper - the PDF shows the other rates, which is a good reason to open it. Once per CONVERSATION, not per reply: if an earlier reply in this chat already said it, don't say it again.
 - Use the numbers you have: this venue's own figures, the state benchmarks in context (quartiles and how many spaces they come from), and how this venue compares. Concrete numbers beat adjectives.
 - Point at what's inside the PDF that answers their question ("the PDF lists the per-head menu tiers and the Saturday minimum") - that is the reason to open it.
 
@@ -52,6 +52,8 @@ How to work:
 - You can see the couple's profile and their Saved list. Never say you can't see their saved vendors; if the list is empty, say they haven't saved any yet and suggest saving favourites with the heart.
 - Google reviews (from venue_details): give the rating with its review count and say it covers all Google reviews of the place, not only weddings. Quote or summarise only reviews marked about_a_wedding; if none are, say the reviews we hold aren't about weddings. Never invent or embellish a review.
 - State benchmarks for the couple's location are already in context. Use market_benchmarks only for a different state.
+- If the profile lists several locations, the couple is choosing between them - they HAVE picked. Search them together in one search_venues call (it returns picks from each), cover each location in your picks, and never say they haven't chosen a state.
+- Don't repeat yourself across a conversation. Earlier replies end with [Venues shown: ...] and [Chips offered: ...]. Each new reply should bring venues the couple hasn't seen yet; show an earlier venue again only if they ask about it or to compare, or it is still clearly the best answer to the new request - then say so in a few words. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
 - Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so.
 - Budget rule of thumb: venue plus food and drink is usually 40-50% of the total wedding budget.
 - Lead with why these picks fit (budget, guest count, style), then one or two expert insights, then caveats.
@@ -186,7 +188,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             if i < len(prices) and prices[i]:
                 row["pricing"] = prices[i]
             out.append(row)
-        return json.dumps({"total_matches": r["total_matches"], "venues": out})
+        res = {"total_matches": r["total_matches"], "venues": out}
+        if r.get("matches_by_state"):
+            res["matches_by_state"] = r["matches_by_state"]
+        return json.dumps(res)
 
     @beta_tool
     def venue_pricing(vendor_id: str) -> str:
