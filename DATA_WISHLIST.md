@@ -16,8 +16,8 @@ missing fact as "no", and never say a venue is LGBTQ+ friendly or accessible unl
 We can't backfill most of this from what we already store. Each PDF is kept only as an LLM summary plus the
 pricing rows, not as full text, and the summaries leave out policies like caterer rules, fire, rooms and access
 (user, 2026-10-04). Getting these facts means re-reading the original PDFs with the new fields added to the
-extraction prompt. The plan already on the table: re-extract the top 2,000 venue PDFs (80% of clicks), pilot 50
-first, est. $100-300. Decide the field list from this file before that run, so we pay for one pass, not several.
+extraction prompt. The plan already on the table: re-extract the top 5,000 venue PDFs (user, 2026-10-04; was 2,000, which is 80%
+of clicks), pilot 50 first. The $100-300 estimate was for 2,000 and needs redoing. Decide the field list from this file before that run, so we pay for one pass, not several.
 Worth also storing the full PDF text in that run, so the next new field doesn't need another re-scrape.
 
 ## Where each fact could come from
@@ -110,13 +110,58 @@ Before trusting it as a field: hand-check a sample of real PDFs for how they sta
 | Date availability | NONE (vendor calendar work is separate) |
 | Parking, lodging, rain plan | NONE |
 
+## 6. Small weddings and elopements (first real-user feedback, 2026-10-04)
+
+A Forever couple (California + Hawaii, $10,000 budget, no guest count set) asked for an "elopement with only 6
+people", then "somewhere beautiful", "cheaper options", "Big Sur?" and "any elopement packages in that area". They
+rated the assistant 1/5: "It's repetitive and not the right stuff". They opened 0 PDFs. Repetition was fixed in
+code (e77dfed). The "not the right stuff" half is mostly a data and search gap: our venues and fields are built
+around 100+ guest weddings.
+
+| Fact | Status today |
+|---|---|
+| Elopement / micro-wedding package offered (yes / no / unknown), its price, and max guests | NONE. Only appears if a PDF happens to name one (e.g. The Village, Big Sur: "$3,600 elopement" rental) |
+| Guest minimum as a SEARCH filter ("minimum is at most N") | PARTIAL: the guest minimum is in the pricing summary the assistant reads, but search can only filter "seats at least N", so 50-guest-minimum venues still come back for a party of 6 |
+| Food and drink minimum as a search ceiling | PARTIAL: `flt_min_fbmin` / `flt_max_fbmin` exist on table 11; whether ep119 can filter on them is not checked. $7,000-$10,000 minimums were recommended to a $10k couple |
+| Ceremony-only or short-slot pricing (1-2 hours, no reception) | NONE |
+| Weekday / off-peak small-party rates | PARTIAL: off-peak prices exist for some venues (venue_details), not for small parties |
+| Small private dining room or restaurant buyout for under 20 | NONE (restaurants are in the data, room sizes aren't) |
+| Officiant, photographer or florist bundled in the package | NONE |
+| Public / scenic ceremony spots and permits (state parks, beaches, Big Sur overlooks) | NONE: these aren't venues with pricing PDFs; would need a separate source |
+
+## Venues couples asked for by name that we don't have
+
+Add a row each time the assistant has to say a venue isn't in Tulle's data. These are direct candidates for
+outreach or PDF collection.
+
+| Venue | Where | Asked | Notes |
+|---|---|---|---|
+| The Columns (hotel) | New Orleans, LA | 2026-10-04 | "Love the Columns hotel in New Orleans. Is this realistic?" Not in table 11 (checked by name). Forever user |
+
+## Real-user question log (excluding Vivek, Des, Kate and test accounts)
+
+As of 2026-10-04 (chats 21-29): 6 real users, all Forever buyers. 7 questions from 3 of them; the other 3
+only saw the opening picks.
+
+| Asked | Could we answer? | Gap |
+|---|---|---|
+| "Is The Columns hotel in New Orleans realistic?" | No | Venue not in our data (table above) |
+| "yale club nyc" | Yes, well | None. Rental, per-head and fees all from the PDF |
+| "Elopement with only 6 people" | Partly | Small-wedding gaps (section 6) |
+| "Somewhere beautiful" | Partly | Style tags exist, but the picks still had 50-guest minimums |
+| "Cheaper options" | Partly | No food-minimum ceiling in search |
+| "Big Sur?" | Yes | Keyword search worked |
+| "Any elopement packages in that area" | No | No elopement-package field (section 6) |
+
+Also seen: when a couple's profile lists several states, the assistant searched only one (3 of 6 real users).
+That was a code bug, not a data gap, fixed in e77dfed.
+
 ## How to decide what to build first
 
 Measure demand before scraping. Count assistant questions (rec_messages, table 43) that mention each topic
 once the assistant has a few weeks of real use, and optionally add a "traditions / needs" multi-select to
 onboarding. Build the fields that couples actually ask about.
 
-As of 2026-10-04 there are only 42 questions in table 43, mostly from test accounts, so there is nothing to count
-yet. Once there are a few hundred real questions, add an "asked" count per row here (or move this list to a Xano
-table if re-ranking by hand gets tedious). Choose which fields go into the planned top-2,000 venue PDF
-re-extraction (pilot 50 first, est. $100-300) from the top unanswered rows.
+As of 2026-10-04 there are only 7 real-user questions (see the log above), so there is nothing to count yet. Once there are a few hundred real questions, add an "asked" count per row here (or move this list to a Xano
+table if re-ranking by hand gets tedious). Choose which fields go into the planned top-5,000 venue PDF
+re-extraction (pilot 50 first) from the top unanswered rows.
