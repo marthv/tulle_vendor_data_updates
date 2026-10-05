@@ -61,11 +61,11 @@ How to work:
 - Lead with why these picks fit (budget, guest count, style), then one or two expert insights, then caveats.
 - If only one or two venues match a narrow request, add the closest alternatives and say why they are close.
 - When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it.
-- Warm, specific, confident, brief (about 80-140 words, plain sentences, no bullet lists). Only a COST BREAKDOWN is longer (about 220 words) and itemized. Openings and picks are never breakdowns: give each pick's headline number, not its full math. No filler, no exclamation marks, no generic advice a search engine would give.
+- Warm, specific, confident, brief. Short is better: no bullet lists, each pick's headline number only - the PDF is where the couple sees the rest. Only a COST BREAKDOWN is longer. No filler, no exclamation marks, no generic advice a search engine would give.
 
 DETAIL LEVEL: if the context says "DETAIL: LIGHT", this couple is not on Forever. You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them. Recommend on fit instead: style, capacity, whether the guest minimum works, all-inclusive or not, and how each cost line compares with their state (below average / typical / above average). Say once, plainly, that the full price breakdown is in the venue's PDF and that Forever unlocks it here in the assistant. The rule "concrete numbers beat adjectives" does not apply at this level. The opposite level, "DETAIL: FULL", means use every number you have.
 
-COST BREAKDOWN (DETAIL: FULL only): when the couple asks for a breakdown, the full or all-in cost, "realistic" numbers or "what will it really cost" for a venue, give an itemized estimate - never just a range plus "open the PDF". A breakdown is the reason to open the PDF, so the numbers come first. Get the venue's lines first (its search pricing, venue_pricing, and venue_details for menu, bar and other fees). Then one line per item, using the couple's guest count:
+COST BREAKDOWN: give one ONLY when the context says "BREAKDOWN REQUESTED" (the couple explicitly asked for a breakdown or the full cost of a venue). Then give an itemized estimate for that venue - never just a range plus "open the PDF". Without that line, never itemize. Never volunteer a breakdown, never offer one as a chip, and never itemize in openings or when comparing several venues: those stay short and send the couple to the PDF. Get the venue's lines first (its search pricing, venue_pricing, and venue_details for menu, bar and other fees). Then one line per item, using the couple's guest count:
 - Rental fee
 - Ceremony fee
 - Food: $X a head x N guests = $Y
@@ -87,6 +87,12 @@ Never offer a chip about something none of these covers: availability or open da
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
 
 Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which venue's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them (1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips that follow the CHIPS rule."""
+
+# A COST BREAKDOWN is long (more tokens, more cost), so only an explicit ask unlocks it (user 2026-10-05:
+# short replies preferred; Forever gets the itemized detail ONLY when they specifically ask).
+BREAKDOWN_ASK = re.compile(r"break ?down|itemi[sz]e|full (?:cost|price)|all[- ]in|total cost|realistic|"
+                           r"exact (?:cost|price)|line by line|every fee|"
+                           r"(?:what|how much) (?:will|would|does) .{0,40}(?:really |actually )?cost", re.I)
 
 PRICED_PER_SEARCH = 6   # pricing fetched for the top N results of each search, in parallel
 
@@ -323,8 +329,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         """Show your answer to the couple. Call exactly once, last.
 
         Args:
-            message: your reply to the couple: 80-140 words of plain sentences, no lists. Only a COST
-                BREAKDOWN is longer (about 220 words) and uses the itemized "• " list.
+            message: 1-3 short sentences to the couple. Only a COST BREAKDOWN the couple explicitly asked
+                for is longer and uses the itemized "• " list.
             vendor_ids: 2-4 vendor_ids from search_venues or saved_venues, best first (1 for a single-venue breakdown).
             reasons: one short reason per vendor_id, same order.
             chips: 2-4 short VENUE follow-ups that follow the CHIPS rule (each maps to a search filter, a
@@ -357,6 +363,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     "with no dollar figures (see DETAIL LEVEL). Forever unlocks the full price breakdown here.")
     else:
         context += "\nDETAIL: FULL."
+        last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+        if isinstance(last_user, str) and BREAKDOWN_ASK.search(last_user):
+            context += ("\nBREAKDOWN REQUESTED: the couple's latest message asks for a cost breakdown - follow "
+                        "COST BREAKDOWN (itemized \"• \" lines, about 220 words), whatever the length rules say.")
     if light:
         pass
     elif paid:
