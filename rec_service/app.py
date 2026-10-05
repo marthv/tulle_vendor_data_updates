@@ -8,6 +8,8 @@ GET  /rec/chats            -> the user's conversations, newest first
 GET  /rec/chats/{chat_id}  -> one conversation's turns (text, cards, chips) to re-render it
 GET  /rec/status           -> free refinements left, paid flag, whether the service is on
 POST /rec/feedback         -> Forever beta check-in {rating, would_use, text}; unlocks questions after 5
+GET  /budget/plan          -> Budget panel planner (no AI): saved focus/exclusions/edits applied to the budget
+POST /budget/plan          -> {focus, excluded[], edits{category: $}}: recompute + save (REC_BUDGET_PLAN=1)
 GET  /health
 
 Conversations live in Xano rec_chats (42) / rec_messages (43); durable notes the model saves
@@ -22,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import agent
+import budget
 from chips import dedupe_chips
 import config
 import guards
@@ -307,6 +310,57 @@ def status(authorization: str = Header(None)):
             "forever_left_today": guards.forever_left_today(paid, rows, xano.today()),
             "forever_daily_limit": config.PAID_DAILY_REFINES, "free_limit": config.FREE_REFINES, "free_refines_left": guards.free_refines_left(paid, rows),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"])}
+
+
+class BudgetPlanBody(BaseModel):
+    focus: str = "typical"
+    excluded: list[str] = []
+    edits: dict[str, float] = {}
+
+
+def _budget_user(authorization):
+    """Budget panel = Forever (the assistant page is Forever-only). Off switch: REC_BUDGET_PLAN=0 -> 503."""
+    if not config.BUDGET_PLAN_ON:
+        raise HTTPException(503, {"status": "budget_plan_off"})
+    _, user = _auth(authorization)
+    if config.FOREVER_ONLY and not xano.has_forever(user):
+        raise HTTPException(402, {"status": "forever_only", "upsell": "forever"})
+    total = float(user.get("Wedding_Budget") or 0)
+    if total <= 0:
+        raise HTTPException(400, {"status": "budget_required"})   # page: ask them to set a total budget
+    return user, total
+
+
+def _plan_for(user, total, saved):
+    shares = budget.load_shares()
+    focus, excluded, edits = budget.clean_request(shares, saved.get("focus"), saved.get("excluded"),
+                                                  saved.get("edits"))
+    return budget.plan(shares, total, focus, excluded, edits)
+
+
+@app.get("/budget/plan")
+def get_budget_plan(authorization: str = Header(None)):
+    """The couple's budget plan: saved inputs (or Typical, nothing excluded) applied to their total budget."""
+    user, total = _budget_user(authorization)
+    try:
+        return _plan_for(user, total, xano.get_budget_plan(user["id"]) or {})
+    except ValueError:   # saved inputs no longer valid (e.g. a category was renamed): start fresh
+        return _plan_for(user, total, {})
+
+
+@app.post("/budget/plan")
+def save_budget_plan(body: BudgetPlanBody, authorization: str = Header(None)):
+    """Recompute + save. No AI call: the panel calls this on every tweak."""
+    user, total = _budget_user(authorization)
+    try:
+        p = _plan_for(user, total, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, {"status": "invalid", "reason": str(e)})
+    xano.set_budget_plan(user["id"], {"focus": p["focus"], "excluded": p["excluded"], "edits": p["edits"]})
+    _POOL.submit(xano.mp_track, user["id"], "budget_plan_saved", {
+        "focus": p["focus"], "excluded_n": len(p["excluded"]), "edits_n": len(p["edits"]),
+        "over_by": p["over_by"], "source": "rec_service"})
+    return p
 
 
 @app.get("/health")
