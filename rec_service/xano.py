@@ -420,26 +420,6 @@ def set_user_context(user_id, text):
     return text
 
 
-def get_budget_plan(user_id):
-    """The couple's saved planner inputs {focus, excluded, edits} (rec_memory.budget_plan JSON), or None."""
-    row = get_memory(user_id) or {}
-    saved = row.get("budget_plan")
-    return saved if isinstance(saved, dict) and saved else None
-
-
-def set_budget_plan(user_id, saved):
-    """Store planner INPUTS only (focus, excluded, edits) - the plan itself is recomputed on read, so a
-    share or ripple change in table 19 / config reaches every couple."""
-    row = get_memory(user_id)
-    now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
-    if row:
-        _put_full(MEMORY_TABLE, row, {"budget_plan": saved, "updated_at": now_ms})
-    else:
-        _meta("POST", "/table/%d/content" % MEMORY_TABLE,
-              json={"user_id": int(user_id), "notes": [], "budget_plan": saved})
-    return saved
-
-
 def has_beta_feedback(user_id):
     uid = int(user_id)
     return any(int(r.get("user_id") or 0) == uid for r in _search_all(config.FEEDBACK_TABLE_ID, [{"user_id": uid}]))

@@ -59,20 +59,3 @@ FEEDBACK_SLACK_WEBHOOK = os.environ.get("REC_FEEDBACK_SLACK_WEBHOOK", "")   # Tu
 FEEDBACK_SLACK_CHANNEL = os.environ.get("REC_FEEDBACK_SLACK_CHANNEL", "C07JML6NMLM")
 FEEDBACK_TABLE_ID = int(os.environ.get("REC_FEEDBACK_TABLE_ID", "81"))
 FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))
-
-# Budget panel planner (budget.py, no AI). "0" = /budget/plan returns 503 and the panel shows only the
-# contracted bar. Default OFF until the user approves going live.
-BUDGET_PLAN_ON = os.environ.get("REC_BUDGET_PLAN", "0") == "1"
-# Chat visuals (Forever only). "0" = no visual is ever built. Default OFF until approved.
-VISUALS_ON = os.environ.get("REC_VISUALS", "0") == "1"
-# Overspending category c by $X adds X * BUDGET_RIPPLE[c][d] to related category d (user chose "ripple"
-# 2026-10-05). DRAFT VALUES = JUDGMENT, NOT DATA - awaiting user sign-off. Override with REC_BUDGET_RIPPLE
-# (JSON) without a deploy.
-import json as _json
-BUDGET_RIPPLE = _json.loads(os.environ.get("REC_BUDGET_RIPPLE") or _json.dumps({
-    "Venue": {"Rentals": 0.10, "Flowers": 0.05},           # a bigger venue takes more decor and rentals
-    "Food and Beverage": {"Rentals": 0.05},                # more service, linens, tableware
-    "Flowers": {"Rentals": 0.10},                          # installations need stands and arches
-    "Entertainment": {"Rentals": 0.05},                    # staging, AV, dance floor
-    "Attire": {"Beauty": 0.05},
-}))
