@@ -16,8 +16,12 @@ missing fact as "no", and never say a venue is LGBTQ+ friendly or accessible unl
 We can't backfill most of this from what we already store. Each PDF is kept only as an LLM summary plus the
 pricing rows, not as full text, and the summaries leave out policies like caterer rules, fire, rooms and access
 (user, 2026-10-04). Getting these facts means re-reading the original PDFs with the new fields added to the
-extraction prompt. The plan already on the table: re-extract the top 5,000 venue PDFs (user, 2026-10-04; was 2,000, which is 80%
-of clicks), pilot 50 first. The $100-300 estimate was for 2,000 and needs redoing. Decide the field list from this file before that run, so we pay for one pass, not several.
+extraction prompt. The plan already on the table: re-extract the top 3,000 venue PDFs by clicks (user, 2026-10-04; earlier
+drafts said 2,000 and 5,000), PLUS a coverage floor: at least 10 venues from every state and country, taking
+the most-clicked ones there; if a state or country has fewer than 10, take all of them. The top 3,000 alone
+would skip the smaller states, and the assistant needs some coverage everywhere. Pilot 50 first. The
+$100-300 estimate was for 2,000 and needs redoing once the final count (3,000 + floor top-ups) is known.
+Note: table 11 `State` is multi-value, so count a venue toward each state it lists, never with `==`. Decide the field list from this file before that run, so we pay for one pass, not several.
 Worth also storing the full PDF text in that run, so the next new field doesn't need another re-scrape.
 
 ## Where each fact could come from
@@ -163,5 +167,5 @@ once the assistant has a few weeks of real use, and optionally add a "traditions
 onboarding. Build the fields that couples actually ask about.
 
 As of 2026-10-04 there are only 7 real-user questions (see the log above), so there is nothing to count yet. Once there are a few hundred real questions, add an "asked" count per row here (or move this list to a Xano
-table if re-ranking by hand gets tedious). Choose which fields go into the planned top-5,000 venue PDF
+table if re-ranking by hand gets tedious). Choose which fields go into the planned top-3,000 + per-state floor venue PDF
 re-extraction (pilot 50 first) from the top unanswered rows.
