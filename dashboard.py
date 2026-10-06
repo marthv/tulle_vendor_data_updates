@@ -2304,15 +2304,23 @@ with tab_vp:
     with _vp_rc:
         if st.button("🔄 Load / Refresh", type="primary", use_container_width=True, key="vp_refresh"):
             _vp_load.clear()
+            st.session_state["vp_loaded"] = True
 
-    # Load data (cached 10min). Filters don't trigger reloads — only Apply/Run buttons trigger computation.
-    vp_joined, vp_pdf_map, vp_meta = _vp_load()
+    # Lazy: st.tabs runs every tab on every visit, and this pull is ~75s cold (ep199, 10-min TTL),
+    # so it only runs once someone asks for it in this session.
+    if st.session_state.get("vp_loaded"):
+        vp_joined, vp_pdf_map, vp_meta = _vp_load()
+    else:
+        vp_joined, vp_pdf_map, vp_meta = [], {}, {"errors": []}
 
     if vp_meta["errors"]:
         st.error("Xano fetch issue — " + ", ".join(vp_meta["errors"]))
 
     if not vp_joined:
-        st.info("No venue pricing data available. Click Load / Refresh to retry.")
+        if st.session_state.get("vp_loaded"):
+            st.info("No venue pricing data available. Click Load / Refresh to retry.")
+        else:
+            st.info("Click **Load / Refresh** to pull venue pricing (~1 min on a cold cache).")
     else:
         # ── Filters — staged: nothing recomputes until you click Apply ────────
         st.markdown("#### Filters")
