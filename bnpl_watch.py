@@ -64,6 +64,13 @@ PHASE2_FROM_MS = int(_p2) if _p2 else None
 # promo codes; $55 -> <= $60.7, $69 -> >= $69. The cut points sit in the gaps.
 P2_1W_NEW_MIN = 38.0
 P2_4W_NEW_MIN = 65.0
+# NY TIER (2026-10-07): New York alone moves to 1w $35 / 4w $60 / Forever $135; CA/International
+# stay on $39/$69/$149. Live from the table-17 rows + WeWeb publish, ~01:00 UTC 10-07 (override
+# with BNPL_NY_FROM_MS). Amounts include tax: NY 8.875% -> $38.11 / $65.33 / $146.98.
+_ny = os.environ.get("BNPL_NY_FROM_MS", "").strip()
+NY_FROM_MS = int(_ny) if _ny else 1791334800000
+# An NY-tier buyer paying at or above these was charged the OLD raised price ($39/$69/$149 + tax).
+NY_OLD_PRICE_MIN = {"1 week": 42.0, "4 weeks": 74.0, "forever weeks": 158.0}
 PLANS = ("1 week", "4 weeks", "forever weeks", "forever")
 PLAN_SHORT = {"1 week": "1w", "4 weeks": "4w", "forever weeks": "F", "forever": "up"}
 
@@ -82,6 +89,12 @@ def poisson_cdf(k, lam):
             term *= lam / i
         tot += term
     return tot
+
+
+def is_ny(location):
+    items = location if isinstance(location, list) else ([location] if location else [])
+    return any(part.strip().lower() == "new york"
+               for it in items for part in str(it if it is not None else "").split(","))
 
 
 def arm_for(location):
@@ -285,8 +298,14 @@ def build(token, now_ms=None, short=False):
 
     # Routing check: amount band vs arm.
     mism = []
+    def ny_tier(r):
+        return ((r["Time_of_Payment"] or 0) >= NY_FROM_MS
+                and is_ny(locs.get(str(r.get("Client_Reference_ID") or "").strip())))
+
     for r in post:
         a, amt = arm(r), float(r.get("Amount") or 0)
+        if ny_tier(r):
+            continue
         if a == "raised" and amt < PRICE_149_MIN:
             mism.append(f"raised buyer paid ${amt:.2f} (row {r['id']}) - $129 link? or promo code")
         elif a != "raised" and amt >= PRICE_149_MIN:
@@ -296,6 +315,8 @@ def build(token, now_ms=None, short=False):
             if (r["Time_of_Payment"] or 0) < p2:
                 continue
             pl, a, amt = plan_of(r), arm(r), float(r.get("Amount") or 0)
+            if ny_tier(r):
+                continue
             cut = {"1 week": P2_1W_NEW_MIN, "4 weeks": P2_4W_NEW_MIN}.get(pl)
             if cut is None or amt <= 0:
                 continue
@@ -303,6 +324,30 @@ def build(token, now_ms=None, short=False):
                 mism.append(f"raised {pl} paid ${amt:.2f} (row {r['id']}) - old link? or promo code")
             elif a != "raised" and amt >= cut:
                 mism.append(f"{a} {pl} paid ${amt:.2f} (row {r['id']}) - raised price leaked?")
+    # NY tier: NY-only revenue across its three price periods, and an NY-specific routing check.
+    if now_ms >= NY_FROM_MS:
+        ny_rows = [r for r in rows if plan_of(r) in PLANS
+                   and is_ny(locs.get(str(r.get("Client_Reference_ID") or "").strip()))]
+        lines.append("NY only - rev/day | buyers/day | mix 1w/4w/F/up:")
+        lines.append("```")
+        for wname, w0, w1 in (("pre 28d ($30/$55/$129)", pre_start, LAUNCH_MS),
+                              ("raised ($39/$69/$149)", LAUNCH_MS, NY_FROM_MS),
+                              ("NY tier ($35/$60/$135)", NY_FROM_MS, now_ms)):
+            days = max((w1 - w0) / 86400000, 1e-9)
+            rs = [r for r in ny_rows if w0 <= (r["Time_of_Payment"] or 0) < w1]
+            rev = sum(float(r.get("Amount") or 0) for r in rs)
+            buyers = {str(r.get("Client_Reference_ID") or "").strip() for r in rs}
+            mix = "/".join(str(sum(1 for r in rs if plan_of(r) == pl)) for pl in PLANS)
+            lines.append(f"  {wname:<24}{days:>5.1f}d ${rev / days:>7.2f}/d {len(buyers) / days:>5.2f}/d  {mix}")
+            k.setdefault("ny", {})[wname.split(" (")[0]] = (rev / days, days)
+        lines.append("```")
+        for r in ny_rows:
+            if (r["Time_of_Payment"] or 0) < NY_FROM_MS:
+                continue
+            pl, amt = plan_of(r), float(r.get("Amount") or 0)
+            if amt >= NY_OLD_PRICE_MIN.get(pl, 1e9):
+                mism.append(f"NY {pl} paid ${amt:.2f} (row {r['id']}) - old $39/$69/$149 link still reachable?")
+        lines.append(f"_NY kill switch: `python .claude/xano_backups/revert_geo_pricing.py --ny-off`_")
     unresolved = sum(1 for u in uids if locs.get(u) is None)
     if live:
         lines.append(f"Routing check: {len(mism)} to look at" + (":" if mism else " :white_check_mark:"))
@@ -387,6 +432,11 @@ def _short(k, live, post_days, cpost, mism):
     if n >= 30:
         alerts.append(f"Pricing test has {n} post-launch Forever buys - enough to read. Decide: keep the NY/CA/International "
                       "prices or revert.")
+    ny = k.get("ny")
+    if ny and "NY tier" in ny:
+        (r_new, d_new), (r_old, _), (r_pre, _) = ny["NY tier"], ny["raised"], ny["pre 28d"]
+        l1 += (f"\nNY tier (day {d_new:.1f}): ${r_new:.0f}/d vs ${r_old:.0f}/d on $149 prices, "
+               f"${r_pre:.0f}/d before 10-01.")
     l2 = ("Checks: " + (" · ".join(checks) if checks else "routing, BNPL, Stripe webhook OK :white_check_mark:")
           + (f" · {n} of ~30 buys needed before calling it" if n < 30 else ""))
     return l1 + "\n" + l2
