@@ -365,12 +365,16 @@ def get_messages(chat_id):
     rows.sort(key=lambda r: (r.get("created_at") or 0, r.get("id") or 0))
     # "Show 3 more" cards are stored in the same cards column flagged more=True (no schema change) and
     # split back out here, so `cards` is exactly what it was before the feature for any older client.
+    # A turn written by POST /rec/more (the couple paid a question for 3 more) has its cards flagged
+    # via_more=True; it is reported as is_more so it never becomes the source of a new "more" pool.
     out = []
     for r in rows:
         allc = r.get("cards") or []
-        out.append({"role": r["role"], "text": r.get("content") or "",
-                    "cards": [c for c in allc if not c.get("more")],
-                    "more_cards": [{k: v for k, v in c.items() if k != "more"} for c in allc if c.get("more")],
+        strip = lambda c: {k: v for k, v in c.items() if k not in ("more", "via_more")}
+        out.append({"id": r.get("id"), "role": r["role"], "text": r.get("content") or "",
+                    "cards": [strip(c) for c in allc if not c.get("more")],
+                    "more_cards": [strip(c) for c in allc if c.get("more")],
+                    "is_more": any(c.get("via_more") for c in allc),
                     "chips": r.get("chips") or []})
     return out
 

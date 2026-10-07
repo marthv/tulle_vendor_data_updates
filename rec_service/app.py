@@ -6,6 +6,8 @@ POST /rec/refine           -> {chat_id, message}: one refinement in that convers
                               legacy {messages:[...]} still accepted (no history saved)
 GET  /rec/chats            -> the user's conversations, newest first
 GET  /rec/chats/{chat_id}  -> one conversation's turns (text, cards, chips) to re-render it
+POST /rec/more {chat_id}   -> "Show 3 more": next 3 venues from the latest answer's searches. Spends ONE
+                              question exactly like a typed one (user 2026-10-07), same limits and errors.
 GET  /rec/status           -> free refinements left, paid flag, whether the service is on
 POST /rec/feedback         -> Forever beta check-in {rating, would_use, text}; unlocks questions after 5
 GET  /health
@@ -48,15 +50,33 @@ def _turn_for_model(t):
     if t["role"] == "assistant" and t["cards"]:
         shown = "; ".join("%s (%s)" % (c.get("name"), c.get("vendor_id")) for c in t["cards"])
         text = (text + "\n[Venues shown: " + shown + "]").strip()
-    if t["role"] == "assistant" and t.get("more_cards"):
-        # Offered behind "Show 3 more": the couple may ask about one of them next.
-        more = "; ".join("%s (%s)" % (c.get("name"), c.get("vendor_id")) for c in t["more_cards"])
-        text = (text + "\n[Also offered under Show more: " + more + "]").strip()
     if t["role"] == "assistant" and t.get("chips"):
         # The prompt says "don't repeat a chip from earlier in the chat" - the model can only follow it
         # if it sees them (2026-10-04: user 31797 got "Is this a good price for California?" 5 times).
         text = (text + "\n[Chips offered: " + "; ".join(t["chips"]) + "]").strip()
     return {"role": t["role"], "content": text or "(recommendations shown)"}
+
+
+def _more_remaining(turns):
+    """Unrevealed "Show 3 more" venues of the LATEST answer (an opening or typed question - a turn written by
+    /rec/more is not a new answer). Anything shown after that answer is excluded."""
+    src = max((i for i, t in enumerate(turns) if t["role"] == "assistant" and not t.get("is_more")), default=None)
+    if src is None:
+        return []
+    shown = {c.get("vendor_id") for t in turns[src + 1:] for c in (t.get("cards") or [])}
+    return [c for c in (turns[src].get("more_cards") or []) if c.get("vendor_id") not in shown]
+
+
+def _more_left(turns):
+    n = len(_more_remaining(turns))
+    return n if n >= agent.MORE_STEP else 0
+
+
+def _public(out, **extra):
+    """What the page gets: the hidden extras become a count (they cost a question to reveal)."""
+    resp = {k: v for k, v in out.items() if k != "more_cards"}
+    n = len(out.get("more_cards") or [])
+    return dict(resp, more_available=n if n >= agent.MORE_STEP else 0, **extra)
 
 
 def _stored_cards(out):
@@ -104,13 +124,14 @@ def _memory_notes(user_id):
     return _memory(user_id)[0]
 
 
-def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
+def _gate(kind, user, chat_id=0):
+    """The one question check. Raises the blocked response (402/403/429/503) or returns what the caller
+    needs to log the use and report the counters. Used by typed questions AND "Show 3 more"."""
     # `paid` (no cap) = Forever only; `access` (exact prices from ep230) = any active plan.
     paid = xano.has_forever(user)
     access = xano.has_paid_access(user)
     f_rows = _POOL.submit(xano.user_usage, user["id"])
     f_spend = _POOL.submit(xano.spend_today_usd)
-    f_mem = _POOL.submit(_memory, user["id"])
     f_fb = _POOL.submit(_feedback_given, user["id"]) if paid else None
     rows = f_rows.result()
     feedback_given = f_fb.result() if f_fb else True
@@ -130,6 +151,25 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
             extra["resets_on"] = (dt.date(t.year + (t.month == 12), t.month % 12 + 1, 1)).isoformat()
         raise HTTPException(code, {"status": status, "upsell": "forever", "free_limit": config.FREE_REFINES, **extra,
                                    "free_refines_left": guards.free_refines_left(paid, rows)})
+    return paid, access, rows, feedback_given, counted_free, base
+
+
+def _counters(kind, paid, rows, counted_free, feedback_given):
+    """Allowance left AFTER this request, for the page's counters."""
+    used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
+    used_today = rows + [{"status": "ok", "usage_day": xano.today()}]
+    used_fq = rows + ([{"status": "ok", "kind": "refine"}] if paid and kind == "refine" else [])
+    return dict(upsell="forever",
+                beta_questions_left=guards.beta_questions_left(paid, used_fq, feedback_given),
+                beta_feedback_after=config.BETA_FEEDBACK_AFTER,
+                free_refines_left=guards.free_refines_left(paid, used),
+                forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),
+                forever_daily_limit=config.PAID_DAILY_REFINES, free_limit=config.FREE_REFINES)
+
+
+def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
+    f_mem = _POOL.submit(_memory, user["id"])
+    paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id)
     try:
         notes, user_context = f_mem.result()
         # Detail (user 2026-10-03): only Forever gets figures; free and 1-week/4-week get fit, not numbers.
@@ -145,20 +185,13 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
                         cache_write_tokens=usage["cache_write_tokens"], output_tokens=usage["output_tokens"],
                         tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"]))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
-    used_today = rows + [{"status": "ok", "usage_day": xano.today()}]
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": kind, "status": "ok", "forever": paid, "has_access": access, "source": "rec_service",
         "cost_usd": cost, "latency_s": round(usage["latency_ms"] / 1000, 1), "tool_calls": usage["tool_calls"],
         "cards": len(result.get("cards") or []), "more_cards": len(result.get("more_cards") or []),
         "notes_saved": len(result.get("notes_saved") or []),
         "free_refines_left": guards.free_refines_left(paid, used), "model": usage["model"]})
-    used_fq = rows + ([{"status": "ok", "kind": "refine"}] if paid and kind == "refine" else [])
-    return dict(result, paid=paid, has_access=access, upsell="forever",
-                beta_questions_left=guards.beta_questions_left(paid, used_fq, feedback_given),
-                beta_feedback_after=config.BETA_FEEDBACK_AFTER,
-                free_refines_left=guards.free_refines_left(paid, used),
-                forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),
-                forever_daily_limit=config.PAID_DAILY_REFINES, free_limit=config.FREE_REFINES)
+    return dict(result, paid=paid, has_access=access, **_counters(kind, paid, rows, counted_free, feedback_given))
 
 
 def _opening_title(user):
@@ -181,7 +214,7 @@ def opening(background: BackgroundTasks, authorization: str = Header(None)):
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}])
     chat = xano.create_chat(user["id"], _opening_title(user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
-    return dict(out, chat_id=chat["id"])
+    return _public(out, chat_id=chat["id"])
 
 
 @app.post("/rec/refine")
@@ -217,12 +250,12 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
             xano.add_message(chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
             xano.touch_chat(chat)
         background.add_task(persist)
-        return dict(out, chat_id=chat["id"])
+        return _public(out, chat_id=chat["id"])
     # legacy: client-held history, nothing persisted
     msgs = [{"role": t.role, "content": t.content[:2000]} for t in body.messages[-HISTORY_TURNS:]]
     if not msgs or msgs[-1]["role"] != "user" or msgs[0]["role"] != "user":
         raise HTTPException(400, "messages must start and end with a user turn")
-    return _run_guarded("refine", token, user, msgs)
+    return _public(_run_guarded("refine", token, user, msgs))
 
 
 @app.get("/rec/chats")
@@ -237,7 +270,55 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
     chat = xano.get_chat(user["id"], chat_id)
     if not chat:
         raise HTTPException(404, "conversation not found")
-    return {"chat_id": chat["id"], "title": chat.get("title") or "", "turns": xano.get_messages(chat["id"])}
+    turns = xano.get_messages(chat["id"])
+    left = _more_left(turns)
+    last = max((i for i, t in enumerate(turns) if t["role"] == "assistant"), default=None)
+    for i, t in enumerate(turns):
+        t.pop("more_cards", None)         # unrevealed extras stay on the server until a question is spent
+        t["more_available"] = left if i == last else 0
+    return {"chat_id": chat["id"], "title": chat.get("title") or "", "turns": turns}
+
+
+class MoreBody(BaseModel):
+    chat_id: int
+
+
+MORE_TEXT = "Here are 3 more from the same search."
+
+
+@app.post("/rec/more")
+def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = Header(None)):
+    """"Show 3 more" under the latest answer. Spends one question exactly like typing one (user decision
+    2026-10-07): same gate, same usage row (kind refine), same counters. No model call - the venues were
+    found by that answer's own searches and stored with it."""
+    token, user = _auth(authorization)
+    chat = xano.get_chat(user["id"], body.chat_id)
+    if not chat:
+        raise HTTPException(404, "conversation not found")
+    history = xano.get_messages(chat["id"])
+    remaining = _more_remaining(history)
+    if len(remaining) < agent.MORE_STEP:            # checked BEFORE the gate: never charge for nothing
+        raise HTTPException(409, {"status": "no_more"})
+    paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat["id"])
+    picks = remaining[:agent.MORE_STEP]
+    xano.log_usage(dict(base, status="ok", counted_as_free=counted_free, model="none", input_tokens=0,
+                        cache_read_tokens=0, cache_write_tokens=0, output_tokens=0, tool_calls=0,
+                        cost_usd=0, latency_ms=0))
+    _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
+        "kind": "more", "status": "ok", "forever": paid, "has_access": access, "source": "rec_service",
+        "cost_usd": 0, "cards": len(picks), "more_cards": len(remaining) - len(picks),
+        "free_refines_left": guards.free_refines_left(
+            paid, rows + ([{"status": "ok", "counted_as_free": True}] if counted_free else []))})
+
+    def persist():   # same order as a typed question: user turn, assistant turn, bump the chat
+        xano.add_message(chat["id"], "user", "Show 3 more")
+        xano.add_message(chat["id"], "assistant", MORE_TEXT, [dict(c, via_more=True) for c in picks], [])
+        xano.touch_chat(chat)
+    background.add_task(persist)
+    left = len(remaining) - len(picks)
+    return dict(text=MORE_TEXT, cards=picks, chips=[], chat_id=chat["id"], paid=paid, has_access=access,
+                more_available=left if left >= agent.MORE_STEP else 0,
+                **_counters("refine", paid, rows, counted_free, feedback_given))
 
 
 class ContextBody(BaseModel):

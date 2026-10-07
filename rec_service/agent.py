@@ -158,6 +158,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     Returns (result_dict, usage_dict)."""
     light = detail == "light"
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
+    extra = {}           # vendor_id -> card data for "Show 3 more" ONLY: search results past the 8 the model sees
     searched = []        # vendor_ids search_venues returned in THIS request, in search order ("Show 3 more")
     prior = set(prior_vendor_ids or ())   # shown earlier in this chat: may be presented again (looked up)
     final = {}
@@ -225,14 +226,14 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         r = xano.search_venues(token, states=states, guests=guests, max_venue_fee=max_venue_fee,
                                max_food_per_person=max_food_per_person, venue_types=venue_types,
                                vibes=vibes, pricing_models=pricing_models, keyword=keyword, sort_by=sort_by,
-                               outdoor_ceremony=outdoor_ceremony, page_size=16 if (guests or food_cap) else 8)
+                               outdoor_ceremony=outdoor_ceremony, page_size=16)
         venues = r["venues"]
         removed = {"food_minimum_over_half_budget": 0, "guest_minimum_over_party": 0}
         if food_cap:
             kept = [v for v in venues if not (v.get("food_minimum") or 0) > food_cap]
             removed["food_minimum_over_half_budget"] = len(venues) - len(kept)
             venues = kept
-        n_priced = PRICED_PER_SEARCH + (4 if guests else 0)
+        n_priced = len(venues) if guests else PRICED_PER_SEARCH
         raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in venues[:n_priced]]))
         if guests:
             # only priced venues have a known guest minimum, so keep just those and drop the ones that don't fit
@@ -240,6 +241,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             removed["guest_minimum_over_party"] = len(raws) - len(pairs)
         else:
             pairs = list(zip(venues, raws)) + [(v, None) for v in venues[len(raws):]]
+        # The model sees the top 8; the rest only feed "Show 3 more" (2026-10-07: capping the whole pool at
+        # 8 left at most 5 after the picks - often under 3 once shown venues were removed, so no button).
+        rest = [v for v, _ in pairs[8:]]
         pairs = pairs[:8]
         venues = [v for v, _ in pairs]
         prices = [shape(p) if p else None for _, p in pairs]
@@ -256,6 +260,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             if i < len(prices) and prices[i]:
                 row["pricing"] = prices[i]
             out.append(row)
+        for v in rest:                      # after the top 8, so "Show 3 more" keeps search order
+            if v.get("vendor_id") and v["vendor_id"] not in seen:
+                extra[v["vendor_id"]] = _light_card(v) if light else v
+                if v["vendor_id"] not in searched:
+                    searched.append(v["vendor_id"])
         res = {"total_matches": r["total_matches"], "venues": out}
         if any(removed.values()):
             res["left_out_for_minimums"] = removed
@@ -480,7 +489,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             reasons = final.get("reasons") or []
             cards.append(dict(seen[vid], reason=reasons[i] if i < len(reasons) else ""))
     result = {"text": final.get("message") or "", "cards": cards, "chips": final.get("chips") or [],
-              "more_cards": more_cards(searched, seen, cards, prior),
+              "more_cards": more_cards(searched, {**extra, **seen}, cards, prior),
               "notes_saved": saved_notes,
               "dropped_unverified_ids": [v for v in final.get("vendor_ids", []) if v not in seen]}
     return result, usage
