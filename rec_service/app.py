@@ -48,11 +48,20 @@ def _turn_for_model(t):
     if t["role"] == "assistant" and t["cards"]:
         shown = "; ".join("%s (%s)" % (c.get("name"), c.get("vendor_id")) for c in t["cards"])
         text = (text + "\n[Venues shown: " + shown + "]").strip()
+    if t["role"] == "assistant" and t.get("more_cards"):
+        # Offered behind "Show 3 more": the couple may ask about one of them next.
+        more = "; ".join("%s (%s)" % (c.get("name"), c.get("vendor_id")) for c in t["more_cards"])
+        text = (text + "\n[Also offered under Show more: " + more + "]").strip()
     if t["role"] == "assistant" and t.get("chips"):
         # The prompt says "don't repeat a chip from earlier in the chat" - the model can only follow it
         # if it sees them (2026-10-04: user 31797 got "Is this a good price for California?" 5 times).
         text = (text + "\n[Chips offered: " + "; ".join(t["chips"]) + "]").strip()
     return {"role": t["role"], "content": text or "(recommendations shown)"}
+
+
+def _stored_cards(out):
+    """Picks + "Show 3 more" cards in one cards column; xano.get_messages splits them on read."""
+    return list(out.get("cards") or []) + [dict(c, more=True) for c in (out.get("more_cards") or [])]
 
 
 class Turn(BaseModel):
@@ -140,7 +149,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": kind, "status": "ok", "forever": paid, "has_access": access, "source": "rec_service",
         "cost_usd": cost, "latency_s": round(usage["latency_ms"] / 1000, 1), "tool_calls": usage["tool_calls"],
-        "cards": len(result.get("cards") or []), "notes_saved": len(result.get("notes_saved") or []),
+        "cards": len(result.get("cards") or []), "more_cards": len(result.get("more_cards") or []),
+        "notes_saved": len(result.get("notes_saved") or []),
         "free_refines_left": guards.free_refines_left(paid, used), "model": usage["model"]})
     used_fq = rows + ([{"status": "ok", "kind": "refine"}] if paid and kind == "refine" else [])
     return dict(result, paid=paid, has_access=access, upsell="forever",
@@ -170,7 +180,7 @@ def opening(background: BackgroundTasks, authorization: str = Header(None)):
     # failed opening must not leave an empty conversation behind. Costs ~0.3s.
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}])
     chat = xano.create_chat(user["id"], _opening_title(user))
-    background.add_task(xano.add_message, chat["id"], "assistant", out["text"], out["cards"], out["chips"])
+    background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     return dict(out, chat_id=chat["id"])
 
 
@@ -195,7 +205,8 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
         msgs.append({"role": "user", "content": text})
         # Venues this chat already showed (our own stored cards, not model output) may be shown again as
         # cards - e.g. "break down <venue from the opening>" (2026-10-05: chat 24's breakdown had no card).
-        prior = [c.get("vendor_id") for t in history if t["role"] == "assistant" for c in (t.get("cards") or [])]
+        prior = [c.get("vendor_id") for t in history if t["role"] == "assistant"
+                 for c in (t.get("cards") or []) + (t.get("more_cards") or [])]
         out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=[v for v in prior if v])
         out["chips"] = dedupe_chips(out.get("chips"), history)
         if (chat.get("title") or "").startswith("Venue picks"):
@@ -203,7 +214,7 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
 
         def persist():   # after the response: user turn, then assistant turn, then bump the chat
             xano.add_message(chat["id"], "user", text)
-            xano.add_message(chat["id"], "assistant", out["text"], out["cards"], out["chips"])
+            xano.add_message(chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
             xano.touch_chat(chat)
         background.add_task(persist)
         return dict(out, chat_id=chat["id"])

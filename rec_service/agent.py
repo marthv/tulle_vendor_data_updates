@@ -133,6 +133,21 @@ def _states_of(profile):
     return [s for s in loc if s and s not in ("Not Sure",)][:2]
 
 
+MORE_STEP = 3      # "Show 3 more" (beta feedback 2026-10-06): the button reveals this many per press
+MORE_MAX = 6       # two presses at most
+
+
+def more_cards(searched, seen, cards, prior):
+    """Next-best venues for the "Show 3 more" button: the rest of THIS request's search results, in search
+    order, minus everything presented now or earlier in the chat (no repeats). Same searches as the picks,
+    so they keep the couple's criteria - asking the model for "more" drifted (a 30-40 guest romantic
+    search ended at a zoo and a fairground). No model call, no question spent. Only whole groups of 3:
+    fewer than 3 new matches -> no button. Rule 1 holds: every id came from a search in this request."""
+    skip = {c.get("vendor_id") for c in cards} | set(prior or ())
+    out = [dict(seen[v], reason="") for v in searched if v not in skip and v in seen][:MORE_MAX]
+    return out[:len(out) // MORE_STEP * MORE_STEP]
+
+
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
         detail="full", prior_vendor_ids=()):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
@@ -143,6 +158,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     Returns (result_dict, usage_dict)."""
     light = detail == "light"
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
+    searched = []        # vendor_ids search_venues returned in THIS request, in search order ("Show 3 more")
     prior = set(prior_vendor_ids or ())   # shown earlier in this chat: may be presented again (looked up)
     final = {}
     saved_cards_holder = {}
@@ -233,6 +249,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 v = _light_card(v)
             if v.get("vendor_id"):
                 seen[v["vendor_id"]] = v
+                if v["vendor_id"] not in searched:
+                    searched.append(v["vendor_id"])
             row = {k: v.get(k) for k in ("vendor_id", "name", "state", "address", "venue_type",
                                          "max_capacity_seated", "venue_fee_range", "description") if k in v}
             if i < len(prices) and prices[i]:
@@ -462,6 +480,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             reasons = final.get("reasons") or []
             cards.append(dict(seen[vid], reason=reasons[i] if i < len(reasons) else ""))
     result = {"text": final.get("message") or "", "cards": cards, "chips": final.get("chips") or [],
+              "more_cards": more_cards(searched, seen, cards, prior),
               "notes_saved": saved_notes,
               "dropped_unverified_ids": [v for v in final.get("vendor_ids", []) if v not in seen]}
     return result, usage

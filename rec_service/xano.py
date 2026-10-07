@@ -363,8 +363,16 @@ def get_messages(chat_id):
     cid = int(chat_id)
     rows = [r for r in _search_all(MESSAGES_TABLE, [{"chat_id": cid}]) if int(r.get("chat_id") or 0) == cid]
     rows.sort(key=lambda r: (r.get("created_at") or 0, r.get("id") or 0))
-    return [{"role": r["role"], "text": r.get("content") or "", "cards": r.get("cards") or [],
-             "chips": r.get("chips") or []} for r in rows]
+    # "Show 3 more" cards are stored in the same cards column flagged more=True (no schema change) and
+    # split back out here, so `cards` is exactly what it was before the feature for any older client.
+    out = []
+    for r in rows:
+        allc = r.get("cards") or []
+        out.append({"role": r["role"], "text": r.get("content") or "",
+                    "cards": [c for c in allc if not c.get("more")],
+                    "more_cards": [{k: v for k, v in c.items() if k != "more"} for c in allc if c.get("more")],
+                    "chips": r.get("chips") or []})
+    return out
 
 
 def get_memory(user_id):
