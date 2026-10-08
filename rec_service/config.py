@@ -48,6 +48,10 @@ MIXPANEL_TOKEN = os.environ.get("REC_MIXPANEL_TOKEN", "41be4c76431ca31c2a389e0f4
 # Beta is FOREVER-ONLY end to end (user 2026-10-03 late): everyone else is refused with forever_only (402,
 # upsell). The free-tier rules below stay in code for when the assistant opens up. "0" restores them.
 FOREVER_ONLY = os.environ.get("REC_FOREVER_ONLY", "1") == "1"
+# Who counts as a full beta member (unlimited-tier caps, full figures, feedback check-in). User 2026-10-08:
+# "paid" = every buyer with active access (1 week / 4 weeks too), same experience as Forever. "forever" =
+# the 10-03 rule. Free users stay refused while FOREVER_ONLY is on.
+BETA_AUDIENCE = os.environ.get("REC_BETA_AUDIENCE", "forever").strip().lower()
 # Forever beta check-in (Kate 2026-10-03, user: "the point is for beta testing"): after this many questions
 # a Forever user must leave feedback once to keep going. Whether they bother is the stickiness signal.
 # 0 turns it off. Feedback rows: Xano table 81 rec_feedback.

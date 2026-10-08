@@ -54,9 +54,16 @@ def _as_dt(v):
     if isinstance(v, (int, float)):
         return dt.datetime.fromtimestamp(v / 1000 if v > 1e11 else v, dt.timezone.utc)
     try:
-        return dt.datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        d = dt.datetime.fromisoformat(str(v).replace("Z", "+00:00"))
     except ValueError:
         return None
+    # date_until_access is a Xano DATE ("2026-10-20"): naive. Comparing it with an aware now() raised
+    # TypeError (found 2026-10-08 in tests). Treat a bare date as the END of that day, UTC.
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=dt.timezone.utc)
+        if len(str(v)) <= 10:
+            d += dt.timedelta(days=1)
+    return d
 
 
 def has_paid_access(user):
@@ -73,6 +80,31 @@ def has_forever(user):
     1-week / 4-week buyers get the opening picks + 3 questions for life, then a Forever upsell.
     (1w/4w buyers still get exact prices in answers - has_paid_access - since they can open PDFs.)"""
     return bool(user.get("forever_access_purchased"))
+
+
+def beta_member(user):
+    """Full assistant: Forever always; any active paid plan when REC_BETA_AUDIENCE=paid (2026-10-08)."""
+    if has_forever(user):
+        return True
+    return config.BETA_AUDIENCE == "paid" and has_paid_access(user)
+
+
+def plan_label(user):
+    """'Forever', or the Type of the user's latest payment-log row (table 16, e.g. '4 weeks', '1 week'),
+    so beta feedback says who it came from. 'free' without access; 'unknown' if the log can't be read."""
+    if has_forever(user):
+        return "Forever"
+    if not has_paid_access(user):
+        return "free"
+    try:
+        uid = str(user.get("id"))
+        rows = [r for r in _search_all(16, [{"Client_Reference_ID": uid}])
+                if str(r.get("Client_Reference_ID") or "").strip() == uid]
+        if rows:
+            return str(max(rows, key=lambda r: r.get("Time_of_Payment") or 0).get("Type") or "unknown").strip()
+    except Exception:
+        pass
+    return "unknown"
 
 
 PROFILE_FIELDS = ["first_name", "Planning_Phase", "Wedding_Location_Updated", "Wedding_Guest_Count",

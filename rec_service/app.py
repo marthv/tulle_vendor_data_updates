@@ -127,8 +127,9 @@ def _memory_notes(user_id):
 def _gate(kind, user, chat_id=0):
     """The one question check. Raises the blocked response (402/403/429/503) or returns what the caller
     needs to log the use and report the counters. Used by typed questions AND "Show 3 more"."""
-    # `paid` (no cap) = Forever only; `access` (exact prices from ep230) = any active plan.
-    paid = xano.has_forever(user)
+    # `paid` = full beta member: Forever, plus every active plan when REC_BETA_AUDIENCE=paid (2026-10-08).
+    # `access` (exact prices from ep230) = any active plan.
+    paid = xano.beta_member(user)
     access = xano.has_paid_access(user)
     f_rows = _POOL.submit(xano.user_usage, user["id"])
     f_spend = _POOL.submit(xano.spend_today_usd)
@@ -140,7 +141,7 @@ def _gate(kind, user, chat_id=0):
     if not allowed:
         xano.log_usage(dict(base, status=status))
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
-                     {"kind": kind, "status": status, "forever": paid, "has_access": access, "source": "rec_service"})
+                     {"kind": kind, "status": status, "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service"})
         code = (402 if status in ("blocked_free_limit", "forever_only") else 403 if status == "feedback_required"
                 else 503 if status in ("killed", "blocked_global_cap") else 429)
         extra = {}
@@ -186,7 +187,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
                         tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"]))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
-        "kind": kind, "status": "ok", "forever": paid, "has_access": access, "source": "rec_service",
+        "kind": kind, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
         "cost_usd": cost, "latency_s": round(usage["latency_ms"] / 1000, 1), "tool_calls": usage["tool_calls"],
         "cards": len(result.get("cards") or []), "more_cards": len(result.get("more_cards") or []),
         "notes_saved": len(result.get("notes_saved") or []),
@@ -306,7 +307,7 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
                         cache_read_tokens=0, cache_write_tokens=0, output_tokens=0, tool_calls=0,
                         cost_usd=0, latency_ms=0))
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
-        "kind": "more", "status": "ok", "forever": paid, "has_access": access, "source": "rec_service",
+        "kind": "more", "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
         "cost_usd": 0, "cards": len(picks), "more_cards": len(remaining) - len(picks),
         "free_refines_left": guards.free_refines_left(
             paid, rows + ([{"status": "ok", "counted_as_free": True}] if counted_free else []))})
@@ -375,15 +376,16 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
         raise HTTPException(400, {"status": "text_too_short", "min_chars": FEEDBACK_MIN_CHARS})
     if would not in ("yes", "maybe", "no"):
         would = ""
-    paid = xano.has_forever(user)
+    paid = xano.beta_member(user)
+    plan = xano.plan_label(user)
     rows = xano.user_usage(user["id"])
     used = guards.forever_questions(rows)
     xano.add_beta_feedback({"user_id": int(user["id"]), "rating": body.rating, "would_use": would, "text": text,
                             "questions_used": used, "chat_id": int(body.chat_id or 0)})
     _POOL.submit(xano.mp_track, user["id"], "rec_beta_feedback", {
-        "rating": body.rating, "would_use": would, "chars": len(text), "forever": paid,
-        "questions_used": used, "source": "rec_service"})
-    _POOL.submit(notify.beta_feedback, user, body.rating, would, text, used)
+        "rating": body.rating, "would_use": would, "chars": len(text), "forever": plan == "Forever",
+        "plan": plan, "questions_used": used, "source": "rec_service"})
+    _POOL.submit(notify.beta_feedback, user, body.rating, would, text, used, plan)
     return {"ok": True, "feedback_required": False, "beta_questions_left": None,
             "forever_left_today": guards.forever_left_today(paid, rows, xano.today())}
 
@@ -391,7 +393,7 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
 @app.get("/rec/status")
 def status(authorization: str = Header(None)):
     _, user = _auth(authorization)
-    paid = xano.has_forever(user)
+    paid = xano.beta_member(user)
     rows = xano.user_usage(user["id"])
     beta_left = guards.beta_questions_left(paid, rows, _feedback_given(user["id"]) if paid else True)
     return {"paid": paid, "has_access": xano.has_paid_access(user), "upsell": "forever",

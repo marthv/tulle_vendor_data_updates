@@ -10,12 +10,12 @@ import config
 STARS = {1: "1/5", 2: "2/5", 3: "3/5", 4: "4/5", 5: "5/5"}
 
 
-def beta_feedback(user, rating, would_use, text, questions_used):
+def beta_feedback(user, rating, would_use, text, questions_used, plan=""):
     """Post one feedback submission. Never raises - a Slack problem must not fail the user's submit."""
     if not config.FEEDBACK_SLACK_WEBHOOK and not (config.SLACK_BOT_TOKEN and config.FEEDBACK_SLACK_CHANNEL):
         print("feedback slack: not configured")
         return False
-    who = "%s (user %s)" % ((user.get("first_name") or "").strip() or "A Forever member", user.get("id"))
+    who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A member", user.get("id"), plan or "plan unknown")
     quoted = "\n".join("> " + line for line in (text or "").splitlines() or [""])
     msg = ("*Tulle Assistant beta feedback* - %s\n*Useful so far:* %s   *Keep using it:* %s   "
            "*Questions asked:* %s\n%s" % (who, STARS.get(rating, rating), would_use or "-", questions_used, quoted))
