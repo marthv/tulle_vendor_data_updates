@@ -38,6 +38,7 @@ Show real expertise (this is what makes Tulle worth paying for):
 - Point at what's inside the PDF that answers their question ("the PDF lists the per-head menu tiers and the Saturday minimum") - that is the reason to open it.
 
 Integrity - never break these:
+- Each venue's card shows ONE rental price: the "Rental fee" line of its pricing summary (also in venue_fee_range). When you quote a venue's rental, quote that figure. If you mention another space's rental from venue_details, name the space and say it differs from the card.
 - Label every figure's source: "this venue's PDF", "Tulle data across N [state] venues", or "industry norm". Never present an industry norm or estimate as this venue's number. A pricing line with source "market" is an estimate - say so.
 - Never invent a venue, a price, a policy, an amenity or a review. If we don't have it, say "we don't have that for this venue" and give the best market figure we do have.
 - The context says how this couple can see exact prices. If they have free PDF views left, say so and invite them to open the PDF ("you have 2 free PDF views - open it to see the exact menu prices"). Only if they have NO free views left and no plan, say exact figures need a plan. Never say "behind the paywall" to someone who still has free views. Never guess an exact figure.
@@ -121,6 +122,22 @@ def _light_pricing(p, guests):
     if verdict and not _DIGITS.search(verdict):
         out["verdict"] = verdict
     return out
+
+
+def _rental_amount(p):
+    """The rental fee the pricing summary (PI panel, one space) quotes, or None. The card's price comes from
+    here, NOT from table 11's flt_min/max_venue_fee (primary PDF, all spaces): 2026-10-04 The Village, Big Sur
+    showed $30,000 on its card while the reply quoted the PDF's $3,600 Elopement rental, because the model was
+    handed both numbers. One number per venue now - the one the reply quotes."""
+    for l in (p or {}).get("lines") or []:
+        if l.get("line") == "Rental fee" and isinstance(l.get("amount"), (int, float)) and l["amount"] > 0:
+            return int(l["amount"])
+    return None
+
+
+def _with_rental(v, p):
+    amt = _rental_amount(p)
+    return dict(v, venue_fee_range=[amt, amt]) if amt else v
 
 
 def _light_card(v):
@@ -243,12 +260,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             pairs = list(zip(venues, raws)) + [(v, None) for v in venues[len(raws):]]
         # The model sees the top 8; the rest only feed "Show 3 more" (2026-10-07: capping the whole pool at
         # 8 left at most 5 after the picks - often under 3 once shown venues were removed, so no button).
-        rest = [v for v, _ in pairs[8:]]
+        rest = [_with_rental(v, p) for v, p in pairs[8:]]
         pairs = pairs[:8]
         venues = [v for v, _ in pairs]
         prices = [shape(p) if p else None for _, p in pairs]
         out = []
         for i, v in enumerate(venues):
+            v = _with_rental(v, pairs[i][1])
             if light:
                 v = _light_card(v)
             if v.get("vendor_id"):
@@ -289,9 +307,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         minimum. Use it for "compare my saved venues", "which of my saved venues...", or to anchor
         recommendations to what they already like."""
         cards = saved_cards_holder.get("cards") or []
-        prices = list(pool.map(pricing_or_none, [c["vendor_id"] for c in cards[:PRICED_PER_SEARCH]]))
+        raws = list(pool.map(raw_pricing_or_none, [c["vendor_id"] for c in cards[:PRICED_PER_SEARCH]]))
+        prices = [shape(p) if p else None for p in raws]
         out = []
         for i, c in enumerate(cards):
+            if i < len(raws):
+                c = _with_rental(c, raws[i])
             if light:
                 c = _light_card(c)
             seen[c["vendor_id"]] = c
@@ -484,6 +505,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             except Exception:
                 c = None
             if c:
+                c = _with_rental(c, raw_pricing_or_none(vid))
                 seen[vid] = _light_card(c) if light else c
         if vid in seen:
             reasons = final.get("reasons") or []

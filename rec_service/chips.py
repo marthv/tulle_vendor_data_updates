@@ -7,6 +7,14 @@ CHIP_TOPUPS = ["Cheaper options", "All-inclusive venues", "Bring-your-own-catere
                "Outdoor ceremony space", "Waterfront venues", "Historic Architecture venues"]
 
 
+# Starter prompts on the OPENING reply (user 2026-10-07). 7 of 14 real users never asked anything after the
+# opening, so the first reply offers one chip per bucket real users asked about (10-03..10-07, 28 messages):
+# more/cheaper 32%, change criteria 25%, style 21%, a named venue 14%. Fixed wording, not the model's: each is
+# answerable (search filter / profile / venue lookup) and reads as a full question when tapped.
+STARTER_CHIPS = ["Show me cheaper options", "Try a different style", "Is a venue I like realistic?",
+                 "Change my guests or budget"]
+
+
 def chip_key(c):
     return re.sub(r"[^a-z0-9 ]", "", (c or "").lower()).strip()
 

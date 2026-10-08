@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import agent
-from chips import dedupe_chips
+from chips import STARTER_CHIPS, dedupe_chips
 import config
 import guards
 import notify
@@ -212,6 +212,7 @@ def opening(background: BackgroundTasks, authorization: str = Header(None)):
     # Create the chat only AFTER the guard allowed and the model answered - a blocked (402/429/503) or
     # failed opening must not leave an empty conversation behind. Costs ~0.3s.
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}])
+    out["chips"] = list(STARTER_CHIPS)
     chat = xano.create_chat(user["id"], _opening_title(user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     return _public(out, chat_id=chat["id"])
