@@ -9,11 +9,18 @@ about you".
 """
 
 QUESTIONS = [
+    # 2026-10-08 v2 (user: "we're missing some venue vibes ... and some place descriptions"): all 14 venue types
+    # Discovery's Venue Type filter offers, plus a soft "overall feel" question for aesthetics no filter covers.
     {"id": "style", "question": "What kind of place feels like you?", "multi": True, "max": 3,
      "options": [{"label": l, "value": l} for l in (
          "Estate / Mansion", "Barn / Ranch", "Garden / Botanical Garden", "Hotel / Resort", "Restaurant / Bar",
          "Winery / Brewery / Distillery", "Museum / Gallery", "Dedicated Event Venue",
-         "Country Club / Private Club")]},
+         "Country Club / Private Club", "Performing Arts Venue", "University / College", "Civic / Public",
+         "Zoo / Aquarium", "Religious")]},
+    {"id": "feel", "question": "What's the overall feel?", "multi": True, "max": 3,
+     "options": [{"label": l, "value": l} for l in (
+         "Rustic", "Modern / minimalist", "Classic / timeless", "Romantic", "Glam / black-tie",
+         "Boho / garden party", "Industrial chic", "Intimate / cozy", "Coastal", "Whimsical / artsy")]},
     {"id": "setting", "question": "Any must-haves for the setting?", "multi": True, "max": 3,
      "options": [{"label": l, "value": v} for l, v in (
          ("Waterfront", "Waterfront"), ("Rooftop or skyline views", "Rooftop / Skyline Views"),
@@ -34,7 +41,7 @@ QUESTIONS = [
          "Staying on budget", "The look and feel", "Room for our guest count", "The location")]},
 ]
 _BY_ID = {q["id"]: q for q in QUESTIONS}
-_NOTE_PREFIX = {"style": "Style", "setting": "Setting must-haves", "catering": "Food and setup",
+_NOTE_PREFIX = {"style": "Style", "feel": "Overall feel", "setting": "Setting must-haves", "catering": "Food and setup",
                 "ceremony": "Ceremony", "priority": "Matters most"}
 
 
@@ -105,6 +112,9 @@ def search_hint(answers):
         line += (" Use them as search_venues filters first (" + ", ".join(f) + "). If that leaves fewer than 3 "
                  "good fits, drop the least important filter, search again, and say in a few words which "
                  "preference you relaxed.")
+    if a.get("feel"):
+        line += (" Their overall feel (" + ", ".join(a["feel"]) + ") has no search filter: use it to choose among "
+                 "results (venue type, description, vibes) and to explain fit, never as a reason to invent details.")
     if a.get("priority"):
         line += " Rank picks by what matters most to them: " + a["priority"][0] + "."
     return line

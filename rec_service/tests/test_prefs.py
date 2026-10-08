@@ -78,3 +78,12 @@ def test_delete_note_index_skips_hidden_markers(monkeypatch):
     monkeypatch.setattr(xano, "_put_full", lambda t, r, ch: row.update(ch))
     xano.delete_memory_note(5, 0)
     assert [n.get("note") for n in row["notes"]] == [None, "b"]
+
+
+def test_v2_options_cover_discovery_vocab_and_feel_is_soft():
+    import xano
+    style = [o["value"] for o in prefs._BY_ID["style"]["options"]]
+    assert len(style) == 14 and set(style) == set(xano.VENUE_TYPES)
+    h = prefs.search_hint({"feel": ["Rustic", "Romantic"], "style": ["Zoo / Aquarium"]})
+    assert "venue_types=['Zoo / Aquarium']" in h and "Rustic, Romantic" in h and "no search filter" in h
+    assert prefs.to_notes({"feel": ["Coastal"]})[0]["note"] == "Overall feel: Coastal"

@@ -165,7 +165,8 @@ def log_usage(row):
 # pricing_models -> flt_venue_offerings (96%). Values must match EXACTLY or the overlap matches nothing.
 VENUE_TYPES = ["Dedicated Event Venue", "Hotel / Resort", "Estate / Mansion", "Barn / Ranch", "Restaurant / Bar",
                "Country Club / Private Club", "Winery / Brewery / Distillery", "Museum / Gallery", "Civic / Public",
-               "Garden / Botanical Garden", "Performing Arts Venue", "Religious"]
+               "Garden / Botanical Garden", "Performing Arts Venue", "Religious", "University / College",
+               "Zoo / Aquarium"]   # same 14 as Discovery's Venue Type filter (variable e7c238b6/11c6a903)
 VIBES = ["Scenic / Nature Views", "Natural Light / Large Windows", "Historic Architecture", "Ballroom",
          "Tall / Vaulted Ceilings", "Waterfront", "Tented", "Rooftop / Skyline Views", "Industrial / Warehouse",
          "Greenhouse"]

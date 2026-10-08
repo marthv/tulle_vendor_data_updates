@@ -224,7 +224,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             venue_types: optional, EXACT values only (any of = OR): "Dedicated Event Venue", "Hotel / Resort",
                 "Estate / Mansion", "Barn / Ranch", "Restaurant / Bar", "Country Club / Private Club",
                 "Winery / Brewery / Distillery", "Museum / Gallery", "Civic / Public", "Garden / Botanical Garden",
-                "Performing Arts Venue", "Religious". Map the couple's words: rustic/barn/farm -> "Barn / Ranch";
+                "Performing Arts Venue", "Religious", "University / College", "Zoo / Aquarium". Map the couple's words: rustic/barn/farm -> "Barn / Ranch";
                 mansion/estate -> "Estate / Mansion"; vineyard -> "Winery / Brewery / Distillery".
             vibes: optional style attributes, EXACT values only (any of = OR): "Scenic / Nature Views",
                 "Natural Light / Large Windows", "Historic Architecture", "Ballroom", "Tall / Vaulted Ceilings",

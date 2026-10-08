@@ -15,6 +15,7 @@ GET  /health
 Conversations live in Xano rec_chats (42) / rec_messages (43); durable notes the model saves
 about the couple live in rec_memory (80) and are fed into every later conversation.
 """
+from typing import Optional
 import datetime as dt
 
 from concurrent.futures import ThreadPoolExecutor
@@ -363,14 +364,18 @@ def set_context(body: ContextBody, authorization: str = Header(None)):
 class PrefsBody(BaseModel):
     answers: dict = {}       # {question_id: [option value, ...]} - unknown ids/values are dropped
     skipped: bool = False    # "Skip for now": remember not to push the questions again
+    context: Optional[str] = None   # last step "Anything else Tulle should know?" = the couple's own context
+                                    # (same field as /rec/context; None = leave it alone, "" = clear it)
 
 
 @app.get("/rec/preferences")
 def get_preferences(authorization: str = Header(None)):
     """The preference questions + this couple's current answers. asked=False -> show them before the picks."""
     _, user = _auth(authorization)
-    raw = _memory_row(user["id"]).get("notes") or []
-    return {"questions": prefs.QUESTIONS, "answers": prefs.from_notes(raw), "asked": prefs.asked(raw)}
+    row = _memory_row(user["id"])
+    raw = row.get("notes") or []
+    return {"questions": prefs.QUESTIONS, "answers": prefs.from_notes(raw), "asked": prefs.asked(raw),
+            "context": row.get("user_context") or "", "context_max": xano.CONTEXT_MAX}
 
 
 @app.post("/rec/preferences")
@@ -379,12 +384,18 @@ def save_preferences(body: PrefsBody, authorization: str = Header(None)):
     knows about you' (user 2026-10-08: tell them we're adding to their context)."""
     _, user = _auth(authorization)
     answers = prefs.clean(body.answers)
-    added = xano.set_preferences(user["id"], answers, skipped=body.skipped and not answers)
+    has_context = bool((body.context or "").strip())
+    added = xano.set_preferences(user["id"], answers, skipped=body.skipped and not answers and not has_context)
+    lines = [n["note"] for n in added if n.get("note")]
+    if body.context is not None:
+        saved = xano.set_user_context(user["id"], body.context)
+        if saved:
+            lines.append("Your notes: " + (saved if len(saved) <= 80 else saved[:77].rstrip() + "..."))
     _POOL.submit(xano.mp_track, user["id"], "rec_prefs_saved", {
-        "answered": sorted(answers), "n_answered": len(answers), "skipped": bool(body.skipped and not answers),
-        "source": "rec_service"})
-    notes, _ = _memory(user["id"])
-    return {"answers": answers, "added": [n["note"] for n in added if n.get("note")], "notes": notes}
+        "answered": sorted(answers), "n_answered": len(answers), "context_chars": len((body.context or "").strip()),
+        "skipped": bool(body.skipped and not answers and not has_context), "source": "rec_service"})
+    notes, user_context = _memory(user["id"])
+    return {"answers": answers, "added": lines, "notes": notes, "context": user_context}
 
 
 @app.post("/rec/notes/delete")
