@@ -19,6 +19,21 @@ def chip_key(c):
     return re.sub(r"[^a-z0-9 ]", "", (c or "").lower()).strip()
 
 
+def more_chips(history):
+    """Chips for a "Show 3 more" reply (user 2026-10-08: "there should always be a follow up chip" - it had none).
+    The extra venues come from the latest answer's own searches, so that answer's chips still fit: carry them
+    forward. No chips there -> the always-answerable top-ups."""
+    for t in reversed(history or []):
+        if t.get("role") == "assistant" and t.get("chips"):
+            return list(t["chips"])[:4]
+    return list(CHIP_TOPUPS[:2])
+
+
+def ensure_chips(chips):
+    """Last line of defence: never send a reply with no follow-up chip."""
+    return list(chips) if chips else list(CHIP_TOPUPS[:2])
+
+
 def dedupe_chips(chips, history):
     """Drop chips already offered earlier in this chat. MEASURED 2026-10-04: telling the model "don't
     repeat a chip" and showing it the earlier chips changed nothing (12 repeats in user 31797's real chat,

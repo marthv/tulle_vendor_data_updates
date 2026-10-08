@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import agent
-from chips import STARTER_CHIPS, dedupe_chips
+from chips import STARTER_CHIPS, dedupe_chips, ensure_chips, more_chips
 import config
 import guards
 import notify
@@ -255,7 +255,7 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
         prior = [c.get("vendor_id") for t in history if t["role"] == "assistant"
                  for c in (t.get("cards") or []) + (t.get("more_cards") or [])]
         out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=[v for v in prior if v])
-        out["chips"] = dedupe_chips(out.get("chips"), history)
+        out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
         if (chat.get("title") or "").startswith("Venue picks"):
             chat["title"] = text[:80]
 
@@ -315,6 +315,7 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
         raise HTTPException(409, {"status": "no_more"})
     paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat["id"])
     picks = remaining[:agent.MORE_STEP]
+    chips = more_chips(history)
     xano.log_usage(dict(base, status="ok", counted_as_free=counted_free, model="none", input_tokens=0,
                         cache_read_tokens=0, cache_write_tokens=0, output_tokens=0, tool_calls=0,
                         cost_usd=0, latency_ms=0))
@@ -326,11 +327,11 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
 
     def persist():   # same order as a typed question: user turn, assistant turn, bump the chat
         xano.add_message(chat["id"], "user", "Show 3 more")
-        xano.add_message(chat["id"], "assistant", MORE_TEXT, [dict(c, via_more=True) for c in picks], [])
+        xano.add_message(chat["id"], "assistant", MORE_TEXT, [dict(c, via_more=True) for c in picks], chips)
         xano.touch_chat(chat)
     background.add_task(persist)
     left = len(remaining) - len(picks)
-    return dict(text=MORE_TEXT, cards=picks, chips=[], chat_id=chat["id"], paid=paid, has_access=access,
+    return dict(text=MORE_TEXT, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
                 more_available=left if left >= agent.MORE_STEP else 0,
                 **_counters("refine", paid, rows, counted_free, feedback_given))
 

@@ -25,3 +25,12 @@ def test_never_returns_empty():
     hist = [{"role": "assistant", "chips": ["Cheaper options", "All-inclusive venues", "Bring-your-own-caterer venues",
                                            "Outdoor ceremony space", "Waterfront venues", "Historic Architecture venues"]}]
     assert len(_dedupe_chips(["Cheaper options", "Waterfront venues"], hist)) == 2
+
+
+def test_show_more_reply_always_has_chips():
+    from chips import more_chips, ensure_chips, CHIP_TOPUPS
+    hist = [{"role": "assistant", "chips": ["Waterfront venues", "Cheaper options"]},
+            {"role": "user", "content": "Show 3 more"}, {"role": "assistant", "chips": []}]
+    assert more_chips(hist) == ["Waterfront venues", "Cheaper options"]
+    assert more_chips([]) == CHIP_TOPUPS[:2]
+    assert ensure_chips([]) == CHIP_TOPUPS[:2] and ensure_chips(["x"]) == ["x"]
