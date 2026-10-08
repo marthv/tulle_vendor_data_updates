@@ -28,6 +28,7 @@ from chips import STARTER_CHIPS, dedupe_chips
 import config
 import guards
 import notify
+import prefs
 import xano
 
 app = FastAPI(title="Tulle recommendations")
@@ -103,13 +104,18 @@ def _auth(authorization):
     return token, user
 
 
-def _memory(user_id):
-    """(notes, user_context) for this user; ([], "") on any read problem - never block a request on it."""
+def _memory_row(user_id):
     try:
-        row = xano.get_memory(user_id) or {}
-        return [n.get("note") for n in row.get("notes") or [] if n.get("note")], (row.get("user_context") or "")
+        return xano.get_memory(user_id) or {}
     except Exception:
-        return [], ""
+        return {}
+
+
+def _memory(user_id):
+    """(notes, user_context) for this user; ([], "") on any read problem - never block a request on it.
+    notes = every visible memory line, preference answers included (the "knows about you" panel)."""
+    row = _memory_row(user_id)
+    return [n.get("note") for n in row.get("notes") or [] if n.get("note")], (row.get("user_context") or "")
 
 
 def _feedback_given(user_id):
@@ -169,13 +175,19 @@ def _counters(kind, paid, rows, counted_free, feedback_given):
 
 
 def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
-    f_mem = _POOL.submit(_memory, user["id"])
+    f_mem = _POOL.submit(_memory_row, user["id"])
     paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id)
     try:
-        notes, user_context = f_mem.result()
+        row = f_mem.result()
+        raw = row.get("notes") or []
+        # Preference answers go to the model as one structured line (filters + priority), not as loose notes.
+        notes = [n.get("note") for n in raw if n.get("note") and n.get("kind") != "pref"]
+        user_context = row.get("user_context") or ""
+        pref_hint = prefs.search_hint(prefs.from_notes(raw))
         # Detail (user 2026-10-03): only Forever gets figures; free and 1-week/4-week get fit, not numbers.
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
                                   detail="full" if paid else "light", prior_vendor_ids=prior_ids,
+                                  preferences=pref_hint,
                                   on_note=lambda n: xano.add_memory_note(user["id"], n))
     except Exception as e:  # never charge a free refine for our own failure
         xano.log_usage(dict(base, status="error", error=str(e)[:500]))
@@ -347,6 +359,33 @@ def set_context(body: ContextBody, authorization: str = Header(None)):
     return {"context": saved, "context_max": xano.CONTEXT_MAX, "notes": _memory(user["id"])[0]}
 
 
+class PrefsBody(BaseModel):
+    answers: dict = {}       # {question_id: [option value, ...]} - unknown ids/values are dropped
+    skipped: bool = False    # "Skip for now": remember not to push the questions again
+
+
+@app.get("/rec/preferences")
+def get_preferences(authorization: str = Header(None)):
+    """The preference questions + this couple's current answers. asked=False -> show them before the picks."""
+    _, user = _auth(authorization)
+    raw = _memory_row(user["id"]).get("notes") or []
+    return {"questions": prefs.QUESTIONS, "answers": prefs.from_notes(raw), "asked": prefs.asked(raw)}
+
+
+@app.post("/rec/preferences")
+def save_preferences(body: PrefsBody, authorization: str = Header(None)):
+    """Save answers into the couple's memory. `added` = the lines to show as 'Added to what Tulle Assistant
+    knows about you' (user 2026-10-08: tell them we're adding to their context)."""
+    _, user = _auth(authorization)
+    answers = prefs.clean(body.answers)
+    added = xano.set_preferences(user["id"], answers, skipped=body.skipped and not answers)
+    _POOL.submit(xano.mp_track, user["id"], "rec_prefs_saved", {
+        "answered": sorted(answers), "n_answered": len(answers), "skipped": bool(body.skipped and not answers),
+        "source": "rec_service"})
+    notes, _ = _memory(user["id"])
+    return {"answers": answers, "added": [n["note"] for n in added if n.get("note")], "notes": notes}
+
+
 @app.post("/rec/notes/delete")
 def delete_note(body: NoteDelete, authorization: str = Header(None)):
     _, user = _auth(authorization)
@@ -401,7 +440,8 @@ def status(authorization: str = Header(None)):
             "feedback_required": beta_left == 0, "forever_only": config.FOREVER_ONLY,
             "forever_left_today": guards.forever_left_today(paid, rows, xano.today()),
             "forever_daily_limit": config.PAID_DAILY_REFINES, "free_limit": config.FREE_REFINES, "free_refines_left": guards.free_refines_left(paid, rows),
-            "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"])}
+            "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"]),
+            "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 
 @app.get("/health")

@@ -8,6 +8,7 @@ import re
 import requests
 
 import config
+import prefs
 
 TIMEOUT = 20
 
@@ -424,12 +425,33 @@ def add_memory_note(user_id, note, cap=20):
     note = note.strip()[:200]
     if not note or any(n.get("note", "").lower() == note.lower() for n in notes):
         return
-    notes = (notes + [{"note": note, "at": today()}])[-cap:]
+    # The cap trims the model's own notes only - never the couple's preference answers (kind pref/pref_skipped).
+    kept = [n for n in notes if n.get("kind") in ("pref", "pref_skipped")]
+    own = [n for n in notes if n.get("kind") not in ("pref", "pref_skipped")]
+    notes = kept + (own + [{"note": note, "at": today()}])[-cap:]
     now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
     if row:
         _put_full(MEMORY_TABLE, row, {"notes": notes, "updated_at": now_ms})
     else:
         _meta("POST", "/table/%d/content" % MEMORY_TABLE, json={"user_id": int(user_id), "notes": notes})
+
+
+def set_preferences(user_id, answers, skipped=False):
+    """Replace the couple's preference answers in rec_memory.notes (kind="pref", one entry per question).
+    skipped=True with no answers stores a hidden pref_skipped marker so the questions aren't pushed again.
+    Returns the new pref entries (what the page tells the couple was added)."""
+    row = get_memory(user_id)
+    notes = [n for n in list((row or {}).get("notes") or []) if n.get("kind") not in ("pref", "pref_skipped")]
+    new = [dict(n, at=today()) for n in prefs.to_notes(answers)]
+    if not new and skipped:
+        new = [{"kind": "pref_skipped", "at": today()}]
+    notes = new + notes
+    now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
+    if row:
+        _put_full(MEMORY_TABLE, row, {"notes": notes, "updated_at": now_ms})
+    else:
+        _meta("POST", "/table/%d/content" % MEMORY_TABLE, json={"user_id": int(user_id), "notes": notes})
+    return new
 
 
 # ---------------------------------------------------------------- Mixpanel (server side)
@@ -477,8 +499,11 @@ def add_beta_feedback(row):
 def delete_memory_note(user_id, index):
     row = get_memory(user_id)
     notes = list((row or {}).get("notes") or [])
-    if not row or not (0 <= int(index) < len(notes)):
+    # `index` counts VISIBLE notes (the panel lists only entries with a "note"); hidden markers such as
+    # pref_skipped must not shift which one gets deleted.
+    visible = [i for i, n in enumerate(notes) if n.get("note")]
+    if not row or not (0 <= int(index) < len(visible)):
         return notes
-    notes.pop(int(index))
+    notes.pop(visible[int(index)])
     _put_full(MEMORY_TABLE, row, {"notes": notes})
     return notes

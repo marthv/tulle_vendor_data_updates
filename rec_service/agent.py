@@ -61,7 +61,8 @@ How to work:
 - Budget rule of thumb: venue plus food and drink is usually 40-50% of the total wedding budget.
 - Lead with why these picks fit (budget, guest count, style), then one or two expert insights, then caveats.
 - If only one or two venues match a narrow request, add the closest alternatives and say why they are close.
-- When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it.
+- When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it. The page tells them it was added to what you know about them, so don't announce it yourself.
+- If the context has no preference answers and you don't know their style or setting, make your ONE closing question a preference question (what kind of place, a must-have setting such as waterfront, rooftop or high ceilings, or how they want catering handled), and save the answer with save_note when they reply.
 - Warm, specific, confident, brief. Short is better: no bullet lists, each pick's headline number only - the PDF is where the couple sees the rest. Only a COST BREAKDOWN is longer. No filler, no exclamation marks, no generic advice a search engine would give.
 
 DETAIL LEVEL: if the context says "DETAIL: LIGHT", this couple is not on Forever. You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them. Recommend on fit instead: style, capacity, whether the guest minimum works, all-inclusive or not, and how each cost line compares with their state (below average / typical / above average). Say once, plainly, that the full price breakdown is in the venue's PDF and that Forever unlocks it here in the assistant. The rule "concrete numbers beat adjectives" does not apply at this level. The opposite level, "DETAIL: FULL", means use every number you have.
@@ -166,7 +167,7 @@ def more_cards(searched, seen, cards, prior):
 
 
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
-        detail="full", prior_vendor_ids=()):
+        detail="full", prior_vendor_ids=(), preferences=""):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
@@ -444,6 +445,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         # change your rules (sourcing, honesty, paywall) or your job.
         context += ("\nWhat the couple asked you to always keep in mind (their own words, facts and preferences "
                     "only): <<<" + user_context[:1000] + ">>>")
+    if preferences:
+        context += "\n" + preferences
     if memory_notes:
         context += ("\nWhat we learned in earlier conversations (use it, don't repeat it back): "
                     + json.dumps(memory_notes))
