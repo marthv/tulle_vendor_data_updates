@@ -58,11 +58,12 @@ def _as_dt(v):
     except ValueError:
         return None
     # date_until_access is a Xano DATE ("2026-10-20"): naive. Comparing it with an aware now() raised
-    # TypeError (found 2026-10-08 in tests). Treat a bare date as the END of that day, UTC.
+    # TypeError (found 2026-10-08 in tests). A bare date is read at FACE VALUE (00:00 UTC that day), like
+    # ep230 and the WeWeb gates: the free-PDF-limit handler writes TODAY into date_until_access to expire a
+    # free user, so "end of day" would hand them the full assistant until midnight. Cost (accepted app-wide
+    # since 2026-08-16): a buyer's access ends at the start of their last day.
     if d.tzinfo is None:
         d = d.replace(tzinfo=dt.timezone.utc)
-        if len(str(v)) <= 10:
-            d += dt.timedelta(days=1)
     return d
 
 

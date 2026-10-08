@@ -25,6 +25,9 @@ def test_paid_audience_includes_active_1w_4w_not_expired_or_free(monkeypatch):
     assert x.beta_member({"date_until_access": FUTURE})
     assert not x.beta_member({"date_until_access": PAST})
     assert not x.beta_member({})
+    # free user expired by the PDF-limit handler: date_until_access = TODAY -> not a member
+    today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    assert not x.beta_member({"date_until_access": today})
 
 
 def test_plan_label_uses_latest_payment(monkeypatch):
