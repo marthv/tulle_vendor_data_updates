@@ -51,7 +51,7 @@ def _turn_for_model(t):
     text = t["text"] or ""
     if t["role"] == "assistant" and t["cards"]:
         shown = "; ".join("%s (%s)" % (c.get("name"), c.get("vendor_id")) for c in t["cards"])
-        text = (text + "\n[Venues shown: " + shown + "]").strip()
+        text = (text + "\n[Vendors shown: " + shown + "]").strip()
     if t["role"] == "assistant" and t.get("chips"):
         # The prompt says "don't repeat a chip from earlier in the chat" - the model can only follow it
         # if it sees them (2026-10-04: user 31797 got "Is this a good price for California?" 5 times).

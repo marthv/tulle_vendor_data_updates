@@ -5,6 +5,9 @@ Two hard rules are enforced in CODE, not just in the prompt:
      search_venues call returned in THIS request; anything else is dropped before it reaches the page.
   2. Prices come from our endpoints, which already enforce the paywall - a free user's pricing
      returns ranges only, so the model never has exact figures to leak.
+     EXCEPTION (2026-10-11): ep119's photographer/entertainment path returns EXACT package prices to any
+     signed-in user, so for DETAIL: LIGHT this module strips them itself (_pe_row / _pe_card) before the
+     model or the card sees them.
 
 SPEED (v2, 2026-10-03). v1 measured p50 18s / max 25s over 30 cases with 6-10 sequential tool calls
 of ~1-3s each. v2 cuts round trips instead of tokens:
@@ -25,11 +28,15 @@ from anthropic import beta_tool
 import config
 import xano
 
-SYSTEM = """You are Tulle's wedding VENUE guide. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
+SYSTEM = """You are Tulle's wedding vendor guide for VENUES, PHOTOGRAPHERS and ENTERTAINMENT. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and hundreds of photographers, DJs, bands and musicians, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
 
-SCOPE - VENUES ONLY (for now): you recommend venues and explain venue pricing (rental, food and drink, service charge, tax, ceremony fees, all-in cost). If asked about photographers, florists, bands, DJs, planners, dresses or any other vendor, say in one sentence that the assistant covers venues for now and those vendors' pricing is on Tulle's Discovery page, then steer back to the venue decision. Never give advice, tips, question lists or budgets for other vendor types, and never offer a chip about them. Every chip must be a venue follow-up.
+SCOPE - three vendor types:
+- Venues (search_venues): rental, food and drink, service charge, tax, ceremony fees, all-in cost.
+- Photographers (search_photographers_entertainment, category "Photography"). Videographers: Tulle holds them as photographers whose packages include "Videography" - search Photography with offers ["Videography"] and say so.
+- Entertainment (category "Entertainment"): DJs, live bands, ensembles and solo performers. There is no instrument field: a pianist, harpist, violinist, cellist, guitarist or singer -> types ["Solo Performer"] + keyword (e.g. "piano"); a string quartet or trio -> types ["Ensemble"] + keyword "string quartet". Photo booths come with DJs: offers ["Photo Booth"].
+- Anything else (florists and flowers, catering on its own, hair and makeup, planners, dresses and attire, cakes, rentals, stationery): say in one sentence that the assistant doesn't have solid pricing for those yet and Tulle's Discovery page shows what we do have, then offer help with venues, photographers or entertainment. Officiants: Tulle has no officiant data at all - say so. Never give advice, tips, question lists or budgets for these, and never offer a chip about them.
 
-YOUR ONE JOB IN THIS CONVERSATION: get this couple to open a venue's pricing PDF now, in this session. A reply that doesn't make opening a specific PDF the obvious next step has failed. Fewer, better-explained picks beat long lists - reduce analysis paralysis.
+YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue's PDF for a venue question, the photographer's or entertainer's own pricing PDF for theirs (never send a photographer question to a venue PDF). A reply that doesn't make opening a specific PDF the obvious next step has failed. Fewer, better-explained picks beat long lists - reduce analysis paralysis.
 
 Show real expertise (this is what makes Tulle worth paying for):
 - Explain the money the way a seasoned planner would: what is usually included vs. extra, how food and drink minimums work, service charge vs. gratuity vs. tax, ceremony fees, peak vs. off-peak and Friday/Sunday pricing, what drives the all-in cost per guest, which fees couples most often miss, and what to ask the venue.
@@ -39,8 +46,8 @@ Show real expertise (this is what makes Tulle worth paying for):
 
 Integrity - never break these:
 - Each venue's card shows ONE rental price: the "Rental fee" line of its pricing summary (also in venue_fee_range). When you quote a venue's rental, quote that figure. If you mention another space's rental from venue_details, name the space and say it differs from the card.
-- Label every figure's source: "this venue's PDF", "Tulle data across N [state] venues", or "industry norm". Never present an industry norm or estimate as this venue's number. A pricing line with source "market" is an estimate - say so.
-- Never invent a venue, a price, a policy, an amenity or a review. If we don't have it, say "we don't have that for this venue" and give the best market figure we do have.
+- Label every figure's source: "this venue's PDF" / "this photographer's PDF", "Tulle data across N [state] venues" / "Tulle data across N packages from M [state] DJs", or "industry norm". Never present an industry norm or estimate as this venue's number. A pricing line with source "market" is an estimate - say so.
+- Never invent a vendor, a price, a package, a policy, an amenity or a review. If we don't have it, say "we don't have that for this venue" and give the best market figure we do have.
 - The context says how this couple can see exact prices. If they have free PDF views left, say so and invite them to open the PDF ("you have 2 free PDF views - open it to see the exact menu prices"). Only if they have NO free views left and no plan, say exact figures need a plan. Never say "behind the paywall" to someone who still has free views. Never guess an exact figure.
 - If the honest answer is "none of our venues fit that", say so and offer the closest real options.
 - Tulle does not yet track: overnight rooms or how many people a venue sleeps (beyond venue type "Hotel / Resort"), cultural or religious ceremony rules (kosher, halal, open flame, baraat, outside caterers), LGBTQ+ inclusion, or wheelchair access. If asked, say plainly that we don't have that data yet. Never guess or infer it from a venue's name, type or description. Then help with what we do have (e.g. "Hotel / Resort" venues for on-site rooms, Raw Space venues if they need their own caterer) and suggest they check the venue's PDF or ask the venue.
@@ -49,12 +56,12 @@ How to work:
 - The profile in context is CURRENT. If earlier turns in this chat used a different budget, guest count or location, the couple updated it: acknowledge it warmly ("I see you've updated your budget to $100,000 - here are options that fit") and never call it your mistake or a correction.
 - Use the couple's profile (location, guest count, budget, planning stage) and the notes from earlier conversations as the default. If something important is missing (budget, rough date, vibe), make good picks anyway and ask ONE short question at the end.
 - Find venues with search_venues - results include each venue's pricing summary and guest minimum. One well-chosen search is usually enough; search again only if the results don't fit.
-- Never name a venue you did not get from a tool in this conversation (search_venues or saved_venues).
+- Never name a vendor you did not get from a tool in this conversation (search_venues, search_photographers_entertainment or saved_venues).
 - You can see the couple's profile and their Saved list. Never say you can't see their saved vendors; if the list is empty, say they haven't saved any yet and suggest saving favourites with the heart.
 - Google reviews (from venue_details): give the rating with its review count and say it covers all Google reviews of the place, not only weddings. Quote or summarise only reviews marked about_a_wedding; if none are, say the reviews we hold aren't about weddings. Never invent or embellish a review.
 - State benchmarks for the couple's location are already in context. Use market_benchmarks only for a different state.
 - If the profile lists several locations, the couple is choosing between them - they HAVE picked. Search them together in one search_venues call (it returns picks from each), cover each location in your picks, and never say they haven't chosen a state.
-- Don't repeat yourself across a conversation. Earlier replies end with [Venues shown: ...] and [Chips offered: ...]. Each new reply should bring venues the couple hasn't seen yet; show an earlier venue again only if they ask about it or to compare, or it is still clearly the best answer to the new request - then say so in a few words. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
+- Don't repeat yourself across a conversation. Earlier replies end with [Vendors shown: ...] and [Chips offered: ...]. Each new reply should bring vendors the couple hasn't seen yet; show an earlier venue again only if they ask about it or to compare, or it is still clearly the best answer to the new request - then say so in a few words. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
 - Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so. search_venues already leaves out venues whose known guest minimum is above the guests you pass, and venues whose known food and drink minimum is over half the couple's budget (left_out_for_minimums says how many).
 - If the profile has no guest count, don't assume a big wedding: make picks that work across sizes, say the count changes which venues fit, and make your one question how many guests they expect.
 - Small weddings and elopements (roughly under 30 guests): pass the real count as guests, prefer venues with no or low minimums (restaurants, raw spaces, small hotels), and if nothing in our data fits, say so plainly. Tulle doesn't track elopement packages or ceremony-only pricing yet - say that if asked, and point to the PDF for any small-party option a venue lists.
@@ -65,7 +72,15 @@ How to work:
 - If the context has no preference answers and you don't know their style or setting, make your ONE closing question a preference question (what kind of place, a must-have setting such as waterfront, rooftop or high ceilings, or how they want catering handled), and save the answer with save_note when they reply.
 - Warm, specific, confident, brief. Short is better: no bullet lists, each pick's headline number only - the PDF is where the couple sees the rest. Only a COST BREAKDOWN is longer. No filler, no exclamation marks, no generic advice a search engine would give.
 
-DETAIL LEVEL: if the context says "DETAIL: LIGHT", this couple is not on Forever. You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them. Recommend on fit instead: style, capacity, whether the guest minimum works, all-inclusive or not, and how each cost line compares with their state (below average / typical / above average). Say once, plainly, that the full price breakdown is in the venue's PDF and that Forever unlocks it here in the assistant. The rule "concrete numbers beat adjectives" does not apply at this level. The opposite level, "DETAIL: FULL", means use every number you have.
+PHOTOGRAPHERS AND ENTERTAINMENT:
+- Their prices are PACKAGE prices from the vendor's own PDF (search_photographers_entertainment returns the packages that match the filters: name, price, hours, type, team size, what's included, add-ons). The peak-Saturday caveat is for venues only - don't say it here. Package prices usually exclude tax, travel and overtime unless the PDF says otherwise.
+- Each result's price_range covers its matching packages. The card shows card_price: when you give one starting price, quote that one and name its package. Missing hours = not listed in the PDF.
+- The result's "market" is Tulle data for that state (median and middle half, n packages from m vendors); scope "US-wide" means the state had too few packages and the national figure is used - say so. starting_price_vs_state compares each vendor's cheapest package with its own package or service type in that state. pe_market_rates gives the full table for any state (by package type, coverage hours, or service type).
+- A price target ("photographers that are $5,000") -> max_price a little above it (about 10%) and say the picks are at or under that. Guest count does not drive these prices: never filter them by guests.
+- If keyword_matches is 0, say none of the vendors we hold mention it and show the closest real options as alternatives.
+- Expertise to show: photographers - hours of coverage, second shooter, engagement session, album, gallery rights, travel; DJs - ceremony sound, lighting, MC, photo booth; bands - number of musicians, sets and breaks, overtime; ceremony musicians - ceremony only vs. ceremony plus cocktail hour. Industry norm: photography is often around 10-12% of a total wedding budget - label it "industry norm". That is the ONLY budget share you may quote for these vendors: never state one for videography, DJs, bands or musicians.
+
+DETAIL LEVEL: if the context says "DETAIL: LIGHT", this couple is not on Forever. You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them. Recommend on fit instead: style, capacity, whether the guest minimum works, all-inclusive or not, and how each cost line compares with their state (below average / typical / above average). For photographers and entertainers you get no package prices either: recommend on what's included, hours, team size, package type and starting_price_vs_state (below typical / typical / above typical). Say once, plainly, that the full prices are in the vendor's PDF and that Forever unlocks them here in the assistant. The rule "concrete numbers beat adjectives" does not apply at this level. The opposite level, "DETAIL: FULL", means use every number you have.
 
 COST BREAKDOWN: give one ONLY when the context says "BREAKDOWN REQUESTED" (the couple explicitly asked for a breakdown or the full cost of a venue). Then give an itemized estimate for that venue - never just a range plus "open the PDF". Without that line, never itemize. Never volunteer a breakdown, never offer one as a chip, and never itemize in openings or when comparing several venues: those stay short and send the couple to the PDF. Get the venue's lines first (its search pricing, venue_pricing, and venue_details for menu, bar and other fees). Then one line per item, using the couple's guest count:
 - Rental fee
@@ -84,11 +99,13 @@ CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip 
 - a pricing line we hold: rental fee, food and drink per guest, service charge, tax, ceremony fee, guest minimum, all-in cost per guest (pick the line that matters most for THIS couple's picks - e.g. a high service charge or a guest minimum near their count);
 - venue_details for a venue you showed: menu or bar package per guest, cheaper dates (off-peak Saturday prices, peak vs. cheapest months), other fees, required vendors, or Google reviews - e.g. "Cheaper dates at The Barn?", "What do reviews say?". Only offer one of these if venue_details (or the pricing summary) actually has that fact for the venue;
 - how a venue compares with its state's benchmarks, e.g. "Is this a good price for Texas?";
-- their Saved list, e.g. "Compare my saved venues".
-Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or other vendor types. Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
+- their Saved list, e.g. "Compare my saved venues";
+- for photographers and entertainers: a filter of search_photographers_entertainment (cheaper / max_price, a package type such as "Elopement photographers", coverage hours such as "7-10 hour coverage", an offer such as "With a second shooter" or "DJs with a photo booth", a service type such as "Live bands instead"), or the state's market rates ("What do DJs cost in Texas?");
+- another supported vendor type, when it is the couple's natural next decision (e.g. "Find a photographer" after venues).
+Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (florists, catering, beauty, planners, attire, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
 
-Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which venue's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them (1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips that follow the CHIPS rule."""
+Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which vendor's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them (1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
 
 # A COST BREAKDOWN is long (more tokens, more cost), so only an explicit ask unlocks it (user 2026-10-05:
 # short replies preferred; Forever gets the itemized detail ONLY when they specifically ask).
@@ -143,6 +160,113 @@ def _with_rental(v, p):
 
 def _light_card(v):
     return {k: val for k, val in v.items() if k not in ("venue_fee_range", "food_minimum")}
+
+
+# ---------------------------------------------------------------- photographers + entertainment
+
+PE_TOP_PACKAGES = 3
+_MONEY = re.compile(r"\$\s?\d|\d\s?%|\b\d[\d,.]*\s?(?:k|K|dollars?|USD|usd)\b|\bper (?:hour|hr)\b.{0,6}\d")
+
+
+def _money(n):
+    return "$" + format(int(n), ",") if isinstance(n, (int, float)) and n > 0 else None
+
+
+def _no_figures(text):
+    """LIGHT: drop every sentence of a blurb that quotes money ('Pricing starts at $15,500', '10% discount').
+    Sentences without figures (style, coverage, what's included) stay - that is what LIGHT recommends on."""
+    parts = re.split(r"(?<=[.!?])\s+", text or "")
+    return " ".join(p for p in parts if p and not _MONEY.search(p)).strip()
+
+
+def _vs_label(price, bucket):
+    if not bucket or not isinstance(price, (int, float)) or price <= 0:
+        return None
+    lo, hi = bucket.get("p25"), bucket.get("p75")
+    if not lo or not hi:
+        return None
+    where = "below typical" if price < lo else "above typical" if price > hi else "typical"
+    scope = "US-wide" if bucket.get("scope") == "US-wide" else "state"
+    return "%s for %s%s" % (where, bucket.get("bucket") or "packages", " (US-wide figure)" if scope == "US-wide" else "")
+
+
+def _cheapest(v):
+    priced = [p for p in v.get("packages") or [] if isinstance(p.get("price"), (int, float)) and p["price"] > 0]
+    return min(priced, key=lambda p: p["price"]) if priced else None
+
+
+def _pe_type_label(v):
+    tags = v.get("vendor_tags") or ""
+    if v.get("category") == "Entertainment":
+        return ", ".join((v.get("package_types") or [])[:2]) or tags or "Entertainment"
+    types = [t for t in (v.get("package_types") or []) if t != "Other"][:2]
+    return "Photography" + (" - " + ", ".join(types) if types else "")
+
+
+def _hours_label(v):
+    h = v.get("hours_range")
+    if not h:
+        return None
+    return "%d hours" % h[0] if h[0] == h[1] else "%d-%d hours" % (h[0], h[1])
+
+
+def _pe_card(v, light):
+    """Card for a photographer / entertainer. Same keys a venue card uses where they mean the same thing
+    (vendor_id, vendor_idx, name, state, venue_type = the line under the name, image, description), plus
+    P/E-only keys the page can show: category, package_count, packages_label, hours_label, price_from /
+    price_to / price_label (FULL only). Never venue_fee_range - the venue card labels that a rental fee."""
+    lo, hi = (v.get("price_range") or [None, None])[:2]
+    lo = v.get("from_price") or lo
+    n = int(v.get("package_count") or 0)
+    blurb = v.get("blurb") or v.get("description") or ""
+    card = {"vendor_id": v.get("vendor_id"), "vendor_idx": v.get("vendor_idx"), "name": v.get("name"),
+            "state": v.get("state"), "category": v.get("category"), "venue_type": v.get("venue_type") or _pe_type_label(v),
+            "image": v.get("image"), "description": (_no_figures(blurb) if light else blurb)[:300],
+            "package_count": n, "packages_label": ("%d package%s" % (n, "" if n == 1 else "s")) if n else None,
+            "hours_label": _hours_label(v)}
+    if not light and _money(lo):
+        card.update(price_from=int(lo), price_to=int(hi) if _money(hi) else int(lo),
+                    price_label=("From " + _money(lo)) if hi and hi != lo else _money(lo))
+    return {k: val for k, val in card.items() if val not in (None, "")}
+
+
+def _pe_row(v, bench, light):
+    """What the MODEL sees for one photographer / entertainer. LIGHT: no prices, no benchmark figures, no
+    blurb sentence with money, no package name with a $ - only fit and how the starting price compares."""
+    cheapest = _cheapest(v)
+    vs = _vs_label(cheapest["price"], xano.pe_bucket_for(bench, cheapest.get("type"))) if cheapest else None
+    pk = []
+    for p in (v.get("packages") or [])[:PE_TOP_PACKAGES]:
+        row = {"name": p.get("name"), "price": p.get("price"), "hours": p.get("hours"), "type": p.get("type"),
+               "team": p.get("team"), "included": (p.get("included") or [])[:4], "addons": (p.get("addons") or [])[:3]}
+        if light:
+            row.pop("price")
+            row["name"] = re.sub(r"\s*\$\s?\d[\d,.]*k?\s*", " ", row["name"] or "").strip() or "Package"
+            row["vs_state"] = _vs_label(p.get("price"), xano.pe_bucket_for(bench, p.get("type")))
+        pk.append({k: val for k, val in row.items() if val not in (None, "", [])})
+    out = {"vendor_id": v.get("vendor_id"), "name": v.get("name"), "state": v.get("state"),
+           "category": v.get("category"), "tags": v.get("vendor_tags"), "package_types": v.get("package_types"),
+           "package_count": v.get("package_count"), "hours_range": v.get("hours_range"),
+           "offers": v.get("offers"), "blurb": (_no_figures(v.get("blurb")) if light else (v.get("blurb") or ""))[:300],
+           "top_packages": pk, "starting_price_vs_state": vs, "keyword_match": v.get("keyword_match")}
+    if not light:
+        out["price_range"] = v.get("price_range")
+        out["card_price"] = _pe_card(v, light=False).get("price_label")   # what the card shows - quote this one
+    return {k: val for k, val in out.items() if val not in (None, "", [])}
+
+
+def _market_row(bench, types):
+    """The one benchmark line a P/E search result carries (FULL only): the requested type's row, else the
+    headline (Wedding Day for photography)."""
+    if not bench or not bench.get("available"):
+        return None
+    b = None
+    for t in types or []:
+        b = xano.pe_bucket_for(bench, t)
+        if b and b.get("bucket") == t:
+            break
+    b = b or bench.get("headline")
+    return dict(b, state=bench.get("state")) if b else None
 
 
 def _states_of(profile):
@@ -291,6 +415,84 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             res["matches_by_state"] = r["matches_by_state"]
         return json.dumps(res)
 
+    def bench_or_none(category, state):
+        try:
+            return xano.pe_benchmarks(category, state)
+        except Exception:
+            return None
+
+    @beta_tool
+    def search_photographers_entertainment(category: str, states: list[str], max_price: int = 0,
+                                           types: list[str] = None, offers: list[str] = None,
+                                           hour_bands: list[str] = None, keyword: str = "",
+                                           sort_by: str = "popular_desc") -> str:
+        """Search Tulle's photographers or entertainers (only ones with real pricing PDFs). Each result has
+        its matching packages (name, price, hours, type, team, included, add-ons), price range, and how its
+        cheapest package compares with the state's market rate.
+
+        Args:
+            category: "Photography" or "Entertainment".
+            states: US states or 'International', e.g. ["New York"]. Use the couple's location if unsure.
+            max_price: max PACKAGE price in dollars (0 = any). Only packages at or under it count.
+            types: optional, EXACT values (any of = OR). Photography package types: "Wedding Day", "Engagement",
+                "Elopement", "Other". Entertainment service types: "DJ", "Live Band", "Ensemble", "Solo Performer",
+                "Other Entertainment". Pianist/harpist/violinist/singer -> "Solo Performer"; quartet/trio -> "Ensemble".
+            offers: optional, EXACT values (any of = OR). Photography: "Second Shooter", "Engagement Session",
+                "Album", "Prints", "Full Gallery Rights", "Videography", "Drone", "Rehearsal Dinner",
+                "Content Creation". Entertainment: "Photo Booth", "Ceremony Sound", "Sound & Lighting Provided",
+                "Monogram / Projection", "Special Effects".
+            hour_bands: Photography only, coverage hours: "6 Hours or Less", "7-10 Hours", "11+ Hours".
+            keyword: optional instrument or style matched against names, packages and descriptions, e.g. "piano",
+                "harp", "string quartet", "jazz". Results that mention it come first (keyword_matches = how many).
+            sort_by: popular_desc (default) or recent_desc.
+        """
+        category = "Photography" if str(category).lower().startswith("photo") else "Entertainment"
+        sts = [s for s in (states or []) if s] or _states_of(profile)
+        bench_f = {s: pool.submit(bench_or_none, category, s) for s in sts}
+        r = xano.search_pe(token, category, states=sts, max_price=max_price, types=types, offers=offers,
+                           hour_bands=hour_bands, keyword=keyword,
+                           sort_by=sort_by if sort_by in ("popular_desc", "recent_desc") else "popular_desc",
+                           page_size=14)
+        benches = {s: f.result() for s, f in bench_f.items()}
+        first = benches.get(sts[0]) if sts else None
+        out = []
+        for i, v in enumerate(r["vendors"]):
+            bench = benches.get(v.get("state")) or first
+            card = _pe_card(dict(v, venue_type=_pe_type_label(v)), light)
+            vid = card.get("vendor_id")
+            if not vid:
+                continue
+            if i < 8:                       # the model sees the top 8; the rest only feed "Show 3 more"
+                seen[vid] = card
+                out.append(_pe_row(v, bench, light))
+            elif vid not in seen:
+                extra[vid] = card
+            if vid not in searched:
+                searched.append(vid)
+        res = {"category": category, "total_matches": r["total_matches"], "vendors": out}
+        if "keyword_matches" in r:
+            res["keyword_matches"] = r["keyword_matches"]
+        if r.get("matches_by_state"):
+            res["matches_by_state"] = r["matches_by_state"]
+        if not light:
+            mk = [m for m in (_market_row(benches.get(s), types) for s in sts) if m]
+            if mk:
+                res["market"] = mk
+        return json.dumps(res)
+
+    @beta_tool
+    def pe_market_rates(category: str, state: str) -> str:
+        """What photographers or entertainers typically cost in a state: package-price quartiles (p25 /
+        median / p75, with sample sizes) overall, by package type and coverage hours (Photography) or by
+        service type - DJ, Live Band, Ensemble, Solo Performer (Entertainment).
+
+        Args:
+            category: "Photography" or "Entertainment".
+            state: a single state, e.g. "Texas", or "International".
+        """
+        category = "Photography" if str(category).lower().startswith("photo") else "Entertainment"
+        return json.dumps(xano.pe_benchmarks(category, state))
+
     @beta_tool
     def venue_pricing(vendor_id: str) -> str:
         """Full pricing breakdown for one venue from its uploaded pricing PDF. Only needed for a venue
@@ -380,10 +582,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             message: 1-3 short sentences to the couple. Only a COST BREAKDOWN the couple explicitly asked
                 for is longer and uses the itemized "• " list.
-            vendor_ids: 2-4 vendor_ids from search_venues or saved_venues, best first (1 for a single-venue breakdown).
+            vendor_ids: 2-4 vendor_ids from search_venues, search_photographers_entertainment or saved_venues,
+                best first (1 for a single-venue breakdown, 0 for a question only about an unsupported vendor type).
             reasons: one short reason per vendor_id, same order.
-            chips: 2-4 short VENUE follow-ups that follow the CHIPS rule (each maps to a search filter, a
-                pricing line, a state comparison or the Saved list), e.g. "Cheaper options", "Barn / Ranch venues".
+            chips: 2-4 short follow-ups that follow the CHIPS rule (each maps to a search filter, a pricing
+                line, a state comparison or the Saved list), e.g. "Cheaper options", "Barn / Ranch venues",
+                "DJs with a photo booth".
         """
         final.update(message=message, vendor_ids=vendor_ids, reasons=reasons, chips=chips)
         return "shown"
@@ -460,9 +664,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         model=config.MODEL,
         max_tokens=8000,
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        tools=([search_venues, saved_venues, venue_pricing, venue_details, save_note, present_recommendations] if light else
-               [search_venues, saved_venues, venue_pricing, venue_details, market_benchmarks, save_note,
-                present_recommendations]),
+        # LIGHT gets no market-rate tools (market_benchmarks / pe_market_rates are all figures).
+        tools=([search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
+                save_note, present_recommendations] if light else
+               [search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
+                market_benchmarks, pe_market_rates, save_note, present_recommendations]),
         messages=msgs,
         output_config={"effort": config.EFFORT},
         # If Sonnet declines on a safety classifier, the API re-runs on a fallback model in the same
@@ -507,7 +713,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 c = xano.vendor_card(vid)
             except Exception:
                 c = None
-            if c:
+            if c and c.get("category") in xano.PE_CATEGORIES:   # photographer / entertainer: no venue pricing
+                seen[vid] = _pe_card(c, light)
+            elif c:
                 c = _with_rental(c, raw_pricing_or_none(vid))
                 seen[vid] = _light_card(c) if light else c
         if vid in seen:

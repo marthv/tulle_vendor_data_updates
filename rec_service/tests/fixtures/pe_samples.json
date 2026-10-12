@@ -1,0 +1,117 @@
+{
+ "_note": "SYNTHETIC vendors in the exact shape ep119 (Category_Input Photography / Entertainment) and ep207 returned live on 2026-10-11 (keys, nesting, vocab, the multi-state State string, a 'Videography;Drone' offer, a blurb that quotes money). Names and prices are made up - no real vendor data in the repo.",
+ "ep119_photography": {
+  "itemsReceived": 2, "curPage": 1, "nextPage": 2, "prevPage": null, "offset": 0, "perPage": 20,
+  "itemsTotal": 340, "pageTotal": 170, "facets": null, "is_fallback": false, "filtered_total": 340, "price_band": null,
+  "items": [
+   {"Vendor_ID": "V9001", "id": 9001, "Name": "Golden Hour Studio", "Category": "Photography",
+    "State": "Georgia, Texas, California, New York", "Type_of_Photography": "Photography, Videography",
+    "Type_of_Entertainment": "", "image_1": "https://img.example/9001.jpg", "Description": "",
+    "matched_package_count": 3, "matched_min_price": 1200, "matched_max_price": 5200,
+    "package_glance": "3 photography packages, $1,200 to $5,200, 4 to 10 hours.",
+    "vendor_blurb": "A husband-and-wife team shooting documentary-style weddings. Collections start at $1,200 and bundling video saves 10%. Every collection includes an online gallery with print release.",
+    "pdf_description": "Photo and video studio with tiered wedding day collections.",
+    "flt_min_venue_fee": 1200, "flt_max_venue_fee": 5200,
+    "venue_types": [], "venue_offerings": ["7-10 Hours", "6 Hours or Less"],
+    "venue_attributes": ["Second Shooter", "Full Gallery Rights", "Videography;Drone", "Videography"],
+    "matched_packages": [
+     {"package_uid": "v9001-essential", "name": "Essential", "price": 1200, "hours": 4, "package_type": "Elopement",
+      "service_type": "", "coverage_band": "6 Hours or Less", "team_size": 1,
+      "included": ["Full Gallery Rights"], "addons": ["Second Shooter"]},
+     {"package_uid": "v9001-signature", "name": "Signature $3,800 Collection", "price": 3800, "hours": 8,
+      "package_type": "Wedding Day", "service_type": "", "coverage_band": "7-10 Hours", "team_size": 2,
+      "included": ["Second Shooter", "Full Gallery Rights", "Engagement Session"], "addons": ["Album"]},
+     {"package_uid": "v9001-luxe", "name": "Luxe Photo + Film", "price": 5200, "hours": 10, "package_type": "Wedding Day",
+      "service_type": "", "coverage_band": "7-10 Hours", "team_size": 3,
+      "included": ["Second Shooter", "Videography", "Album"], "addons": ["Drone"]}
+    ]},
+   {"Vendor_ID": "V9002", "id": 9002, "Name": "Northlight Photo", "Category": "Photography",
+    "State": "California", "Type_of_Photography": "Photography", "Type_of_Entertainment": "",
+    "image_1": "https://img.example/9002.jpg", "Description": "",
+    "matched_package_count": 0, "matched_min_price": null, "matched_max_price": null,
+    "package_glance": "", "vendor_blurb": "", "pdf_description": "Fine-art film photographer.",
+    "flt_min_venue_fee": 0, "flt_max_venue_fee": 0, "venue_types": [], "venue_offerings": [], "venue_attributes": [],
+    "matched_packages": []}
+  ]
+ },
+ "ep119_entertainment": {
+  "itemsReceived": 3, "curPage": 1, "nextPage": null, "prevPage": null, "offset": 0, "perPage": 20,
+  "itemsTotal": 3, "pageTotal": 1, "facets": null, "is_fallback": false, "filtered_total": 3, "price_band": null,
+  "items": [
+   {"Vendor_ID": "V9101", "id": 9101, "Name": "Uptown Strings", "Category": "Entertainment",
+    "State": "New York, New Jersey, Connecticut", "Type_of_Photography": "", "Type_of_Entertainment": "Ensemble",
+    "image_1": "https://img.example/9101.jpg", "Description": "",
+    "matched_package_count": 3, "matched_min_price": 450, "matched_max_price": 2400,
+    "package_glance": "3 entertainment packages, $450 to $2,400.",
+    "vendor_blurb": "Classical and pop string ensembles for ceremonies and cocktail hours. A solo violin starts at $450.",
+    "pdf_description": "String ensembles and soloists.", "flt_min_venue_fee": 450, "flt_max_venue_fee": 2400,
+    "venue_types": ["Ensemble", "Solo Performer"], "venue_offerings": [], "venue_attributes": ["Ceremony Sound"],
+    "matched_packages": [
+     {"package_uid": "v9101-solo", "name": "Solo Violin - 1 Hour", "price": 450, "hours": 1, "package_type": "",
+      "service_type": "Solo Performer", "coverage_band": "", "team_size": 1, "included": [], "addons": []},
+     {"package_uid": "v9101-quartet", "name": "String Quartet - Ceremony & Cocktail Hour", "price": 2400, "hours": 2,
+      "package_type": "", "service_type": "Ensemble", "coverage_band": "", "team_size": 4,
+      "included": ["Ceremony Sound"], "addons": []},
+     {"package_uid": "v9101-trio", "name": "String Trio - Ceremony", "price": 1500, "hours": 1, "package_type": "",
+      "service_type": "Ensemble", "coverage_band": "", "team_size": 3, "included": [], "addons": []}
+    ]},
+   {"Vendor_ID": "V9102", "id": 9102, "Name": "Spin City DJs", "Category": "Entertainment",
+    "State": "New York", "Type_of_Photography": "", "Type_of_Entertainment": "DJ",
+    "image_1": "https://img.example/9102.jpg", "Description": "",
+    "matched_package_count": 2, "matched_min_price": 1800, "matched_max_price": 3200,
+    "package_glance": "2 entertainment packages, $1,800 to $3,200.",
+    "vendor_blurb": "DJ and MC team with uplighting. Photo booth add-on available.",
+    "pdf_description": "", "flt_min_venue_fee": 1800, "flt_max_venue_fee": 3200,
+    "venue_types": ["DJ"], "venue_offerings": [], "venue_attributes": ["Photo Booth", "Sound & Lighting Provided"],
+    "matched_packages": [
+     {"package_uid": "v9102-std", "name": "Standard", "price": 1800, "hours": 5, "package_type": "",
+      "service_type": "DJ", "coverage_band": "", "team_size": 1, "included": ["Ceremony Sound"], "addons": ["Photo Booth"]},
+     {"package_uid": "v9102-prem", "name": "Premium", "price": 3200, "hours": 6, "package_type": "",
+      "service_type": "DJ", "coverage_band": "", "team_size": 2,
+      "included": ["Ceremony Sound", "Sound & Lighting Provided", "Photo Booth"], "addons": []}
+    ]},
+   {"Vendor_ID": "V9103", "id": 9103, "Name": "Keys & Co", "Category": "Entertainment",
+    "State": "New York", "Type_of_Photography": "", "Type_of_Entertainment": "Soloist",
+    "image_1": "", "Description": "", "matched_package_count": 1, "matched_min_price": 700, "matched_max_price": 700,
+    "package_glance": "1 entertainment package, $700.", "vendor_blurb": "Ceremony and cocktail-hour pianist.",
+    "pdf_description": "", "flt_min_venue_fee": 700, "flt_max_venue_fee": 700,
+    "venue_types": ["Solo Performer"], "venue_offerings": [], "venue_attributes": [],
+    "matched_packages": [
+     {"package_uid": "v9103-one", "name": "One-Hour Performance", "price": 700, "hours": 1, "package_type": "",
+      "service_type": "Solo Performer", "coverage_band": "", "team_size": 1, "included": [], "addons": []}
+    ]}
+  ]
+ },
+ "ep207_photography_california": {
+  "category": "Photography", "state_input": "California", "state_fallback_input": "", "resolved_state": "California",
+  "scope": "state", "computed_at": 1791710477118,
+  "overall": {"bucket": "", "scope": "state", "n_packages": 1229, "n_vendors": 315, "p25": 2450, "median": 4000, "p75": 6500},
+  "by_package_type": [
+   {"bucket": "Wedding Day", "scope": "state", "n_packages": 968, "n_vendors": 310, "p25": 3300, "median": 4990, "p75": 7400},
+   {"bucket": "Elopement", "scope": "state", "n_packages": 114, "n_vendors": 79, "p25": 1500, "median": 2213, "p75": 3000}
+  ],
+  "by_coverage": [
+   {"bucket": "7-10 Hours", "scope": "state", "n_packages": 592, "n_vendors": 250, "p25": 3950, "median": 5600, "p75": 8000}
+  ],
+  "by_service_type": [],
+  "headline": {"basis": "wedding_day", "bucket": "Wedding Day", "scope": "state", "n_packages": 968, "n_vendors": 310,
+               "p25": 3300, "median": 4990, "p75": 7400, "label": "Median wedding day photography - California",
+               "sub_label": "x", "range_label": "y"},
+  "service_type_input": ""
+ },
+ "ep207_entertainment_new_york": {
+  "category": "Entertainment", "state_input": "New York", "state_fallback_input": "", "resolved_state": "New York",
+  "scope": "state", "computed_at": 1791710477118,
+  "overall": {"bucket": "", "scope": "state", "n_packages": 513, "n_vendors": 136, "p25": 1400, "median": 2850, "p75": 8000},
+  "by_package_type": [], "by_coverage": [],
+  "by_service_type": [
+   {"bucket": "DJ", "scope": "state", "n_packages": 89, "n_vendors": 46, "p25": 2100, "median": 2750, "p75": 3500},
+   {"bucket": "Solo Performer", "scope": "state", "n_packages": 96, "n_vendors": 27, "p25": 600, "median": 900, "p75": 1400},
+   {"bucket": "Ensemble", "scope": "state", "n_packages": 120, "n_vendors": 31, "p25": 1000, "median": 1800, "p75": 2600},
+   {"bucket": "Other Entertainment", "scope": "US-wide", "n_packages": 40, "n_vendors": 20, "p25": 890, "median": 1595, "p75": 2000}
+  ],
+  "headline": {"basis": "all_packages", "bucket": null, "scope": "state", "n_packages": 513, "n_vendors": 136,
+               "p25": 1400, "median": 2850, "p75": 8000, "label": "a", "sub_label": "b", "range_label": "c"},
+  "service_type_input": ""
+ }
+}

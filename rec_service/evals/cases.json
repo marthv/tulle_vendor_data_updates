@@ -1,5 +1,5 @@
 {
- "_note": "30 cases shaped on the 90-day signup mix measured 2026-10-03 (no real user data): top states TX/NY/CA/FL/NJ/PA/MA/IL/International/Not Sure, guest median 125, budget filled for ~half (median $30k), planning phase mostly 'just started'. 15 openings + 15 refinements. Expectations are checked by run_evals.py.",
+ "_note": "30 cases shaped on the 90-day signup mix measured 2026-10-03 (no real user data): top states TX/NY/CA/FL/NJ/PA/MA/IL/International/Not Sure, guest median 125, budget filled for ~half (median $30k), planning phase mostly 'just started'. 15 openings + 15 refinements. Expectations are checked by run_evals.py. pe01-pe08 (2026-10-11): photographer / entertainment / unsupported-vendor questions mirroring real asks; optional per-case 'expect' (min_cards, max_cards, category, text_re, no_text_re).",
  "cases": [
   {
    "id": "o01",
@@ -460,6 +460,140 @@
     ],
     "Wedding_Budget": 10000,
     "Planning_Phase": "Engaged and just started planning"
+   }
+  },
+  {
+   "id": "pe01",
+   "kind": "refine",
+   "ask": "photographers that are $5,000",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "California"
+    ],
+    "Wedding_Guest_Count": 120,
+    "Wedding_Budget": 60000,
+    "Planning_Phase": "Booking vendors"
+   },
+   "expect": {
+    "category": "Photography",
+    "no_text_re": "peak[- ]season saturday"
+   }
+  },
+  {
+   "id": "pe02",
+   "kind": "refine",
+   "ask": "I'm looking for a pianist",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "New York"
+    ],
+    "Wedding_Guest_Count": 100,
+    "Planning_Phase": "Booking vendors"
+   },
+   "expect": {
+    "category": "Entertainment",
+    "text_re": "pian"
+   }
+  },
+  {
+   "id": "pe03",
+   "kind": "refine",
+   "ask": "Find me economical flowers",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "Texas"
+    ],
+    "Wedding_Guest_Count": 125,
+    "Wedding_Budget": 30000,
+    "Planning_Phase": "Engaged and just started planning"
+   },
+   "expect": {
+    "min_cards": 0,
+    "max_cards": 0,
+    "text_re": "discovery"
+   }
+  },
+  {
+   "id": "pe04",
+   "kind": "refine",
+   "ask": "I want a photographer",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "Illinois"
+    ],
+    "Wedding_Guest_Count": 150,
+    "Wedding_Budget": 25000,
+    "Planning_Phase": "Engaged and just started planning"
+   },
+   "expect": {
+    "category": "Photography",
+    "no_text_re": "venue'?s (?:pricing )?pdf"
+   }
+  },
+  {
+   "id": "pe05",
+   "kind": "refine",
+   "ask": "DJ under $2,000",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "Texas"
+    ],
+    "Wedding_Guest_Count": 150,
+    "Planning_Phase": "Booking vendors"
+   },
+   "expect": {
+    "category": "Entertainment"
+   }
+  },
+  {
+   "id": "pe06",
+   "kind": "refine",
+   "ask": "string quartet for ceremony",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "New York"
+    ],
+    "Wedding_Guest_Count": 120,
+    "Wedding_Budget": 90000,
+    "Planning_Phase": "Booking vendors"
+   },
+   "expect": {
+    "category": "Entertainment",
+    "text_re": "quartet"
+   }
+  },
+  {
+   "id": "pe07",
+   "kind": "refine",
+   "ask": "videographer",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "Florida"
+    ],
+    "Wedding_Guest_Count": 80,
+    "Wedding_Budget": 20000,
+    "Planning_Phase": "Engaged and just started planning"
+   },
+   "expect": {
+    "category": "Photography",
+    "text_re": "video"
+   }
+  },
+  {
+   "id": "pe08",
+   "kind": "refine",
+   "ask": "Can you find us an officiant?",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "New Jersey"
+    ],
+    "Wedding_Guest_Count": 120,
+    "Planning_Phase": "Engaged and just started planning"
+   },
+   "expect": {
+    "min_cards": 0,
+    "max_cards": 0,
+    "text_re": "officiant"
    }
   }
  ]

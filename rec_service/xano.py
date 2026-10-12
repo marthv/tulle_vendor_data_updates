@@ -178,13 +178,18 @@ def search_venues(token, *, states, page_size=8, **filters):
     multi-state search sorted by popularity hands every slot to the most-clicked state (Georgia+Illinois
     top 12 = 12 Illinois; Louisiana+California+Florida top 12 = 0 Louisiana), so couples comparing states
     got picks from one of them and the model told them they hadn't picked a state."""
+    return _interleave(_search_one, token, states, page_size, "venues", **filters)
+
+
+def _interleave(search_one, token, states, page_size, key, **filters):
+    """One search per state, results interleaved round-robin (see search_venues for why)."""
     states = [s for s in (states or []) if s]
     if len(states) <= 1:
-        return _search_one(token, states=states, page_size=page_size, **filters)
+        return search_one(token, states=states, page_size=page_size, **filters)
     per = max(3, -(-int(page_size) // len(states)))
     def one(s):   # one state failing (Xano blip) must not sink the others
         try:
-            return _search_one(token, states=[s], page_size=per, **filters)
+            return search_one(token, states=[s], page_size=per, **filters)
         except Exception as e:
             return e
     with ThreadPoolExecutor(max_workers=len(states)) as ex:
@@ -195,11 +200,15 @@ def search_venues(token, *, states, page_size=8, **filters):
     venues, seen = [], set()
     for i in range(per):
         for r in results:
-            if i < len(r["venues"]) and r["venues"][i].get("vendor_id") not in seen:
-                seen.add(r["venues"][i].get("vendor_id"))
-                venues.append(r["venues"][i])
-    return {"total_matches": sum(r["total_matches"] or 0 for r in results),
-            "matches_by_state": {s: r["total_matches"] for s, r in zip(states, results)}, "venues": venues}
+            if i < len(r[key]) and r[key][i].get("vendor_id") not in seen:
+                seen.add(r[key][i].get("vendor_id"))
+                venues.append(r[key][i])
+    out = {"total_matches": sum(r["total_matches"] or 0 for r in results),
+           "matches_by_state": {s: r["total_matches"] for s, r in zip(states, results)}, key: venues}
+    for extra in ("keyword_matches",):
+        if any(extra in r for r in results):
+            out[extra] = sum(r.get(extra) or 0 for r in results)
+    return out
 
 
 def _search_one(token, *, states, guests=0, max_venue_fee=0, max_food_per_person=0,
@@ -268,6 +277,214 @@ def market_benchmarks(state):
             "note": "all_in_pg_N = all-in cost per guest at N guests, before tax and gratuity."}
 
 
+# ---------------------------------------------------------------- photographers + entertainment (ep119 P/E path)
+# ep119 routes its venue params to a PACKAGE pre-pass on table 36 when Category_Input is Photography or
+# Entertainment (memory project_package_grain_filters): base_fee_max -> Package_Price, venue_types[] ->
+# Package_Type (photo) / Service_Type (ent), pricing_models[] -> Timing_List (photo hour bands + Engagement/
+# Elopement), vibes[] -> Offers_List. Vocab below = ep119's own facet keys, read live 2026-10-11 (CA photo,
+# NY ent). Values must match EXACTLY or the overlap matches nothing.
+PE_CATEGORIES = ("Photography", "Entertainment")
+PHOTO_TYPES = ["Wedding Day", "Engagement", "Elopement", "Other"]
+PHOTO_HOUR_BANDS = ["6 Hours or Less", "7-10 Hours", "11+ Hours"]
+PHOTO_OFFERS = ["Full Gallery Rights", "Prints", "Engagement Session", "Second Shooter", "Album", "Videography",
+                "Drone", "Rehearsal Dinner", "Content Creation"]
+ENT_TYPES = ["DJ", "Live Band", "Ensemble", "Solo Performer", "Other Entertainment"]
+ENT_OFFERS = ["Sound & Lighting Provided", "Ceremony Sound", "Photo Booth", "Monogram / Projection", "Special Effects"]
+_TYPE_ALIAS = {"other": "Other Entertainment", "band": "Live Band", "soloist": "Solo Performer",
+               "solo": "Solo Performer", "dj": "DJ"}
+
+PE_FETCH = 20          # ep119 page_size cap; keyword ranking happens over these
+_KW_SKIP = {"the", "and", "for", "with", "wedding", "music", "musician", "player", "our", "ceremony", "reception"}
+
+
+def _pe_vocab(category):
+    if category == "Photography":
+        return PHOTO_TYPES, PHOTO_OFFERS, PHOTO_HOUR_BANDS
+    return ENT_TYPES, ENT_OFFERS, []
+
+
+def _clean_types(category, types):
+    allowed, _, _ = _pe_vocab(category)
+    out = []
+    for t in types or []:
+        t = t if t in allowed else _TYPE_ALIAS.get(str(t).strip().lower(), "")
+        if t in allowed and t not in out:
+            out.append(t)
+    return out
+
+
+def _stems(keyword):
+    """'pianist' -> 'pian' (matches piano/pianist), 'harpist' -> 'harp', 'string quartet' -> string, quartet.
+    ep119's Search_Input does NOT search packages or blurbs (measured 2026-10-11: NY Solo Performer +
+    'piano' -> 0 results, while 7 of the top 20 Solo Performers list a piano package), so keywords are
+    matched HERE, over name + blurb + description + package names."""
+    out = []
+    for w in re.findall(r"[a-z]+", (keyword or "").lower()):
+        if len(w) < 3 or w in _KW_SKIP:
+            continue
+        if len(w) > 5:
+            w = re.sub(r"(?:ists?|s)$", "", w)
+        if w not in out:
+            out.append(w)
+    return out
+
+
+def _kw_text(it):
+    return " ".join([it.get("Name") or "", it.get("vendor_blurb") or "", it.get("pdf_description") or "",
+                     it.get("Type_of_Entertainment") or "", it.get("Type_of_Photography") or ""]
+                    + [p.get("name") or "" for p in it.get("matched_packages") or []])
+
+
+def _kw_hit(text, stems):
+    return bool(stems) and any(re.search(r"\b" + re.escape(st), text or "", re.I) for st in stems)
+
+
+def _kw_score(text, stems):
+    """How many of the keyword's words a text mentions ('String Quartet' beats 'String Trio' for "string quartet")."""
+    return sum(1 for st in stems or [] if re.search(r"\b" + re.escape(st), text or "", re.I))
+
+
+def _from_price(packages, stems, matched_min):
+    """The ONE starting price the card shows and the model is told to quote. With a keyword it is the cheapest
+    package that matches it (2026-10-11 eval pe02: a pianist card said "From $500" - a violin package - while
+    the reply quoted the $800 piano package; same class of bug as the Village Big Sur card, 2026-10-04)."""
+    if stems:
+        best = max((_kw_score(p.get("name") or "", stems) for p in packages), default=0)
+        priced = [p["price"] for p in packages if p.get("price") and _kw_score(p.get("name") or "", stems) == best]
+        if best and priced:
+            return min(priced)
+    return matched_min or None
+
+
+def _pe_state(raw, searched):
+    """P/E vendors list every state they serve ('Georgia, Massachusetts, ... California'); the card shows the
+    state the couple searched when the vendor serves it (memory reference_table11_state_multivalue)."""
+    toks = [t.strip() for t in str(raw or "").split(",") if t.strip()]
+    if searched and searched in toks:
+        return searched
+    return toks[0] if toks else (searched or "")
+
+
+def _pe_package(p):
+    return {"name": p.get("name"), "price": p.get("price") or None, "hours": p.get("hours") or None,
+            "type": p.get("package_type") or p.get("service_type") or None,
+            "team": p.get("team_size") or None,
+            "included": [x for x in (p.get("included") or []) if x][:6],
+            "addons": [x for x in (p.get("addons") or []) if x][:4]}
+
+
+def _pe_item(it, category, searched_state, stems):
+    pk = [_pe_package(p) for p in it.get("matched_packages") or []]
+    # Keyword packages first (a pianist's piano package, not their violin one), then cheapest first, so the
+    # "from $X" the card shows is always among the top packages the model reads.
+    pk.sort(key=lambda p: (-_kw_score(p.get("name") or "", stems), p.get("price") or float("inf")))
+    hrs = sorted({p["hours"] for p in pk if p.get("hours")})
+    types = []
+    for p in pk:
+        if p.get("type") and p["type"] not in types:
+            types.append(p["type"])
+    return {
+        "vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"),
+        "name": it.get("Name"), "state": _pe_state(it.get("State"), searched_state), "category": category,
+        "vendor_tags": (it.get("Type_of_Photography") if category == "Photography"
+                        else it.get("Type_of_Entertainment")) or "",
+        "package_types": types[:4],
+        "package_count": int(it.get("matched_package_count") or len(pk)),
+        "price_range": [it.get("matched_min_price"), it.get("matched_max_price")],
+        "from_price": _from_price(pk, stems, it.get("matched_min_price")),
+        "hours_range": [hrs[0], hrs[-1]] if hrs else None,
+        "offers": [o for o in (it.get("venue_attributes") or []) if o and ";" not in o][:8],
+        "packages": pk, "image": it.get("image_1"),
+        "blurb": (it.get("vendor_blurb") or it.get("pdf_description") or it.get("Description") or "")[:400],
+        "keyword_match": _kw_hit(_kw_text(it), stems) if stems else None,
+    }
+
+
+def _search_pe_one(token, *, states, category, max_price=0, types=None, offers=None, hour_bands=None,
+                   keyword="", sort_by="popular_desc", page_size=8):
+    _, offer_vocab, band_vocab = _pe_vocab(category)
+    base = {"Category_Input": category, "states[]": list(states or []), "State_Input": (states or [""])[0],
+            "max_capacity": 0, "capacity_ceiling": 10000, "base_fee_max": int(max_price or 0),
+            "fb_per_person_max": 0, "Search_Input": "", "sort_by": sort_by or "", "fallback_all": "false"}
+    tp = _clean_types(category, types)
+    of = [v for v in (offers or []) if v in offer_vocab]
+    hb = [v for v in (hour_bands or []) if v in band_vocab]
+    if tp:
+        base["venue_types[]"] = tp
+    if of:
+        base["vibes[]"] = of
+    if hb:
+        base["pricing_models[]"] = hb
+    stems = _stems(keyword)
+    items, total = [], 0
+    for page in (1, 2) if stems else (1,):
+        d = _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_search", token,
+                 dict(base, page=page, page_size=PE_FETCH if stems else max(1, min(int(page_size), PE_FETCH))))
+        items += d.get("items") or []
+        total = d.get("itemsTotal") or 0
+        hits = sum(1 for it in items if _kw_hit(_kw_text(it), stems))
+        if not stems or hits >= 3 or not d.get("nextPage"):
+            break
+    st = (states or [""])[0]
+    out = [_pe_item(it, category, st, stems) for it in items]
+    res = {"total_matches": total}
+    if stems:   # keyword matches first, in popularity order; the rest stay as closest alternatives
+        out.sort(key=lambda v: not v["keyword_match"])
+        res["keyword_matches"] = sum(1 for v in out if v["keyword_match"])
+    res["vendors"] = out[:max(1, int(page_size))]
+    return res
+
+
+def search_pe(token, category, *, states, max_price=0, types=None, offers=None, hour_bands=None, keyword="",
+              sort_by="popular_desc", page_size=8):
+    """Photographers or entertainers via ep119 (the Discovery search, user's own token). One search per
+    state, interleaved, like venues. Returns vendors with their MATCHED packages (price, hours, type, team,
+    included, add-ons). ep119 returns EXACT package prices to any signed-in user (no paid check), so
+    DETAIL: LIGHT is enforced by the caller (agent._light_pe)."""
+    if category not in PE_CATEGORIES:
+        raise ValueError("category must be Photography or Entertainment")
+    return _interleave(_search_pe_one, token, states, page_size, "vendors", category=category,
+                       max_price=max_price, types=types, offers=offers, hour_bands=hour_bands, keyword=keyword,
+                       sort_by=sort_by)
+
+
+def _bucket(b):
+    if not b:
+        return None
+    return {k: b.get(k) for k in ("bucket", "scope", "n_packages", "n_vendors", "p25", "median", "p75")
+            if b.get(k) not in (None, "")}
+
+
+def pe_benchmarks(category, state):
+    """ep207 (public, precomputed nightly from table 59): package-price quartiles for a state, per package
+    type / coverage band (photo) or service type (ent). A bucket under 5 packages / 3 vendors falls back to
+    the national pool PER ROW - each row carries its own scope ("state" or "US-wide")."""
+    d = _get(config.API_SEARCH_GROUP + "/pe_benchmarks", None,
+             {"category": category, "state": state or "", "state_fallback": ""})
+    if not d or d.get("overall") is None:
+        return {"category": category, "state": state, "available": False}
+    h = d.get("headline") or {}
+    return {"category": category, "state": d.get("resolved_state") or state, "available": True,
+            "headline": dict(_bucket(h) or {}, basis=h.get("basis")) if h else _bucket(d.get("overall")),
+            "overall": _bucket(d.get("overall")),
+            "by_package_type": [b for b in map(_bucket, d.get("by_package_type") or []) if b],
+            "by_coverage_hours": [b for b in map(_bucket, d.get("by_coverage") or []) if b],
+            "by_service_type": [b for b in map(_bucket, d.get("by_service_type") or []) if b],
+            "note": "Package prices from vendors' pricing PDFs: p25-p75 = the middle half. scope 'US-wide' = too "
+                    "few packages in the state, national figure used. Medians, never averages."}
+
+
+def pe_bucket_for(bench, package_type):
+    """The benchmark row a package should be compared with: its own package/service type when the market
+    has one, else the headline."""
+    if not bench or not bench.get("available"):
+        return None
+    for b in (bench.get("by_package_type") or []) + (bench.get("by_service_type") or []):
+        if package_type and b.get("bucket") == package_type:
+            return b
+    return bench.get("headline")
+
+
 def saved_vendor_ids(user):
     """The couple's saved vendors = user.favorited_vendors (what the Saved tab shows). 2026-10-03: the old
     wptp_updated_mappings_favorites GET returned [] for a user with 4 saved vendors, so the assistant said
@@ -288,6 +505,15 @@ def vendor_card(vendor_id):
         return None
     it = rows[0]
     img = it.get("image_1")
+    if it.get("Category") in PE_CATEGORIES:   # photographer / entertainer shown earlier in this chat
+        cat = it["Category"]
+        lo, hi = it.get("flt_min_venue_fee"), it.get("flt_max_venue_fee")   # P/E: primary PDF package prices
+        return {"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"),
+                "state": _pe_state(it.get("State"), ""), "category": cat,
+                "venue_type": (it.get("Type_of_Photography") if cat == "Photography"
+                               else it.get("Type_of_Entertainment")) or cat,
+                "price_range": [lo, hi] if lo else None, "image": img,
+                "description": (it.get("Description") or "")[:300]}
     return {"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"),
             "state": it.get("State"), "address": it.get("Address"), "category": it.get("Category"),
             "venue_type": it.get("flt_venue_types") or it.get("Venue_Type"),

@@ -42,15 +42,27 @@ OPENING = ("Recommend 3 venues for us based on our profile, and tell us the sing
 
 
 UNANSWERABLE_CHIP = re.compile(r"courtyard|parking|availab|open dates|lodging|overnight|rooms? (?:on|for)|accessib|"
-                               r"wheelchair|tasting|decor|photograph|florist|flowers|\bdj\b|\bband\b|kosher|halal|"
+                               r"wheelchair|tasting|decor|florist|flowers|officiant|makeup|hair and|planner|kosher|halal|"
                                r"lgbt|ceremony fee included", re.I)
 
 
 def check(case, res):
     """Automatic checks. Quality of the writing is judged by a human reading results_*.json."""
     issues = []
-    if len(res["cards"]) < 2 and case["id"] not in ("r04", "r11", "r12", "r13", "r14", "r20", "r21"):
-        issues.append("fewer than 2 venue cards")
+    exp = case.get("expect") or {}
+    min_cards = exp.get("min_cards", 0 if case["id"] in ("r04", "r11", "r12", "r13", "r14", "r20", "r21") else 2)
+    if len(res["cards"]) < min_cards:
+        issues.append("fewer than %d cards" % min_cards)
+    if exp.get("category"):   # photographer / entertainment cases: every card is that category
+        wrong = [c.get("name") for c in res["cards"] if c.get("category") != exp["category"]]
+        if wrong:
+            issues.append("cards not %s: %s" % (exp["category"], wrong))
+    if exp.get("text_re") and not re.search(exp["text_re"], res["text"], re.I):
+        issues.append("text does not match /%s/" % exp["text_re"])
+    if exp.get("no_text_re") and re.search(exp["no_text_re"], res["text"], re.I):
+        issues.append("text matches forbidden /%s/" % exp["no_text_re"])
+    if exp.get("max_cards") is not None and len(res["cards"]) > exp["max_cards"]:
+        issues.append("more than %d cards" % exp["max_cards"])
     if res["dropped_unverified_ids"]:
         issues.append("model referenced ids not from search: %s" % res["dropped_unverified_ids"])
     if not res["text"]:
@@ -76,6 +88,10 @@ def check(case, res):
             issues.append("LIGHT leaked figures: %s" % leaks[:5])
         if any("venue_fee_range" in c for c in res["cards"]):
             issues.append("LIGHT card carries venue_fee_range")
+        if any(k in c for c in res["cards"] for k in ("price_from", "price_to", "price_label")):
+            issues.append("LIGHT card carries a package price")
+        if any(re.search(r"\$\s?\d", c.get("description") or "") for c in res["cards"]):
+            issues.append("LIGHT card description quotes a price")
     return issues
 
 
