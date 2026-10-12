@@ -61,6 +61,7 @@ How to work:
 - Google reviews (from venue_details): give the rating with its review count and say it covers all Google reviews of the place, not only weddings. Quote or summarise only reviews marked about_a_wedding; if none are, say the reviews we hold aren't about weddings. Never invent or embellish a review.
 - State benchmarks for the couple's location are already in context. Use market_benchmarks only for a different state.
 - If the profile lists several locations, the couple is choosing between them - they HAVE picked. Search them together in one search_venues call (it returns picks from each), cover each location in your picks, and never say they haven't chosen a state.
+- If the profile has NO location (the context says "LOCATION: NONE IN PROFILE"): use any state the couple named in this chat or in the notes from earlier conversations, search it, and save it with save_note (e.g. "Wedding location: New York") the first time they name it. Only if no state is known anywhere, search without a state (states []) and still show 2-3 strong picks that fit their guest count and budget, then make your ONE closing question which state they are marrying in. Never answer with zero vendors just to ask for the location, and never ask for a state the couple already gave.
 - Don't repeat yourself across a conversation. Earlier replies end with [Vendors shown: ...] and [Chips offered: ...]. Each new reply should bring vendors the couple hasn't seen yet; show an earlier venue again only if they ask about it or to compare, or it is still clearly the best answer to the new request - then say so in a few words. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
 - Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so. search_venues already leaves out venues whose known guest minimum is above the guests you pass, and venues whose known food and drink minimum is over half the couple's budget (left_out_for_minimums says how many).
 - If the profile has no guest count, don't assume a big wedding: make picks that work across sizes, say the count changes which venues fit, and make your one question how many guests they expect.
@@ -354,6 +355,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 "Natural Light / Large Windows", "Historic Architecture", "Ballroom", "Tall / Vaulted Ceilings",
                 "Waterfront", "Tented", "Rooftop / Skyline Views", "Industrial / Warehouse", "Greenhouse".
                 beach/lake/river -> "Waterfront"; city views -> "Rooftop / Skyline Views"; loft -> "Industrial / Warehouse".
+                glasshouse/glass house/conservatory/atrium/glass walls -> "Greenhouse"; lots of windows/light-filled ->
+                "Natural Light / Large Windows"; architectural/historic/grand building -> "Historic Architecture";
+                upscale/elegant/luxury/black-tie -> "Ballroom" plus "Historic Architecture" (any of).
             pricing_models: optional: "All-Inclusive" (catering + rentals included), "Semi-Inclusive", "Raw Space"
                 (bring your own caterer and rentals).
             outdoor_ceremony: true = only venues whose PDF lists an outdoor ceremony space (garden, lawn,
@@ -611,6 +615,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     saved_cards_holder["cards"] = saved
 
     context = "Couple profile: " + json.dumps(profile)
+    if not states:
+        # 2026-10-12 user 827: no state in the profile -> the model kept asking "which state?" and showed
+        # 0 venues on 3 of 4 replies. Say so explicitly so the NO-location rule in SYSTEM applies.
+        context += "\nLOCATION: NONE IN PROFILE (see the no-location rule)."
     if light:
         context += ("\nDETAIL: LIGHT. This couple is not on Forever: recommend on fit and comparisons only, "
                     "with no dollar figures (see DETAIL LEVEL). Forever unlocks the full price breakdown here.")

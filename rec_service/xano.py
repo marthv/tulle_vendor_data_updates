@@ -602,7 +602,8 @@ def list_chats(user_id):
     uid = int(user_id)
     rows = [r for r in _search_all(CHATS_TABLE, [{"user_id": uid}]) if int(r.get("user_id") or 0) == uid]
     rows.sort(key=lambda r: r.get("updated_at") or r.get("created_at") or 0, reverse=True)
-    return [{"id": r["id"], "title": r.get("title") or "", "updated_at": r.get("updated_at")} for r in rows]
+    return [{"id": r["id"], "title": r.get("title") or "", "updated_at": r.get("updated_at"),
+             "created_at": r.get("created_at")} for r in rows]
 
 
 def get_chat(user_id, chat_id):

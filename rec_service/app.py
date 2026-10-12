@@ -3,7 +3,8 @@
 POST /rec/opening          -> new conversation with opening picks; returns chat_id
                               (beta: Forever only - everyone else gets 402 forever_only)
 POST /rec/refine           -> {chat_id, message}: one refinement in that conversation (3 free, then 402)
-                              legacy {messages:[...]} still accepted (no history saved)
+                              no chat_id ({messages:[...]} or {message}): continues the user's chat from the
+                              last 30 min, else starts one; turns saved, chat_id returned (2026-10-12)
 GET  /rec/chats            -> the user's conversations, newest first
 GET  /rec/chats/{chat_id}  -> one conversation's turns (text, cards, chips) to re-render it
 POST /rec/more {chat_id}   -> "Show 3 more": next 3 venues from the latest answer's searches. Spends ONE
@@ -232,6 +233,52 @@ def opening(background: BackgroundTasks, authorization: str = Header(None)):
     return _public(out, chat_id=chat["id"])
 
 
+def _refine_in_chat(token, user, chat, text, background):
+    """One typed question inside a stored conversation: server-held history in, both turns saved after."""
+    history = xano.get_messages(chat["id"])
+    # The stored conversation starts with the opening picks (an assistant turn), so restate the
+    # opening ask in front of it: the model needs a user turn first.
+    # (A chat started from a typed question already begins with a user turn.)
+    msgs = [{"role": "user", "content": OPENING_ASK}] if history and history[0]["role"] == "assistant" else []
+    msgs += [_turn_for_model(t) for t in history]
+    msgs = msgs[-(HISTORY_TURNS - 1):] if len(msgs) >= HISTORY_TURNS else msgs
+    if msgs and msgs[0]["role"] != "user":
+        msgs = msgs[1:]
+    msgs.append({"role": "user", "content": text})
+    # Venues this chat already showed (our own stored cards, not model output) may be shown again as
+    # cards - e.g. "break down <venue from the opening>" (2026-10-05: chat 24's breakdown had no card).
+    prior = [c.get("vendor_id") for t in history if t["role"] == "assistant"
+             for c in (t.get("cards") or []) + (t.get("more_cards") or [])]
+    out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=[v for v in prior if v])
+    out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
+    if (chat.get("title") or "").startswith("Venue picks"):
+        chat["title"] = text[:80]
+
+    def persist():   # after the response: user turn, then assistant turn, then bump the chat
+        xano.add_message(chat["id"], "user", text)
+        xano.add_message(chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
+        xano.touch_chat(chat)
+    background.add_task(persist)
+    return _public(out, chat_id=chat["id"])
+
+
+RECENT_CHAT_MS = 30 * 60 * 1000
+
+
+def _recent_chat(user_id):
+    """The user's most recently active conversation if it was touched in the last 30 minutes, else None."""
+    try:
+        chats = xano.list_chats(user_id)
+    except Exception:
+        return None
+    now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
+    for c in chats[:1]:
+        last = c.get("updated_at") or c.get("created_at") or 0
+        if last and now_ms - int(last) <= RECENT_CHAT_MS:
+            return xano.get_chat(user_id, c["id"])
+    return None
+
+
 @app.post("/rec/refine")
 def refine(body: RefineBody, background: BackgroundTasks, authorization: str = Header(None)):
     token, user = _auth(authorization)
@@ -242,35 +289,36 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
         text = (body.message or "").strip()[:2000]
         if not text:
             raise HTTPException(400, "message required")
-        history = xano.get_messages(chat["id"])
-        # The stored conversation starts with the opening picks (an assistant turn), so restate the
-        # opening ask in front of it: the model needs a user turn first.
-        msgs = [{"role": "user", "content": OPENING_ASK}]
-        msgs += [_turn_for_model(t) for t in history]
-        msgs = msgs[-(HISTORY_TURNS - 1):] if len(msgs) >= HISTORY_TURNS else msgs
-        if msgs[0]["role"] != "user":
-            msgs = msgs[1:]
-        msgs.append({"role": "user", "content": text})
-        # Venues this chat already showed (our own stored cards, not model output) may be shown again as
-        # cards - e.g. "break down <venue from the opening>" (2026-10-05: chat 24's breakdown had no card).
-        prior = [c.get("vendor_id") for t in history if t["role"] == "assistant"
-                 for c in (t.get("cards") or []) + (t.get("more_cards") or [])]
-        out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=[v for v in prior if v])
-        out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
-        if (chat.get("title") or "").startswith("Venue picks"):
-            chat["title"] = text[:80]
-
-        def persist():   # after the response: user turn, then assistant turn, then bump the chat
-            xano.add_message(chat["id"], "user", text)
-            xano.add_message(chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
-            xano.touch_chat(chat)
-        background.add_task(persist)
-        return _public(out, chat_id=chat["id"])
-    # legacy: client-held history, nothing persisted
+        return _refine_in_chat(token, user, chat, text, background)
+    # No chat_id (the page asks before any opening has created a conversation). Until 2026-10-12 this ran
+    # statelessly and saved nothing: user 827's 3 rated questions were lost and each one started from scratch,
+    # so a state named in one question was forgotten by the next. Now: continue the user's conversation from
+    # the last 30 minutes if there is one, else start one - the turns are saved and the chat_id is returned.
     msgs = [{"role": t.role, "content": t.content[:2000]} for t in body.messages[-HISTORY_TURNS:]]
+    text = (body.message or "").strip()[:2000]
+    if text and (not msgs or msgs[-1]["role"] != "user" or msgs[-1]["content"] != text):
+        msgs.append({"role": "user", "content": text})
     if not msgs or msgs[-1]["role"] != "user" or msgs[0]["role"] != "user":
         raise HTTPException(400, "messages must start and end with a user turn")
-    return _public(_run_guarded("refine", token, user, msgs))
+    text = msgs[-1]["content"].strip()
+    chat = _recent_chat(user["id"])
+    if chat:
+        return _refine_in_chat(token, user, chat, text, background)
+    # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard
+    # allowed and the model answered, so a blocked or failed question leaves no empty conversation behind.
+    out = _run_guarded("refine", token, user, msgs)
+    out["chips"] = ensure_chips(out.get("chips"))
+    chat = xano.create_chat(user["id"], text[:80])
+    earlier = msgs[:-1]
+
+    def persist():   # earlier client-held turns (if any), then this question and its answer
+        for t in earlier:
+            xano.add_message(chat["id"], t["role"], t["content"])
+        xano.add_message(chat["id"], "user", text)
+        xano.add_message(chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
+        xano.touch_chat(chat)
+    background.add_task(persist)
+    return _public(out, chat_id=chat["id"])
 
 
 @app.get("/rec/chats")
