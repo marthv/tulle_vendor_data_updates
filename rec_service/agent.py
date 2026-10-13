@@ -26,6 +26,7 @@ import anthropic
 from anthropic import beta_tool
 
 import config
+import estimate
 import xano
 
 SYSTEM = """You are Tulle's wedding vendor guide for VENUES, PHOTOGRAPHERS and ENTERTAINMENT. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and hundreds of photographers, DJs, bands and musicians, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
@@ -41,11 +42,16 @@ YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of th
 Show real expertise (this is what makes Tulle worth paying for):
 - Explain the money the way a seasoned planner would: what is usually included vs. extra, how food and drink minimums work, service charge vs. gratuity vs. tax, ceremony fees, peak vs. off-peak and Friday/Sunday pricing, what drives the all-in cost per guest, which fees couples most often miss, and what to ask the venue.
 - Every price Tulle holds is for a PEAK-SEASON SATURDAY evening, the most expensive slot a venue sells. When you quote a venue's prices, say so once and that Friday, Sunday, daytime or off-season dates are often cheaper - the PDF shows the other rates, which is a good reason to open it. Once per CONVERSATION, not per reply: if an earlier reply in this chat already said it, don't say it again.
-- Use the numbers you have: this venue's own figures, the state benchmarks in context (quartiles and how many spaces they come from), and how this venue compares. Concrete numbers beat adjectives.
+- Use the numbers you have: this venue's own figures, its computed estimate, the state benchmarks in context (quartiles and how many spaces they come from), and how this venue compares. Concrete numbers beat adjectives.
 - Point at what's inside the PDF that answers their question ("the PDF lists the per-head menu tiers and the Saturday minimum") - that is the reason to open it.
 
 Integrity - never break these:
 - Each venue's card shows ONE rental price: the "Rental fee" line of its pricing summary (also in venue_fee_range). When you quote a venue's rental, quote that figure. If you mention another space's rental from venue_details, name the space and say it differs from the card.
+- ONE SET OF NUMBERS (couples check us against the venue page and against our own earlier replies; contradicting either loses their trust):
+  - Totals and per-guest costs: quote ONLY a venue's "estimate" (on its search or saved row) or an estimate_cost result. Never add, multiply or apply percentages yourself. For a what-if (a different guest count, the cheapest Saturday) call estimate_cost. Its total is "before tax and gratuity", exactly like the venue's page - say so.
+  - "Typical" or "average" for a state: quote ONLY the State benchmarks in context or market_benchmarks, and say the scope each metric gives (e.g. "Connecticut venues that seat 151-250, 25 spaces"). A venue's own pricing line tells you only how it compares (vs_market) - never attach a dollar figure to that comparison.
+  - A line marked "estimate" or "Not in this venue's PDF" is not this venue's number: say it is an estimate. Never call a missing rental fee "$0" or "no rental fee" - say the PDF doesn't list one.
+  - Once you have quoted a figure in this chat, keep using it. If the couple changes the guest count or date, say what changed and give the new estimate.
 - Label every figure's source: "this venue's PDF" / "this photographer's PDF", "Tulle data across N [state] venues" / "Tulle data across N packages from M [state] DJs", or "industry norm". Never present an industry norm or estimate as this venue's number. A pricing line with source "market" is an estimate - say so.
 - Never invent a vendor, a price, a package, a policy, an amenity or a review. If we don't have it, say "we don't have that for this venue" and give the best market figure we do have.
 - The context says how this couple can see exact prices. If they have free PDF views left, say so and invite them to open the PDF ("you have 2 free PDF views - open it to see the exact menu prices"). Only if they have NO free views left and no plan, say exact figures need a plan. Never say "behind the paywall" to someone who still has free views. Never guess an exact figure.
@@ -71,7 +77,7 @@ How to work:
 - If only one or two venues match a narrow request, add the closest alternatives and say why they are close.
 - When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it. The page tells them it was added to what you know about them, so don't announce it yourself.
 - If the context has no preference answers and you don't know their style or setting, make your ONE closing question a preference question (what kind of place, a must-have setting such as waterfront, rooftop or high ceilings, or how they want catering handled), and save the answer with save_note when they reply.
-- Warm, specific, confident, brief. Short is better: no bullet lists, each pick's headline number only - the PDF is where the couple sees the rest. Only a COST BREAKDOWN is longer. No filler, no exclamation marks, no generic advice a search engine would give.
+- Warm, specific, confident, brief. Short is better: no bullet lists, each pick's headline number only - its all-in estimate for the couple's guest count when it has one ("about $37,300 for 160 guests before tax and gratuity"), else its rental fee. The PDF is where the couple sees the rest. Only a COST BREAKDOWN is longer. No filler, no exclamation marks, no generic advice a search engine would give.
 
 PHOTOGRAPHERS AND ENTERTAINMENT:
 - Their prices are PACKAGE prices from the vendor's own PDF (search_photographers_entertainment returns the packages that match the filters: name, price, hours, type, team size, what's included, add-ons). The peak-Saturday caveat is for venues only - don't say it here. Package prices usually exclude tax, travel and overtime unless the PDF says otherwise.
@@ -83,17 +89,17 @@ PHOTOGRAPHERS AND ENTERTAINMENT:
 
 DETAIL LEVEL: if the context says "DETAIL: LIGHT", this couple is not on Forever. You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them. Recommend on fit instead: style, capacity, whether the guest minimum works, all-inclusive or not, and how each cost line compares with their state (below average / typical / above average). For photographers and entertainers you get no package prices either: recommend on what's included, hours, team size, package type and starting_price_vs_state (below typical / typical / above typical). Say once, plainly, that the full prices are in the vendor's PDF and that Forever unlocks them here in the assistant. The rule "concrete numbers beat adjectives" does not apply at this level. The opposite level, "DETAIL: FULL", means use every number you have.
 
-COST BREAKDOWN: give one ONLY when the context says "BREAKDOWN REQUESTED" (the couple explicitly asked for a breakdown or the full cost of a venue). Then give an itemized estimate for that venue - never just a range plus "open the PDF". Without that line, never itemize. Never volunteer a breakdown, never offer one as a chip, and never itemize in openings or when comparing several venues: those stay short and send the couple to the PDF. Get the venue's lines first (its search pricing, venue_pricing, and venue_details for menu, bar and other fees). Then one line per item, using the couple's guest count:
+COST BREAKDOWN: give one ONLY when the context says "BREAKDOWN REQUESTED" (the couple explicitly asked for a breakdown or the full cost of a venue). Then give an itemized estimate for that venue - never just a range plus "open the PDF". Without that line, never itemize. Never volunteer a breakdown, never offer one as a chip, and never itemize in openings or when comparing several venues: those stay short and send the couple to the PDF. Call estimate_cost for the venue first and copy its lines and arithmetic exactly (venue_details adds menu, bar and other fees as notes - never fold them into the total yourself). One line per item, using the couple's guest count:
 - Rental fee
 - Ceremony fee
 - Food: $X a head x N guests = $Y
 - Bar: $X a head x N guests = $Y (or "included" / "not listed")
 - Other required fees the PDF lists
 - Service charge: X% of $Y = $Z
-- Tax: X% = $Z
-- Gratuity, only if the PDF suggests one (say it is separate from the service charge)
-- Estimated total, and per guest
-Every line names its source (this venue's PDF / Tulle data across N [state] venues / industry norm). If the PDF doesn't list a line, fill it from the state benchmark and mark it "estimate", or say "not listed" - never drop a line silently. Show the arithmetic so it can be checked. Write each item on its own line (a real line break) starting with "• ". The page shows plain text: no markdown, no bold, no "- " or "*" bullets. After the total, one sentence on what would move it most (bar package, guest count, a Friday or Sunday date), then what to confirm in the PDF. For a breakdown of one venue, present just that venue (1 vendor_id).
+- Estimated total before tax and gratuity, and per guest (estimate_cost's figures)
+- Tax: X% = $Z (only if estimate_cost has the venue's rate; otherwise "added on top, rate not stated")
+- Gratuity, only if the PDF suggests one (say it is separate from the service charge and not in the total)
+Every line names its source as estimate_cost gives it (this venue's PDF / estimate). Never drop a line silently. Show the arithmetic estimate_cost gives so it can be checked. Write each item on its own line (a real line break) starting with "• ". The page shows plain text: no markdown, no bold, no "- " or "*" bullets. After the total, one sentence on what would move it most (bar package, guest count, a Friday or Sunday date), then what to confirm in the PDF. For a breakdown of one venue, present just that venue (1 vendor_id).
 
 CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip must map to one of these:
 - a search filter: cheaper (lower max_venue_fee or max_food_per_person), a different state, more or fewer guests, a venue type from the search_venues list, a vibe from the search_venues list, all-inclusive / bring-your-own-caterer (pricing_models), or outdoor ceremony space (outdoor_ceremony);
@@ -106,7 +112,7 @@ CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip 
 Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (florists, catering, beauty, planners, attire, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
 
-Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which vendor's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them (1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that includes a concrete number where we have one, and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
+Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which vendor's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them (1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that includes a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
 
 # A COST BREAKDOWN is long (more tokens, more cost), so only an explicit ask unlocks it (user 2026-10-05:
 # short replies preferred; Forever gets the itemized detail ONLY when they specifically ask).
@@ -117,12 +123,28 @@ BREAKDOWN_ASK = re.compile(r"break ?down|itemi[sz]e|full (?:cost|price)|all[- ]i
 PRICED_PER_SEARCH = 6   # pricing fetched for the top N results of each search, in parallel
 
 
-def _compact_pricing(p):
-    return {"guest_minimum": p.get("guest_minimum"), "verdict": p.get("verdict"),
-            "lines": [{k: v for k, v in (("line", l["line"]), ("source", l["source"]),
-                                          ("vs_market", l["vs_market"]), ("amount", l["amount"]),
-                                          ("pct", l["pct"]), ("detail", (l["detail"] or "")[:160]))
-                       if v not in (None, "")} for l in p.get("lines", [])]}
+def _line_detail(l, guests):
+    """A pricing line's sentence, safe to hand the model. A line the venue's PDF doesn't give ("market") quotes
+    a market figure for the venue's OWN capacity band - the source of 1437's "$205 vs $146 a head" (two venues,
+    two bands, both called "Connecticut"). Those sentences are dropped: the figure the model may use for a missing
+    line is the computed estimate, and typical figures come only from the State benchmarks in context.
+    ep230 also leaves a literal "{guests}" in some sentences (the page fills it in) - fill it here."""
+    if l.get("source") != "venue":
+        return "Not in this venue's PDF."
+    d = (l.get("detail") or "")
+    return d.replace("{guests}", str(guests) if guests else "100")[:200]
+
+
+def _compact_pricing(p, guests=0, budget=0):
+    out = {"guest_minimum": p.get("guest_minimum"), "verdict": p.get("verdict"),
+           "lines": [{k: v for k, v in (("line", l["line"]), ("source", l["source"]),
+                                         ("vs_market", l["vs_market"]), ("amount", l["amount"]),
+                                         ("pct", l["pct"]), ("detail", _line_detail(l, guests)))
+                      if v not in (None, "")} for l in p.get("lines", [])]}
+    e = estimate.summary(estimate.compute(p.get("cost_inputs"), guests), budget)
+    if e:
+        out["estimate"] = e
+    return out
 
 
 _DIGITS = re.compile(r"\d")
@@ -154,13 +176,29 @@ def _rental_amount(p):
     return None
 
 
-def _with_rental(v, p):
+def _rental_not_disclosed(p):
+    return any(l.get("line") == "Rental fee" and l.get("source") != "venue" for l in (p or {}).get("lines") or [])
+
+
+def _with_rental(v, p, guests=0, budget=0):
+    """Card = what the reply quotes: the panel's rental fee, and (FULL) the all-in estimate line.
+    A rental the PDF doesn't give is not "$0" (2026-10-13: Farmington Gardens and Saint Clements were
+    described as "$0 rental" / "no rental fee" from table 11's 0 placeholders)."""
     amt = _rental_amount(p)
-    return dict(v, venue_fee_range=[amt, amt]) if amt else v
+    if amt:
+        v = dict(v, venue_fee_range=[amt, amt])
+    elif _rental_not_disclosed(p) and not any(v.get("venue_fee_range") or []):
+        v = dict(v, venue_fee_range=[None, None])
+    e = estimate.compute((p or {}).get("cost_inputs"), guests)
+    if e:
+        v = dict(v, estimate_label=estimate.label(e, budget), estimate_total=e["total_before_tax_and_gratuity"],
+                 estimate_guests=e["guests"])
+    return v
 
 
 def _light_card(v):
-    return {k: val for k, val in v.items() if k not in ("venue_fee_range", "food_minimum")}
+    return {k: val for k, val in v.items()
+            if k not in ("venue_fee_range", "food_minimum", "estimate_label", "estimate_total", "estimate_guests")}
 
 
 # ---------------------------------------------------------------- photographers + entertainment
@@ -276,6 +314,55 @@ def _states_of(profile):
     return [s for s in loc if s and s not in ("Not Sure",)][:2]
 
 
+# ---------------------------------------------------------------- figure check (2026-10-13)
+# Every dollar figure a reply shows must be one the model was GIVEN this request (tool results, the context,
+# the conversation so far) or a simple derivation of the couple's own budget - not one it computed or blended.
+# 1437's chat quoted "$205" and "$146" as the Connecticut food average 5 minutes apart. A reply with an
+# unsupported figure is bounced back to the model once with the list; a second miss is shown but logged.
+
+_DOLLARS = re.compile(r"\$\s?(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s?([kK]\b)?")
+_NUMBERS = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?")
+MIN_CHECKED = 20       # figures under $20 (a $5 fee, a $10 add-on) aren't worth a bounce
+
+
+def dollar_figures(text):
+    out = []
+    for m in _DOLLARS.finditer(text or ""):
+        v = float(m.group(1).replace(",", "") + (m.group(2) or ""))
+        out.append((m.group(0).strip(), v * 1000 if m.group(3) else v))
+    return out
+
+
+def numbers_in(text):
+    return {float(a.replace(",", "") + (b or "")) for a, b in _NUMBERS.findall(text or "")}
+
+
+def _close(v, allowed):
+    rounded = v >= 100 and v % 100 == 0           # "about $39,900", "$38K": rounded mentions get more room
+    tol = 0.04 if rounded else 0.02
+    return any(abs(v - a) <= tol * a for a in allowed if a > 0)
+
+
+def unsupported_figures(text, allowed):
+    return [s for s, v in dollar_figures(text) if v >= MIN_CHECKED and not _close(v, allowed)]
+
+
+def derived_numbers(guests, budget, totals=()):
+    """Figures a reply may state without a tool: shares of the couple's own budget, per guest, and the
+    difference between two computed totals (e.g. what the cheapest Saturday saves)."""
+    out = set()
+    if budget:
+        for share in (0.4, 0.45, 0.5):
+            out.add(budget * share)
+            if guests:
+                out.add(budget * share / guests)
+        if guests:
+            out.add(budget / guests)
+    t = sorted(set(totals))
+    out |= {b - a for i, a in enumerate(t) for b in t[i + 1:]}
+    return out
+
+
 MORE_STEP = 3      # "Show 3 more" (beta feedback 2026-10-06): the button reveals this many per press
 MORE_MAX = 6       # two presses at most
 
@@ -319,18 +406,36 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     except (TypeError, ValueError):
         budget = 0
 
+    guests_default = guests
+
     def shape(p):
-        return _light_pricing(p, guests) if light else _compact_pricing(p)
+        return _light_pricing(p, guests) if light else _compact_pricing(p, guests, budget)
+
+    def card(v, p):
+        return _with_rental(v, p, guests, budget)
+
+    pricing_cache = {}   # vendor_id -> raw pricing payload, fetched once per request
 
     def raw_pricing_or_none(vid):
+        if vid in pricing_cache:
+            return pricing_cache[vid]
         try:
-            return xano.venue_pricing(token, vid, paid and not light)
+            pricing_cache[vid] = xano.venue_pricing(token, vid, paid and not light)
         except Exception:
-            return None
+            pricing_cache[vid] = None
+        return pricing_cache[vid]
 
     def pricing_or_none(vid):
         p = raw_pricing_or_none(vid)
         return shape(p) if p else None
+
+    evidence = []        # every tool result this request, for the figure check
+    guard = {"bounced": False, "unsupported": []}
+
+    def _ev(obj):
+        out = json.dumps(obj)
+        evidence.append(out)
+        return out
 
     @beta_tool
     def search_venues(states: list[str], guests: int = 0, max_venue_fee: int = 0,
@@ -389,13 +494,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             pairs = list(zip(venues, raws)) + [(v, None) for v in venues[len(raws):]]
         # The model sees the top 8; the rest only feed "Show 3 more" (2026-10-07: capping the whole pool at
         # 8 left at most 5 after the picks - often under 3 once shown venues were removed, so no button).
-        rest = [_with_rental(v, p) for v, p in pairs[8:]]
+        rest = [card(v, p) for v, p in pairs[8:]]
         pairs = pairs[:8]
         venues = [v for v, _ in pairs]
         prices = [shape(p) if p else None for _, p in pairs]
         out = []
         for i, v in enumerate(venues):
-            v = _with_rental(v, pairs[i][1])
+            v = card(v, pairs[i][1])
             if light:
                 v = _light_card(v)
             if v.get("vendor_id"):
@@ -404,6 +509,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     searched.append(v["vendor_id"])
             row = {k: v.get(k) for k in ("vendor_id", "name", "state", "address", "venue_type",
                                          "max_capacity_seated", "venue_fee_range", "description") if k in v}
+            if not any(row.get("venue_fee_range") or []):
+                row["venue_fee_range"] = "rental not in this venue's PDF"   # never read a 0 placeholder as "$0"
             if i < len(prices) and prices[i]:
                 row["pricing"] = prices[i]
             out.append(row)
@@ -417,7 +524,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             res["left_out_for_minimums"] = removed
         if r.get("matches_by_state"):
             res["matches_by_state"] = r["matches_by_state"]
-        return json.dumps(res)
+        return _ev(res)
 
     def bench_or_none(category, state):
         try:
@@ -482,7 +589,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             mk = [m for m in (_market_row(benches.get(s), types) for s in sts) if m]
             if mk:
                 res["market"] = mk
-        return json.dumps(res)
+        return _ev(res)
 
     @beta_tool
     def pe_market_rates(category: str, state: str) -> str:
@@ -495,7 +602,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             state: a single state, e.g. "Texas", or "International".
         """
         category = "Photography" if str(category).lower().startswith("photo") else "Entertainment"
-        return json.dumps(xano.pe_benchmarks(category, state))
+        return _ev(xano.pe_benchmarks(category, state))
 
     @beta_tool
     def venue_pricing(vendor_id: str) -> str:
@@ -506,7 +613,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             vendor_id: a vendor_id returned by search_venues.
         """
         p = xano.venue_pricing(token, vendor_id, paid and not light)
-        return json.dumps(_light_pricing(p, guests) if light else p)
+        pricing_cache[vendor_id] = p
+        return _ev(dict(shape(p), headline=p.get("headline"), source_note=p.get("source_note")))
 
     @beta_tool
     def saved_venues() -> str:
@@ -519,16 +627,18 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         out = []
         for i, c in enumerate(cards):
             if i < len(raws):
-                c = _with_rental(c, raws[i])
+                c = card(c, raws[i])
             if light:
                 c = _light_card(c)
             seen[c["vendor_id"]] = c
             row = {k: c.get(k) for k in ("vendor_id", "name", "state", "address", "category", "venue_type",
                                          "max_capacity_seated", "venue_fee_range") if k in c}
+            if "venue_fee_range" in row and not any(row["venue_fee_range"] or []):
+                row["venue_fee_range"] = "rental not in this venue's PDF"
             if i < len(prices) and prices[i]:
                 row["pricing"] = prices[i]
             out.append(row)
-        return json.dumps({"saved_count": len(cards), "saved": out})
+        return _ev({"saved_count": len(cards), "saved": out})
 
     @beta_tool
     def venue_details(vendor_id: str) -> str:
@@ -542,11 +652,46 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             vendor_id: a vendor_id returned by search_venues or saved_venues in this conversation.
         """
         if vendor_id not in seen and vendor_id not in prior:
-            return json.dumps({"error": "unknown vendor_id - search for the venue first"})
+            return _ev({"error": "unknown vendor_id - search for the venue first"})
         d = xano.venue_details(vendor_id, with_amounts=paid and not light)
         if light and d.get("google"):   # LIGHT gets no figures: drop review texts that quote prices
             d["google"]["reviews"] = [r for r in d["google"]["reviews"] if "$" not in r["text"]]
-        return json.dumps(d)
+        return _ev(d)
+
+    @beta_tool
+    def estimate_cost(vendor_id: str, guests: int = 0, off_peak: bool = False) -> str:
+        """The all-in cost of one venue, itemized and computed for you - the same formula as the venue's page:
+        rental + ceremony + food and drink (or its minimum, whichever is higher), plus the service charge;
+        tax shown separately when the venue states it. Lines the PDF doesn't give are filled with an
+        estimate and marked. Use it for every total, per-guest cost, breakdown and what-if (a different
+        guest count, the cheapest Saturday) - never do this arithmetic yourself.
+
+        Args:
+            vendor_id: a vendor_id returned by search_venues or saved_venues in this conversation.
+            guests: the guest count to price (0 = the couple's).
+            off_peak: true = the venue's cheapest-Saturday prices from its PDF (if it lists them).
+        """
+        if vendor_id not in seen and vendor_id not in prior:
+            return _ev({"error": "unknown vendor_id - search for the venue first"})
+        p = raw_pricing_or_none(vendor_id)
+        inp = (p or {}).get("cost_inputs")
+        if not inp:
+            return _ev({"error": "no pricing breakdown for this venue"})
+        g = int(guests or 0) or guests_default
+        override = None
+        if off_peak:
+            override = estimate.off_peak_override(xano.venue_details(vendor_id, with_amounts=True), inp.get("space"))
+            if not override:
+                return _ev({"off_peak": "this venue's PDF lists no cheapest-Saturday prices",
+                                   "peak": estimate.compute(inp, g)})
+        e = estimate.compute(inp, g, override)
+        if budget:
+            e["share_of_budget_pct"] = round(100.0 * e["total_before_tax_and_gratuity"] / budget)
+        if off_peak:
+            e["prices"] = "cheapest Saturday%s (this venue's PDF)" % (
+                " - " + override["months"] if override.get("months") else "")
+            e["peak_total_before_tax_and_gratuity"] = estimate.compute(inp, g)["total_before_tax_and_gratuity"]
+        return _ev(e)
 
     @beta_tool
     def market_benchmarks(state: str) -> str:
@@ -557,7 +702,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             state: a single state, e.g. "Texas", or "International".
         """
-        return json.dumps(xano.market_benchmarks(state))
+        return _ev(xano.market_benchmarks(state, guests))
 
     saved_notes = []
 
@@ -593,13 +738,29 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 line, a state comparison or the Saved list), e.g. "Cheaper options", "Barn / Ranch venues",
                 "DJs with a photo booth".
         """
+        shown = " ".join([message or ""] + [r or "" for r in (reasons or [])])
+        allowed = set()
+        for blob in evidence + [context] + [m.get("content") if isinstance(m.get("content"), str) else ""
+                                             for m in messages]:
+            allowed |= numbers_in(blob)
+        totals = [n for blob in evidence for n in numbers_in(" ".join(
+            re.findall(r'"total_(?:before_tax_and_gratuity|with_tax)": (\d+)', blob)))]
+        allowed |= derived_numbers(guests, budget, totals)
+        bad = unsupported_figures(shown, allowed)
+        if bad and not guard["bounced"]:
+            guard["bounced"] = True
+            guard["first_try"] = bad
+            return ("NOT SHOWN. These dollar figures are not in any data you were given: %s. Quote only figures "
+                    "from your tools or the context (estimate_cost gives every total, per-guest cost and what-if), "
+                    "or describe it in words. Then call present_recommendations again." % ", ".join(bad))
+        guard["unsupported"] = bad
         final.update(message=message, vendor_ids=vendor_ids, reasons=reasons, chips=chips)
         return "shown"
 
     t0 = time.time()
     # Prefetch in parallel: the couple's state benchmarks + saved vendors.
     states = _states_of(profile)
-    bench_f = [] if light else [pool.submit(xano.market_benchmarks, s) for s in states]
+    bench_f = [] if light else [pool.submit(xano.market_benchmarks, s, guests) for s in states]
     saved_ids = [] if profile_override is not None else xano.saved_vendor_ids(user)
     saved_f = pool.submit(lambda: [c for c in pool.map(xano.vendor_card, saved_ids) if c])
     benches = []
@@ -676,7 +837,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         tools=([search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
                 save_note, present_recommendations] if light else
                [search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
-                market_benchmarks, pe_market_rates, save_note, present_recommendations]),
+                estimate_cost, market_benchmarks, pe_market_rates, save_note, present_recommendations]),
         messages=msgs,
         output_config={"effort": config.EFFORT},
         # If Sonnet declines on a safety classifier, the API re-runs on a fallback model in the same
@@ -711,6 +872,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         final.update(message=last_text, vendor_ids=named, reasons=[""] * len(named), chips=[])
         usage["no_present_fallback"] = True
     usage["latency_ms"] = int((time.time() - t0) * 1000)
+    usage["figure_bounced"] = guard["bounced"]
+    usage["unsupported_figures"] = guard["unsupported"]
     usage["model"] = model_used
 
     # Rule 1: drop anything the model did not get from a search in this request.
@@ -724,7 +887,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             if c and c.get("category") in xano.PE_CATEGORIES:   # photographer / entertainer: no venue pricing
                 seen[vid] = _pe_card(c, light)
             elif c:
-                c = _with_rental(c, raw_pricing_or_none(vid))
+                c = card(c, raw_pricing_or_none(vid))
                 seen[vid] = _light_card(c) if light else c
         if vid in seen:
             reasons = final.get("reasons") or []

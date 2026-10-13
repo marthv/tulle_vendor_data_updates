@@ -1,0 +1,313 @@
+{
+ "vendor_id": "V3358",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "Connecticut",
+ "scope_label": "Connecticut",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [
+  {
+   "key": "shelbyannphotography",
+   "name": "Shelby Ann Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": ""
+  },
+  {
+   "key": "teresajohnsonphotography",
+   "name": "Teresa Johnson Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": ""
+  }
+ ],
+ "partner_vendors_headline": "2 vendors this venue works with",
+ "partner_vendors_more_label": "",
+ "partner_vendors_linked_count": 0,
+ "spaces": [
+  {
+   "space_key": "V3358|ceremonygarden",
+   "label": "Ceremony Garden",
+   "chip_label": "Ceremony Garden 220",
+   "capacity_seated": 220,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V3358|mainballroom",
+   "label": "Main Ballroom",
+   "chip_label": "Main Ballroom 220",
+   "capacity_seated": 220,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 1,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V3358|prefunctionroom",
+   "label": "Pre-Function Room",
+   "chip_label": "Pre-Function Room 220",
+   "capacity_seated": 220,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 2,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V3358|mansion",
+   "label": "The Mansion",
+   "chip_label": "The Mansion 220",
+   "capacity_seated": 220,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 3,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  }
+ ],
+ "spaces_headline": "4 spaces at this venue",
+ "selected_space_key": "V3358|ceremonygarden",
+ "space": {
+  "space_key": "V3358|ceremonygarden",
+  "label": "Ceremony Garden",
+  "capacity_seated": 220,
+  "is_whole_venue": false,
+  "shared_pricing": true,
+  "contract_count": 1,
+  "field_count": 2,
+  "fields_total": 3,
+  "status_line": "2 of 3 fields for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the Ceremony Garden, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 0,
+  "guest_floor": 0,
+  "guest_floor_note": "",
+  "guest_sensitivity": {
+   "responds": true,
+   "food_pinned": false,
+   "reason": "",
+   "fb_min_breakeven_guests": null,
+   "breakeven_above_capacity": false,
+   "note": ""
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "Connecticut",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 100,
+     "p25": 140,
+     "median": 146,
+     "p75": 180,
+     "p90": 200,
+     "n_spaces": 25,
+     "n_vendors": 20
+    },
+    "sentence": "At {guests} guests that is $127 a head.",
+    "pp_fb": 127,
+    "fb_min": 0,
+    "fb_min_is_per_person": false,
+    "fb_min_breakeven_guests": null,
+    "fb_min_binds_at_default": false,
+    "badge_code": "below",
+    "badge_label": "Below average in Connecticut",
+    "badge_scale": "Ranked against 25 comparable Connecticut venues."
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": true,
+    "source": "market",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "Connecticut",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 500,
+     "p25": 600,
+     "median": 750,
+     "p75": 1500,
+     "p90": 2000,
+     "n_spaces": 32,
+     "n_vendors": 23
+    },
+    "sentence": "Not disclosed. Most Connecticut venues charge around $750 if you marry on site.",
+    "badge_code": "",
+    "badge_label": "",
+    "est_amount": 750
+   },
+   {
+    "key": "venue_fee",
+    "title": "Rental fee",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "Connecticut",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 500,
+     "p25": 3000,
+     "median": 6250,
+     "p75": 9500,
+     "p90": 19500,
+     "n_spaces": 49,
+     "n_vendors": 34
+    },
+    "sentence": "A flat charge to book the Ceremony Garden for the day, before any food or service is added.",
+    "amount": 4500,
+    "badge_code": "typical",
+    "badge_label": "Typical in Connecticut",
+    "badge_scale": "Ranked against 49 comparable Connecticut venues."
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "Connecticut",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 10,
+     "p25": 18,
+     "median": 20,
+     "p75": 21,
+     "p90": 23,
+     "n_spaces": 28,
+     "n_vendors": 20
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "20% added to everything above. It is not a tip, and most couples miss it when they budget.",
+    "pct": 20,
+    "badge_code": "typical",
+    "badge_label": "Typical in Connecticut",
+    "badge_scale": "Ranked against 28 comparable Connecticut venues."
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "unknown",
+    "sentence": "Sales tax is added on top of everything above. This venue did not state its rate."
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Where this venue has not disclosed a figure, the Connecticut average stands in. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [
+    "food_and_drink",
+    "service_charge"
+   ],
+   "at_default": {
+    "guests": 100,
+    "total": 21540,
+    "per_guest": 215
+   },
+   "estimates": {
+    "pp_fb": 146,
+    "ceremony": 750,
+    "service_pct": 20,
+    "venue_fee": 6250
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": true
+    },
+    {
+     "component": "ceremony",
+     "from_venue": false
+    },
+    {
+     "component": "service_charge",
+     "from_venue": true
+    }
+   ],
+   "from_venue_count": 2,
+   "total": 3,
+   "style": "mixed",
+   "headline": "2 of 3 costs came from this venue, plus their own rental fee"
+  },
+  "band": {
+   "metric": "all_in_pg_125",
+   "reference_guests": 125,
+   "scope": "state",
+   "scope_label": "Connecticut",
+   "basis": "all_in",
+   "basis_component": "",
+   "p10": 126.92,
+   "p25": 165.92,
+   "median": 183.92,
+   "p75": 259.2,
+   "p90": 296.64,
+   "n_spaces": 27,
+   "n_vendors": 21,
+   "position": "average",
+   "sentence": "This sits in the middle for Connecticut. Plenty of venues cost more, plenty cost less.",
+   "venue_per_guest": 196
+  },
+  "footer": "From the pricing PDF a couple uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}
