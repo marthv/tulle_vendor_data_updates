@@ -162,3 +162,32 @@ def test_market_benchmarks_use_the_couples_band(monkeypatch):
     assert m["fb_min"]["median"] == 14500 and m["fb_min"]["scope"] == "all Connecticut venues"   # band too thin
     m0 = xano.market_benchmarks("Connecticut")["metrics"]
     assert m0["pp_fb"]["median"] == 159
+
+
+# ---------------------------------------------------------------- "how much should we budget?" in code
+
+def _bench(p200, p125, p75, n=27, scope="Connecticut venues that seat 151-250"):
+    pts = {200: p200, 125: p125, 75: p75}
+    return {"metrics": {"all_in_pg_%d" % k: {"p25": v[0], "median": v[1], "p75": v[2], "n_spaces": n, "scope": scope}
+                        for k, v in pts.items()}}
+
+
+def test_budget_check_matches_the_1437_profile():
+    """Live table 63 (2026-10-13). Replay run 2 called $180-210 x 160 'well above' $60k's 40-50% guide; CT's
+    typical venue at 160 guests is 49% of $60k - within it. PA is a stretch."""
+    ct = agent.budget_check(_bench((165.92, 181.2, 228), (165.92, 183.92, 259.2), (183.33, 219.6, 272)), 160, 60000)
+    assert ct["per_guest"] == 183 and ct["typical_venue_and_food_total"] == 29200
+    assert ct["share_of_their_budget_pct"] == 49 and ct["verdict"] == "within the 40-50% guideline"
+    assert ct["guideline_for_their_budget"] == [24000, 30000]
+    assert ct["whole_wedding_budget_for_a_typical_venue"] == [58400, 73000]
+    pa = agent.budget_check(_bench((136, 209.31, 254.1), (158.36, 227, 295), (183.33, 263.93, 433.33)), 160, 60000)
+    assert pa["typical_venue_and_food_total"] == 35000 and pa["verdict"].startswith("a little above")
+
+
+def test_budget_check_edges():
+    b = _bench((100, 100, 100), (120, 120, 120), (150, 150, 150))
+    assert agent.budget_check(b, 0, 60000) is None
+    assert agent.budget_check(b, 40, 0)["per_guest"] == 150          # flat below 75
+    assert agent.budget_check(b, 300, 0)["per_guest"] == 100         # flat above 200
+    assert "verdict" not in agent.budget_check(b, 300, 0)
+    assert agent.budget_check({"metrics": {}}, 160, 60000) is None

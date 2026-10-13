@@ -73,6 +73,7 @@ How to work:
 - If the profile has no guest count, don't assume a big wedding: make picks that work across sizes, say the count changes which venues fit, and make your one question how many guests they expect.
 - Small weddings and elopements (roughly under 30 guests): pass the real count as guests, prefer venues with no or low minimums (restaurants, raw spaces, small hotels), and if nothing in our data fits, say so plainly. Tulle doesn't track elopement packages or ceremony-only pricing yet - say that if asked, and point to the PDF for any small-party option a venue lists.
 - Budget rule of thumb: venue plus food and drink is usually 40-50% of the total wedding budget.
+- "How much should we budget?", "Is our budget realistic?", "What would be a more reasonable budget?": this is the question couples care most about - answer it with numbers, never with one sentence or a question back. Use each state's budget_check in the State benchmarks: the typical venue plus food and drink for their guest count (with its scope and number of spaces), the share of their budget and its verdict word for word, and the whole-wedding budget a typical venue implies. Then name the cheapest real pick shown so far as the way to stay inside it. Never multiply a per-guest figure by guests or call a share "above" or "within" yourself - budget_check has done it. Without a guest count, ask for it after giving the per-guest figures.
 - Lead with why these picks fit (budget, guest count, style), then one or two expert insights, then caveats.
 - If only one or two venues match a narrow request, add the closest alternatives and say why they are close.
 - When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it. The page tells them it was added to what you know about them, so don't announce it yourself.
@@ -345,6 +346,58 @@ def _close(v, allowed):
 
 def unsupported_figures(text, allowed):
     return [s for s, v in dollar_figures(text) if v >= MIN_CHECKED and not _close(v, allowed)]
+
+
+GUIDE_LOW, GUIDE_HIGH = 0.40, 0.50     # venue + food and drink as a share of the whole wedding budget
+_PG_POINTS = (75, 125, 200)             # table 63 all_in_pg_N guest counts
+
+
+def _pg_at(metrics, guests, q):
+    """All-in cost per guest at the couple's count: linear between table 63's 75 / 125 / 200-guest points,
+    flat outside them."""
+    pts = [(n, (metrics.get("all_in_pg_%d" % n) or {}).get(q)) for n in _PG_POINTS]
+    pts = [(n, v) for n, v in pts if isinstance(v, (int, float))]
+    if not pts:
+        return None
+    if guests <= pts[0][0]:
+        return pts[0][1]
+    for (n0, v0), (n1, v1) in zip(pts, pts[1:]):
+        if guests <= n1:
+            return v0 + (v1 - v0) * (guests - n0) / float(n1 - n0)
+    return pts[-1][1]
+
+
+def _r100(n):
+    return int(round(n / 100.0)) * 100
+
+
+def budget_check(bench, guests, budget):
+    """"How much should we budget?" answered in CODE (2026-10-13 replay of user 1437: one run gave no number,
+    the other multiplied $180-210 x 160 itself and called 48-56% of the budget "well above" a 40-50% guide).
+    Typical venue + food and drink for THIS guest count in this state, its share of the couple's budget, a
+    verdict, and the whole-wedding budget that typical venue implies. None without a guest count."""
+    m = (bench or {}).get("metrics") or {}
+    if not guests or not m.get("all_in_pg_200"):
+        return None
+    q = {k: _pg_at(m, guests, k) for k in ("p25", "median", "p75")}
+    if q["median"] is None:
+        return None
+    tot = {k: _r100(v * guests) for k, v in q.items() if v is not None}
+    out = {"guests": guests, "scope": m["all_in_pg_200"].get("scope"), "n_spaces": m["all_in_pg_200"].get("n_spaces"),
+           "typical_venue_and_food_total": tot["median"], "per_guest": int(round(q["median"])),
+           "middle_half_range": [tot.get("p25"), tot.get("p75")],
+           "whole_wedding_budget_for_a_typical_venue": [_r100(tot["median"] / GUIDE_HIGH),
+                                                        _r100(tot["median"] / GUIDE_LOW)],
+           "note": "Before tax and gratuity. The whole-wedding range assumes venue plus food and drink is 40-50% of it."}
+    if budget:
+        share = 100.0 * tot["median"] / budget
+        out["share_of_their_budget_pct"] = int(round(share))
+        out["guideline_for_their_budget"] = [_r100(budget * GUIDE_LOW), _r100(budget * GUIDE_HIGH)]
+        out["verdict"] = ("below the 40-50% guideline, so their budget has room" if share < 40 else
+                          "within the 40-50% guideline" if share <= 50 else
+                          "a little above the 40-50% guideline, so it's a stretch" if share <= 60 else
+                          "well above the 40-50% guideline")
+    return out
 
 
 def derived_numbers(guests, budget, totals=()):
@@ -805,6 +858,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             context += ("\nThis couple is on the free plan and has used their free PDF views: you only have price ranges; "
                         "the exact figures need a plan (Forever also unlocks 40 assistant questions a day).")
     if benches:
+        for b in benches:
+            bc = budget_check(b, guests, budget)
+            if bc:
+                b["budget_check"] = bc
         context += "\nState benchmarks (venues): " + json.dumps(benches)
     if saved:
         context += ("\nThey have SAVED %d vendors (their Saved list): " % len(saved)
