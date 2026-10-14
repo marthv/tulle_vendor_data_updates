@@ -74,6 +74,32 @@ def test_free_three_questions_then_feedback_then_paywall_no_bonus(free_on):
     assert guards.decide("opening", False, rows, 0, T, feedback_given=True)[1] == "blocked_free_limit"
 
 
+def test_free_one_question_then_feedback_then_paywall(free_on, monkeypatch):
+    # 2026-10-14: owner cut free users to ONE question (opening + 1, then feedback, then paywall).
+    monkeypatch.setattr(free_on, "FREE_REFINES", 1)
+    guards = _mods()[4]
+    rows = []
+    assert guards.decide("opening", False, rows, 0, T, feedback_given=False) == (True, "ok", False)
+    rows.append(ok("opening"))
+    assert guards.free_refines_left(False, rows, False) == 1
+    assert guards.decide("refine", False, rows, 0, T, feedback_given=False) == (True, "ok", True)
+    rows.append(ok("refine", True))
+    assert guards.free_refines_left(False, rows, False) == 0
+    assert guards.decide("refine", False, rows, 0, T, feedback_given=False)[1] == "feedback_required"
+    assert guards.decide("opening", False, rows, 0, T, feedback_given=False)[1] == "feedback_required"
+    assert guards.decide("refine", False, rows, 0, T, feedback_given=True)[1] == "blocked_free_limit"
+
+
+def test_free_refines_default_is_one(monkeypatch):
+    import importlib
+    monkeypatch.delenv("REC_FREE_REFINES", raising=False)
+    config = importlib.reload(_mods()[2])
+    try:
+        assert config.FREE_REFINES == 1
+    finally:
+        importlib.reload(config)
+
+
 def test_feedback_step_can_be_switched_off(free_on, monkeypatch):
     guards = _mods()[4]
     monkeypatch.setattr(free_on, "FREE_FEEDBACK_REQUIRED", False)

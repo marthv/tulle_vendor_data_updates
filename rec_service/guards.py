@@ -1,8 +1,8 @@
 """Who may spend what. Pure functions over rec_usage rows so the rules are unit-testable offline.
 
 FREE USERS - LIFETIME, NEVER RESETS (user decision 2026-10-03): the first opening picks are free, then
-3 questions, then the plan paywall. Any LATER opening (profile edit, a return visit that asks for fresh
-picks) spends one of those 3 questions. There is deliberately no daily reset: the engine's job is to get
+FREE_REFINES questions (3 until 2026-10-14, now 1), then the plan paywall. Any LATER opening (profile edit,
+a return visit that asks for fresh picks) spends one of those questions. There is deliberately no daily reset: the engine's job is to get
 a couple to open a pricing PDF in their FIRST session, not to be a free tool they return to.
 FREE MODE (owner decisions 2026-10-14): after those 3, ONE required feedback (feedback_required, 403) that
 earns no more questions (FREE_FEEDBACK_BONUS = 0); after it, the paywall (402) for any question or opening.

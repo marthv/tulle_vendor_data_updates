@@ -2,7 +2,7 @@
 
 POST /rec/opening          -> new conversation with opening picks; returns chat_id
                               (beta: Forever only - everyone else gets 402 forever_only)
-POST /rec/refine           -> {chat_id, message}: one refinement in that conversation (3 free, then 402)
+POST /rec/refine           -> {chat_id, message}: one refinement in that conversation (FREE_REFINES free - 1 since 2026-10-14 - then 402)
                               no chat_id ({messages:[...]} or {message}): continues the user's chat from the
                               last 30 min, else starts one; turns saved, chat_id returned (2026-10-12)
 GET  /rec/chats            -> the user's conversations, newest first
@@ -13,10 +13,10 @@ GET  /rec/status           -> free refinements left, paid flag, whether the serv
                               keys tier / price_locked / questions_left / feedback_required / feedback_done /
                               paywall (also on every answer and every blocked response)
 POST /rec/feedback         -> beta check-in {rating, would_use, text}. Paid members: unlocks questions.
-                              Free users (2026-10-14): required once after their 3 questions; earns nothing more.
+                              Free users (2026-10-14): required once after their free question(s); earns nothing more.
 
 FREE MODE (owner decisions 2026-10-14, on when REC_FOREVER_ONLY=0): every signed-in user may use the assistant.
-No active plan -> tier "free": opening + 3 questions for life, then one required feedback, then the paywall,
+No active plan -> tier "free": opening + FREE_REFINES questions for life (1 since 2026-10-14), then one required feedback, then the paywall,
 and NO price of any kind in text, cards or chips (free_mode.py; price_locked=true).
 GET  /health
 
@@ -523,7 +523,7 @@ FEEDBACK_MIN_CHARS = 10
 @app.post("/rec/feedback")
 def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
     """Beta check-in. One row per submission. Paid members: the first one unlocks questions for good.
-    Free users (2026-10-14): required once after their 3 questions; it earns no more (FREE_FEEDBACK_BONUS=0),
+    Free users (2026-10-14): required once after their free question(s); it earns no more (FREE_FEEDBACK_BONUS=0),
     so the next ask is the paywall."""
     _, user = _auth(authorization)
     text = (body.text or "").strip()[:2000]
