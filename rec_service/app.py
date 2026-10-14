@@ -9,8 +9,15 @@ GET  /rec/chats            -> the user's conversations, newest first
 GET  /rec/chats/{chat_id}  -> one conversation's turns (text, cards, chips) to re-render it
 POST /rec/more {chat_id}   -> "Show 3 more": next 3 venues from the latest answer's searches. Spends ONE
                               question exactly like a typed one (user 2026-10-07), same limits and errors.
-GET  /rec/status           -> free refinements left, paid flag, whether the service is on
-POST /rec/feedback         -> Forever beta check-in {rating, would_use, text}; unlocks questions after 5
+GET  /rec/status           -> free refinements left, paid flag, whether the service is on, and the page-state
+                              keys tier / price_locked / questions_left / feedback_required / feedback_done /
+                              paywall (also on every answer and every blocked response)
+POST /rec/feedback         -> beta check-in {rating, would_use, text}. Paid members: unlocks questions.
+                              Free users (2026-10-14): required once after their 3 questions; earns nothing more.
+
+FREE MODE (owner decisions 2026-10-14, on when REC_FOREVER_ONLY=0): every signed-in user may use the assistant.
+No active plan -> tier "free": opening + 3 questions for life, then one required feedback, then the paywall,
+and NO price of any kind in text, cards or chips (free_mode.py; price_locked=true).
 GET  /health
 
 Conversations live in Xano rec_chats (42) / rec_messages (43); durable notes the model saves
@@ -28,6 +35,7 @@ from pydantic import BaseModel
 import agent
 from chips import STARTER_CHIPS, dedupe_chips, ensure_chips, more_chips
 import config
+import free_mode
 import guards
 import notify
 import prefs
@@ -140,40 +148,73 @@ def _gate(kind, user, chat_id=0):
     paid = xano.beta_member(user)
     access = xano.has_paid_access(user)
     f_rows = _POOL.submit(xano.user_usage, user["id"])
-    f_spend = _POOL.submit(xano.spend_today_usd)
-    f_fb = _POOL.submit(_feedback_given, user["id"]) if paid else None
+    f_spend = _POOL.submit(xano.spend_today)
+    # Feedback matters for paid members (beta check-in) and, in free mode, for free users (required once).
+    f_fb = _POOL.submit(_feedback_given, user["id"]) if paid or not config.FOREVER_ONLY else None
     rows = f_rows.result()
     feedback_given = f_fb.result() if f_fb else True
-    allowed, status, counted_free = guards.decide(kind, paid, rows, f_spend.result(), xano.today(), feedback_given)
-    base = {"user_id": user["id"], "kind": kind, "chat_id": chat_id, "model": config.MODEL}
+    spend, free_spend = f_spend.result()
+    allowed, status, counted_free = guards.decide(kind, paid, rows, spend, xano.today(), feedback_given,
+                                                  free_spend_today=free_spend)
+    # tier is written for the free cap; Xano drops it until table 79 has a `tier` column (see config).
+    base = {"user_id": user["id"], "kind": kind, "chat_id": chat_id, "model": config.MODEL,
+            "tier": "paid" if paid else "free"}
     if not allowed:
         xano.log_usage(dict(base, status=status))
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
                      {"kind": kind, "status": status, "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service"})
         code = (402 if status in ("blocked_free_limit", "forever_only") else 403 if status == "feedback_required"
-                else 503 if status in ("killed", "blocked_global_cap") else 429)
+                else 503 if status in ("killed", "blocked_global_cap", "blocked_free_cap") else 429)
         extra = {}
-        if status == "feedback_required":
+        if status == "feedback_required" and paid:
             extra.update(beta_feedback_after=config.BETA_FEEDBACK_AFTER, questions_used=guards.forever_questions(rows))
+        elif status == "feedback_required":
+            extra.update(free_feedback_bonus=config.FREE_FEEDBACK_BONUS, questions_used=guards.free_used(rows))
         if status == "blocked_monthly_cap":
             t = dt.date.fromisoformat(xano.today())
             extra["resets_on"] = (dt.date(t.year + (t.month == 12), t.month % 12 + 1, 1)).isoformat()
+        free_left = guards.free_refines_left(paid, rows, feedback_given)
+        beta_left = guards.beta_questions_left(paid, rows, feedback_given)
         raise HTTPException(code, {"status": status, "upsell": "forever", "free_limit": config.FREE_REFINES, **extra,
-                                   "free_refines_left": guards.free_refines_left(paid, rows)})
+                                   "free_refines_left": free_left,
+                                   **_tier_fields(paid, access, feedback_given, beta_left,
+                                                  guards.forever_left_today(paid, rows, xano.today()), free_left,
+                                                  guards.free_feedback_required(paid, rows, feedback_given))})
     return paid, access, rows, feedback_given, counted_free, base
 
 
-def _counters(kind, paid, rows, counted_free, feedback_given):
+def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_left, free_fb):
+    """Page-state keys (free mode, 2026-10-14) - the same on /rec/status, every answer and every blocked
+    response, so the page renders from whichever it has last:
+      tier             "paid" (full member) | "free"
+      price_locked     true = no prices anywhere (no active plan); the page shows "Open pricing PDF" instead
+      questions_left   free: lifetime questions left before feedback/paywall; paid: questions left before the
+                       beta check-in if it is pending, else prompts left today
+      feedback_required  the next question/opening will be refused 403 until POST /rec/feedback
+      feedback_done    this user has left assistant feedback
+      paywall          free user with nothing left and no feedback owed (or free mode off): next ask = 402"""
+    fb_req = (beta_left == 0) if paid else bool(free_fb)
+    left = (beta_left if beta_left is not None else forever_left) if paid else free_left
+    return {"tier": "paid" if paid else "free", "price_locked": not access, "questions_left": left,
+            "feedback_required": fb_req, "feedback_done": bool(feedback_given),
+            "paywall": (not paid) and (config.FOREVER_ONLY or (not fb_req and not left)),
+            "free_feedback_required": bool(free_fb), "free_feedback_bonus": config.FREE_FEEDBACK_BONUS}
+
+
+def _counters(kind, paid, rows, counted_free, feedback_given, access=True):
     """Allowance left AFTER this request, for the page's counters."""
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
     used_today = rows + [{"status": "ok", "usage_day": xano.today()}]
     used_fq = rows + ([{"status": "ok", "kind": "refine"}] if paid and kind == "refine" else [])
-    return dict(upsell="forever",
-                beta_questions_left=guards.beta_questions_left(paid, used_fq, feedback_given),
-                beta_feedback_after=config.BETA_FEEDBACK_AFTER,
-                free_refines_left=guards.free_refines_left(paid, used),
-                forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),
-                forever_daily_limit=config.PAID_DAILY_REFINES, free_limit=config.FREE_REFINES)
+    c = dict(upsell="forever",
+             beta_questions_left=guards.beta_questions_left(paid, used_fq, feedback_given),
+             beta_feedback_after=config.BETA_FEEDBACK_AFTER,
+             free_refines_left=guards.free_refines_left(paid, used, feedback_given),
+             forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),
+             forever_daily_limit=config.PAID_DAILY_REFINES, free_limit=config.FREE_REFINES)
+    c.update(_tier_fields(paid, access, feedback_given, c["beta_questions_left"], c["forever_left_today"],
+                          c["free_refines_left"], guards.free_feedback_required(paid, used, feedback_given)))
+    return c
 
 
 def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
@@ -186,14 +227,20 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
         notes = [n.get("note") for n in raw if n.get("note") and n.get("kind") != "pref"]
         user_context = row.get("user_context") or ""
         pref_hint = prefs.search_hint(prefs.from_notes(raw))
-        # Detail (user 2026-10-03): only Forever gets figures; free and 1-week/4-week get fit, not numbers.
+        # Detail: full members get figures; a non-member with a plan gets fit, not numbers ("light"); no plan at
+        # all gets no price of any kind ("free", 2026-10-14).
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
-                                  detail="full" if paid else "light", prior_vendor_ids=prior_ids,
+                                  detail="full" if paid else "light" if access else "free",
+                                  prior_vendor_ids=prior_ids,
                                   preferences=pref_hint,
                                   on_note=lambda n: xano.add_memory_note(user["id"], n))
     except Exception as e:  # never charge a free refine for our own failure
         xano.log_usage(dict(base, status="error", error=str(e)[:500]))
         raise HTTPException(502, {"status": "error"})
+    redactions = None
+    if not access:   # free mode: price guard on text, cards and chips (code, not only the prompt)
+        result = free_mode.sanitize_result(result)
+        redactions = result.pop("price_redactions", 0)
     cost = guards.cost_usd(usage["model"], usage)
     _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model=usage["model"],
                         input_tokens=usage["input_tokens"], cache_read_tokens=usage["cache_read_tokens"],
@@ -204,9 +251,11 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
         "kind": kind, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
         "cost_usd": cost, "latency_s": round(usage["latency_ms"] / 1000, 1), "tool_calls": usage["tool_calls"],
         "cards": len(result.get("cards") or []), "more_cards": len(result.get("more_cards") or []),
-        "notes_saved": len(result.get("notes_saved") or []),
-        "free_refines_left": guards.free_refines_left(paid, used), "model": usage["model"]})
-    return dict(result, paid=paid, has_access=access, **_counters(kind, paid, rows, counted_free, feedback_given))
+        "notes_saved": len(result.get("notes_saved") or []), "price_locked": not access,
+        "price_redactions": redactions,
+        "free_refines_left": guards.free_refines_left(paid, used, feedback_given), "model": usage["model"]})
+    return dict(result, paid=paid, has_access=access,
+                **_counters(kind, paid, rows, counted_free, feedback_given, access))
 
 
 def _opening_title(user):
@@ -227,7 +276,7 @@ def opening(background: BackgroundTasks, authorization: str = Header(None)):
     # Create the chat only AFTER the guard allowed and the model answered - a blocked (402/429/503) or
     # failed opening must not leave an empty conversation behind. Costs ~0.3s.
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}])
-    out["chips"] = list(STARTER_CHIPS)
+    out["chips"] = list(free_mode.STARTER_CHIPS if out.get("price_locked") else STARTER_CHIPS)
     chat = xano.create_chat(user["id"], _opening_title(user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     return _public(out, chat_id=chat["id"])
@@ -251,6 +300,8 @@ def _refine_in_chat(token, user, chat, text, background):
              for c in (t.get("cards") or []) + (t.get("more_cards") or [])]
     out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=[v for v in prior if v])
     out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
+    if out.get("price_locked"):
+        out["chips"] = free_mode.chips(out["chips"], history)
     if (chat.get("title") or "").startswith("Venue picks"):
         chat["title"] = text[:80]
 
@@ -308,6 +359,8 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
     # allowed and the model answered, so a blocked or failed question leaves no empty conversation behind.
     out = _run_guarded("refine", token, user, msgs)
     out["chips"] = ensure_chips(out.get("chips"))
+    if out.get("price_locked"):
+        out["chips"] = free_mode.chips(out["chips"])
     chat = xano.create_chat(user["id"], text[:80])
     earlier = msgs[:-1]
 
@@ -334,6 +387,8 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
     if not chat:
         raise HTTPException(404, "conversation not found")
     turns = xano.get_messages(chat["id"])
+    if not xano.has_paid_access(user):   # e.g. a lapsed member's old chats: no prices once the plan ends
+        turns = free_mode.sanitize_turns(turns)
     left = _more_left(turns)
     last = max((i for i, t in enumerate(turns) if t["role"] == "assistant"), default=None)
     for i, t in enumerate(turns):
@@ -365,6 +420,8 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
     paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat["id"])
     picks = remaining[:agent.MORE_STEP]
     chips = more_chips(history)
+    if not access:
+        picks, chips = [free_mode.card(c) for c in picks], free_mode.chips(chips)
     xano.log_usage(dict(base, status="ok", counted_as_free=counted_free, model="none", input_tokens=0,
                         cache_read_tokens=0, cache_write_tokens=0, output_tokens=0, tool_calls=0,
                         cost_usd=0, latency_ms=0))
@@ -372,7 +429,7 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
         "kind": "more", "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
         "cost_usd": 0, "cards": len(picks), "more_cards": len(remaining) - len(picks),
         "free_refines_left": guards.free_refines_left(
-            paid, rows + ([{"status": "ok", "counted_as_free": True}] if counted_free else []))})
+            paid, rows + ([{"status": "ok", "counted_as_free": True}] if counted_free else []), feedback_given)})
 
     def persist():   # same order as a typed question: user turn, assistant turn, bump the chat
         xano.add_message(chat["id"], "user", "Show 3 more")
@@ -382,7 +439,7 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
     left = len(remaining) - len(picks)
     return dict(text=MORE_TEXT, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
                 more_available=left if left >= agent.MORE_STEP else 0,
-                **_counters("refine", paid, rows, counted_free, feedback_given))
+                **_counters("refine", paid, rows, counted_free, feedback_given, access))
 
 
 class ContextBody(BaseModel):
@@ -465,7 +522,9 @@ FEEDBACK_MIN_CHARS = 10
 
 @app.post("/rec/feedback")
 def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
-    """Forever beta check-in. One row per submission; the first one unlocks questions for good."""
+    """Beta check-in. One row per submission. Paid members: the first one unlocks questions for good.
+    Free users (2026-10-14): required once after their 3 questions; it earns no more (FREE_FEEDBACK_BONUS=0),
+    so the next ask is the paywall."""
     _, user = _auth(authorization)
     text = (body.text or "").strip()[:2000]
     would = (body.would_use or "").strip().lower()
@@ -478,28 +537,38 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
     paid = xano.beta_member(user)
     plan = xano.plan_label(user)
     rows = xano.user_usage(user["id"])
-    used = guards.forever_questions(rows)
+    used = guards.forever_questions(rows) if paid else guards.free_used(rows)
     xano.add_beta_feedback({"user_id": int(user["id"]), "rating": body.rating, "would_use": would, "text": text,
                             "questions_used": used, "chat_id": int(body.chat_id or 0)})
     _POOL.submit(xano.mp_track, user["id"], "rec_beta_feedback", {
         "rating": body.rating, "would_use": would, "chars": len(text), "forever": plan == "Forever",
         "plan": plan, "questions_used": used, "source": "rec_service"})
     _POOL.submit(notify.beta_feedback, user, body.rating, would, text, used, plan)
-    return {"ok": True, "feedback_required": False, "beta_questions_left": None,
-            "forever_left_today": guards.forever_left_today(paid, rows, xano.today())}
+    access = xano.has_paid_access(user)
+    free_left = guards.free_refines_left(paid, rows, True)
+    forever_left = guards.forever_left_today(paid, rows, xano.today())
+    return {"ok": True, "beta_questions_left": None, "free_refines_left": free_left,
+            "forever_left_today": forever_left,
+            **_tier_fields(paid, access, True, None, forever_left, free_left, False)}
 
 
 @app.get("/rec/status")
 def status(authorization: str = Header(None)):
     _, user = _auth(authorization)
     paid = xano.beta_member(user)
+    access = xano.has_paid_access(user)
     rows = xano.user_usage(user["id"])
-    beta_left = guards.beta_questions_left(paid, rows, _feedback_given(user["id"]) if paid else True)
-    return {"paid": paid, "has_access": xano.has_paid_access(user), "upsell": "forever",
+    fb = _feedback_given(user["id"]) if paid or not config.FOREVER_ONLY else True
+    beta_left = guards.beta_questions_left(paid, rows, fb)
+    free_left = guards.free_refines_left(paid, rows, fb)
+    forever_left = guards.forever_left_today(paid, rows, xano.today())
+    return {"paid": paid, "has_access": access, "upsell": "forever",
             "beta_questions_left": beta_left, "beta_feedback_after": config.BETA_FEEDBACK_AFTER,
-            "feedback_required": beta_left == 0, "forever_only": config.FOREVER_ONLY,
-            "forever_left_today": guards.forever_left_today(paid, rows, xano.today()),
-            "forever_daily_limit": config.PAID_DAILY_REFINES, "free_limit": config.FREE_REFINES, "free_refines_left": guards.free_refines_left(paid, rows),
+            "forever_only": config.FOREVER_ONLY, "free_mode": not config.FOREVER_ONLY,
+            "forever_left_today": forever_left,
+            "forever_daily_limit": config.PAID_DAILY_REFINES, "free_limit": config.FREE_REFINES, "free_refines_left": free_left,
+            **_tier_fields(paid, access, fb, beta_left, forever_left, free_left,
+                           guards.free_feedback_required(paid, rows, fb)),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"]),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 

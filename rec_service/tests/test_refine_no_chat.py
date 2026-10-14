@@ -37,7 +37,7 @@ def env(monkeypatch):
     monkeypatch.setattr(xano, "touch_chat", lambda c: None)
     monkeypatch.setattr(xano, "log_usage", lambda row: st["logged"].append(row))
     monkeypatch.setattr(xano, "user_usage", lambda uid: [])
-    monkeypatch.setattr(xano, "spend_today_usd", lambda: 0.0)
+    monkeypatch.setattr(xano, "spend_today", lambda: (0.0, 0.0))
     monkeypatch.setattr(xano, "has_forever", lambda u: True)
     monkeypatch.setattr(xano, "beta_member", lambda u: True)
     monkeypatch.setattr(xano, "has_paid_access", lambda u: True)

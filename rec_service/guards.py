@@ -4,6 +4,9 @@ FREE USERS - LIFETIME, NEVER RESETS (user decision 2026-10-03): the first openin
 3 questions, then the plan paywall. Any LATER opening (profile edit, a return visit that asks for fresh
 picks) spends one of those 3 questions. There is deliberately no daily reset: the engine's job is to get
 a couple to open a pricing PDF in their FIRST session, not to be a free tool they return to.
+FREE MODE (owner decisions 2026-10-14): after those 3, ONE required feedback (feedback_required, 403) that
+earns no more questions (FREE_FEEDBACK_BONUS = 0); after it, the paywall (402) for any question or opening.
+Free traffic has its own daily spend cap (blocked_free_cap, 503) so it can't trip the global cap.
 FOREVER: 40 prompts per UTC day (openings + questions combined), shown to the user, plus a quiet
 300/calendar-month ceiling (blocked_monthly_cap) that bounds worst-case cost at ~$10/user/month.
 """
@@ -32,7 +35,18 @@ def beta_questions_left(paid, usage_rows, feedback_given):
     return max(0, config.BETA_FEEDBACK_AFTER - forever_questions(usage_rows))
 
 
-def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True):
+def free_limit(feedback_given):
+    """Lifetime free questions: FREE_REFINES, plus FREE_FEEDBACK_BONUS (0 since 2026-10-14) after feedback."""
+    return config.FREE_REFINES + (config.FREE_FEEDBACK_BONUS if feedback_given else 0)
+
+
+def free_feedback_required(paid, usage_rows, feedback_given):
+    """True when a free user has used the FREE_REFINES questions and still owes the one-time feedback."""
+    return (not paid and not feedback_given and config.FREE_FEEDBACK_REQUIRED
+            and free_used(usage_rows) >= config.FREE_REFINES)
+
+
+def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True, free_spend_today=0.0):
     """Return (allowed, status, counted_as_free). status is what gets logged when blocked.
 
     Order matters: kill switch and global cap protect the bill first, then per-user rules.
@@ -57,11 +71,15 @@ def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True):
         return True, "ok", False
     if config.FOREVER_ONLY:
         return False, "forever_only", False          # beta: Forever members only
+    if free_spend_today >= config.FREE_DAILY_USD:
+        return False, "blocked_free_cap", False       # free share of today's budget is used up
     if kind == "opening" and not any(r.get("kind") == "opening" for r in ok):
         return True, "ok", False                      # the one free opening, ever
-    if free_used(usage_rows) >= config.FREE_REFINES:
+    if free_feedback_required(paid, usage_rows, feedback_given):
+        return False, "feedback_required", False      # the one-time feedback, before the paywall
+    if free_used(usage_rows) >= free_limit(feedback_given):
         return False, "blocked_free_limit", False
-    return True, "ok", True                           # spends one of the 3 lifetime questions
+    return True, "ok", True                           # spends one of the lifetime free questions
 
 
 def forever_left_today(paid, usage_rows, today):
@@ -71,10 +89,10 @@ def forever_left_today(paid, usage_rows, today):
     return max(0, config.PAID_DAILY_REFINES - sum(1 for r in _ok(usage_rows) if r.get("usage_day") == today))
 
 
-def free_refines_left(paid, usage_rows):
+def free_refines_left(paid, usage_rows, feedback_given=False):
     if paid:
         return None
-    return max(0, config.FREE_REFINES - free_used(usage_rows))
+    return max(0, free_limit(feedback_given) - free_used(usage_rows))
 
 
 def cost_usd(model, usage):

@@ -23,6 +23,16 @@ FREE_REFINES = int(os.environ.get("REC_FREE_REFINES", "3"))   # 2026-10-03 eveni
 PAID_DAILY_REFINES = int(os.environ.get("REC_PAID_DAILY_REFINES", "40"))
 # Anyone: max opening generations per UTC day (each profile change regenerates).
 DAILY_OPENINGS = int(os.environ.get("REC_DAILY_OPENINGS", "5"))
+# FREE MODE (owner decisions 2026-10-14; supersedes the 10-08 "feedback earns 3 more" plan): after the
+# FREE_REFINES lifetime questions a free user must leave feedback once (403 feedback_required), and that
+# feedback earns NOTHING (bonus 0) - the next question or opening is the plan paywall (402).
+# REC_FREE_FEEDBACK_REQUIRED=0 skips the feedback step (straight to the paywall).
+FREE_FEEDBACK_REQUIRED = os.environ.get("REC_FREE_FEEDBACK_REQUIRED", "1") == "1"
+FREE_FEEDBACK_BONUS = int(os.environ.get("REC_FREE_FEEDBACK_BONUS", "0"))
+# Free users' share of the daily budget ($15, user decision 2026-10-08) so free traffic can't use up the
+# global cap and lock paying members out -> 503 blocked_free_cap. Counted from rec_usage rows with tier "free"
+# or counted_as_free (table 79 has no tier column yet, so each free user's one free opening is NOT counted).
+FREE_DAILY_USD = float(os.environ.get("REC_FREE_DAILY_USD", "15"))
 # Whole service: stop spending above this many USD per UTC day.
 GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
 # "1" = off. One env var flip on Railway, no deploy.

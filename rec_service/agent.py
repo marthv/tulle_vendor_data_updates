@@ -26,6 +26,7 @@ import anthropic
 from anthropic import beta_tool
 
 import config
+import free_mode
 import xano
 
 SYSTEM = """You are Tulle's wedding vendor guide for VENUES, PHOTOGRAPHERS and ENTERTAINMENT. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and hundreds of photographers, DJs, bands and musicians, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
@@ -296,10 +297,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
-    detail: "full" (Forever) or "light" (everyone else - fit, not figures; see _light_pricing).
+    detail: "full" (Forever) or "light" (everyone else - fit, not figures; see _light_pricing), or "free"
+        (no active plan, 2026-10-14: no price of any kind - see free_mode.py; implies light).
     prior_vendor_ids: venues earlier turns of this chat showed as cards (server-stored, so trusted).
     Returns (result_dict, usage_dict)."""
-    light = detail == "light"
+    free = detail == "free"
+    light = detail in ("light", "free")
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
     extra = {}           # vendor_id -> card data for "Show 3 more" ONLY: search results past the 8 the model sees
     searched = []        # vendor_ids search_venues returned in THIS request, in search order ("Show 3 more")
@@ -614,12 +617,21 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         saved = []
     saved_cards_holder["cards"] = saved
 
-    context = "Couple profile: " + json.dumps(profile)
+    context = "Couple profile: " + json.dumps(free_mode.profile_for_model(profile) if free else profile)
     if not states:
         # 2026-10-12 user 827: no state in the profile -> the model kept asking "which state?" and showed
         # 0 venues on 3 of 4 replies. Say so explicitly so the NO-location rule in SYSTEM applies.
         context += "\nLOCATION: NONE IN PROFILE (see the no-location rule)."
-    if light:
+    if free:
+        context += "\nDETAIL: FREE. This couple has no Tulle plan: no prices of any kind (see FREE MODE)."
+        try:
+            views = int(user.get("FreeViewsRemaining"))
+        except (TypeError, ValueError):
+            views = 0
+        if views > 0:
+            context += ("\nThey have %d free PDF view%s left - invite them to use one on the PDF of your top pick."
+                        % (views, "" if views == 1 else "s"))
+    elif light:
         context += ("\nDETAIL: LIGHT. This couple is not on Forever: recommend on fit and comparisons only, "
                     "with no dollar figures (see DETAIL LEVEL). Forever unlocks the full price breakdown here.")
     else:
@@ -671,9 +683,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     runner = client.beta.messages.tool_runner(
         model=config.MODEL,
         max_tokens=8000,
-        system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}]
+               + ([{"type": "text", "text": free_mode.RULES}] if free else []),
         # LIGHT gets no market-rate tools (market_benchmarks / pe_market_rates are all figures).
-        tools=([search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
+        # FREE gets no price-bearing tool at all, and price-free wrappers of the rest (free_mode.tools).
+        tools=(free_mode.tools(search_venues, search_photographers_entertainment, saved_venues, venue_details,
+                               save_note, present_recommendations) if free else
+               [search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
                 save_note, present_recommendations] if light else
                [search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
                 market_benchmarks, pe_market_rates, save_note, present_recommendations]),

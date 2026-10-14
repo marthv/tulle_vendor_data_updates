@@ -148,9 +148,17 @@ def user_usage(user_id):
 
 
 def spend_today_usd():
+    return spend_today()[0]
+
+
+def spend_today():
+    """(all spend today, free users' spend today) in USD, from one read of today's rec_usage rows.
+    Free = tier "free" (dropped by Xano until table 79 gets a tier column) or counted_as_free."""
     d = today()
-    return sum(float(r.get("cost_usd") or 0) for r in _search_all(config.USAGE_TABLE_ID, [{"usage_day": d}])
-               if r.get("usage_day") == d)
+    rows = [r for r in _search_all(config.USAGE_TABLE_ID, [{"usage_day": d}]) if r.get("usage_day") == d]
+    total = sum(float(r.get("cost_usd") or 0) for r in rows)
+    free = sum(float(r.get("cost_usd") or 0) for r in rows if r.get("tier") == "free" or r.get("counted_as_free"))
+    return total, free
 
 
 def log_usage(row):

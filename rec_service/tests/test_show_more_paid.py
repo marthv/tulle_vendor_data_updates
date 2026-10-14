@@ -29,7 +29,7 @@ def env(monkeypatch):
     monkeypatch.setattr(xano, "add_message", lambda *a: st["added"].append(a))
     monkeypatch.setattr(xano, "touch_chat", lambda c: None)
     monkeypatch.setattr(xano, "user_usage", lambda uid: list(st["rows"]))
-    monkeypatch.setattr(xano, "spend_today_usd", lambda: 0.0)
+    monkeypatch.setattr(xano, "spend_today", lambda: (0.0, 0.0))
     monkeypatch.setattr(xano, "has_forever", lambda u: st["forever"])
     monkeypatch.setattr(xano, "has_paid_access", lambda u: st["forever"])
     monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
