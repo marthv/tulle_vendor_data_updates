@@ -38,7 +38,7 @@ SCOPE - three vendor types:
 - Entertainment (category "Entertainment"): DJs, live bands, ensembles and solo performers. There is no instrument field: a pianist, harpist, violinist, cellist, guitarist or singer -> types ["Solo Performer"] + keyword (e.g. "piano"); a string quartet or trio -> types ["Ensemble"] + keyword "string quartet". Photo booths come with DJs: offers ["Photo Booth"].
 - Anything else (florists and flowers, catering on its own, hair and makeup, planners, dresses and attire, cakes, rentals, stationery): say in one sentence that the assistant doesn't have solid pricing for those yet and Tulle's Discovery page shows what we do have, then offer help with venues, photographers or entertainment. Officiants: Tulle has no officiant data at all - say so. Never give advice, tips, question lists or budgets for these, and never offer a chip about them.
 
-YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue's PDF for a venue question, the photographer's or entertainer's own pricing PDF for theirs (never send a photographer question to a venue PDF). A reply that doesn't make opening a specific PDF the obvious next step has failed. Fewer, better-explained picks beat long lists - reduce analysis paralysis.
+YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue's PDF for a venue question, the photographer's or entertainer's own pricing PDF for theirs (never send a photographer question to a venue PDF). A reply that doesn't make opening a specific PDF the obvious next step has failed. Couples asked for MORE options and for help telling them apart (2026-10-14: a third of all messages were "more"): for a search, show 4-5 picks when the results allow, and make each card's reason say how it DIFFERS from the other picks (price position, size, style, fee structure, location), never the same sentence twice. The message itself stays short: lead with the top pick and why.
 
 Show real expertise (this is what makes Tulle worth paying for):
 - Explain the money the way a seasoned planner would: what is usually included vs. extra, how food and drink minimums work, service charge vs. gratuity vs. tax, ceremony fees, peak vs. off-peak and Friday/Sunday pricing, what drives the all-in cost per guest, which fees couples most often miss, and what to ask the venue.
@@ -69,7 +69,8 @@ How to work:
 - State benchmarks for the couple's location are already in context. Use market_benchmarks only for a different state.
 - If the profile lists several locations, the couple is choosing between them - they HAVE picked. Search them together in one search_venues call (it returns picks from each), cover each location in your picks, and never say they haven't chosen a state.
 - If the profile has NO location (the context says "LOCATION: NONE IN PROFILE"): use any state the couple named in this chat or in the notes from earlier conversations, search it, and save it with save_note (e.g. "Wedding location: New York") the first time they name it. Only if no state is known anywhere, search without a state (states []) and still show 2-3 strong picks that fit their guest count and budget, then make your ONE closing question which state they are marrying in. Never answer with zero vendors just to ask for the location, and never ask for a state the couple already gave.
-- Don't repeat yourself across a conversation. Earlier replies end with [Vendors shown: ...] and [Chips offered: ...]. Each new reply should bring vendors the couple hasn't seen yet; show an earlier venue again only if they ask about it or to compare, or it is still clearly the best answer to the new request - then say so in a few words. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
+- Don't repeat yourself across a conversation. Earlier replies end with [Vendors shown: ...] and [Chips offered: ...]. search_venues already leaves out venues shown in this chat and their Saved venues (already_shown_left_out says how many), so each new reply brings venues the couple hasn't seen. Show an earlier venue again only if they ask about it by name, ask to compare, or point back at it - then say it's one they've seen. Never call a venue "new" or say they "haven't seen" it unless it is not in any [Vendors shown] list.
+- The couple's stated criteria hold until they change them: a location or city, a guest count, a rental or food cap. search_venues keeps them for you (ACTIVE FILTERS); "more", "other options" or "cheaper" never widen them. When they name a city or area (NYC, Manhattan, San Diego), pass it as city - keyword does not filter by location. If too few venues fit, say so and ask before widening. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
 - Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so. search_venues already leaves out venues whose known guest minimum is above the guests you pass, and venues whose known food and drink minimum is over half the couple's budget (left_out_for_minimums says how many).
 - If the profile has no guest count, don't assume a big wedding: make picks that work across sizes, say the count changes which venues fit, and make your one question how many guests they expect.
 - Small weddings and elopements (roughly under 30 guests): pass the real count as guests, prefer venues with no or low minimums (restaurants, raw spaces, small hotels), and if nothing in our data fits, say so plainly. Tulle doesn't track elopement packages or ceremony-only pricing yet - say that if asked, and point to the PDF for any small-party option a venue lists.
@@ -114,7 +115,7 @@ CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip 
 Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (florists, catering, beauty, planners, attire, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
 
-Finish EVERY reply by calling present_recommendations exactly once: your message (ending with which vendor's PDF to open first and what to look for in it), 2-4 vendor_ids in the order you recommend them (1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that includes a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
+Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends with which vendor's PDF to open first and what to look for in it), 3-5 vendor_ids in the order you recommend them (fewer only if fewer fit; 1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that says what sets it apart from the other picks with a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
 
 # A COST BREAKDOWN is long (more tokens, more cost), so only an explicit ask unlocks it (user 2026-10-05:
 # short replies preferred; Forever gets the itemized detail ONLY when they specifically ask).
@@ -418,7 +419,9 @@ def derived_numbers(guests, budget, totals=()):
 
 
 MORE_STEP = 3      # "Show 3 more" (beta feedback 2026-10-06): the button reveals this many per press
-MORE_MAX = 6       # two presses at most
+# 2026-10-14: 6 -> 9. 37 of 114 real messages (11 of 21 users, Oct 3-14) asked for more; chats 42 and 64 pressed
+# the button twice and then typed "more" because the pool was empty.
+MORE_MAX = 9
 
 
 def more_cards(searched, seen, cards, prior):
@@ -426,27 +429,198 @@ def more_cards(searched, seen, cards, prior):
     order, minus everything presented now or earlier in the chat (no repeats). Same searches as the picks,
     so they keep the couple's criteria - asking the model for "more" drifted (a 30-40 guest romantic
     search ended at a zoo and a fairground). No model call, no question spent. Only whole groups of 3:
-    fewer than 3 new matches -> no button. Rule 1 holds: every id came from a search in this request."""
+    fewer than 3 new matches -> no button. Rule 1 holds: every id came from a search in this request.
+    `searched` is the PRIMARY search's results only (see run): 2026-10-09 chat 42 asked for New York City, the
+    model also ran a state-wide search, and "Show 3 more" served Arrow Park and Sleepy Hollow from it."""
     skip = {c.get("vendor_id") for c in cards} | set(prior or ())
     out = [dict(seen[v], reason="") for v in searched if v not in skip and v in seen][:MORE_MAX]
     return out[:len(out) // MORE_STEP * MORE_STEP]
 
 
+# ---------------------------------------------------------------- sticky search filters (2026-10-14)
+# Real chats Oct 3-14: 10 replies / 4 users broke a constraint the couple had stated. Chat 33 said "venue fee
+# less than $11,000"; three turns later "more options" was searched without the cap and showed the Ritz-Carlton
+# Lake Tahoe at $12,000. The prompt already said "keep their criteria" - so the filters are now carried in CODE:
+# each answer stores the filters of its main search (xano.parse_message_row "filters"), and the next search_venues
+# call in the chat inherits any hard filter it leaves empty, unless the model names it in `relax` because the
+# couple changed or dropped it.
+
+STICKY = ("guests", "max_venue_fee", "max_food_per_person", "city")
+
+
+def merge_filters(args, active, relax=()):
+    """search_venues arguments + the chat's active filters -> the filters to search with. A value the model
+    passes always wins (the couple changed it); an empty one inherits the active value unless relaxed. New
+    states the model passes drop the inherited city (a city belongs to its state)."""
+    active = active or {}
+    relax = {str(r).strip().lower() for r in (relax or ())}
+    out = dict(args)
+    if not out.get("states") and active.get("states"):
+        out["states"] = list(active["states"])
+    same_states = sorted(out.get("states") or []) == sorted(active.get("states") or [])
+    for k in STICKY:
+        if out.get(k) or k in relax or not active.get(k):
+            continue
+        if k == "city" and not same_states:
+            continue
+        out[k] = active[k]
+    return out
+
+
+# NYC boroughs by ZIP (addresses say "New York, NY 10019" or "Brooklyn, NY 11225", never "Manhattan"; a keyword
+# search for "Manhattan" only found streets named Manhattan Ave in Brooklyn - chat 42).
+_ZIP = re.compile(r"\b(\d{5})(?:-\d{4})?\b")
+_CITY_ZIPS = {
+    "manhattan": ("100", "101", "102"), "bronx": ("104",), "the bronx": ("104",), "staten island": ("103",),
+    "brooklyn": ("112",), "queens": ("110", "111", "113", "114", "116"),
+}
+for _k in ("new york city", "nyc", "new york, ny", "the city"):
+    _CITY_ZIPS[_k] = ("100", "101", "102", "103", "104", "110", "111", "112", "113", "114", "116")
+
+
+def in_city(address, city):
+    """True if a venue address is in the couple's city / area. NYC and its boroughs go by ZIP; anything else by
+    the city name appearing in the address ("San Diego", "Napa", "Austin")."""
+    c = re.sub(r"\s+", " ", (city or "").strip().lower())
+    if not c:
+        return True
+    a = (address or "").lower()
+    if c in _CITY_ZIPS:
+        z = _ZIP.findall(address or "")
+        return bool(z) and z[-1][:3] in _CITY_ZIPS[c]
+    return c in a
+
+
+def _k(n):
+    n = int(n)
+    return "$%dK" % round(n / 1000.0) if n >= 10000 else "$" + format(n, ",")
+
+
+def why_lines(cards, priced=True):
+    """One code-written line per card saying how it differs from the others in the same batch (2026-10-14:
+    "not great at differentiating"; "Show 3 more" cards had no reason at all). Rental position, capacity,
+    venue type / pricing model. priced=False (no plan): no price words - capacity, type and location only."""
+    rents = {i: (c.get("venue_fee_range") or [None])[0] for i, c in enumerate(cards)}
+    rents = {i: r for i, r in rents.items() if isinstance(r, (int, float)) and r > 0}
+    caps = {i: c.get("max_capacity_seated") for i, c in enumerate(cards)
+            if isinstance(c.get("max_capacity_seated"), (int, float)) and c["max_capacity_seated"] > 0}
+    lo = min(rents, key=rents.get) if priced and len(rents) > 1 else None
+    hi_cap = max(caps, key=caps.get) if len(caps) > 1 else None
+    lo_cap = min(caps, key=caps.get) if len(caps) > 1 else None
+    out = []
+    for i, c in enumerate(cards):
+        bits = []
+        if priced and i in rents:
+            bits.append(("lowest rental here, " if i == lo else "") + _k(rents[i]) + " rental")
+        elif priced and c.get("estimate_label"):
+            bits.append(str(c["estimate_label"]))
+        if i == hi_cap:
+            bits.append("the largest here, seats %d" % caps[i])
+        elif i == lo_cap:
+            bits.append("the most intimate here, seats %d" % caps[i])
+        elif i in caps:
+            bits.append("seats %d" % caps[i])
+        vt = c.get("venue_type")
+        vt = ", ".join(vt[:1]) if isinstance(vt, list) else vt
+        if vt and str(vt).lower() not in ("not sure", "none", ""):
+            bits.append(str(vt))
+        place = ((c.get("address") or "").split(",")[-2:-1] or [""])[0].strip()
+        if place and not any(ch.isdigit() for ch in place):
+            bits.append(place)
+        out.append("; ".join(bits[:3]))
+    return out
+
+
+def more_text(cards, filters=None, priced=True):
+    """The "Show 3 more" reply (was the fixed "Here are 3 more from the same search." on 29 replies): which
+    search they come from and the one card that stands out, from the cards' own data. No model call."""
+    f = filters or {}
+    scope = []
+    if f.get("city"):
+        scope.append(str(f["city"]))
+    elif f.get("states"):
+        scope.append(" and ".join(f["states"][:2]))
+    if f.get("guests"):
+        scope.append("%s guests" % f["guests"])
+    if priced and f.get("max_venue_fee"):
+        scope.append("rental under %s" % _k(f["max_venue_fee"]))
+    head = "%d more from the same search%s, none shown before." % (len(cards), (" (" + ", ".join(scope) + ")") if scope else "")
+    rents = [(c.get("venue_fee_range") or [None])[0] for c in cards]
+    priced_rents = [(r, c) for r, c in zip(rents, cards) if isinstance(r, (int, float)) and r > 0]
+    if priced and len(priced_rents) > 1:
+        r, c = min(priced_rents, key=lambda x: x[0])
+        return head + " %s has the lowest rental of these (%s)." % (c.get("name"), _k(r))
+    caps = [(c.get("max_capacity_seated"), c) for c in cards if isinstance(c.get("max_capacity_seated"), (int, float))
+            and c["max_capacity_seated"] > 0]
+    if len(caps) > 1:
+        n, c = min(caps, key=lambda x: x[0])
+        return head + " %s is the most intimate (seats %d)." % (c.get("name"), n)
+    return head
+
+
+# ---------------------------------------------------------------- repeats (2026-10-14)
+# 10 replies / 7 users re-showed venues already shown, sometimes as "new" (chat 64 Fonthill Castle, chat 33 The
+# Harper OC, chat 29 SF Zoo for "Cheaper options"). The prompt rule was not enough, so: search results leave out
+# what this chat showed (and Saved venues unless the couple asked about them), and present_recommendations bounces
+# a repeat the couple didn't ask for once.
+
+# The couple pointing back at earlier picks or their Saved list - re-showing those is the answer, not a repeat.
+REFERS_BACK = re.compile(r"compare|saved|liked|favou?rite|my list|break ?down|itemi[sz]e|which of|those|these|"
+                         r"\bthem\b|again|earlier|first one|top pick|you showed|you mentioned|realistic|"
+                         r"venues? i like|the one", re.I)
+SAVED_ASK = re.compile(r"saved|liked|favou?rite|my list|hearted|venues? i like", re.I)
+NEW_CLAIM = re.compile(r"\bnew\b|haven'?t (?:seen|been shown)|not seen|fresh (?:picks|options)", re.I)
+_NAME_STOP = {"the", "and", "venue", "venues", "hotel", "house", "club", "estate", "mansion", "gardens", "garden",
+              "weddings", "wedding", "events", "event", "center", "centre", "inn", "farm", "farms", "winery", "park",
+              "resort", "lodge", "hall", "manor", "castle", "country", "restaurant", "museum", "spa"}
+
+
+def named_in(text, name):
+    """True if the couple's message names this vendor (a distinctive word of its name, e.g. 'Fonthill')."""
+    words = [w for w in re.findall(r"[a-z]+", (name or "").lower()) if len(w) > 3 and w not in _NAME_STOP]
+    low = (text or "").lower()
+    return any(re.search(r"\b%s\b" % re.escape(w), low) for w in words)
+
+
+PEAK_CAVEAT = re.compile(r"peak[- ]season saturday|peak saturday|peak-saturday|saturday evening", re.I)
+OPEN_PDF = re.compile(r"\bopen\b[^.]{0,80}\bpdf\b", re.I)
+
+
+def strip_repeat_caveat(text):
+    """Drop sentences carrying the peak-Saturday caveat (it was in 60 of 107 real replies; the prompt said
+    "once per conversation"). Used only when an earlier reply in this chat already said it. Breakdown lines
+    ("• ...") are left alone."""
+    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z])", text or "")
+    kept = [p for p in parts if p.lstrip().startswith("•") or not PEAK_CAVEAT.search(p)]
+    return " ".join(kept).strip() if kept else (text or "")
+
+
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
-        detail="full", prior_vendor_ids=(), preferences=""):
+        detail="full", prior_vendor_ids=(), preferences="", active_filters=None):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
     detail: "full" (Forever) or "light" (everyone else - fit, not figures; see _light_pricing), or "free"
         (no active plan, 2026-10-14: no price of any kind - see free_mode.py; implies light).
     prior_vendor_ids: venues earlier turns of this chat showed as cards (server-stored, so trusted).
+    active_filters: the filters of the chat's latest search (stored with that answer) - inherited by search_venues
+        (merge_filters) so a stated location, city, guest count or price cap holds until the couple changes it.
     Returns (result_dict, usage_dict)."""
     free = detail == "free"
     light = detail in ("light", "free")
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
     extra = {}           # vendor_id -> card data for "Show 3 more" ONLY: search results past the 8 the model sees
-    searched = []        # vendor_ids search_venues returned in THIS request, in search order ("Show 3 more")
+    searched = []        # vendor_ids search_venues returned in THIS request, in search order
+    searches = []        # one per search_venues call: {"filters": effective filters, "ids": its results in order}
     prior = set(prior_vendor_ids or ())   # shown earlier in this chat: may be presented again (looked up)
+    active = dict(active_filters or {})
+    last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+    last_user = last_user if isinstance(last_user, str) else ""
+    asked_back = bool(REFERS_BACK.search(last_user))
+    prior_text = " ".join(m["content"] for m in messages[:-1]
+                          if m.get("role") == "assistant" and isinstance(m.get("content"), str))
+    said_peak = bool(PEAK_CAVEAT.search(prior_text))
+    said_pdf = bool(OPEN_PDF.search(prior_text))
     final = {}
     saved_cards_holder = {}
     # profile_override: eval runs only - real requests always use the verified user row.
@@ -497,11 +671,20 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     def search_venues(states: list[str], guests: int = 0, max_venue_fee: int = 0,
                       max_food_per_person: int = 0, venue_types: list[str] = None,
                       vibes: list[str] = None, pricing_models: list[str] = None,
-                      keyword: str = "", sort_by: str = "popular_desc", outdoor_ceremony: bool = False) -> str:
+                      keyword: str = "", sort_by: str = "popular_desc", outdoor_ceremony: bool = False,
+                      city: str = "", relax: list[str] = None) -> str:
         """Search Tulle's venues (only ones with real pricing PDFs). Each result includes its pricing
         summary (rental fee, food and drink, ceremony, service charge, guest minimum, state comparison).
+        Venues already shown in this chat, and the couple's Saved venues (unless they asked about those), are
+        left out automatically (already_shown_left_out). The chat's ACTIVE FILTERS (guests, city, price caps)
+        apply automatically to any of those you leave empty; `filters_used` shows what was searched.
 
         Args:
+            city: optional city or area the couple named, e.g. "New York City", "Manhattan", "Brooklyn",
+                "San Diego", "Napa": only venues whose address is there. Use it whenever they name a city or
+                area - keyword does not filter by location.
+            relax: names of active filters to DROP because the couple changed or removed them, any of
+                "guests", "max_venue_fee", "max_food_per_person", "city". Only when they said so.
             states: US states or 'International', e.g. ["New York"]. Use the couple's location if unsure.
             guests: the party size. Venues must seat at least this many, and venues whose guest minimum is
                 above it are left out (0 = any) - so for a small wedding or elopement pass the real count.
@@ -530,24 +713,69 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         # venues): ep119 can't filter on minimums, so over-fetch and drop venues whose KNOWN minimum doesn't fit.
         # A 0 / missing minimum means "none or not known" and is kept - never treat missing as "no minimum".
         food_cap = budget // 2 if budget > 0 else 0      # venue + food is ~40-50% of the total budget
-        r = xano.search_venues(token, states=states, guests=guests, max_venue_fee=max_venue_fee,
-                               max_food_per_person=max_food_per_person, venue_types=venue_types,
-                               vibes=vibes, pricing_models=pricing_models, keyword=keyword, sort_by=sort_by,
-                               outdoor_ceremony=outdoor_ceremony, page_size=16)
-        venues = r["venues"]
-        removed = {"food_minimum_over_half_budget": 0, "guest_minimum_over_party": 0}
+        eff = merge_filters({"states": [s for s in (states or []) if s], "guests": int(guests or 0),
+                             "max_venue_fee": int(max_venue_fee or 0),
+                             "max_food_per_person": int(max_food_per_person or 0),
+                             "city": (city or "").strip()}, active, relax)
+        states, guests = eff["states"], eff["guests"]
+        max_venue_fee, max_food_per_person, city = eff["max_venue_fee"], eff["max_food_per_person"], eff["city"]
+        q = dict(states=states, guests=guests, max_venue_fee=max_venue_fee, max_food_per_person=max_food_per_person,
+                 venue_types=venue_types, vibes=vibes, pricing_models=pricing_models, keyword=keyword,
+                 sort_by=sort_by, outdoor_ceremony=outdoor_ceremony)
+        if city:
+            # ep119 has no city filter: read the first 3 pages of the state search (one parallel round trip)
+            # and keep the addresses in the city. A page failing just means fewer candidates.
+            def page(n):
+                try:
+                    return xano.search_venues(token, page_size=20, page=n, **q)
+                except Exception as e:
+                    return e
+            pages = list(pool.map(page, (1, 2, 3)))
+            if all(isinstance(p, Exception) for p in pages):
+                raise pages[0]
+            r = next(p for p in pages if not isinstance(p, Exception))
+            dedup = {}
+            for p in pages:
+                for v in ([] if isinstance(p, Exception) else p["venues"]):
+                    dedup.setdefault(v.get("vendor_id"), v)
+            venues = [v for v in dedup.values() if in_city(v.get("address"), city)]
+        else:
+            r = xano.search_venues(token, page_size=16, **q)
+            venues = r["venues"]
+        # Already shown in this chat, or on the Saved list the couple didn't ask about: left out so "more" and
+        # "cheaper" bring venues they haven't seen. A venue the keyword or the couple's message names stays.
+        hide = set(prior) | (set() if SAVED_ASK.search(last_user) else set(saved_ids))
+        kw = (keyword or "").lower().strip()
+        keep = lambda v: (v.get("vendor_id") not in hide or (kw and kw in (v.get("name") or "").lower())
+                          or named_in(last_user, v.get("name")))
+        n_before = len(venues)
+        venues = [v for v in venues if keep(v)]
+        n_hidden = n_before - len(venues)
+        removed = {"food_minimum_over_half_budget": 0, "guest_minimum_over_party": 0, "rental_over_cap": 0,
+                   "food_per_guest_over_cap": 0}
         if food_cap:
             kept = [v for v in venues if not (v.get("food_minimum") or 0) > food_cap]
             removed["food_minimum_over_half_budget"] = len(venues) - len(kept)
             venues = kept
-        n_priced = len(venues) if guests else PRICED_PER_SEARCH
+        n_priced = len(venues) if (guests or max_venue_fee or max_food_per_person) else PRICED_PER_SEARCH
         raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in venues[:n_priced]]))
+        pairs = list(zip(venues, raws)) + [(v, None) for v in venues[len(raws):]]
         if guests:
             # only priced venues have a known guest minimum, so keep just those and drop the ones that don't fit
-            pairs = [(v, p) for v, p in zip(venues, raws) if not (p and (p.get("guest_minimum") or 0) > guests)]
-            removed["guest_minimum_over_party"] = len(raws) - len(pairs)
-        else:
-            pairs = list(zip(venues, raws)) + [(v, None) for v in venues[len(raws):]]
+            n = len(raws)
+            pairs = [(v, p) for v, p in pairs[:n] if not (p and (p.get("guest_minimum") or 0) > guests)]
+            removed["guest_minimum_over_party"] = n - len(pairs)
+        if max_venue_fee:
+            # ep119 caps the CHEAPEST space's rental (flt_min_venue_fee); the card quotes the pricing panel's
+            # space, which can be dearer. A card must never show a rental over the couple's cap.
+            n = len(pairs)
+            pairs = [(v, p) for v, p in pairs if not ((_rental_amount(p) or 0) > max_venue_fee)]
+            removed["rental_over_cap"] = n - len(pairs)
+        if max_food_per_person:
+            n = len(pairs)
+            pairs = [(v, p) for v, p in pairs
+                     if not ((((p or {}).get("cost_inputs") or {}).get("pp_fb") or 0) > max_food_per_person)]
+            removed["food_per_guest_over_cap"] = n - len(pairs)
         # The model sees the top 8; the rest only feed "Show 3 more" (2026-10-07: capping the whole pool at
         # 8 left at most 5 after the picks - often under 3 once shown venues were removed, so no button).
         rest = [card(v, p) for v, p in pairs[8:]]
@@ -575,11 +803,27 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 extra[v["vendor_id"]] = _light_card(v) if light else v
                 if v["vendor_id"] not in searched:
                     searched.append(v["vendor_id"])
+        ids = [v["vendor_id"] for v in out if v.get("vendor_id")] + [v["vendor_id"] for v in rest if v.get("vendor_id")]
+        searches.append({"filters": {k: val for k, val in dict(eff, venue_types=venue_types or [], vibes=vibes or [],
+                                                               pricing_models=pricing_models or [],
+                                                               outdoor_ceremony=bool(outdoor_ceremony)).items()
+                                     if val not in (None, "", 0, [], False)},
+                         "ids": ids})
         res = {"total_matches": r["total_matches"], "venues": out}
+        if city:   # ep119's total is the whole state's
+            res["total_matches"] = len(out) + len(rest)
+            res["city_note"] = "only venues whose address is in %s, from the top 60 results for %s" % (
+                city, " and ".join(states) or "all states")
+        if n_hidden:
+            res["already_shown_left_out"] = n_hidden
         if any(removed.values()):
-            res["left_out_for_minimums"] = removed
-        if r.get("matches_by_state"):
+            res["left_out_for_minimums"] = {k: v for k, v in removed.items() if v}
+        if r.get("matches_by_state") and not city:
             res["matches_by_state"] = r["matches_by_state"]
+        used = {k: val for k, val in eff.items() if val not in (None, "", 0, [])}
+        if light:   # no figures for a non-member's model, not even a carried price cap
+            used = {k: val for k, val in used.items() if k not in ("max_venue_fee", "max_food_per_person")}
+        res["filters_used"] = used
         return _ev(res)
 
     def bench_or_none(category, state):
@@ -636,6 +880,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 extra[vid] = card
             if vid not in searched:
                 searched.append(vid)
+        searches.append({"filters": {"category": category, "states": sts},
+                         "ids": [v.get("vendor_id") for v in r["vendors"] if v.get("vendor_id")]})
         res = {"category": category, "total_matches": r["total_matches"], "vendors": out}
         if "keyword_matches" in r:
             res["keyword_matches"] = r["keyword_matches"]
@@ -787,9 +1033,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             message: 1-3 short sentences to the couple. Only a COST BREAKDOWN the couple explicitly asked
                 for is longer and uses the itemized "• " list.
-            vendor_ids: 2-4 vendor_ids from search_venues, search_photographers_entertainment or saved_venues,
-                best first (1 for a single-venue breakdown, 0 for a question only about an unsupported vendor type).
-            reasons: one short reason per vendor_id, same order.
+            vendor_ids: 3-5 vendor_ids from search_venues, search_photographers_entertainment or saved_venues,
+                best first (fewer only if fewer fit; 1 for a single-venue breakdown, 0 for a question only about an
+                unsupported vendor type).
+            reasons: one short reason per vendor_id, same order, each saying how it differs from the others.
             chips: 2-4 short follow-ups that follow the CHIPS rule (each maps to a search filter, a pricing
                 line, a state comparison or the Saved list), e.g. "Cheaper options", "Barn / Ranch venues",
                 "DJs with a photo booth".
@@ -810,6 +1057,22 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     "from your tools or the context (estimate_cost gives every total, per-guest cost and what-if), "
                     "or describe it in words. Then call present_recommendations again." % ", ".join(bad))
         guard["unsupported"] = bad
+        # Repeats the couple didn't ask for (named, or pointed back at with "compare", "those", "my saved"...).
+        hidden = set(prior) | (set() if SAVED_ASK.search(last_user) else set(saved_ids))
+        names = {**{c["vendor_id"]: c.get("name") for c in saved_cards_holder.get("cards") or []},
+                 **{k: v.get("name") for k, v in seen.items()}}
+        again = [v for v in vendor_ids or [] if v in hidden and not named_in(last_user, names.get(v))]
+        claims_new = bool(again) and bool(NEW_CLAIM.search(message or ""))
+        if again and (claims_new or not asked_back) and not guard.get("repeat_bounced"):
+            guard["repeat_bounced"] = True
+            guard["repeat_first_try"] = [names.get(v) or v for v in again]
+            return ("NOT SHOWN. %s %s already shown in this chat or on their Saved list, and the couple didn't ask "
+                    "about %s. Replace %s with venues they haven't seen (search again if you need more), or if one "
+                    "really is still the best answer keep it and say plainly it's one they've seen. Never call a "
+                    "venue new unless it is. Then call present_recommendations again."
+                    % (", ".join(names.get(v) or v for v in again), "was" if len(again) == 1 else "were",
+                       "it" if len(again) == 1 else "them", "it" if len(again) == 1 else "them"))
+        guard["repeats_shown"] = [names.get(v) or v for v in again]
         final.update(message=message, vendor_ids=vendor_ids, reasons=reasons, chips=chips)
         return "shown"
 
@@ -892,6 +1155,18 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     if memory_notes:
         context += ("\nWhat we learned in earlier conversations (use it, don't repeat it back): "
                     + json.dumps(memory_notes))
+    if active:
+        shown_f = {k: v for k, v in active.items() if not (light and k in ("max_venue_fee", "max_food_per_person"))}
+        context += ("\nACTIVE FILTERS from this chat's latest search (the couple's stated criteria): "
+                    + json.dumps(shown_f) + ". search_venues applies guests, city and price caps automatically when "
+                    "you leave them empty; pass relax=[...] only for one the couple changed or dropped, and keep the "
+                    "states unless they asked for another place.")
+    if said_peak and not free:
+        context += "\nALREADY SAID in this chat: the peak-season Saturday caveat. Don't repeat it."
+    if said_pdf and not free:
+        context += ("\nALREADY SAID in this chat: which PDF to open. Don't write \"open X's PDF\" again - the cards "
+                    "have the button. If the top pick's PDF answers something specific, say what it shows "
+                    "(\"its PDF lists the per-head menu tiers\") in a few words.")
     msgs = [dict(m) for m in messages]
     msgs[0] = {"role": msgs[0]["role"], "content": context + "\n\n" + msgs[0]["content"]}
 
@@ -965,8 +1240,22 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         if vid in seen:
             reasons = final.get("reasons") or []
             cards.append(dict(seen[vid], reason=reasons[i] if i < len(reasons) else ""))
-    result = {"text": final.get("message") or "", "cards": cards, "chips": final.get("chips") or [],
-              "more_cards": more_cards(searched, {**extra, **seen}, cards, prior),
+    # "Show 3 more" and the next question follow the PRIMARY search: the one most of the picks came from (the
+    # latest on a tie, or the latest when no pick came from a search, e.g. a Saved-list comparison).
+    picked = {c.get("vendor_id") for c in cards}
+    primary = max(reversed(searches), key=lambda s: len(picked & set(s["ids"])), default=None)
+    pool = primary["ids"] if primary else []
+    venue_searches = [s for s in searches if not s["filters"].get("category")]
+    vprimary = primary if primary in venue_searches else (venue_searches[-1] if venue_searches else None)
+    text = final.get("message") or ""
+    if said_peak and not free:
+        text = strip_repeat_caveat(text)
+    result = {"text": text, "cards": cards, "chips": final.get("chips") or [],
+              "more_cards": more_cards(pool, {**extra, **seen}, cards, prior),
+              # stored with this answer (hidden) - the chat's active filters from now on
+              "search_filters": dict(vprimary["filters"]) if vprimary else dict(active),
               "notes_saved": saved_notes,
               "dropped_unverified_ids": [v for v in final.get("vendor_ids", []) if v not in seen]}
+    usage["repeat_bounced"] = bool(guard.get("repeat_bounced"))
+    usage["repeats_shown"] = guard.get("repeats_shown") or []
     return result, usage

@@ -300,9 +300,12 @@ def tools(search_venues, search_pe, saved_venues, venue_details, save_note, pres
     @_tool("search_venues")
     def free_search_venues(states: list[str], guests: int = 0, venue_types: list[str] = None,
                            vibes: list[str] = None, pricing_models: list[str] = None, keyword: str = "",
-                           sort_by: str = "popular_desc", outdoor_ceremony: bool = False) -> str:
+                           sort_by: str = "popular_desc", outdoor_ceremony: bool = False, city: str = "",
+                           relax: list[str] = None) -> str:
         """Search Tulle's venues (only ones with real pricing PDFs). Results carry capacity, venue type,
-        description and whether the guest minimum fits - no prices (this couple has no plan).
+        description and whether the guest minimum fits - no prices (this couple has no plan). Venues already
+        shown in this chat are left out automatically; the chat's ACTIVE FILTERS (guests, city) apply to any you
+        leave empty.
 
         Args:
             states: US states or 'International', e.g. ["New York"]. Use the couple's location if unsure.
@@ -324,10 +327,14 @@ def tools(search_venues, search_pe, saved_venues, venue_details, save_note, pres
             keyword: optional free text - a city or a venue name. Prefer the tag filters above for styles.
             sort_by: popular_desc (default), recent_desc, capacity_asc or capacity_desc.
             outdoor_ceremony: true = only venues whose PDF lists an outdoor ceremony space.
+            city: optional city or area the couple named ("New York City", "Manhattan", "San Diego"): only venues
+                whose address is there. keyword does not filter by location.
+            relax: active filters to drop because the couple changed them: "guests" or "city".
         """
         return venue_result(_fn(search_venues)(states=states, guests=guests, venue_types=venue_types, vibes=vibes,
                                                pricing_models=pricing_models, keyword=keyword, sort_by=sort_by,
-                                               outdoor_ceremony=outdoor_ceremony))
+                                               outdoor_ceremony=outdoor_ceremony, city=city,
+                                               relax=[r for r in (relax or []) if r in ("guests", "city")]))
 
     @_tool("search_photographers_entertainment")
     def free_search_pe(category: str, states: list[str], types: list[str] = None, offers: list[str] = None,

@@ -222,10 +222,10 @@ def _interleave(search_one, token, states, page_size, key, **filters):
 
 def _search_one(token, *, states, guests=0, max_venue_fee=0, max_food_per_person=0,
                 venue_types=None, vibes=None, pricing_models=None, keyword="", sort_by="popular_desc",
-                outdoor_ceremony=False, page_size=8):
+                outdoor_ceremony=False, page_size=8, page=1):
     """ep119 - the same search the Vendor Discovery grid uses. `states` match the multi-value State
     field server-side (never equality). max_capacity means 'seats AT LEAST N'."""
-    params = {"Category_Input": "Venue", "page": 1, "page_size": max(1, min(int(page_size), 20)),
+    params = {"Category_Input": "Venue", "page": max(1, int(page or 1)), "page_size": max(1, min(int(page_size), 20)),
               "states[]": list(states or []), "State_Input": (states or [""])[0],
               "max_capacity": int(guests or 0), "capacity_ceiling": 10000,
               "base_fee_max": int(max_venue_fee or 0), "fb_per_person_max": int(max_food_per_person or 0),
@@ -675,16 +675,25 @@ def get_messages(chat_id):
     # split back out here, so `cards` is exactly what it was before the feature for any older client.
     # A turn written by POST /rec/more (the couple paid a question for 3 more) has its cards flagged
     # via_more=True; it is reported as is_more so it never becomes the source of a new "more" pool.
-    out = []
-    for r in rows:
-        allc = r.get("cards") or []
-        strip = lambda c: {k: v for k, v in c.items() if k not in ("more", "via_more")}
-        out.append({"id": r.get("id"), "role": r["role"], "text": r.get("content") or "",
-                    "cards": [strip(c) for c in allc if not c.get("more")],
-                    "more_cards": [strip(c) for c in allc if c.get("more")],
-                    "is_more": any(c.get("via_more") for c in allc),
-                    "chips": r.get("chips") or []})
-    return out
+    return [parse_message_row(r) for r in rows]
+
+
+def parse_message_row(r):
+    """One rec_messages row -> a turn. Also reads the hidden {"meta": "search"} entry (2026-10-14): the search
+    filters this answer used (location, city, guests, price caps), so "Show 3 more" and the next question keep
+    them. It is never a card; `filters` is server-side state the page doesn't get (app.chat_detail drops it)."""
+    allc = [c for c in (r.get("cards") or []) if isinstance(c, dict)]
+    meta = next((c for c in allc if c.get("meta") == "search"), None)
+    allc = [c for c in allc if not c.get("meta")]
+    strip = lambda c: {k: v for k, v in c.items() if k not in ("more", "via_more")}
+    turn = {"id": r.get("id"), "role": r["role"], "text": r.get("content") or "",
+            "cards": [strip(c) for c in allc if not c.get("more")],
+            "more_cards": [strip(c) for c in allc if c.get("more")],
+            "is_more": any(c.get("via_more") for c in allc),
+            "chips": r.get("chips") or []}
+    if meta and isinstance(meta.get("filters"), dict):
+        turn["filters"] = meta["filters"]
+    return turn
 
 
 def get_memory(user_id):

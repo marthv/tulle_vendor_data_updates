@@ -477,7 +477,8 @@ calls = []
 @beta_tool
 def search_venues(states: list[str], guests: int = 0, max_venue_fee: int = 0, venue_types: list[str] = None,
                   vibes: list[str] = None, pricing_models: list[str] = None, keyword: str = "",
-                  sort_by: str = "popular_desc", outdoor_ceremony: bool = False) -> str:
+                  sort_by: str = "popular_desc", outdoor_ceremony: bool = False, city: str = "",
+                  relax: list[str] = None) -> str:
     """s
 
     Args:
@@ -490,6 +491,8 @@ def search_venues(states: list[str], guests: int = 0, max_venue_fee: int = 0, ve
         keyword: k
         sort_by: s
         outdoor_ceremony: o
+        city: c
+        relax: r
     """
     calls.append("sv")
     return json.dumps({"total_matches": 1, "venues": [{"vendor_id": "V1", "venue_fee_range": [1, 2],

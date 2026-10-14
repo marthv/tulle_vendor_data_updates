@@ -305,7 +305,7 @@ def test_run_show_more_uses_results_past_the_top_eight(monkeypatch):
         res, _ = agent.run("tok", {"id": 0}, True, [{"role": "user", "content": "DJ"}],
                            profile_override={"Wedding_Location_Updated": ["New York"]}, detail="light")
         more = [c["vendor_id"] for c in res["more_cards"]]
-        assert more == ["V8003", "V8004", "V8005", "V8006", "V8007", "V8008"]
+        assert more == ["V8%03d" % i for i in range(3, 12)]      # MORE_MAX 9 since 2026-10-14 (was 6)
         assert not MONEY.search(json.dumps(res["more_cards"]))
     finally:
         FX.pop("ep119_big", None)

@@ -84,15 +84,48 @@ def _more_left(turns):
 
 
 def _public(out, **extra):
-    """What the page gets: the hidden extras become a count (they cost a question to reveal)."""
-    resp = {k: v for k, v in out.items() if k != "more_cards"}
+    """What the page gets: the hidden extras become a count (they cost a question to reveal); the search
+    filters stay server-side (stored with the answer for "Show 3 more" and the next question)."""
+    resp = {k: v for k, v in out.items() if k not in ("more_cards", "search_filters")}
     n = len(out.get("more_cards") or [])
     return dict(resp, more_available=n if n >= agent.MORE_STEP else 0, **extra)
 
 
 def _stored_cards(out):
-    """Picks + "Show 3 more" cards in one cards column; xano.get_messages splits them on read."""
-    return list(out.get("cards") or []) + [dict(c, more=True) for c in (out.get("more_cards") or [])]
+    """Picks + "Show 3 more" cards in one cards column; xano.get_messages splits them on read. The answer's
+    search filters ride along as one hidden {"meta": "search"} entry (no schema change; parse_message_row
+    takes it out again, so no reader of get_messages ever sees it as a card)."""
+    stored = list(out.get("cards") or []) + [dict(c, more=True) for c in (out.get("more_cards") or [])]
+    if out.get("search_filters"):
+        stored.append({"meta": "search", "filters": out["search_filters"]})
+    return stored
+
+
+def _active_filters(history):
+    """The filters of the chat's latest search: the newest assistant turn that stored some."""
+    for t in reversed(history or []):
+        if t.get("role") == "assistant" and t.get("filters"):
+            return dict(t["filters"])
+    return {}
+
+
+def _model_inputs(history, text):
+    """(messages, agent.run kwargs) for a typed question in a stored conversation."""
+    # The stored conversation starts with the opening picks (an assistant turn), so restate the
+    # opening ask in front of it: the model needs a user turn first.
+    # (A chat started from a typed question already begins with a user turn.)
+    msgs = [{"role": "user", "content": OPENING_ASK}] if history and history[0]["role"] == "assistant" else []
+    msgs += [_turn_for_model(t) for t in history]
+    msgs = msgs[-(HISTORY_TURNS - 1):] if len(msgs) >= HISTORY_TURNS else msgs
+    if msgs and msgs[0]["role"] != "user":
+        msgs = msgs[1:]
+    msgs.append({"role": "user", "content": text})
+    # Venues this chat already showed (our own stored cards, not model output) may be shown again as
+    # cards - e.g. "break down <venue from the opening>" (2026-10-05: chat 24's breakdown had no card) - and
+    # are left out of new searches unless asked for (2026-10-14).
+    prior = [c.get("vendor_id") for t in history if t["role"] == "assistant"
+             for c in (t.get("cards") or []) + (t.get("more_cards") or [])]
+    return msgs, {"prior_vendor_ids": [v for v in prior if v], "active_filters": _active_filters(history)}
 
 
 class Turn(BaseModel):
@@ -217,7 +250,7 @@ def _counters(kind, paid, rows, counted_free, feedback_given, access=True):
     return c
 
 
-def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
+def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None):
     f_mem = _POOL.submit(_memory_row, user["id"])
     paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id)
     try:
@@ -231,7 +264,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=()):
         # all gets no price of any kind ("free", 2026-10-14).
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
                                   detail="full" if paid else "light" if access else "free",
-                                  prior_vendor_ids=prior_ids,
+                                  prior_vendor_ids=prior_ids, active_filters=active_filters,
                                   preferences=pref_hint,
                                   on_note=lambda n: xano.add_memory_note(user["id"], n))
     except Exception as e:  # never charge a free refine for our own failure
@@ -285,20 +318,9 @@ def opening(background: BackgroundTasks, authorization: str = Header(None)):
 def _refine_in_chat(token, user, chat, text, background):
     """One typed question inside a stored conversation: server-held history in, both turns saved after."""
     history = xano.get_messages(chat["id"])
-    # The stored conversation starts with the opening picks (an assistant turn), so restate the
-    # opening ask in front of it: the model needs a user turn first.
-    # (A chat started from a typed question already begins with a user turn.)
-    msgs = [{"role": "user", "content": OPENING_ASK}] if history and history[0]["role"] == "assistant" else []
-    msgs += [_turn_for_model(t) for t in history]
-    msgs = msgs[-(HISTORY_TURNS - 1):] if len(msgs) >= HISTORY_TURNS else msgs
-    if msgs and msgs[0]["role"] != "user":
-        msgs = msgs[1:]
-    msgs.append({"role": "user", "content": text})
-    # Venues this chat already showed (our own stored cards, not model output) may be shown again as
-    # cards - e.g. "break down <venue from the opening>" (2026-10-05: chat 24's breakdown had no card).
-    prior = [c.get("vendor_id") for t in history if t["role"] == "assistant"
-             for c in (t.get("cards") or []) + (t.get("more_cards") or [])]
-    out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=[v for v in prior if v])
+    msgs, kw = _model_inputs(history, text)
+    out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
+                       active_filters=kw["active_filters"])
     out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
     if out.get("price_locked"):
         out["chips"] = free_mode.chips(out["chips"], history)
@@ -393,6 +415,7 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
     last = max((i for i, t in enumerate(turns) if t["role"] == "assistant"), default=None)
     for i, t in enumerate(turns):
         t.pop("more_cards", None)         # unrevealed extras stay on the server until a question is spent
+        t.pop("filters", None)            # server-side search state
         t["more_available"] = left if i == last else 0
     return {"chat_id": chat["id"], "title": chat.get("title") or "", "turns": turns}
 
@@ -401,7 +424,25 @@ class MoreBody(BaseModel):
     chat_id: int
 
 
-MORE_TEXT = "Here are 3 more from the same search."
+MORE_TEXT = "Here are 3 more from the same search."   # until 2026-10-14; now more_text() describes the batch
+
+
+def _more_reply(history, access=True):
+    """The next "Show 3 more" batch of the latest answer, or None when fewer than 3 are left: its cards with a
+    code-written line each on how they differ, a reply that names the search and the stand-out card, and chips.
+    access=False (no plan): price-free lines and cards (free_mode)."""
+    remaining = _more_remaining(history)
+    if len(remaining) < agent.MORE_STEP:
+        return None
+    picks = remaining[:agent.MORE_STEP]
+    filters = _active_filters(history)
+    picks = [dict(c, reason=w) for c, w in zip(picks, agent.why_lines(picks, priced=access))]
+    text = agent.more_text(picks, filters, priced=access)
+    chips = more_chips(history)
+    if not access:
+        picks, chips = [free_mode.card(c) for c in picks], free_mode.chips(chips)
+        text = free_mode.sanitize_text(text)[0]
+    return {"text": text, "cards": picks, "chips": chips, "left": len(remaining) - len(picks)}
 
 
 @app.post("/rec/more")
@@ -414,30 +455,27 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
     if not chat:
         raise HTTPException(404, "conversation not found")
     history = xano.get_messages(chat["id"])
-    remaining = _more_remaining(history)
-    if len(remaining) < agent.MORE_STEP:            # checked BEFORE the gate: never charge for nothing
+    if len(_more_remaining(history)) < agent.MORE_STEP:   # checked BEFORE the gate: never charge for nothing
         raise HTTPException(409, {"status": "no_more"})
     paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat["id"])
-    picks = remaining[:agent.MORE_STEP]
-    chips = more_chips(history)
-    if not access:
-        picks, chips = [free_mode.card(c) for c in picks], free_mode.chips(chips)
+    reply = _more_reply(history, access)
+    picks, chips, text = reply["cards"], reply["chips"], reply["text"]
     xano.log_usage(dict(base, status="ok", counted_as_free=counted_free, model="none", input_tokens=0,
                         cache_read_tokens=0, cache_write_tokens=0, output_tokens=0, tool_calls=0,
                         cost_usd=0, latency_ms=0))
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": "more", "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
-        "cost_usd": 0, "cards": len(picks), "more_cards": len(remaining) - len(picks),
+        "cost_usd": 0, "cards": len(picks), "more_cards": reply["left"],
         "free_refines_left": guards.free_refines_left(
             paid, rows + ([{"status": "ok", "counted_as_free": True}] if counted_free else []), feedback_given)})
 
     def persist():   # same order as a typed question: user turn, assistant turn, bump the chat
         xano.add_message(chat["id"], "user", "Show 3 more")
-        xano.add_message(chat["id"], "assistant", MORE_TEXT, [dict(c, via_more=True) for c in picks], chips)
+        xano.add_message(chat["id"], "assistant", text, [dict(c, via_more=True) for c in picks], chips)
         xano.touch_chat(chat)
     background.add_task(persist)
-    left = len(remaining) - len(picks)
-    return dict(text=MORE_TEXT, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
+    left = reply["left"]
+    return dict(text=text, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
                 more_available=left if left >= agent.MORE_STEP else 0,
                 **_counters("refine", paid, rows, counted_free, feedback_given, access))
 
