@@ -2,7 +2,8 @@
 
 Needs: ANTHROPIC_API_KEY, XANO_METADATA_TOKEN, and REC_TEST_TOKEN = a Xano auth token for a TEST
 account (the search endpoint requires sign-in). Profiles come from cases.json, never from real users.
-Does NOT write rec_usage. Usage:  python evals/run_evals.py [--paid] [--only o01,r03] [--model claude-opus-5-5]
+Does NOT write rec_usage. Usage:  python evals/run_evals.py [--paid] [--light|--free] [--only o01,r03] [--model ...]
+--free (2026-10-14): no-plan FREE MODE; reports price talk in the RAW model output and after free_mode's guard.
 Writes evals/results_<model>_<free|paid>.json and prints a summary table."""
 import json
 import re
@@ -33,10 +34,12 @@ import config  # noqa: E402
 if "--model" in sys.argv:
     config.MODEL = sys.argv[sys.argv.index("--model") + 1]
 import agent  # noqa: E402
+import free_mode  # noqa: E402
 import guards  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 LIGHT = "--light" in sys.argv   # non-Forever detail level
+FREE = "--free" in sys.argv     # no plan at all: no price of any kind (free_mode.py)
 OPENING = ("Recommend 3 venues for us based on our profile, and tell us the single most useful next step "
            "for where we are in planning.")
 
@@ -92,6 +95,21 @@ def check(case, res):
             issues.append("LIGHT card carries a package price")
         if any(re.search(r"\$\s?\d", c.get("description") or "") for c in res["cards"]):
             issues.append("LIGHT card description quotes a price")
+    if FREE:   # FREE MODE: after the guard nothing may talk price; the raw count shows how often the guard had to act
+        raw = res.get("raw") or {}
+        raw_hits = [s for s in [raw.get("text", "")] + [c.get("reason") or "" for c in raw.get("cards") or []]
+                    if free_mode.has_price_talk(s)]
+        if raw_hits:
+            issues.append("FREE raw model output talked price (guard removed it): %s" % [h[:80] for h in raw_hits[:3]])
+        shown = " ".join([res["text"]] + [c.get("reason") or "" for c in res["cards"]] + list(res["chips"]))
+        if free_mode.has_price_talk(" ".join([res["text"]] + [c.get("reason") or "" for c in res["cards"]])):
+            issues.append("FREE LEAK AFTER GUARD")
+        if any(k in c for c in res["cards"] for k in ("venue_fee_range", "price_from", "price_to", "price_label",
+                                                      "food_minimum", "at_a_glance")):
+            issues.append("FREE card carries a price field")
+        if "pdf" not in res["text"].lower():
+            issues.append("FREE reply doesn't point at a PDF")
+        _ = shown
     return issues
 
 
@@ -107,8 +125,11 @@ def main():
         msgs = [{"role": "user", "content": OPENING if c["kind"] == "opening" else c["ask"]}]
         t0 = time.time()
         try:
-            res, usage = agent.run(token, {"id": 0}, paid, msgs, profile_override=c["profile"],
-                                   detail="light" if LIGHT else "full")
+            res, usage = agent.run(token, {"id": 0, "FreeViewsRemaining": 2} if FREE else {"id": 0}, paid, msgs,
+                                   profile_override=c["profile"],
+                                   detail="free" if FREE else "light" if LIGHT else "full")
+            if FREE:   # what the app sends a free user: the guarded result (raw kept for the leak count)
+                res = dict(free_mode.sanitize_result(res), raw={"text": res["text"], "cards": res["cards"]})
             cost = guards.cost_usd(usage["model"], usage)
             row = {"id": c["id"], "ok": True, "cost": cost, "secs": round(time.time() - t0, 1),
                    "tool_calls": usage["tool_calls"], "model": usage["model"], "issues": check(c, res), "result": res}
@@ -118,7 +139,7 @@ def main():
         print("%-4s %-5s $%-7s %5ss tools=%-2s %s" % (row["id"], "ok" if row["ok"] else "ERR", row.get("cost", "-"),
               row["secs"], row.get("tool_calls", "-"), "; ".join(row.get("issues", [])) or row.get("error", "")))
     ok = [r for r in out if r["ok"]]
-    name = HERE / ("results_%s_%s.json" % (config.MODEL, ("paid" if paid else "free") + ("_light" if LIGHT else "")))
+    name = HERE / ("results_%s_%s.json" % (config.MODEL, ("paid" if paid else "free") + ("_light" if LIGHT else "_freemode" if FREE else "")))
     name.write_text(json.dumps(out, indent=1))
     if ok:
         print("\n%d/%d ran | clean (no issues) %d | mean $%.4f | p50 %.1fs | max %.1fs | total $%.2f" % (
