@@ -8,6 +8,7 @@ import re
 import requests
 
 import config
+import estimate
 import prefs
 
 TIMEOUT = 20
@@ -268,21 +269,58 @@ def venue_pricing(token, vendor_id, paid):
             for c in sp.get("components", []) if c.get("key") != "total"]
     band = sp.get("band") or {}
     return {"vendor_id": vendor_id, "headline": sp.get("headline_prefix"), "guest_minimum": sp.get("guest_floor"),
-            "verdict": band.get("sentence"), "lines": rows, "source_note": sp.get("footer")}
+            "verdict": band.get("sentence"), "lines": rows, "source_note": sp.get("footer"),
+            # raw figures for estimate.compute (paid payload only; ep231 has ranges, not these)
+            "cost_inputs": estimate.inputs_from_panel(d) if paid else None}
 
 
-def market_benchmarks(state):
+# table 63 capacity bands (venue seated capacity). The pricing panel compares each venue with ITS OWN band, so
+# two venues in one chat quoted different "Connecticut averages" ($205 vs $146 a head, user 1437, 2026-10-13).
+# The assistant states ONE set of typical figures per state: the band a wedding of the couple's size books.
+CAPACITY_BANDS = (("cap_0_75", 0, 75), ("cap_76_150", 76, 150), ("cap_151_250", 151, 250),
+                  ("cap_251_400", 251, 400), ("cap_401_plus", 401, 10 ** 6))
+MIN_BAND_SPACES = 8     # a band metric from fewer spaces than this falls back to the whole state
+
+
+def capacity_band(guests):
+    g = int(guests or 0)
+    if g <= 0:
+        return None
+    return next((b for b in CAPACITY_BANDS if b[1] <= g <= b[2]), None)
+
+
+def band_label(state, band):
+    if not band:
+        return "all %s venues" % state
+    lo, hi = band[1], band[2]
+    size = "up to %d" % hi if lo == 0 else "%d or more" % lo if hi >= 10 ** 6 else "%d-%d" % (lo, hi)
+    return "%s venues that seat %s" % (state, size)
+
+
+def market_benchmarks(state, guests=0):
     """table 63: what venues cost in a state (per-guest all-in at 75/125/200, fees, F&B). Medians and
-    quartiles only - never the mean (long right tail)."""
-    rows = _search_all(config.BENCHMARK_TABLE_ID, [{"State": state}, {"Dimension": "overall"}])
-    out = {}
+    quartiles only - never the mean (long right tail). With guests: the capacity band a wedding that size
+    books (each metric falls back to the whole state when the band has under MIN_BAND_SPACES spaces)."""
+    band = capacity_band(guests)
+    rows = _search_all(config.BENCHMARK_TABLE_ID, [{"State": state}])
+    overall, banded = {}, {}
     for r in rows:
-        if r.get("State") != state or r.get("Dimension") != "overall" or r.get("Bucket") != "all":
+        if r.get("State") != state:
             continue
-        out[r["Metric"]] = {"p25": r.get("p25"), "median": r.get("median"), "p75": r.get("p75"),
-                            "n_spaces": r.get("n_spaces"), "n_vendors": r.get("n_vendors")}
+        m = {"p25": r.get("p25"), "median": r.get("median"), "p75": r.get("p75"),
+             "n_spaces": r.get("n_spaces"), "n_vendors": r.get("n_vendors")}
+        if r.get("Dimension") == "overall" and r.get("Bucket") == "all":
+            overall[r["Metric"]] = m
+        elif band and r.get("Dimension") == "capacity_band" and r.get("Bucket") == band[0]:
+            banded[r["Metric"]] = m
+    out, scope = {}, {}
+    for k, m in overall.items():
+        b = banded.get(k)
+        use_band = bool(b and (b.get("n_spaces") or 0) >= MIN_BAND_SPACES)
+        out[k] = dict(b if use_band else m, scope=band_label(state, band if use_band else None))
     return {"state": state, "metrics": out,
-            "note": "all_in_pg_N = all-in cost per guest at N guests, before tax and gratuity."}
+            "note": "all_in_pg_N = all-in cost per guest at N guests, before tax and gratuity. Each metric's "
+                    "scope says which venues it covers - quote it with that scope."}
 
 
 # ---------------------------------------------------------------- photographers + entertainment (ep119 P/E path)

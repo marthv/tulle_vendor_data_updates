@@ -1,0 +1,273 @@
+{
+ "vendor_id": "V2010",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "Massachusetts",
+ "scope_label": "Massachusetts",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [],
+ "partner_vendors_headline": "",
+ "partner_vendors_more_label": "",
+ "partner_vendors_linked_count": 0,
+ "spaces": [
+  {
+   "space_key": "V2010|grandhall",
+   "label": "Grand Hall",
+   "chip_label": "Grand Hall 250",
+   "capacity_seated": 250,
+   "field_count": 3,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "3 of 3 fields for this space"
+  },
+  {
+   "space_key": "V2010|miravalgardens",
+   "label": "Miraval Gardens",
+   "chip_label": "Miraval Gardens 250",
+   "capacity_seated": 250,
+   "field_count": 3,
+   "fields_total": 3,
+   "sort_rank": 1,
+   "has_pricing": true,
+   "status_line": "3 of 3 fields for this space"
+  }
+ ],
+ "spaces_headline": "2 spaces at this venue",
+ "selected_space_key": "V2010|grandhall",
+ "space": {
+  "space_key": "V2010|grandhall",
+  "label": "Grand Hall",
+  "capacity_seated": 250,
+  "is_whole_venue": false,
+  "shared_pricing": false,
+  "contract_count": 2,
+  "field_count": 3,
+  "fields_total": 3,
+  "status_line": "3 of 3 fields for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the Grand Hall, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 0,
+  "guest_floor": 0,
+  "guest_floor_note": "",
+  "guest_sensitivity": {
+   "responds": true,
+   "food_pinned": false,
+   "reason": "",
+   "fb_min_breakeven_guests": null,
+   "breakeven_above_capacity": false,
+   "note": ""
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "Massachusetts",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 85,
+     "p25": 125,
+     "median": 160,
+     "p75": 280,
+     "p90": 675,
+     "n_spaces": 73,
+     "n_vendors": 47
+    },
+    "sentence": "At {guests} guests that is $146 a head.",
+    "pp_fb": 146,
+    "fb_min": 0,
+    "fb_min_is_per_person": false,
+    "fb_min_breakeven_guests": null,
+    "fb_min_binds_at_default": false,
+    "badge_code": "typical",
+    "badge_label": "Typical in Massachusetts",
+    "badge_scale": "Ranked against 73 comparable Massachusetts venues."
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "Massachusetts",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 500,
+     "p25": 750,
+     "median": 1500,
+     "p75": 1995,
+     "p90": 3500,
+     "n_spaces": 115,
+     "n_vendors": 80
+    },
+    "sentence": "A one-off fee to hold the ceremony here rather than at a church or elsewhere.",
+    "amount": 495,
+    "fee_type": "flat",
+    "badge_code": "below",
+    "badge_label": "Below average in Massachusetts",
+    "badge_scale": "Ranked against 115 comparable Massachusetts venues."
+   },
+   {
+    "key": "venue_fee",
+    "title": "Rental fee",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "Massachusetts",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 1500,
+     "p25": 3000,
+     "median": 5000,
+     "p75": 9000,
+     "p90": 16000,
+     "n_spaces": 156,
+     "n_vendors": 107
+    },
+    "sentence": "A flat charge to book the Grand Hall for the day, before any food or service is added.",
+    "amount": 2895,
+    "badge_code": "below",
+    "badge_label": "Below average in Massachusetts",
+    "badge_scale": "Ranked against 156 comparable Massachusetts venues."
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "Massachusetts",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 5,
+     "p25": 6,
+     "median": 18,
+     "p75": 20,
+     "p90": 22,
+     "n_spaces": 135,
+     "n_vendors": 91
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "22% added to everything above. It is not a tip, and most couples miss it when they budget.",
+    "pct": 22,
+    "badge_code": "high",
+    "badge_label": "Above average in Massachusetts",
+    "badge_scale": "Ranked against 135 comparable Massachusetts venues."
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "unknown",
+    "sentence": "Sales tax is added on top of everything above. This venue did not state its rate."
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Every figure above is this venue's own. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [
+    "food_and_drink",
+    "ceremony",
+    "service_charge"
+   ],
+   "at_default": {
+    "guests": 100,
+    "total": 21948,
+    "per_guest": 219
+   },
+   "estimates": {
+    "pp_fb": 160,
+    "ceremony": 1500,
+    "service_pct": 18,
+    "venue_fee": 5000
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": true
+    },
+    {
+     "component": "ceremony",
+     "from_venue": true
+    },
+    {
+     "component": "service_charge",
+     "from_venue": true
+    }
+   ],
+   "from_venue_count": 3,
+   "total": 3,
+   "style": "solid",
+   "headline": "Every figure here came from this venue"
+  },
+  "band": {
+   "metric": "all_in_pg_125",
+   "reference_guests": 125,
+   "scope": "state",
+   "scope_label": "Massachusetts",
+   "basis": "all_in",
+   "basis_component": "",
+   "p10": 67.2,
+   "p25": 142.78,
+   "median": 213,
+   "p75": 333.96,
+   "p90": 688,
+   "n_spaces": 134,
+   "n_vendors": 91,
+   "position": "average",
+   "sentence": "This sits in the middle for Massachusetts. Plenty of venues cost more, plenty cost less.",
+   "venue_per_guest": 211
+  },
+  "footer": "From 2 pricing PDFs couples uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}
