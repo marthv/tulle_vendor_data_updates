@@ -336,3 +336,15 @@ def test_peak_caveat_is_said_once_per_chat(world):
                           messages=msgs)
     assert "peak" not in res["text"].lower() and "V2 is the value pick." in res["text"] and "V3 seats more." in res["text"]
     assert agent.strip_repeat_caveat("• Rental: $5,000 (peak Saturday)") == "• Rental: $5,000 (peak Saturday)"
+
+
+def test_hiding_shown_venues_backfills_from_later_pages(world):
+    """Replay of chat 33 (2026-10-14): with 13 venues shown, one 16-result page left nothing new and the model
+    said the couple had seen every venue. Hiding now reads 3 pages."""
+    world["pages"] = {n: [venue("V%d" % i) for i in range(5 * n - 4, 5 * n + 1)] for n in (1, 2, 3)}
+    res, _ = world["run"]([("search_venues", {"states": ["New York"]}), present(["V6", "V7", "V8"])],
+                          prior=["V%d" % i for i in range(1, 6)])
+    assert sorted(c.get("page") for c in world["calls"]) == [1, 2, 3]
+    ids = [v["vendor_id"] for v in _search_result(world["log"])["venues"]]
+    assert ids[:3] == ["V6", "V7", "V8"] and not {"V1", "V5"} & set(ids)
+    assert [c["vendor_id"] for c in res["more_cards"]] == ["V9", "V10", "V11", "V12", "V13", "V14"]

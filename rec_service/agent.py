@@ -124,6 +124,7 @@ BREAKDOWN_ASK = re.compile(r"break ?down|itemi[sz]e|full (?:cost|price)|all[- ]i
                            r"(?:what|how much) (?:will|would|does) .{0,40}(?:really |actually )?cost", re.I)
 
 PRICED_PER_SEARCH = 6   # pricing fetched for the top N results of each search, in parallel
+PRICED_MAX = 24         # ...or up to this many when a guest count or price cap has to be checked per venue
 
 
 def _line_detail(l, guests):
@@ -722,9 +723,14 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         q = dict(states=states, guests=guests, max_venue_fee=max_venue_fee, max_food_per_person=max_food_per_person,
                  venue_types=venue_types, vibes=vibes, pricing_models=pricing_models, keyword=keyword,
                  sort_by=sort_by, outdoor_ceremony=outdoor_ceremony)
-        if city:
-            # ep119 has no city filter: read the first 3 pages of the state search (one parallel round trip)
-            # and keep the addresses in the city. A page failing just means fewer candidates.
+        # Already shown in this chat, or on the Saved list the couple didn't ask about: left out so "more" and
+        # "cheaper" bring venues they haven't seen. A venue the keyword or the couple's message names stays.
+        hide = set(prior) | (set() if SAVED_ASK.search(last_user) else set(saved_ids))
+        if city or hide:
+            # Read the first 3 pages (one parallel round trip). ep119 has no city filter, so a city keeps only
+            # the addresses in it; and hiding shown venues from one 16-result page left 0-1 new ones on the
+            # 4th "more" (2026-10-14 replay of chat 33: "you've now seen every venue" - untrue).
+            # A page failing just means fewer candidates.
             def page(n):
                 try:
                     return xano.search_venues(token, page_size=20, page=n, **q)
@@ -742,9 +748,6 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         else:
             r = xano.search_venues(token, page_size=16, **q)
             venues = r["venues"]
-        # Already shown in this chat, or on the Saved list the couple didn't ask about: left out so "more" and
-        # "cheaper" bring venues they haven't seen. A venue the keyword or the couple's message names stays.
-        hide = set(prior) | (set() if SAVED_ASK.search(last_user) else set(saved_ids))
         kw = (keyword or "").lower().strip()
         keep = lambda v: (v.get("vendor_id") not in hide or (kw and kw in (v.get("name") or "").lower())
                           or named_in(last_user, v.get("name")))
@@ -757,7 +760,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             kept = [v for v in venues if not (v.get("food_minimum") or 0) > food_cap]
             removed["food_minimum_over_half_budget"] = len(venues) - len(kept)
             venues = kept
-        n_priced = len(venues) if (guests or max_venue_fee or max_food_per_person) else PRICED_PER_SEARCH
+        # Pricing is one ep230 call per venue (8 in parallel). 24 covers the 8 the model sees + "Show 3 more";
+        # with a guest count, unpriced venues are dropped (their minimum is unknown), as before.
+        n_priced = min(len(venues), PRICED_MAX) if (guests or max_venue_fee or max_food_per_person) else PRICED_PER_SEARCH
         raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in venues[:n_priced]]))
         pairs = list(zip(venues, raws)) + [(v, None) for v in venues[len(raws):]]
         if guests:
