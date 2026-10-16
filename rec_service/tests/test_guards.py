@@ -29,14 +29,15 @@ def test_free_user_gets_one_free_opening_then_exactly_N_questions_lifetime():
 def test_no_daily_reset_for_free_users():
     rows = [ok("opening", day="2026-09-01")] + [ok("refine", True, day="2026-09-01")] * config.FREE_REFINES
     assert guards.decide("refine", False, rows, 0, T)[1] == "blocked_free_limit"
-    assert guards.decide("opening", False, rows, 0, T)[1] == "blocked_free_limit"
+    assert guards.decide("opening", False, rows, 0, T) == (True, "ok", False)    # openings always free (10-16)
 
 
-def test_second_opening_spends_a_question():
+def test_second_opening_is_free_too():
+    # 2026-10-16 (owner): every chat starts free - a later opening no longer spends a question.
     rows = [ok("opening")]
-    assert guards.decide("opening", False, rows, 0, T) == (True, "ok", True)
-    rows.append(ok("opening", True))
-    assert guards.free_refines_left(False, rows) == config.FREE_REFINES - 1
+    assert guards.decide("opening", False, rows, 0, T) == (True, "ok", False)
+    rows.append(ok("opening"))
+    assert guards.free_refines_left(False, rows) == config.FREE_REFINES
 
 
 def test_errors_do_not_use_up_free_questions():
@@ -81,7 +82,7 @@ def test_forever_beta_feedback_checkin():
     n = config.BETA_FEEDBACK_AFTER
     five = [ok("refine")] * n
     assert guards.decide("refine", True, five[:-1], 0, T, feedback_given=False) == (True, "ok", False)
-    assert guards.decide("refine", True, five, 0, T, feedback_given=False)[1] == "feedback_required"
+    assert guards.decide("refine", True, five, 0, T, feedback_given=False) == (True, "ok", False)   # optional (10-16)
     assert guards.decide("opening", True, five, 0, T, feedback_given=False) == (True, "ok", False)   # picks never gated
     assert guards.decide("refine", True, five, 0, T, feedback_given=True) == (True, "ok", False)    # unlocked
     assert guards.beta_questions_left(True, five[:2], False) == n - 2

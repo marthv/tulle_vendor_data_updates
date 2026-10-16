@@ -223,13 +223,16 @@ def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_lef
       price_locked     true = no prices anywhere (no active plan); the page shows "Open pricing PDF" instead
       questions_left   free: lifetime questions left before feedback/paywall; paid: questions left before the
                        beta check-in if it is pending, else prompts left today
-      feedback_required  the next question/opening will be refused 403 until POST /rec/feedback
+      feedback_required  the next question will be refused 403 until POST /rec/feedback (free users only
+                         since 2026-10-16)
+      feedback_suggested paid member reached the beta check-in: show the feedback strip, but never block
       feedback_done    this user has left assistant feedback
       paywall          free user with nothing left and no feedback owed (or free mode off): next ask = 402"""
-    fb_req = (beta_left == 0) if paid else bool(free_fb)
-    left = (beta_left if beta_left is not None else forever_left) if paid else free_left
+    fb_req = False if paid else bool(free_fb)         # 2026-10-16: paid check-in is optional
+    left = forever_left if paid else free_left
     return {"tier": "paid" if paid else "free", "price_locked": not access, "questions_left": left,
             "feedback_required": fb_req, "feedback_done": bool(feedback_given),
+            "feedback_suggested": bool(paid and beta_left == 0),
             "paywall": (not paid) and (config.FOREVER_ONLY or (not fb_req and not left)),
             "free_feedback_required": bool(free_fb), "free_feedback_bonus": config.FREE_FEEDBACK_BONUS}
 

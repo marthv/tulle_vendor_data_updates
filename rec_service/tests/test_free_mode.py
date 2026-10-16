@@ -65,13 +65,13 @@ def test_free_three_questions_then_feedback_then_paywall_no_bonus(free_on):
     for i in range(3):
         assert guards.decide("refine", False, rows, 0, T, feedback_given=False) == (True, "ok", True), i
         rows.append(ok("refine", True))
-    # 4th question AND a new opening: feedback first (403)
+    # 4th question: feedback first (403); a new opening is always free (2026-10-16: every chat starts free)
     assert guards.decide("refine", False, rows, 0, T, feedback_given=False)[1] == "feedback_required"
-    assert guards.decide("opening", False, rows, 0, T, feedback_given=False)[1] == "feedback_required"
-    # feedback given -> it earns nothing: paywall (402) for questions and openings
+    assert guards.decide("opening", False, rows, 0, T, feedback_given=False) == (True, "ok", False)
+    # feedback given -> it earns nothing: paywall (402) for questions; openings still free
     assert guards.free_refines_left(False, rows, True) == 0
     assert guards.decide("refine", False, rows, 0, T, feedback_given=True)[1] == "blocked_free_limit"
-    assert guards.decide("opening", False, rows, 0, T, feedback_given=True)[1] == "blocked_free_limit"
+    assert guards.decide("opening", False, rows, 0, T, feedback_given=True) == (True, "ok", False)
 
 
 def test_free_one_question_then_feedback_then_paywall(free_on, monkeypatch):
@@ -86,7 +86,7 @@ def test_free_one_question_then_feedback_then_paywall(free_on, monkeypatch):
     rows.append(ok("refine", True))
     assert guards.free_refines_left(False, rows, False) == 0
     assert guards.decide("refine", False, rows, 0, T, feedback_given=False)[1] == "feedback_required"
-    assert guards.decide("opening", False, rows, 0, T, feedback_given=False)[1] == "feedback_required"
+    assert guards.decide("opening", False, rows, 0, T, feedback_given=False) == (True, "ok", False)
     assert guards.decide("refine", False, rows, 0, T, feedback_given=True)[1] == "blocked_free_limit"
 
 
@@ -115,10 +115,11 @@ def test_free_cap_blocks_free_only_and_global_cap_still_first(free_on):
     assert guards.decide("refine", False, [], 40.0, T, free_spend_today=15.0)[1] == "blocked_global_cap"
 
 
-def test_paid_rules_unchanged(free_on):
+def test_paid_feedback_is_optional(free_on):
+    # 2026-10-16 (owner): paid members are never blocked for feedback - the check-in is a suggestion.
     guards = _mods()[4]
     rows = [ok("refine")] * 3
-    assert guards.decide("refine", True, rows, 0, T, feedback_given=False)[1] == "feedback_required"
+    assert guards.decide("refine", True, rows, 0, T, feedback_given=False) == (True, "ok", False)
     assert guards.decide("opening", True, rows, 0, T, feedback_given=False) == (True, "ok", False)
     assert guards.decide("refine", True, rows, 0, T, feedback_given=True) == (True, "ok", False)
     assert guards.free_refines_left(True, rows, True) is None
@@ -399,19 +400,21 @@ def test_free_flow_end_to_end(api):
         assert j["questions_left"] == left
     assert j["feedback_required"] is True and j["paywall"] is False       # the 3rd answer already says so
     assert api["details"] == ["free"] * 4                                   # model never ran in a price mode
-    for path, body in (("/rec/refine", {"chat_id": 9, "message": "more?"}), ("/rec/opening", None)):
-        r = c.post(path, json=body)
-        assert r.status_code == 403 and r.json()["detail"]["status"] == "feedback_required", r.text
-        assert r.json()["detail"]["free_feedback_bonus"] == 0 and r.json()["detail"]["questions_used"] == 3
+    r = c.post("/rec/refine", json={"chat_id": 9, "message": "more?"})
+    assert r.status_code == 403 and r.json()["detail"]["status"] == "feedback_required", r.text
+    assert r.json()["detail"]["free_feedback_bonus"] == 0 and r.json()["detail"]["questions_used"] == 3
+    assert c.post("/rec/opening").status_code == 200          # every chat starts free (2026-10-16)
     assert c.get("/rec/status").json()["feedback_required"] is True
     r = c.post("/rec/feedback", json={"rating": 4, "would_use": "maybe", "text": "helpful picks so far"})
     assert r.status_code == 200 and r.json()["questions_left"] == 0 and r.json()["paywall"] is True
     assert api["fb_rows"][0]["questions_used"] == 3
     api["feedback"] = True
-    for path, body in (("/rec/refine", {"chat_id": 9, "message": "more?"}), ("/rec/opening", None)):
-        r = c.post(path, json=body)
-        assert r.status_code == 402 and r.json()["detail"]["status"] == "blocked_free_limit", r.text
-        assert r.json()["detail"]["paywall"] is True and r.json()["detail"]["tier"] == "free"
+    r = c.post("/rec/refine", json={"chat_id": 9, "message": "more?"})
+    assert r.status_code == 402 and r.json()["detail"]["status"] == "blocked_free_limit", r.text
+    assert r.json()["detail"]["paywall"] is True and r.json()["detail"]["tier"] == "free"
+    j = c.post("/rec/opening").json()                          # a fresh chat after the paywall is still free
+    _assert_no_price(j)
+    assert j["paywall"] is True and j["questions_left"] == 0
     s = c.get("/rec/status").json()
     assert (s["questions_left"], s["feedback_required"], s["feedback_done"], s["paywall"]) == (0, False, True, True)
 

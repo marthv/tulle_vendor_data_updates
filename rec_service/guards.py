@@ -1,8 +1,8 @@
 """Who may spend what. Pure functions over rec_usage rows so the rules are unit-testable offline.
 
-FREE USERS - LIFETIME, NEVER RESETS (user decision 2026-10-03): the first opening picks are free, then
-FREE_REFINES questions (3 until 2026-10-14, now 1), then the plan paywall. Any LATER opening (profile edit,
-a return visit that asks for fresh picks) spends one of those questions. There is deliberately no daily reset: the engine's job is to get
+FREE USERS - LIFETIME, NEVER RESETS (user decision 2026-10-03): FREE_REFINES questions (3 until 2026-10-14, now 1),
+then the plan paywall. OPENINGS are always free (2026-10-16: every chat starts free, so the page can open a fresh
+chat on each visit); before that only the first opening was free and later ones spent a question. There is deliberately no daily reset: the engine's job is to get
 a couple to open a pricing PDF in their FIRST session, not to be a free tool they return to.
 FREE MODE (owner decisions 2026-10-14): after those 3, ONE required feedback (feedback_required, 403) that
 earns no more questions (FREE_FEEDBACK_BONUS = 0); after it, the paywall (402) for any question or opening.
@@ -62,9 +62,8 @@ def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True, free
         month = sum(1 for r in ok if (r.get("usage_day") or "")[:7] == today[:7])
         if month >= config.FOREVER_MONTHLY_CAP:
             return False, "blocked_monthly_cap", False
-        # Beta check-in: questions only - fresh opening picks never ask for feedback.
-        if kind == "refine" and beta_questions_left(paid, usage_rows, feedback_given) == 0:
-            return False, "feedback_required", False
+        # Beta check-in: since 2026-10-16 (owner) it is OPTIONAL for paid members - the page shows a feedback
+        # strip (feedback_suggested) but never blocks a paid question.
         n = sum(1 for r in ok if r.get("usage_day") == today)
         if n >= config.PAID_DAILY_REFINES:
             return False, "blocked_user_cap", False
@@ -73,8 +72,9 @@ def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True, free
         return False, "forever_only", False          # beta: Forever members only
     if free_spend_today >= config.FREE_DAILY_USD:
         return False, "blocked_free_cap", False       # free share of today's budget is used up
-    if kind == "opening" and not any(r.get("kind") == "opening" for r in ok):
-        return True, "ok", False                      # the one free opening, ever
+    if kind == "opening":
+        return True, "ok", False                      # 2026-10-16 (owner): every chat starts free - openings never
+                                                      # spend a question, before or after the paywall
     if free_feedback_required(paid, usage_rows, feedback_given):
         return False, "feedback_required", False      # the one-time feedback, before the paywall
     if free_used(usage_rows) >= free_limit(feedback_given):

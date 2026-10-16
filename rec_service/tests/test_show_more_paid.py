@@ -71,14 +71,16 @@ def test_a_new_typed_answer_replaces_the_pool(env):
     assert TestClient(app.app).post("/rec/more", json={"chat_id": 9}).status_code == 409
 
 
-def test_blocked_exactly_like_a_typed_question(env, monkeypatch):
+def test_paid_checkin_suggests_but_never_blocks(env, monkeypatch):
+    # 2026-10-16 (owner): the paid beta check-in is optional - the answer carries feedback_suggested, no 403.
     env["history"] = [answer("abc", "defghi")]
     monkeypatch.setattr(config, "BETA_FEEDBACK_AFTER", 5)
     env["feedback"] = False
     env["rows"] = [{"status": "ok", "kind": "refine", "usage_day": TODAY}] * 5
     r = TestClient(app.app).post("/rec/more", json={"chat_id": 9})
-    assert r.status_code == 403 and r.json()["detail"]["status"] == "feedback_required"
-    assert env["added"] == [] and not [x for x in env["logged"] if x["status"] == "ok"]
+    assert r.status_code == 200
+    j = r.json()
+    assert j["feedback_suggested"] is True and j["feedback_required"] is False
 
 
 def test_daily_cap_blocks(env):
