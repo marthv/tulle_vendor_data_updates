@@ -28,7 +28,7 @@ def test_posts_comment_with_question_and_answer(monkeypatch):
     r = TestClient(appmod.app).post("/rec/answer-feedback", json={"chat_id": 5, "answer_index": 1, "text": "too pricey"},
                                     headers={"Authorization": "Bearer x"})
     assert r.status_code == 200 and r.json() == {"ok": True}
-    user, text, question, answer, plan, chat = sent[0]
+    user, text, question, answer, plan, chat, vote = sent[0]
     assert (text, question, answer, chat) == ("too pricey", "cheaper please", "These cost less", 5)
 
 
@@ -54,3 +54,18 @@ def test_slack_message_shape(monkeypatch):
     notify.answer_feedback({"id": 7, "first_name": "Sam"}, "line one\nline two", "q?", "a" * 500, "Free", 5)
     m = posted[0]
     assert "> line one\n> line two" in m and "*They asked:* q?" in m and m.count("a") >= 390 and "chat 5" in m
+
+
+def test_thumbs_up_without_text_posts(monkeypatch):
+    sent = []
+    _setup(monkeypatch, sent)
+    r = TestClient(appmod.app).post("/rec/answer-feedback", json={"chat_id": 5, "answer_index": 0, "vote": "up"},
+                                    headers={"Authorization": "Bearer x"})
+    assert r.status_code == 200 and sent[0][1] == "" and sent[0][6] == "up" and sent[0][3] == "Here are 3 in Austin"
+
+
+def test_thumbs_up_message(monkeypatch):
+    posted = []
+    monkeypatch.setattr(notify, "_post", lambda m: posted.append(m) or True)
+    notify.answer_feedback({"id": 7}, "", "q?", "a", "Forever", 5, "up")
+    assert posted[0].startswith("*Tulle Assistant thumbs up") and ">" not in posted[0]

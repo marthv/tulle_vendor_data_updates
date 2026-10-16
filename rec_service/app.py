@@ -602,7 +602,8 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
 class AnswerFeedbackBody(BaseModel):
     chat_id: int = 0
     answer_index: int = 0     # 0-based count of real answers in the chat (same key the page uses for thumbs)
-    text: str = ""            # the couple's own words after a thumbs down
+    text: str = ""            # the couple's own words after a thumbs down (optional for a thumbs up)
+    vote: str = "down"        # "down" (comment required) or "up" (2026-10-16: owner wants thumbs up in Slack too)
 
 
 @app.post("/rec/answer-feedback")
@@ -612,7 +613,8 @@ def answer_feedback(body: AnswerFeedbackBody, authorization: str = Header(None))
     the page on a Slack or lookup problem."""
     _, user = _auth(authorization)
     text = (body.text or "").strip()[:2000]
-    if len(text) < 2:
+    vote = "up" if str(body.vote or "").lower() == "up" else "down"
+    if vote == "down" and len(text) < 2:
         raise HTTPException(400, {"status": "text_too_short"})
     question, answer = "", ""
     try:
@@ -628,9 +630,9 @@ def answer_feedback(body: AnswerFeedbackBody, authorization: str = Header(None))
         print("answer feedback lookup failed:", repr(e)[:200])
     plan = xano.plan_label(user)
     _POOL.submit(xano.mp_track, user["id"], "rec_answer_feedback", {
-        "chat_id": int(body.chat_id or 0), "answer_index": body.answer_index, "chars": len(text), "plan": plan,
+        "chat_id": int(body.chat_id or 0), "answer_index": body.answer_index, "chars": len(text), "plan": plan, "vote": vote,
         "found_answer": bool(answer), "source": "rec_service"})
-    _POOL.submit(notify.answer_feedback, user, text, question, answer, plan, int(body.chat_id or 0))
+    _POOL.submit(notify.answer_feedback, user, text, question, answer, plan, int(body.chat_id or 0), vote)
     return {"ok": True}
 
 

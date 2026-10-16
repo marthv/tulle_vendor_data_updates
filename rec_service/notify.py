@@ -64,12 +64,13 @@ def _clip(s, n):
     return s if len(s) <= n else s[: n - 1] + "..."
 
 
-def answer_feedback(user, text, question, answer, plan="", chat_id=0):
-    """A thumbs-down comment on one Tulle Assistant answer (2026-10-16): the couple's words, plus the question and
-    the start of the answer it is about."""
+def answer_feedback(user, text, question, answer, plan="", chat_id=0, vote="down"):
+    """A thumbs down (with the couple's words) or a thumbs up on one Tulle Assistant answer (2026-10-16), plus the
+    question and the start of the answer it is about."""
     who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A member", user.get("id"), plan or "plan unknown")
-    quoted = "\n".join("> " + line for line in (text or "").splitlines() or [""])
-    msg = "*Tulle Assistant thumbs down* - %s\n%s" % (who, quoted)
+    msg = "*Tulle Assistant thumbs %s* - %s" % ("up :+1:" if vote == "up" else "down", who)
+    if text:
+        msg += "\n" + "\n".join("> " + line for line in text.splitlines() or [""])
     if question:
         msg += "\n*They asked:* %s" % _clip(question, 300)
     if answer:
