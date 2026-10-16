@@ -599,6 +599,41 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
             **_tier_fields(paid, access, True, None, forever_left, free_left, False)}
 
 
+class AnswerFeedbackBody(BaseModel):
+    chat_id: int = 0
+    answer_index: int = 0     # 0-based count of real answers in the chat (same key the page uses for thumbs)
+    text: str = ""            # the couple's own words after a thumbs down
+
+
+@app.post("/rec/answer-feedback")
+def answer_feedback(body: AnswerFeedbackBody, authorization: str = Header(None)):
+    """Thumbs-down comment (2026-10-16, owner: 'we need real raw feedback'). Posts to Slack #feedback with the
+    question and answer it is about, and tracks rec_answer_feedback. Counts nothing, unlocks nothing. Never fails
+    the page on a Slack or lookup problem."""
+    _, user = _auth(authorization)
+    text = (body.text or "").strip()[:2000]
+    if len(text) < 2:
+        raise HTTPException(400, {"status": "text_too_short"})
+    question, answer = "", ""
+    try:
+        chat = xano.get_chat(user["id"], int(body.chat_id or 0)) if body.chat_id else None
+        if chat:
+            turns = xano.get_messages(chat["id"])
+            answers = [i for i, t in enumerate(turns) if t["role"] == "assistant"]
+            if 0 <= body.answer_index < len(answers):
+                i = answers[body.answer_index]
+                answer = turns[i].get("text") or ""
+                question = next((turns[j].get("text") or "" for j in range(i - 1, -1, -1) if turns[j]["role"] == "user"), "")
+    except Exception as e:   # context is nice to have; the comment itself is what matters
+        print("answer feedback lookup failed:", repr(e)[:200])
+    plan = xano.plan_label(user)
+    _POOL.submit(xano.mp_track, user["id"], "rec_answer_feedback", {
+        "chat_id": int(body.chat_id or 0), "answer_index": body.answer_index, "chars": len(text), "plan": plan,
+        "found_answer": bool(answer), "source": "rec_service"})
+    _POOL.submit(notify.answer_feedback, user, text, question, answer, plan, int(body.chat_id or 0))
+    return {"ok": True}
+
+
 @app.get("/rec/status")
 def status(authorization: str = Header(None)):
     _, user = _auth(authorization)
