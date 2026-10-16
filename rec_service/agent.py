@@ -1193,6 +1193,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 estimate_cost, market_benchmarks, pe_market_rates, save_note, present_recommendations]),
         messages=msgs,
         output_config={"effort": config.EFFORT},
+        **config.thinking_kwargs(),
         # If Sonnet declines on a safety classifier, the API re-runs on a fallback model in the same
         # call (billed at that model's rates; usage["model"] records which one answered).
         betas=["server-side-fallback-2026-07-01"],
@@ -1201,12 +1202,36 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     )
     model_used = config.MODEL
     last_text = ""
+    # Per-step timing (2026-10-16): one entry per model turn. ms = time since the previous turn ended, i.e. the
+    # tools that ran in between + this turn's writing. The *_chars split shows where output tokens go
+    # (thinking vs visible text vs tool arguments); think_chars is 0 when thinking is off or omitted.
+    usage["turns"] = []
+    t_turn = time.time()
     try:
         for message in runner:
+            now = time.time()
             texts = [b.text for b in message.content if b.type == "text" and (b.text or "").strip()]
             if texts:
                 last_text = "\n\n".join(texts)
             u = message.usage
+            tools_used = [b.name for b in message.content if b.type == "tool_use"]
+            # Run this turn's tools NOW (the runner caches the result and reuses it for the next request, so
+            # nothing runs twice). Two wins: tool time is measured on its own, and once present_recommendations
+            # is accepted (final set) we stop here instead of paying for one more model turn whose text is
+            # thrown away (measured 2026-10-16: ~2-3s on every answer). A bounced present_recommendations
+            # ("NOT SHOWN ...") leaves final empty, so the model still gets its retry turn.
+            tool_ms = 0
+            if tools_used and config.EARLY_STOP:
+                t_tools = time.time()
+                runner.generate_tool_call_response()
+                tool_ms = int((time.time() - t_tools) * 1000)
+            usage["turns"].append({
+                "ms": int((now - t_turn) * 1000), "tool_ms": tool_ms, "out": u.output_tokens or 0,
+                "think_chars": sum(len(getattr(b, "thinking", "") or "") for b in message.content if b.type == "thinking"),
+                "text_chars": sum(len(t) for t in texts),
+                "tool_arg_chars": sum(len(json.dumps(getattr(b, "input", {}) or {})) for b in message.content if b.type == "tool_use"),
+                "tools": tools_used})
+            t_turn = time.time()
             usage["input_tokens"] += u.input_tokens or 0
             usage["output_tokens"] += u.output_tokens or 0
             usage["cache_read_tokens"] += getattr(u, "cache_read_input_tokens", 0) or 0

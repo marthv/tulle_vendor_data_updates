@@ -290,7 +290,12 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         "cards": len(result.get("cards") or []), "more_cards": len(result.get("more_cards") or []),
         "notes_saved": len(result.get("notes_saved") or []), "price_locked": not access,
         "price_redactions": redactions,
-        "free_refines_left": guards.free_refines_left(paid, used, feedback_given), "model": usage["model"]})
+        "free_refines_left": guards.free_refines_left(paid, used, feedback_given), "model": usage["model"],
+        # Per-step timing (2026-10-16 speed pass): where the wait goes.
+        "prefetch_ms": usage.get("prefetch_ms"), "model_turns": len(usage.get("turns") or []),
+        "model_ms": sum(t.get("ms", 0) for t in usage.get("turns") or []),
+        "tools_ms": sum(t.get("tool_ms", 0) for t in usage.get("turns") or []),
+        "output_tokens": usage.get("output_tokens"), "early_stop": config.EARLY_STOP})
     return dict(result, paid=paid, has_access=access,
                 **_counters(kind, paid, rows, counted_free, feedback_given, access))
 

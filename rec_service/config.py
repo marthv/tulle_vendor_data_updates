@@ -16,6 +16,23 @@ BENCHMARK_TABLE_ID = int(os.environ.get("REC_BENCHMARK_TABLE_ID", "63"))  # venu
 MODEL = os.environ.get("REC_MODEL", "claude-sonnet-5-5")
 EFFORT = os.environ.get("REC_EFFORT", "low")   # v2 speed pass 2026-10-03; was medium
 MAX_TOOL_ROUNDS = int(os.environ.get("REC_MAX_TOOL_ROUNDS", "6"))
+# Thinking (speed pass 2026-10-16). Empty = API default (unchanged behaviour). "disabled", "adaptive",
+# "between_tools", or "budget:N" (N >= 1024, a hard cap on thinking tokens per turn).
+THINKING = os.environ.get("REC_THINKING", "").strip()
+# Stop as soon as present_recommendations is accepted (skips a throwaway model turn). "0" = old behaviour.
+EARLY_STOP = os.environ.get("REC_EARLY_STOP", "1").strip() != "0"
+
+
+def thinking_kwargs():
+    """Extra tool_runner kwargs for REC_THINKING; {} keeps the API default."""
+    t = THINKING.lower()
+    if not t:
+        return {}
+    if t.startswith("budget:"):
+        return {"thinking": {"type": "enabled", "budget_tokens": max(1024, int(t.split(":", 1)[1]))}}
+    if t in ("disabled", "adaptive", "between_tools"):
+        return {"thinking": {"type": t}}
+    return {}
 
 # User decision 2026-10-03: opening recs free, then 3 free refinements, then the plan paywall.
 FREE_REFINES = int(os.environ.get("REC_FREE_REFINES", "1"))   # 2026-10-14: owner set free users to 1 question (was 3 since 10-03). Railway pins REC_FREE_REFINES - set it to 1 at launch.

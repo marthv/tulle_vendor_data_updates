@@ -132,14 +132,16 @@ def main():
                 res = dict(free_mode.sanitize_result(res), raw={"text": res["text"], "cards": res["cards"]})
             cost = guards.cost_usd(usage["model"], usage)
             row = {"id": c["id"], "ok": True, "cost": cost, "secs": round(time.time() - t0, 1),
-                   "tool_calls": usage["tool_calls"], "model": usage["model"], "issues": check(c, res), "result": res}
+                   "tool_calls": usage["tool_calls"], "model": usage["model"], "issues": check(c, res), "result": res,
+                   "out_tokens": usage["output_tokens"], "prefetch_ms": usage.get("prefetch_ms"), "turns": usage.get("turns")}
         except Exception as e:
             row = {"id": c["id"], "ok": False, "error": repr(e)[:300], "secs": round(time.time() - t0, 1)}
         out.append(row)
         print("%-4s %-5s $%-7s %5ss tools=%-2s %s" % (row["id"], "ok" if row["ok"] else "ERR", row.get("cost", "-"),
               row["secs"], row.get("tool_calls", "-"), "; ".join(row.get("issues", [])) or row.get("error", "")))
     ok = [r for r in out if r["ok"]]
-    name = HERE / ("results_%s_%s.json" % (config.MODEL, ("paid" if paid else "free") + ("_light" if LIGHT else "_freemode" if FREE else "")))
+    name = HERE / ("results_%s_%s.json" % (config.MODEL, ("paid" if paid else "free") + ("_light" if LIGHT else "_freemode" if FREE else "")
+                                                      + ("_think-" + config.THINKING.replace(":", "") if config.THINKING else "")))
     name.write_text(json.dumps(out, indent=1))
     if ok:
         print("\n%d/%d ran | clean (no issues) %d | mean $%.4f | p50 %.1fs | max %.1fs | total $%.2f" % (
