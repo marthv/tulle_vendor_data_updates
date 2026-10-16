@@ -80,7 +80,7 @@ def test_paid_checkin_suggests_but_never_blocks(env, monkeypatch):
     r = TestClient(app.app).post("/rec/more", json={"chat_id": 9})
     assert r.status_code == 200
     j = r.json()
-    assert j["feedback_suggested"] is True and j["feedback_required"] is False
+    assert j["feedback_suggested"] is True and j["tier"] == "paid"   # page shows the strip, input stays open
 
 
 def test_daily_cap_blocks(env):
