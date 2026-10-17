@@ -17,10 +17,12 @@ of ~1-3s each. v2 cuts round trips instead of tokens:
     call and put in context, so market_benchmarks is only needed for other states;
   - effort defaults to low (retrieval + short writing, not hard reasoning).
 """
+import functools
 import json
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 
 import anthropic
 from anthropic import beta_tool
@@ -38,7 +40,7 @@ SCOPE - three vendor types:
 - Entertainment (category "Entertainment"): DJs, live bands, ensembles and solo performers. There is no instrument field: a pianist, harpist, violinist, cellist, guitarist or singer -> types ["Solo Performer"] + keyword (e.g. "piano"); a string quartet or trio -> types ["Ensemble"] + keyword "string quartet". Photo booths come with DJs: offers ["Photo Booth"].
 - Anything else (florists and flowers, catering on its own, hair and makeup, planners, dresses and attire, cakes, rentals, stationery): say in one sentence that the assistant doesn't have solid pricing for those yet and Tulle's Discovery page shows what we do have, then offer help with venues, photographers or entertainment. Officiants: Tulle has no officiant data at all - say so. Never give advice, tips, question lists or budgets for these, and never offer a chip about them.
 
-YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue's PDF for a venue question, the photographer's or entertainer's own pricing PDF for theirs (never send a photographer question to a venue PDF). A reply that doesn't make opening a specific PDF the obvious next step has failed. Couples asked for MORE options and for help telling them apart (2026-10-14: a third of all messages were "more"): for a search, show 4-5 picks when the results allow, and make each card's reason say how it DIFFERS from the other picks (price position, size, style, fee structure, location), never the same sentence twice. The message itself stays short: lead with the top pick and why.
+YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue's PDF for a venue question, the photographer's or entertainer's own pricing PDF for theirs (never send a photographer question to a venue PDF). A reply that doesn't make opening a specific PDF the obvious next step has failed. Couples asked for MORE options and for help telling them apart (2026-10-14: a third of all messages were "more"): for a search, show 4-5 picks when the results allow, and make each card's reason say how it DIFFERS from the other picks (price position, size, style, fee structure, location), never the same sentence twice. The message itself is 2-3 sentences (about 60 words; only a COST BREAKDOWN or a budget question may run longer): lead with the top pick and why.
 
 Show real expertise (this is what makes Tulle worth paying for):
 - Explain the money the way a seasoned planner would: what is usually included vs. extra, how food and drink minimums work, service charge vs. gratuity vs. tax, ceremony fees, peak vs. off-peak and Friday/Sunday pricing, what drives the all-in cost per guest, which fees couples most often miss, and what to ask the venue.
@@ -115,7 +117,7 @@ CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip 
 Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (florists, catering, beauty, planners, attire, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
 
-Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends with which vendor's PDF to open first and what to look for in it), 3-5 vendor_ids in the order you recommend them (fewer only if fewer fit; 1 for a single-venue COST BREAKDOWN), a one-line reason per vendor that says what sets it apart from the other picks with a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
+Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends with which vendor's PDF to open first and what to look for in it), 3-5 vendor_ids in the order you recommend them (fewer only if fewer fit; 1 for a single-venue COST BREAKDOWN), a short reason per vendor (at most about 15 words) that says what sets it apart from the other picks with a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
 
 # A COST BREAKDOWN is long (more tokens, more cost), so only an explicit ask unlocks it (user 2026-10-05:
 # short replies preferred; Forever gets the itemized detail ONLY when they specifically ask).
@@ -125,6 +127,24 @@ BREAKDOWN_ASK = re.compile(r"break ?down|itemi[sz]e|full (?:cost|price)|all[- ]i
 
 PRICED_PER_SEARCH = 6   # pricing fetched for the top N results of each search, in parallel
 PRICED_MAX = 24         # ...or up to this many when a guest count or price cap has to be checked per venue
+SHOWN_MAX = 8           # search results the model sees; the rest only feed "Show 3 more"
+PRICE_WAVE = 8          # pricing calls per parallel wave (the model's 8 first, see search_venues)
+SEARCH_POOL = 60        # one ep119 page of this many when a city or hidden venues need a deeper pool
+DEFERRED_WAIT_S = 6.0   # max wait at the end of a request for background "Show 3 more" pricing
+
+
+def _misfit(p, guests, max_venue_fee, max_food_per_person):
+    """Why a priced venue can't be shown for these limits (the left_out_for_minimums key), or None. A venue whose
+    pricing failed (p None) has no known minimum or rental and is kept, as before."""
+    if guests and p and (p.get("guest_minimum") or 0) > guests:
+        return "guest_minimum_over_party"
+    if max_venue_fee and (_rental_amount(p) or 0) > max_venue_fee:
+        # ep119 caps the CHEAPEST space's rental (flt_min_venue_fee); the card quotes the pricing panel's
+        # space, which can be dearer. A card must never show a rental over the couple's cap.
+        return "rental_over_cap"
+    if max_food_per_person and (((p or {}).get("cost_inputs") or {}).get("pp_fb") or 0) > max_food_per_person:
+        return "food_per_guest_over_cap"
+    return None
 
 
 def _line_detail(l, guests):
@@ -627,6 +647,23 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # profile_override: eval runs only - real requests always use the verified user row.
     profile = profile_override if profile_override is not None else xano.profile_of(user)
     pool = ThreadPoolExecutor(max_workers=8)
+    # Background pricing of "Show 3 more" candidates (2026-10-17): its own workers, so it never queues in front
+    # of a tool call the model is waiting on.
+    defer_pool = ThreadPoolExecutor(max_workers=PRICE_WAVE)
+    deferred = []        # one per search_venues call with candidates still being priced
+    # Per-tool timing for rec_server_request (2026-10-17): ms per tool name, plus search vs pricing inside
+    # search_venues.
+    timing = {"search_ms": 0, "pricing_ms": 0, "searches": 0, "priced": 0, "tools": {}}
+
+    def timed(f):
+        @functools.wraps(f)
+        def w(*a, **k):
+            t = time.time()
+            try:
+                return f(*a, **k)
+            finally:
+                timing["tools"][f.__name__] = timing["tools"].get(f.__name__, 0) + int((time.time() - t) * 1000)
+        return w
 
     try:
         guests = int(profile.get("Wedding_Guest_Count") or 0)
@@ -669,6 +706,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return out
 
     @beta_tool
+    @timed
     def search_venues(states: list[str], guests: int = 0, max_venue_fee: int = 0,
                       max_food_per_person: int = 0, venue_types: list[str] = None,
                       vibes: list[str] = None, pricing_models: list[str] = None,
@@ -726,28 +764,27 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         # Already shown in this chat, or on the Saved list the couple didn't ask about: left out so "more" and
         # "cheaper" bring venues they haven't seen. A venue the keyword or the couple's message names stays.
         hide = set(prior) | (set() if SAVED_ASK.search(last_user) else set(saved_ids))
+        t_search = time.time()
         if city or hide:
-            # Read the first 3 pages (one parallel round trip). ep119 has no city filter, so a city keeps only
-            # the addresses in it; and hiding shown venues from one 16-result page left 0-1 new ones on the
-            # 4th "more" (2026-10-14 replay of chat 33: "you've now seen every venue" - untrue).
-            # A page failing just means fewer candidates.
-            def page(n):
-                try:
-                    return xano.search_venues(token, page_size=20, page=n, **q)
-                except Exception as e:
-                    return e
-            pages = list(pool.map(page, (1, 2, 3)))
-            if all(isinstance(p, Exception) for p in pages):
-                raise pages[0]
-            r = next(p for p in pages if not isinstance(p, Exception))
+            # Read the top 60 results. ep119 has no city filter, so a city keeps only the addresses in it; and
+            # hiding shown venues from one 16-result page left 0-1 new ones on the 4th "more" (2026-10-14 replay
+            # of chat 33: "you've now seen every venue" - untrue).
+            # 2026-10-17: ONE page of 60 instead of pages 1-3 of 20 in parallel. Measured on fresh cache keys
+            # (6 states): identical venues in identical order, 2.9-4.8s vs 5.9-11.6s - the three parallel
+            # pages collided in Xano, and pages 2-3 take ep119's id-list path. A failure retries once at 20.
+            try:
+                r = xano.search_venues(token, page_size=SEARCH_POOL, **q)
+            except Exception:
+                r = xano.search_venues(token, page_size=20, **q)
             dedup = {}
-            for p in pages:
-                for v in ([] if isinstance(p, Exception) else p["venues"]):
-                    dedup.setdefault(v.get("vendor_id"), v)
+            for v in r["venues"]:
+                dedup.setdefault(v.get("vendor_id"), v)
             venues = [v for v in dedup.values() if in_city(v.get("address"), city)]
         else:
             r = xano.search_venues(token, page_size=16, **q)
             venues = r["venues"]
+        timing["search_ms"] += int((time.time() - t_search) * 1000)
+        timing["searches"] += 1
         kw = (keyword or "").lower().strip()
         keep = lambda v: (v.get("vendor_id") not in hide or (kw and kw in (v.get("name") or "").lower())
                           or named_in(last_user, v.get("name")))
@@ -760,31 +797,38 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             kept = [v for v in venues if not (v.get("food_minimum") or 0) > food_cap]
             removed["food_minimum_over_half_budget"] = len(venues) - len(kept)
             venues = kept
-        # Pricing is one ep230 call per venue (8 in parallel). 24 covers the 8 the model sees + "Show 3 more";
-        # with a guest count, unpriced venues are dropped (their minimum is unknown), as before.
-        n_priced = min(len(venues), PRICED_MAX) if (guests or max_venue_fee or max_food_per_person) else PRICED_PER_SEARCH
-        raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in venues[:n_priced]]))
-        pairs = list(zip(venues, raws)) + [(v, None) for v in venues[len(raws):]]
-        if guests:
-            # only priced venues have a known guest minimum, so keep just those and drop the ones that don't fit
-            n = len(raws)
-            pairs = [(v, p) for v, p in pairs[:n] if not (p and (p.get("guest_minimum") or 0) > guests)]
-            removed["guest_minimum_over_party"] = n - len(pairs)
-        if max_venue_fee:
-            # ep119 caps the CHEAPEST space's rental (flt_min_venue_fee); the card quotes the pricing panel's
-            # space, which can be dearer. A card must never show a rental over the couple's cap.
-            n = len(pairs)
-            pairs = [(v, p) for v, p in pairs if not ((_rental_amount(p) or 0) > max_venue_fee)]
-            removed["rental_over_cap"] = n - len(pairs)
-        if max_food_per_person:
-            n = len(pairs)
-            pairs = [(v, p) for v, p in pairs
-                     if not ((((p or {}).get("cost_inputs") or {}).get("pp_fb") or 0) > max_food_per_person)]
-            removed["food_per_guest_over_cap"] = n - len(pairs)
+        # Pricing is one ep230 call per venue (8 in parallel). With a guest count or a price cap every venue has
+        # to be priced before it can be shown: up to PRICED_MAX, covering the 8 the model sees + "Show 3 more";
+        # with a guest count, venues past PRICED_MAX are dropped (their minimum is unknown), as before.
+        # 2026-10-17: priced in waves of 8 until the model's 8 are filled; the rest of the PRICED_MAX window only
+        # feeds "Show 3 more", so it is priced in the background while the model writes and filtered the same
+        # way in _finish_deferred (same cards, same order as pricing all 24 up front).
+        t_price = time.time()
+        filtering = bool(guests or max_venue_fee or max_food_per_person)
+        window = venues[:PRICED_MAX] if filtering else venues[:PRICED_PER_SEARCH]
+        tail = ([] if guests else venues[len(window):])     # kept unpriced, as before
+        pairs, i = [], 0
+        while i < len(window) and (len(pairs) < SHOWN_MAX or not filtering):
+            batch = window[i:i + PRICE_WAVE] if filtering else window
+            raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in batch]))
+            i += len(batch)
+            for v, p in zip(batch, raws):
+                why = _misfit(p, guests, max_venue_fee, max_food_per_person)
+                if why:
+                    removed[why] += 1
+                else:
+                    pairs.append((v, p))
+        timing["pricing_ms"] += int((time.time() - t_price) * 1000)
+        timing["priced"] += i
+        later = window[i:]              # filtering only: priced in the background, filtered at the end
+        later_f = [(v, defer_pool.submit(raw_pricing_or_none, v["vendor_id"])) for v in later]
+        if not filtering:
+            pairs += [(v, None) for v in tail]
+            tail = []
         # The model sees the top 8; the rest only feed "Show 3 more" (2026-10-07: capping the whole pool at
         # 8 left at most 5 after the picks - often under 3 once shown venues were removed, so no button).
-        rest = [card(v, p) for v, p in pairs[8:]]
-        pairs = pairs[:8]
+        rest = [card(v, p) for v, p in pairs[SHOWN_MAX:]]
+        pairs = pairs[:SHOWN_MAX]
         venues = [v for v, _ in pairs]
         prices = [shape(p) if p else None for _, p in pairs]
         out = []
@@ -809,14 +853,18 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 if v["vendor_id"] not in searched:
                     searched.append(v["vendor_id"])
         ids = [v["vendor_id"] for v in out if v.get("vendor_id")] + [v["vendor_id"] for v in rest if v.get("vendor_id")]
-        searches.append({"filters": {k: val for k, val in dict(eff, venue_types=venue_types or [], vibes=vibes or [],
-                                                               pricing_models=pricing_models or [],
-                                                               outdoor_ceremony=bool(outdoor_ceremony)).items()
-                                     if val not in (None, "", 0, [], False)},
-                         "ids": ids})
+        entry = {"filters": {k: val for k, val in dict(eff, venue_types=venue_types or [], vibes=vibes or [],
+                                                       pricing_models=pricing_models or [],
+                                                       outdoor_ceremony=bool(outdoor_ceremony)).items()
+                             if val not in (None, "", 0, [], False)},
+                 "ids": ids}
+        searches.append(entry)
+        if later_f or tail:   # "Show 3 more" candidates still being priced: filtered + appended in _finish_deferred
+            deferred.append({"entry": entry, "later": later_f, "tail": tail,
+                             "limits": (guests, max_venue_fee, max_food_per_person)})
         res = {"total_matches": r["total_matches"], "venues": out}
-        if city:   # ep119's total is the whole state's
-            res["total_matches"] = len(out) + len(rest)
+        if city:   # ep119's total is the whole state's (candidates still being priced count as matches)
+            res["total_matches"] = len(out) + len(rest) + len(later_f) + len(tail)
             res["city_note"] = "only venues whose address is in %s, from the top 60 results for %s" % (
                 city, " and ".join(states) or "all states")
         if n_hidden:
@@ -838,6 +886,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             return None
 
     @beta_tool
+    @timed
     def search_photographers_entertainment(category: str, states: list[str], max_price: int = 0,
                                            types: list[str] = None, offers: list[str] = None,
                                            hour_bands: list[str] = None, keyword: str = "",
@@ -899,6 +948,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return _ev(res)
 
     @beta_tool
+    @timed
     def pe_market_rates(category: str, state: str) -> str:
         """What photographers or entertainers typically cost in a state: package-price quartiles (p25 /
         median / p75, with sample sizes) overall, by package type and coverage hours (Photography) or by
@@ -912,6 +962,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return _ev(xano.pe_benchmarks(category, state))
 
     @beta_tool
+    @timed
     def venue_pricing(vendor_id: str) -> str:
         """Full pricing breakdown for one venue from its uploaded pricing PDF. Only needed for a venue
         whose pricing was not already included in a search result.
@@ -924,6 +975,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return _ev(dict(shape(p), headline=p.get("headline"), source_note=p.get("source_note")))
 
     @beta_tool
+    @timed
     def saved_venues() -> str:
         """The vendors this couple saved (their Saved list), each with its pricing summary and guest
         minimum. Use it for "compare my saved venues", "which of my saved venues...", or to anchor
@@ -948,6 +1000,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return _ev({"saved_count": len(cards), "saved": out})
 
     @beta_tool
+    @timed
     def venue_details(vendor_id: str) -> str:
         """Extra facts from a venue's PDF and Google listing that the pricing summary leaves out: menu and
         bar package per guest, off-peak (cheapest Saturday) prices and which months are peak vs. cheapest,
@@ -966,6 +1019,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return _ev(d)
 
     @beta_tool
+    @timed
     def estimate_cost(vendor_id: str, guests: int = 0, off_peak: bool = False) -> str:
         """The all-in cost of one venue, itemized and computed for you - the same formula as the venue's page:
         rental + ceremony + food and drink (or its minimum, whichever is higher), plus the service charge;
@@ -1001,6 +1055,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return _ev(e)
 
     @beta_tool
+    @timed
     def market_benchmarks(state: str) -> str:
         """What venues typically cost in a state OTHER than the couple's (theirs is already in context):
         quartiles for rental fee, food and drink per guest, service charge, and all-in cost per guest
@@ -1014,6 +1069,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     saved_notes = []
 
     @beta_tool
+    @timed
     def save_note(note: str) -> str:
         """Remember a DURABLE fact about this couple for future conversations: a style they want or
         rule out, a must-have or dealbreaker, a venue budget, a date or season, a guest-count change,
@@ -1031,17 +1087,19 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return "saved"
 
     @beta_tool
+    @timed
     def present_recommendations(message: str, vendor_ids: list[str], reasons: list[str],
                                 chips: list[str]) -> str:
         """Show your answer to the couple. Call exactly once, last.
 
         Args:
-            message: 1-3 short sentences to the couple. Only a COST BREAKDOWN the couple explicitly asked
-                for is longer and uses the itemized "• " list.
+            message: 2-3 short sentences to the couple (about 60 words). Only a COST BREAKDOWN the couple
+                explicitly asked for is longer and uses the itemized "• " list; a budget question may take 4.
             vendor_ids: 3-5 vendor_ids from search_venues, search_photographers_entertainment or saved_venues,
                 best first (fewer only if fewer fit; 1 for a single-venue breakdown, 0 for a question only about an
                 unsupported vendor type).
-            reasons: one short reason per vendor_id, same order, each saying how it differs from the others.
+            reasons: one short reason per vendor_id (at most about 15 words), same order, each saying how it
+                differs from the others.
             chips: 2-4 short follow-ups that follow the CHIPS rule (each maps to a search filter, a pricing
                 line, a state comparison or the Saved list), e.g. "Cheaper options", "Barn / Ranch venues",
                 "DJs with a photo booth".
@@ -1080,6 +1138,33 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         guard["repeats_shown"] = [names.get(v) or v for v in again]
         final.update(message=message, vendor_ids=vendor_ids, reasons=reasons, chips=chips)
         return "shown"
+
+    def _finish_deferred():
+        """The "Show 3 more" candidates each search left pricing in the background: wait for them (at most
+        DEFERRED_WAIT_S in all; one not back by then counts as a failed pricing call, which keeps it unpriced,
+        as before), drop the ones that break the search's limits, and append the rest - then the unpriced tail -
+        to that search's ids and the extra cards, in search order."""
+        deadline = time.time() + DEFERRED_WAIT_S
+        for d in deferred:
+            g, fee_cap, food_cap_pp = d["limits"]
+            add = []
+            for v, f in d["later"]:
+                try:
+                    p = f.result(timeout=max(0.0, deadline - time.time()))
+                except (FutureTimeout, Exception):
+                    p = None
+                if not _misfit(p, g, fee_cap, food_cap_pp):
+                    add.append(card(v, p))
+            add += [card(v, None) for v in d["tail"]]
+            for v in add:
+                vid = v.get("vendor_id")
+                if not vid:
+                    continue
+                if vid not in seen:
+                    extra[vid] = _light_card(v) if light else v
+                if vid not in searched:
+                    searched.append(vid)
+                d["entry"]["ids"].append(vid)
 
     t0 = time.time()
     # Prefetch in parallel: the couple's state benchmarks + saved vendors.
@@ -1242,6 +1327,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 break
     finally:
         pool.shutdown(wait=False)
+    t_def = time.time()
+    try:
+        _finish_deferred()
+    finally:
+        defer_pool.shutdown(wait=False)
+    usage["deferred_wait_ms"] = int((time.time() - t_def) * 1000)
     if not final and last_text:
         # The model occasionally ends its turn with plain text instead of calling present_recommendations
         # (1 of 3 runs of eval o12, 2026-10-04). Keep its answer rather than showing the couple nothing.
@@ -1250,6 +1341,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         final.update(message=last_text, vendor_ids=named, reasons=[""] * len(named), chips=[])
         usage["no_present_fallback"] = True
     usage["latency_ms"] = int((time.time() - t0) * 1000)
+    usage["search_ms"] = timing["search_ms"]          # ep119 inside search_venues
+    usage["pricing_ms"] = timing["pricing_ms"]        # ep230/231 inside search_venues, waits only (not background)
+    usage["searches"] = timing["searches"]
+    usage["priced_sync"] = timing["priced"]
+    usage["tool_breakdown"] = dict(timing["tools"])   # ms per tool name, whole tool incl. search + pricing
     usage["figure_bounced"] = guard["bounced"]
     usage["unsupported_figures"] = guard["unsupported"]
     usage["model"] = model_used

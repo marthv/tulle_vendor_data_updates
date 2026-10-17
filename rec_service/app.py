@@ -295,7 +295,14 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         "prefetch_ms": usage.get("prefetch_ms"), "model_turns": len(usage.get("turns") or []),
         "model_ms": sum(t.get("ms", 0) for t in usage.get("turns") or []),
         "tools_ms": sum(t.get("tool_ms", 0) for t in usage.get("turns") or []),
-        "output_tokens": usage.get("output_tokens"), "early_stop": config.EARLY_STOP})
+        "output_tokens": usage.get("output_tokens"), "early_stop": config.EARLY_STOP,
+        # Per-tool timing (2026-10-17): ep119 search vs ep230/231 pricing inside search_venues, every tool's
+        # total ms, and the end-of-request wait for background "Show 3 more" pricing.
+        "search_ms": usage.get("search_ms"), "pricing_ms": usage.get("pricing_ms"),
+        "searches": usage.get("searches"), "priced_sync": usage.get("priced_sync"),
+        "deferred_wait_ms": usage.get("deferred_wait_ms"),
+        "tool_breakdown": usage.get("tool_breakdown") or {},
+        **{"tool_ms_" + k: v for k, v in (usage.get("tool_breakdown") or {}).items()}})
     return dict(result, paid=paid, has_access=access,
                 **_counters(kind, paid, rows, counted_free, feedback_given, access))
 

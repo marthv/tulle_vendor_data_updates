@@ -72,6 +72,8 @@ def world(monkeypatch):
         st["calls"].append(dict(f, states=states, page_size=page_size))
         if st["pages"] is not None and "page" in f:
             vs = st["pages"].get(f.get("page", 1), [])
+        elif st["pages"] is not None:   # one deep page (2026-10-17): pages 1.. concatenated, like ep119
+            vs = [v for n in sorted(st["pages"]) for v in st["pages"][n]][:page_size]
         else:
             vs = st["venues"]
         return {"total_matches": 500, "venues": copy.deepcopy(vs)}
@@ -212,13 +214,13 @@ def test_relax_drops_a_cap_the_couple_removed(world):
     assert world["calls"][0]["max_venue_fee"] == 0
 
 
-def test_city_filter_reads_three_pages_and_keeps_only_city_addresses(world):
+def test_city_filter_reads_one_deep_page_and_keeps_only_city_addresses(world):
     man = lambda i: venue("M%d" % i, addr="%d W 57th St, New York, NY 10019" % i)
     up = lambda i: venue("U%d" % i, addr="%d Main St, Tarrytown, NY 10591" % i)
     world["pages"] = {1: [man(1), up(1), man(2)], 2: [up(2), man(3), man(4)], 3: [man(5), man(6), man(7), up(3)]}
     res, _ = world["run"]([("search_venues", {"states": ["New York"], "city": "Manhattan"}),
                            present(["M1", "M2", "M3"])])
-    assert sorted(c.get("page") for c in world["calls"]) == [1, 2, 3]
+    assert [c["page_size"] for c in world["calls"]] == [60] and not any("page" in c for c in world["calls"])
     r = _search_result(world["log"])
     assert all(v["vendor_id"].startswith("M") for v in r["venues"])
     assert [c["vendor_id"] for c in res["more_cards"]] == ["M4", "M5", "M6"]
@@ -340,11 +342,11 @@ def test_peak_caveat_is_said_once_per_chat(world):
 
 def test_hiding_shown_venues_backfills_from_later_pages(world):
     """Replay of chat 33 (2026-10-14): with 13 venues shown, one 16-result page left nothing new and the model
-    said the couple had seen every venue. Hiding now reads 3 pages."""
+    said the couple had seen every venue. Hiding now reads the top 60 (one page since 2026-10-17)."""
     world["pages"] = {n: [venue("V%d" % i) for i in range(5 * n - 4, 5 * n + 1)] for n in (1, 2, 3)}
     res, _ = world["run"]([("search_venues", {"states": ["New York"]}), present(["V6", "V7", "V8"])],
                           prior=["V%d" % i for i in range(1, 6)])
-    assert sorted(c.get("page") for c in world["calls"]) == [1, 2, 3]
+    assert [c["page_size"] for c in world["calls"]] == [60] and not any("page" in c for c in world["calls"])
     ids = [v["vendor_id"] for v in _search_result(world["log"])["venues"]]
     assert ids[:3] == ["V6", "V7", "V8"] and not {"V1", "V5"} & set(ids)
     assert [c["vendor_id"] for c in res["more_cards"]] == ["V9", "V10", "V11", "V12", "V13", "V14"]
