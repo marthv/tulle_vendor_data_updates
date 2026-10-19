@@ -4,7 +4,7 @@ extract_extras.py - florist quotes (pass __f) and venue PDF facts (pass __v)
 Two extraction jobs that write to their OWN Xano tables and never to table 36/37:
 
   job="florals" -> floral_quotes (1 row per PDF) + floral_items (1 row per line item)
-  job="facts"   -> venue_pdf_facts (1 row per PDF) + venue_preferred_vendors (1 row per vendor)
+  job="facts"   -> venue_pdf_facts (1 row per PDF) + venue_pdf_preferred_vendors (1 row per vendor)
 
 Why not table 36 / PROMPT_BY_CATEGORY / __k: table 36 is the package table that ep119 and
 the fn21 trigger read. A florist's line items (bouquet $250 each, arch swag $45/ft) are not
