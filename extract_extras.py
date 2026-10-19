@@ -906,6 +906,14 @@ def submit_job(job, rows, pdf_dir=None, save_pdfs=False, env=None, log=print, cl
                 with open(p, "wb") as fh:
                     fh.write(data)
         if len(data) > 30 * 1024 * 1024:
+            # Same remedy as the main pipeline: rasterise to fit under the 32MB PDF limit.
+            from extract_core import _downsample_pdf
+            smaller = _downsample_pdf(data, target_b64_mb=25)
+            if smaller and len(smaller) < len(data):
+                log(f"  [{i+1}/{len(rows)}] {pid} downsampled {len(data)/1e6:.0f}MB -> "
+                    f"{len(smaller)/1e6:.0f}MB")
+                data = smaller
+        if len(data) > 30 * 1024 * 1024:
             log(f"  [{i+1}/{len(rows)}] {pid} too large ({len(data)/1e6:.0f}MB) - skipped")
             continue
         fid = _upload(client, data, f"{pid}.pdf")
