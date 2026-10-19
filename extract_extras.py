@@ -25,9 +25,10 @@ valid JSON. `{"type": "disabled"}` is a 400 on Sonnet 5.5 - the lowest setting i
 
 Env:
   ANTHROPIC_API_KEY, GOOGLE_SERVICE_ACCOUNT_JSON  (submit)
-  XANO_FLORAL_QUOTES_ENDPOINT, XANO_FLORAL_ITEMS_ENDPOINT,
-  XANO_VENUE_FACTS_ENDPOINT, XANO_VENUE_PREFERRED_VENDORS_ENDPOINT   (ingest; if a table's
-      endpoint is unset, its rows are written to local JSON instead and nothing is posted)
+  XANO_PDFDATA_SECRET (ingest; without it rows go to local JSONL and nothing is posted)
+  XANO_PDFDATA_BASE (optional; default the api:GynP5T1B group) - endpoints are
+      <base>/pdfdata/{floral_quotes,floral_items,venue_pdf_facts,venue_pdf_preferred_vendors};
+      XANO_FLORAL_QUOTES_ENDPOINT etc. override one table each
   EXTRA_MODEL (default claude-sonnet-5-5), EXTRA_EFFORT (default low),
   EXTRA_THINKING (adaptive | between_tools, default adaptive)
 
@@ -696,41 +697,233 @@ def parse_result(result, pdf_map):
 
 
 # ── INGEST (purge-before-insert by PDF_ID) ────────────────────────────────────
+# Xano tables (workspace 1, created 2026-10-19), all in the api:GynP5T1B group:
+#   84 floral_quotes, 85 floral_items, 86 venue_pdf_preferred_vendors, 87 venue_pdf_facts.
+# Table 86 is venue_pdf_preferred_vendors - NOT venue_preferred_vendors, which is the live
+# table 71 behind the Partner Vendors card. Never point this code at table 71.
+# Each table has POST pdfdata/<table> {"rows": [...]} (1-200 rows, one transaction) and
+# DELETE pdfdata/<table>?pdf_id=... -> {deleted, remaining}; both take ?secret=
+# (XANO_PDFDATA_SECRET). Table 86 also holds t36_names_v1 rows from the free name-split
+# step, so its purge is scoped with source=facts_pass.
 
+XANO_PDFDATA_BASE_DEFAULT = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B"
 TABLE_ENDPOINT_ENV = {
     "floral_quotes": "XANO_FLORAL_QUOTES_ENDPOINT",
     "floral_items": "XANO_FLORAL_ITEMS_ENDPOINT",
     "venue_pdf_facts": "XANO_VENUE_FACTS_ENDPOINT",
-    "venue_preferred_vendors": "XANO_VENUE_PREFERRED_VENDORS_ENDPOINT",
+    "venue_pdf_preferred_vendors": "XANO_VENUE_PREFERRED_VENDORS_ENDPOINT",
 }
 JOB_TABLES = {
-    JOB_FLORALS: (("floral_quotes", "quote"), ("floral_items", "items")),
-    JOB_FACTS: (("venue_pdf_facts", "facts"), ("venue_preferred_vendors", "preferred_vendors")),
+    JOB_FLORALS: ("floral_quotes", "floral_items"),
+    JOB_FACTS: ("venue_pdf_facts", "venue_pdf_preferred_vendors"),
 }
+FACTS_PASS_SOURCE = "facts_pass"
+PURGE_EXTRA_PARAMS = {"venue_pdf_preferred_vendors": {"source": FACTS_PASS_SOURCE}}
 
 
-def rows_by_table(job, rows):
-    """{'floral_quotes': [..], 'floral_items': [..]} from a parse_floral/parse_facts result."""
-    out = {}
-    for table, key in JOB_TABLES[job]:
-        v = rows.get(key)
-        out[table] = [v] if isinstance(v, dict) else list(v or [])
-    return out
+def table_endpoint(table, env):
+    """Explicit per-table env var wins; else XANO_PDFDATA_BASE (or the default base) +
+    /pdfdata/<table>. Returns "" when no secret is configured, so nothing is posted."""
+    if env.get(TABLE_ENDPOINT_ENV[table]):
+        return env[TABLE_ENDPOINT_ENV[table]].rstrip("/")
+    if not env.get("XANO_PDFDATA_SECRET"):
+        return ""
+    base = (env.get("XANO_PDFDATA_BASE") or XANO_PDFDATA_BASE_DEFAULT).rstrip("/")
+    return f"{base}/pdfdata/{table}"
+
+
+_QUOTE_TYPE = {"price_list": "price_list", "proposal": "proposal",
+               "brochure_packages": "package_guide"}
+_UNIT_MAP = {"each": "each", "per_foot": "per_foot", "per_table": "per_table",
+             "per_person": "per_guest", "flat": "flat", "bundle": "flat", "percent": "percent",
+             "per_hour": "other", "unknown": ""}
+_PV_CAT_MAP = {"music_dj": "music", "music_band": "music", "hair_makeup": "beauty"}
+_NO_MIN = re.compile(r"\b(no|not have a|without a?)\s+(set\s+)?minimum", re.I)
+
+
+def norm_vendor_name(name):
+    s = str(name or "").lower().replace("&", " and ")
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    s = re.sub(r"\b(the|llc|inc|co|company|studio|studios|events?|design|designs)\b", " ", s)
+    return " ".join(s.split())
+
+
+def _contacts(text):
+    t = str(text or "")
+    em = re.search(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", t)
+    ph = re.search(r"\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}", t)
+    t2 = t.replace(em.group(0), " ") if em else t
+    web = re.search(r"(https?://\S+|www\.\S+|\b[a-z0-9\-]+\.(com|net|org|co|us|events)\b\S*)", t2, re.I)
+    return {"email": em.group(0) if em else "", "phone": ph.group(0) if ph else "",
+            "website": web.group(0).rstrip(".,;)") if web else ""}
+
+
+def to_xano_floral(rows, raw=None):
+    """parse_floral output -> {floral_quotes: [1 row], floral_items: [...]} keyed by the
+    table 84/85 column names. Fields the tables lack stay in floral_quotes.raw_json."""
+    q, items = rows["quote"], rows["items"]
+    min_spend = q["minimum_spend"]
+    cond = q["minimum_spend_conditions"]
+    no_min = min_spend == 0 or (min_spend is None and bool(_NO_MIN.search(cond or "")))
+    qtype = _QUOTE_TYPE.get(q["document_type"])
+    if not qtype:
+        qtype = "minimum_only" if (not items and min_spend is not None) else "mixed"
+    scope = {"yes": "includes fees and tax", "no": "fees/tax extra or excluded",
+             "unknown": ""}[q["total_covers_everything"]]
+    quote = {
+        "PDF_ID": q["PDF_ID"], "Vendor_ID": q["Vendor_ID"], "florist_name": q["florist_name"],
+        "state": q["state"], "hub_id": None, "quote_type": qtype,
+        "quote_date": q["quote_date"], "wedding_date": q["wedding_date"],
+        "pricing_year": q["pricing_year"], "guest_count": q["guest_count"], "table_count": None,
+        "min_spend": min_spend,
+        "min_spend_conditions": {"text": cond} if cond else None,
+        "no_minimum_stated": True if no_min else None,
+        "typical_spend_low": q["typical_spend_low"], "typical_spend_high": q["typical_spend_high"],
+        "typical_spend_basis": q["typical_spend_text"],
+        "subtotal_items": q["subtotal"], "total": q["total"],
+        "total_scope": "; ".join(x for x in (scope, q["total_notes"]) if x)[:500],
+        "delivery_setup_amount": (q["delivery_fee_flat"] if q["delivery_fee_flat"] is not None
+                                  else q["setup_fee"]),
+        "delivery_setup_pct": q["delivery_fee_pct"],
+        "delivery_setup_basis": q["delivery_fee_text"],
+        "breakdown_amount": q["breakdown_fee"], "labor_amount": q["labor_fee"],
+        "rentals_amount": q["rentals_fee"], "service_fee_pct": q["service_fee_pct"],
+        "service_fee_amount": q["service_fee_flat"], "tax_pct": q["tax_rate_pct"],
+        "tax_amount": None, "deposit_pct": None, "travel_rule": "",
+        "currency": q["currency"], "contact_information": q["contact_email"],
+        "confidentiality_risk": "yes" if q["confidentiality_flag"] else "no",
+        "confidentiality_evidence": q["confidentiality_evidence"],
+        "model": q["model"], "extracted_at": q["extracted_at"],
+        "raw_json": {"parsed_row": q, "model_output": raw},
+    }
+    out_items = []
+    for it in items:
+        lo, hi = it["price_low"], it["price_high"]
+        if it["price"] is not None:
+            lo = hi = it["price"]
+        note = it["notes"]
+        if it["inclusion"] == "not_included_at_this_time":
+            note = "not included at this time" + (f"; {note}" if note else "")
+        is_pkg = it["item_category"] == "package"
+        out_items.append({
+            "PDF_ID": it["PDF_ID"], "Vendor_ID": it["Vendor_ID"],
+            "item_group": it["item_group"], "item_category": it["item_category"],
+            "florist_item_name": it["item_name"], "price_low": lo, "price_high": hi,
+            "is_starting_at": it["starting_at"],
+            "pricing_unit": _UNIT_MAP.get(it["pricing_unit"], "other"),
+            "size_style": it["size_style"],
+            "includes_text": "" if is_pkg else it["included_text"],
+            "bundle_contents": it["included_text"] if is_pkg else "",
+            "quantity": it["quantity"], "line_total": it["line_total"],
+            "inclusion_status": "optional" if it["is_optional"] else it["inclusion"],
+            "notes": note[:500],
+            "confidence": {"medium": "med"}.get(it["confidence"], it["confidence"]),
+        })
+    return {"floral_quotes": [quote], "floral_items": out_items}
+
+
+def to_xano_facts(rows, raw=None):
+    """parse_facts output -> {venue_pdf_facts: [1 row], venue_pdf_preferred_vendors: [...]}
+    keyed by the table 87/86 column names. Every parsed field is kept in raw_json."""
+    f, pv = rows["facts"], rows["preferred_vendors"]
+    fees = []
+    if f["admin_service_fee_pct"] is not None:
+        fees.append({"name": "service charge / admin fee", "amount": f["admin_service_fee_pct"],
+                     "unit": "percent", "text": ""})
+    for k, nm, unit in (("ceremony_fee", "ceremony fee", "flat"),
+                        ("cake_cutting_fee", "cake cutting", "other"),
+                        ("corkage_fee", "corkage", "other")):
+        if f[k] is not None:
+            fees.append({"name": nm, "amount": f[k], "unit": unit, "text": ""})
+    for k, nm in (("other_fees_text", "other"), ("security_fee_text", "security")):
+        if f[k]:
+            fees.append({"name": nm, "amount": None, "unit": "other", "text": f[k]})
+    cer = []
+    if f["ceremony_onsite"] != "unknown":
+        cer.append(f"on site: {f['ceremony_onsite']}")
+    if f["outdoor_ceremony"] != "unknown":
+        cer.append(f"outdoor: {f['outdoor_ceremony']}")
+    if f["ceremony_fee"] is not None:
+        cer.append(f"fee {f['ceremony_fee']:g}")
+    if f["ceremony_only_option"] == "yes":
+        cer.append("ceremony-only booking offered")
+    florists = [v["vendor_name"] for v in pv if v["vendor_category"] == "florals"]
+    small = "yes" if "yes" in (f["elopement_package"], f["ceremony_only_option"]) else "unknown"
+    facts = {
+        "PDF_ID": f["PDF_ID"], "Vendor_ID": f["Vendor_ID"],
+        "has_onsite_lodging": f["lodging_onsite"],
+        "lodging_room_count": f["lodging_room_count"], "lodging_sleeps": f["lodging_sleeps"],
+        "lodging_required": "yes" if f["lodging_min_stay_text"] else "unknown",
+        "lodging_notes": "; ".join(x for x in (f["lodging_price_text"],
+                                               f["lodging_min_stay_text"]) if x)[:500],
+        "small_wedding_offered": small,
+        "elopement_offered": f["elopement_package"],
+        "small_wedding_max_guests": f["elopement_max_guests"],
+        "small_wedding_price_from": f["elopement_price"],
+        "small_wedding_notes": "",
+        "outside_caterer_allowed": f["outside_caterer_allowed"],
+        "outside_caterer_fee_amount": None, "outside_caterer_fee_unit": "",
+        "outside_caterer_fee_text": "; ".join(x for x in (f["outside_caterer_fee_text"],
+                                                          f["outside_caterer_conditions"]) if x)[:500],
+        "multi_day_rental": f["multi_day_events"], "rehearsal_dinner_onsite": "unknown",
+        "welcome_event_onsite": "unknown", "multi_day_notes": "",
+        "cheapest_months": f["cheapest_months"].replace(";", ", "),
+        "off_peak_discount_pct": None,
+        "required_fees": fees or None,
+        "tax_pct": f["tax_rate_pct"],
+        "gratuity_policy": (f"{f['admin_service_fee_pct']:g}% service charge"
+                            if f["admin_service_fee_pct"] is not None else ""),
+        "end_time": f["end_time_text"], "overtime_cost": f["overtime_fee_text"],
+        "open_flame_allowed": f["open_flame_allowed"], "noise_limit": "",
+        "outside_decorator_allowed": f["outside_decorator_allowed"], "outside_decorator_fee": "",
+        "ceremony_structure": "; ".join(cer),
+        "florals_included": "unknown", "florist_named": ", ".join(florists)[:500],
+        "model": f["model"], "extracted_at": f["extracted_at"],
+        "raw_json": {"parsed_row": f, "model_output": raw},
+    }
+    out_pv = []
+    for v in pv:
+        c = _contacts(v["contact_text"])
+        rel = {"approved_list": "approved"}.get(v["relationship"], v["relationship"])
+        out_pv.append({
+            "venue_vendor_id": v["Venue_Vendor_ID"], "PDF_ID": v["PDF_ID"],
+            "vendor_name_raw": v["vendor_name"],
+            "vendor_name_norm": norm_vendor_name(v["vendor_name"]),
+            "category": _PV_CAT_MAP.get(v["vendor_category"], v["vendor_category"]),
+            "relationship": rel,
+            "is_exclusive": "yes" if rel in ("exclusive", "required") else (
+                "no" if rel in ("preferred", "recommended", "approved") else "unknown"),
+            "outside_vendor_policy": f["outside_vendor_policy"],
+            "buyout_fee_amount": None, "buyout_fee_unit": "",
+            "fee_text": v["notes"], "website": c["website"], "phone": c["phone"],
+            "email": c["email"],
+            "matched_vendor_id": "", "match_method": "none", "match_score": None,
+            "match_confidence": "none", "source": FACTS_PASS_SOURCE, "source_page": None,
+            "extracted_at": v["extracted_at"], "model": f["model"],
+        })
+    return {"venue_pdf_facts": [facts], "venue_pdf_preferred_vendors": out_pv}
+
+
+def rows_by_table(job, rows, raw=None):
+    """parse_* output -> {table_name: [rows keyed by that table's Xano columns]}."""
+    return to_xano_floral(rows, raw) if job == JOB_FLORALS else to_xano_facts(rows, raw)
 
 
 class XanoWriter:
-    """Writes one PDF's rows to one table: GET existing rows for that PDF_ID, DELETE them,
-    then POST the new rows. The selection of rows to delete happens in Python and is
-    asserted per row (PDF_ID must match exactly), so a mis-scoped list endpoint can never
-    delete another PDF's rows. `http` is injectable for offline tests (needs .get/.post/
-    .delete returning objects with .status_code and .json())."""
+    """One PDF's rows into one table: DELETE pdfdata/<table>?pdf_id= (purge), then POST
+    {"rows": [...]} in chunks of <=200 (each chunk is one Xano transaction). If the purge
+    fails, or leaves rows behind, nothing is posted, so a re-run can never duplicate rows.
+    `http` is injectable for offline tests (.delete/.post -> .status_code, .json())."""
 
-    def __init__(self, endpoint, secret="", http=None, sleep=time.sleep):
+    CHUNK = 200
+
+    def __init__(self, endpoint, secret="", http=None, sleep=time.sleep, purge_params=None):
         import requests as _requests
         self.endpoint = endpoint.rstrip("/")
         self.secret = secret
         self.http = http or _requests
         self.sleep = sleep
+        self.purge_params = dict(purge_params or {})
 
     def _params(self, extra=None):
         p = dict(extra or {})
@@ -738,61 +931,55 @@ class XanoWriter:
             p["secret"] = self.secret
         return p
 
-    def purge(self, pdf_id):
-        r = self.http.get(self.endpoint, params=self._params({"pdf_id": pdf_id}), timeout=30)
-        if r.status_code != 200:
-            raise RuntimeError(f"purge lookup {r.status_code}")
-        data = r.json()
-        if isinstance(data, dict):
-            data = data.get("items", [])
-        if not isinstance(data, list):
-            raise RuntimeError("purge lookup: unexpected shape")
-        doomed = [row for row in data if isinstance(row, dict) and row.get("id")
-                  and str(row.get("PDF_ID") or "").strip() == str(pdf_id).strip()]
-        deleted = 0
-        for row in doomed:
-            d = self.http.delete(f"{self.endpoint}/{row['id']}", params=self._params(), timeout=30)
-            if d.status_code not in (200, 201, 204):
-                raise RuntimeError(f"purge delete {row['id']} -> {d.status_code}")
-            deleted += 1
-        return deleted
-
-    def post(self, row, attempts=4):
-        delay = 1.0
-        for a in range(attempts):
+    def _call(self, fn, *a, attempts=4, **kw):
+        delay, last = 1.0, None
+        for i in range(attempts):
             try:
-                r = self.http.post(self.endpoint, json=row, params=self._params(), timeout=20)
-                if r.status_code in (200, 201):
-                    return True
+                r = fn(*a, **kw)
+                if r.status_code in (200, 201, 204):
+                    return r
+                last = f"HTTP {r.status_code}"
                 if 400 <= r.status_code < 500 and r.status_code != 429:
-                    return False
-            except Exception:
-                pass
-            if a < attempts - 1:
+                    break
+            except Exception as e:
+                last = str(e)[:200]
+            if i < attempts - 1:
                 self.sleep(delay + random.uniform(0, 0.3))
                 delay = min(delay * 2, 8)
-        return False
+        raise RuntimeError(last or "failed")
+
+    def purge(self, pdf_id):
+        r = self._call(self.http.delete, self.endpoint,
+                       params=self._params({"pdf_id": pdf_id, **self.purge_params}), timeout=60)
+        try:
+            d = r.json() or {}
+        except Exception:
+            d = {}
+        if d.get("remaining"):
+            raise RuntimeError(f"purge left {d.get('remaining')} rows")
+        return int(d.get("deleted") or 0)
 
     def replace(self, pdf_id, rows):
-        """Purge then insert. Returns (deleted, posted, failed). If the purge fails nothing
-        is posted (a re-run must not duplicate rows)."""
+        """Returns (deleted, posted). Raises on any failure."""
+        if any(str(r.get("PDF_ID")) != str(pdf_id) for r in rows):
+            raise ValueError("row for another PDF in this batch")
         deleted = self.purge(pdf_id)
-        ok = fail = 0
-        for row in rows:
-            if self.post(row):
-                ok += 1
-            else:
-                fail += 1
-        return deleted, ok, fail
+        posted = 0
+        for i in range(0, len(rows), self.CHUNK):
+            chunk = rows[i:i + self.CHUNK]
+            self._call(self.http.post, self.endpoint, json={"rows": chunk},
+                       params=self._params(), timeout=60)
+            posted += len(chunk)
+        return deleted, posted
 
 
 def ingest_outcomes(outcomes, out_dir=None, local_only=False, http=None, secret=None,
                     env=None, log=print):
-    """outcomes: {pdf_id: (job, outcome)} -> writes rows. Tables whose endpoint env var is
-    unset (or local_only=True) are written to <out_dir>/<table>.jsonl instead. Returns a
-    summary dict. Rows for failed / wrong_category PDFs are never written."""
+    """outcomes: {pdf_id: (job, outcome)} -> rows in the Xano tables, purge-before-insert by
+    PDF_ID. Tables with no endpoint/secret (or local_only=True) go to
+    <out_dir>/<table>.xano.jsonl instead. Failed / wrong_category PDFs are never written."""
     env = os.environ if env is None else env
-    secret = env.get("XANO_MACHINE_SECRET", "") if secret is None else secret
+    secret = env.get("XANO_PDFDATA_SECRET", "") if secret is None else secret
     writers, local = {}, {}
     summary = {"posted": 0, "failed_posts": 0, "deleted": 0, "local_rows": 0,
                "pdfs_ok": 0, "pdfs_failed": 0, "pdfs_wrong_category": 0, "errors": {}}
@@ -803,15 +990,17 @@ def ingest_outcomes(outcomes, out_dir=None, local_only=False, http=None, secret=
             summary["errors"][pdf_id] = oc.get("error", "")
             continue
         summary["pdfs_ok"] += 1
-        for table, rows in rows_by_table(job, oc["rows"]).items():
-            endpoint = "" if local_only else (env.get(TABLE_ENDPOINT_ENV[table]) or "")
+        for table, rows in rows_by_table(job, oc["rows"], oc.get("raw")).items():
+            if not rows:
+                continue
+            endpoint = "" if local_only else table_endpoint(table, env)
             if not endpoint:
                 local.setdefault(table, []).extend(rows)
                 continue
-            w = writers.get(table) or writers.setdefault(
-                table, XanoWriter(endpoint, secret=secret, http=http))
+            w = writers.get(table) or writers.setdefault(table, XanoWriter(
+                endpoint, secret=secret, http=http, purge_params=PURGE_EXTRA_PARAMS.get(table)))
             try:
-                d, ok, fail = w.replace(pdf_id, rows)
+                d, ok = w.replace(pdf_id, rows)
             except Exception as e:
                 summary["errors"][pdf_id] = f"{table}: {e}"
                 summary["failed_posts"] += len(rows)
@@ -819,17 +1008,16 @@ def ingest_outcomes(outcomes, out_dir=None, local_only=False, http=None, secret=
                 continue
             summary["deleted"] += d
             summary["posted"] += ok
-            summary["failed_posts"] += fail
     if local:
         out_dir = out_dir or "."
         os.makedirs(out_dir, exist_ok=True)
         for table, rows in local.items():
-            path = os.path.join(out_dir, f"{table}.jsonl")
+            path = os.path.join(out_dir, f"{table}.xano.jsonl")
             with open(path, "w", encoding="utf-8") as fh:
                 for r in rows:
                     fh.write(json.dumps(r, ensure_ascii=False) + "\n")
             summary["local_rows"] += len(rows)
-            log(f"  {len(rows)} {table} rows -> {path} (endpoint unset: not posted)")
+            log(f"  {len(rows)} {table} rows -> {path} (not posted)")
     return summary
 
 

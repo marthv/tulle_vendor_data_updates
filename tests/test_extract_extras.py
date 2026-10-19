@@ -251,35 +251,63 @@ class _Resp:
 
 
 class FakeHTTP:
-    def __init__(self, existing):
-        self.existing = existing
-        self.calls = []
+    """Mimics the pdfdata/<table> endpoints: DELETE ?pdf_id= -> {deleted, remaining},
+    POST {"rows": [...]} -> {inserted}."""
 
-    def get(self, url, params=None, timeout=None):
-        self.calls.append(("GET", url, dict(params or {})))
-        return _Resp(200, self.existing)
+    def __init__(self, delete_code=200, remaining=0):
+        self.calls = []
+        self.delete_code, self.remaining = delete_code, remaining
 
     def delete(self, url, params=None, timeout=None):
-        self.calls.append(("DELETE", url))
-        return _Resp(200)
+        self.calls.append(("DELETE", url, dict(params or {})))
+        return _Resp(self.delete_code, {"deleted": 3, "remaining": self.remaining})
 
     def post(self, url, json=None, params=None, timeout=None):
-        self.calls.append(("POST", url, json))
-        return _Resp(200, {"id": 1})
+        self.calls.append(("POST", url, json, dict(params or {})))
+        return _Resp(200, {"inserted": len(json["rows"])})
 
 
-def test_ingest_purges_only_this_pdf_then_inserts():
-    http = FakeHTTP([{"id": 7, "PDF_ID": "P100"}, {"id": 8, "PDF_ID": "P1000"},
-                     {"id": 9, "PDF_ID": "P100 "}, {"id": 10}])
+ENV = {"XANO_PDFDATA_SECRET": "s3"}
+
+
+def test_ingest_purges_then_bulk_inserts_with_xano_columns():
+    http = FakeHTTP()
     _, job, oc = X.parse_result(_result("P100__f", floral_payload()), {"P100": META})
-    env = {"XANO_FLORAL_QUOTES_ENDPOINT": "https://x/floral_quotes",
-           "XANO_FLORAL_ITEMS_ENDPOINT": "https://x/floral_items"}
-    s = X.ingest_outcomes({"P100": (job, oc)}, http=http, env=env, secret="s", log=lambda m: None)
-    deletes = [c[1] for c in http.calls if c[0] == "DELETE"]
-    assert all(d.endswith(("/7", "/9")) for d in deletes) and len(deletes) == 4   # 2 tables x 2
-    assert s["posted"] == 5 and s["failed_posts"] == 0 and s["deleted"] == 4
-    order = [c[0] for c in http.calls if "floral_items" in c[1]]
-    assert order.index("POST") > max(i for i, c in enumerate(order) if c == "DELETE")
+    s = X.ingest_outcomes({"P100": (job, oc)}, http=http, env=ENV, log=lambda m: None)
+    urls = [c[1] for c in http.calls]
+    assert urls[0].endswith("/pdfdata/floral_quotes") and http.calls[0][0] == "DELETE"
+    assert http.calls[0][2] == {"pdf_id": "P100", "secret": "s3"}
+    assert http.calls[1][0] == "POST" and http.calls[1][1] == urls[0]
+    item_calls = [c for c in http.calls if c[1].endswith("/pdfdata/floral_items")]
+    assert [c[0] for c in item_calls] == ["DELETE", "POST"]
+    items = item_calls[1][2]["rows"]
+    assert len(items) == 4 and items[0]["florist_item_name"].startswith("Bridal bouquet")
+    assert items[0]["price_low"] == items[0]["price_high"] == 350        # single price
+    assert items[1]["pricing_unit"] == "per_foot" and items[1]["is_starting_at"] is True
+    assert items[1]["inclusion_status"] == "optional"
+    assert items[1]["notes"].startswith("not included at this time")
+    quote = http.calls[1][2]["rows"][0]
+    assert quote["min_spend"] == 3500 and quote["min_spend_conditions"] == {"text": "Saturdays May-October"}
+    assert quote["quote_type"] == "proposal" and quote["delivery_setup_pct"] == 15
+    assert "raw_json" in quote
+    assert s["posted"] == 5 and s["deleted"] == 6 and not s["errors"]
+
+
+def test_preferred_vendor_purge_is_scoped_to_facts_pass():
+    http = FakeHTTP()
+    _, job, oc = X.parse_result(_result("P100__v", facts_payload()), {"P100": META})
+    X.ingest_outcomes({"P100": (job, oc)}, http=http, env=ENV, log=lambda m: None)
+    pv = [c for c in http.calls if c[1].endswith("/pdfdata/venue_pdf_preferred_vendors")]
+    assert pv[0][0] == "DELETE" and pv[0][2]["source"] == "facts_pass"
+    rows = pv[1][2]["rows"]
+    assert {r["source"] for r in rows} == {"facts_pass"}
+    assert rows[1]["category"] == "catering" and rows[1]["is_exclusive"] == "yes"
+    assert rows[1]["phone"] == "555-0100" or rows[1]["phone"] == ""
+    assert all(r["venue_vendor_id"] == "V100" for r in rows)
+    assert not any("venue_preferred_vendors" in c[1].replace("venue_pdf_preferred", "") for c in http.calls)
+    facts = [c for c in http.calls if c[1].endswith("/pdfdata/venue_pdf_facts")][1][2]["rows"][0]
+    assert facts["has_onsite_lodging"] == "yes" and facts["cheapest_months"] == "January, February, March"
+    assert facts["required_fees"][0]["amount"] == 22
 
 
 def test_ingest_falls_back_to_local_json(tmp_path):
@@ -288,18 +316,22 @@ def test_ingest_falls_back_to_local_json(tmp_path):
     s = X.ingest_outcomes({"P100": (job, oc), "P200": bad}, out_dir=str(tmp_path), env={},
                           log=lambda m: None)
     assert s["local_rows"] == 3 and s["pdfs_ok"] == 1 and s["pdfs_failed"] == 1
-    lines = (tmp_path / "venue_preferred_vendors.jsonl").read_text(encoding="utf-8").splitlines()
+    lines = (tmp_path / "venue_pdf_preferred_vendors.xano.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2 and json.loads(lines[0])["PDF_ID"] == "P100"
 
 
-def test_ingest_purge_failure_posts_nothing(tmp_path):
-    class Down(FakeHTTP):
-        def get(self, url, params=None, timeout=None):
-            return _Resp(503)
-    http = Down([])
-    _, job, oc = X.parse_result(_result("P100__v", facts_payload()), {"P100": META})
-    s = X.ingest_outcomes({"P100": (job, oc)}, http=http,
-                          env={"XANO_VENUE_FACTS_ENDPOINT": "https://x/f"},
-                          out_dir=str(tmp_path), log=lambda m: None, secret="")
-    assert not any(c[0] == "POST" for c in http.calls)
-    assert "P100" in s["errors"]
+def test_ingest_purge_failure_posts_nothing():
+    for http in (FakeHTTP(delete_code=503), FakeHTTP(remaining=2)):
+        _, job, oc = X.parse_result(_result("P100__v", facts_payload()), {"P100": META})
+        X.XanoWriter.CHUNK = 200
+        s = X.ingest_outcomes({"P100": (job, oc)}, http=http, env=ENV, log=lambda m: None)
+        assert not any(c[0] == "POST" for c in http.calls)
+        assert "P100" in s["errors"]
+
+
+def test_bulk_post_chunks_at_200(monkeypatch):
+    http = FakeHTTP()
+    w = X.XanoWriter("https://x/pdfdata/floral_items", secret="s", http=http, sleep=lambda s: None)
+    w.replace("P1", [{"PDF_ID": "P1", "Vendor_ID": "V1"}] * 450)
+    posts = [len(c[2]["rows"]) for c in http.calls if c[0] == "POST"]
+    assert posts == [200, 200, 50]
