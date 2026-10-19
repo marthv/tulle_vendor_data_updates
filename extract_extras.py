@@ -274,7 +274,9 @@ STEP 4 - QUOTE (one object for the whole PDF):
 - minimum_spend: the florist's minimum order / minimum floral spend as a plain number; minimum_spend_conditions: what it depends on (date, season, "Saturdays in peak season", "for full-service weddings", "excludes tax and delivery"), verbatim-ish, else "".
 - subtotal and total: as printed, plain numbers. total_covers_everything: "yes" if the printed total already includes all fees and tax, "no" if fees/tax are added on top or excluded, "unknown" if not clear. total_notes: what the total covers or excludes.
 - delivery_fee_flat (dollars) OR delivery_fee_pct (percent of subtotal) - whichever the PDF states; delivery_fee_text: the verbatim fee wording. setup_fee, breakdown_fee, labor_fee, rentals_fee: dollars. tax_rate_pct, service_fee_pct: percent numbers; service_fee_flat: dollars.
-- typical_spend_text: any "typical / average / most couples spend" statement verbatim (e.g. "Most of our couples invest $8,000-$15,000"); typical_spend_low / typical_spend_high: its numbers.
+- typical_spend_text: a statement about what a WHOLE WEDDING's flowers typically cost ("Most of our couples invest $8,000-$15,000", "average wedding: $3,000-$5,000"), verbatim, else "". typical_spend_low / typical_spend_high: its numbers (one number -> same value in both).
+  Only fill these from such a statement printed in the PDF. NOT typical spend: a minimum spend, a quote total, a per-item average ("bouquets most averaging $400"), or anything you would have to add up or estimate - leave all three "".
+  If the statement is per guest, per table, per 100 guests or any other unit ("$10,000 per 100 guests"), copy it into typical_spend_text but leave typical_spend_low / typical_spend_high "" - those two hold whole-wedding dollar totals only.
 - pricing_year (4 digits), currency (ISO code, default "USD"), contact_email (the florist's business email).
 - confidentiality_risk "yes" only if the PDF says its pricing is confidential / not to be shared; confidentiality_evidence: that sentence, max 200 chars.
 - confidence: your overall confidence in the quote fields.
