@@ -3,6 +3,7 @@ per request. Data calls go out WITH THE USER'S OWN TOKEN, so Xano's existing aut
 rules apply unchanged - the service can never see more than the user could in the app."""
 import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
+import math
 import re
 
 import requests
@@ -256,6 +257,101 @@ def _search_one(token, *, states, guests=0, max_venue_fee=0, max_food_per_person
             "description": (it.get("Description") or "")[:300],
         })
     return {"total_matches": d.get("itemsTotal"), "venues": out}
+
+
+# ---------------------------------------------------------------- near a town (radius search)
+# 2026-10-21 chat 247: "Stay close to flower mound tx" -> "We hold no venues in Flower Mound that seat 175, and none
+# in Lewisville, Denton or Southlake either". The city filter only kept addresses NAMING the town, out of the state's
+# top 60 by popularity; measured the same day, 17 Texas venues seating 175+ are within 15 miles of Flower Mound and
+# 71 within 25. A town is now geocoded and searched by distance.
+
+GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"   # free, no key; GeoNames places
+_GEO = {}
+
+
+def geocode_city(city, states=()):
+    """A town or city the couple named -> (lat, lng, label), or None when unsure. Populated places only (a
+    region such as "Hudson Valley" comes back as a mobile-home park), and the place must be in one of the
+    couple's states when they have any - "Flower Mound" alone also matches New Jersey. Only the place name
+    leaves the service."""
+    name = re.sub(r"\s+", " ", (city or "").split(",")[0]).strip()
+    states = [s for s in (states or []) if s and s != "International"]
+    key = (name.lower(), tuple(sorted(states)))
+    if not name:
+        return None
+    if key in _GEO:
+        return _GEO[key]
+    r = requests.get(GEOCODE_URL, params={"name": name, "count": 10, "countryCode": "US", "language": "en"},
+                     timeout=5)
+    r.raise_for_status()
+    same = lambda s: re.sub(r"[^a-z]", "", (s or "").lower())
+    hits = [h for h in r.json().get("results") or [] if str(h.get("feature_code") or "").startswith("PPL")
+            and same(h.get("name")) == same(name)]   # "Hudson Valley" must not land on a "...Mobile Home Park"
+    if states:
+        hits = [h for h in hits if h.get("admin1") in states]
+    hit = max(hits, key=lambda h: h.get("population") or 0) if hits else None
+    out = (hit["latitude"], hit["longitude"], "%s, %s" % (hit["name"], hit.get("admin1"))) if hit else None
+    _GEO[key] = out
+    return out
+
+
+def miles(lat1, lng1, lat2, lng2):
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
+    return 2 * 3958.8 * math.asin(math.sqrt(a))
+
+
+def venues_near(lat, lng, radius, *, guests=0, max_venue_fee=0, max_food_per_person=0, venue_types=None,
+                vibes=None, pricing_models=None, keyword="", outdoor_ceremony=False):
+    """Validated venues within `radius` miles of a point, nearest first, in search_venues' shape plus
+    distance_miles. One table-11 box query, then ep119's own filters on the same flt_* columns: seats at least
+    `guests` (unknown capacity left out, as ep119/ep121 do), types / vibes / pricing models any-of, price caps
+    on the lowest known figure (unknown left out when capped), outdoor ceremony. Across state lines on purpose:
+    near a town means near it. MEASURED 2026-10-21: 25 miles around Flower Mound = 186 rows in 2.0s."""
+    dlat = radius / 69.0
+    dlng = radius / (69.0 * max(0.2, math.cos(math.radians(lat))))
+    box = [{"lat|>=": lat - dlat}, {"lat|<=": lat + dlat}, {"lng|>=": lng - dlng}, {"lng|<=": lng + dlng},
+           {"Category": "Venue"}]
+    rows, page = [], 1
+    while page <= 4:    # 2,000 rows at most: an ignored box filter must not page through the whole table
+        d = _meta("POST", "/table/11/content/search", json={"search": box, "page": page, "per_page": 500})
+        rows += (d or {}).get("items", [])
+        if not d or not d.get("nextPage"):
+            break
+        page += 1
+    vt = set(v for v in (venue_types or []) if v in VENUE_TYPES)
+    vb = set(v for v in (vibes or []) if v in VIBES)
+    pm = set(v for v in (pricing_models or []) if v in PRICING_MODELS)
+    kw = (keyword or "").lower().strip()
+    out = []
+    for it in rows:
+        if str(it.get("Validated_Data")) != "1" or it.get("lat") is None or it.get("lng") is None:
+            continue
+        d = miles(lat, lng, float(it["lat"]), float(it["lng"]))
+        cap = it.get("Max_Capacity_Seated") or 0
+        fee, ppfb = it.get("flt_min_venue_fee") or 0, it.get("flt_min_ppfb") or 0
+        if (d > radius or (guests and cap < guests)
+                or (vt and not vt & set(it.get("flt_venue_types") or []))
+                or (vb and not vb & set(it.get("flt_venue_attributes") or []))
+                or (pm and not pm & set(it.get("flt_venue_offerings") or []))
+                or (outdoor_ceremony and it.get("flt_outdoor_ceremony") is not True)
+                or (max_venue_fee and not 0 < fee <= max_venue_fee)
+                or (max_food_per_person and not 0 < ppfb <= max_food_per_person)
+                or (kw and kw not in ("%s %s" % (it.get("Name") or "", it.get("Description") or "")).lower())):
+            continue
+        out.append({
+            "vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"),
+            "name": it.get("Name"), "state": it.get("State"),
+            "address": it.get("Address"), "venue_type": it.get("Venue_Type"),
+            "max_capacity_seated": cap,
+            "venue_fee_range": [it.get("flt_min_venue_fee"), it.get("flt_max_venue_fee")],
+            "food_minimum": (it.get("flt_glance") or {}).get("min_fb_min_peak_sat") or 0,
+            "at_a_glance": None, "image": it.get("image_1"),
+            "description": (it.get("Description") or "")[:300],
+            "distance_miles": round(d, 1),
+        })
+    out.sort(key=lambda v: v["distance_miles"])
+    return {"total_matches": len(out), "venues": out}
 
 
 def venue_pricing(token, vendor_id, paid):

@@ -192,7 +192,7 @@ def profile_for_model(profile):
 
 def _venue_row(row):
     r = {k: row[k] for k in ("vendor_id", "name", "state", "address", "venue_type", "max_capacity_seated",
-                             "category") if k in row}
+                             "category", "distance_miles") if k in row}
     desc = " ".join(s for s in _sentences(row.get("description") or "") if s != "\n" and not has_price_talk(s))
     if desc.strip():
         r["description"] = desc.strip()[:300]
@@ -301,7 +301,7 @@ def tools(search_venues, search_pe, saved_venues, venue_details, save_note, pres
     def free_search_venues(states: list[str], guests: int = 0, venue_types: list[str] = None,
                            vibes: list[str] = None, pricing_models: list[str] = None, keyword: str = "",
                            sort_by: str = "popular_desc", outdoor_ceremony: bool = False, city: str = "",
-                           relax: list[str] = None) -> str:
+                           radius_miles: int = 0, relax: list[str] = None) -> str:
         """Search Tulle's venues (only ones with real pricing PDFs). Results carry capacity, venue type,
         description and whether the guest minimum fits - no prices (this couple has no plan). Venues already
         shown in this chat are left out automatically; the chat's ACTIVE FILTERS (guests, city) apply to any you
@@ -327,14 +327,18 @@ def tools(search_venues, search_pe, saved_venues, venue_details, save_note, pres
             keyword: optional free text - a city or a venue name. Prefer the tag filters above for styles.
             sort_by: popular_desc (default), recent_desc, capacity_asc or capacity_desc.
             outdoor_ceremony: true = only venues whose PDF lists an outdoor ceremony space.
-            city: optional city or area the couple named ("New York City", "Manhattan", "San Diego"): only venues
-                whose address is there. keyword does not filter by location.
-            relax: active filters to drop because the couple changed them: "guests" or "city".
+            city: optional town or city the couple named or wants to stay near ("Flower Mound", "San Diego",
+                "Manhattan"): venues within radius_miles of it, nearest first, each with distance_miles. For a
+                region, pass its main town with a bigger radius_miles. keyword does not filter by location.
+            radius_miles: how far from the city (default 25, max 100). "Within an hour" ~ 50.
+            relax: active filters to drop because the couple changed them: "guests", "city" or "radius_miles".
         """
         return venue_result(_fn(search_venues)(states=states, guests=guests, venue_types=venue_types, vibes=vibes,
                                                pricing_models=pricing_models, keyword=keyword, sort_by=sort_by,
                                                outdoor_ceremony=outdoor_ceremony, city=city,
-                                               relax=[r for r in (relax or []) if r in ("guests", "city")]))
+                                               radius_miles=radius_miles,
+                                               relax=[r for r in (relax or [])
+                                                      if r in ("guests", "city", "radius_miles")]))
 
     @_tool("search_photographers_entertainment")
     def free_search_pe(category: str, states: list[str], types: list[str] = None, offers: list[str] = None,

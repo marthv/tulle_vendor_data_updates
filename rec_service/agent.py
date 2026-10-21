@@ -71,8 +71,9 @@ How to work:
 - State benchmarks for the couple's location are already in context. Use market_benchmarks only for a different state.
 - If the profile lists several locations, the couple is choosing between them - they HAVE picked. Search them together in one search_venues call (it returns picks from each), cover each location in your picks, and never say they haven't chosen a state.
 - If the profile has NO location (the context says "LOCATION: NONE IN PROFILE"): use any state the couple named in this chat or in the notes from earlier conversations, search it, and save it with save_note (e.g. "Wedding location: New York") the first time they name it. Only if no state is known anywhere, search without a state (states []) and still show 2-3 strong picks that fit their guest count and budget, then make your ONE closing question which state they are marrying in. Never answer with zero vendors just to ask for the location, and never ask for a state the couple already gave.
+- If the context says "LOCATION: STATE ONLY", you know their state but not where in it. Search the state anyway, then make your ONE closing question which city or area they want to be close to (e.g. "Which part of Texas - near Dallas, Austin, Houston?"), unless they already said it in this chat, in the notes from earlier conversations or in what they asked you to keep in mind - then pass that place as city. Ask it only once per chat. It comes before a style or preference question; a missing guest count still comes first. When they answer, save it with save_note (e.g. "Wants to stay near: Flower Mound, Texas") and search with it as city.
 - Don't repeat yourself across a conversation. Earlier replies end with [Vendors shown: ...] and [Chips offered: ...]. search_venues already leaves out venues shown in this chat and their Saved venues (already_shown_left_out says how many), so each new reply brings venues the couple hasn't seen. Show an earlier venue again only if they ask about it by name, ask to compare, or point back at it - then say it's one they've seen. Never call a venue "new" or say they "haven't seen" it unless it is not in any [Vendors shown] list.
-- The couple's stated criteria hold until they change them: a location or city, a guest count, a rental or food cap. search_venues keeps them for you (ACTIVE FILTERS); "more", "other options" or "cheaper" never widen them. When they name a city or area (NYC, Manhattan, San Diego), pass it as city - keyword does not filter by location. If too few venues fit, say so and ask before widening. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
+- The couple's stated criteria hold until they change them: a location or city, a guest count, a rental or food cap. search_venues keeps them for you (ACTIVE FILTERS); "more", "other options" or "cheaper" never widen them. When they name a city, town or area, or say where they want to stay close to (NYC, Manhattan, San Diego, Flower Mound), pass it as city - keyword does not filter by location. A town is searched by distance: results come nearest first with distance_miles, so say roughly how far each pick is ("about 9 miles from Flower Mound"). If nothing fits within the radius, search again with a bigger radius_miles before you ever say we have nothing nearby, and then say how far the closest options are. Never say a town has no venues just because none have that town in their address. If too few venues fit the couple's other filters, say so and ask before widening those. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
 - Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so. search_venues already leaves out venues whose known guest minimum is above the guests you pass, and venues whose known food and drink minimum is over half the couple's budget (left_out_for_minimums says how many).
 - If the profile has no guest count, don't assume a big wedding: make picks that work across sizes, say the count changes which venues fit, and make your one question how many guests they expect.
 - Small weddings and elopements (roughly under 30 guests): pass the real count as guests, prefer venues with no or low minimums (restaurants, raw spaces, small hotels), and if nothing in our data fits, say so plainly. Tulle doesn't track elopement packages or ceremony-only pricing yet - say that if asked, and point to the PDF for any small-party option a venue lists.
@@ -466,7 +467,8 @@ def more_cards(searched, seen, cards, prior):
 # call in the chat inherits any hard filter it leaves empty, unless the model names it in `relax` because the
 # couple changed or dropped it.
 
-STICKY = ("guests", "max_venue_fee", "max_food_per_person", "city")
+STICKY = ("guests", "max_venue_fee", "max_food_per_person", "city", "radius_miles")
+NEAR_MILES = 25         # default radius around a town the couple named
 
 
 def merge_filters(args, active, relax=()):
@@ -482,8 +484,10 @@ def merge_filters(args, active, relax=()):
     for k in STICKY:
         if out.get(k) or k in relax or not active.get(k):
             continue
-        if k == "city" and not same_states:
+        if k in ("city", "radius_miles") and not same_states:
             continue
+        if k == "radius_miles" and (out.get("city") or "") != (active.get("city") or ""):
+            continue    # a new town starts at the default radius
         out[k] = active[k]
     return out
 
@@ -499,10 +503,14 @@ for _k in ("new york city", "nyc", "new york, ny", "the city"):
     _CITY_ZIPS[_k] = ("100", "101", "102", "103", "104", "110", "111", "112", "113", "114", "116")
 
 
+def _norm_city(city):
+    return re.sub(r"\s+", " ", (city or "").strip().lower())
+
+
 def in_city(address, city):
     """True if a venue address is in the couple's city / area. NYC and its boroughs go by ZIP; anything else by
     the city name appearing in the address ("San Diego", "Napa", "Austin")."""
-    c = re.sub(r"\s+", " ", (city or "").strip().lower())
+    c = _norm_city(city)
     if not c:
         return True
     a = (address or "").lower()
@@ -711,7 +719,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                       max_food_per_person: int = 0, venue_types: list[str] = None,
                       vibes: list[str] = None, pricing_models: list[str] = None,
                       keyword: str = "", sort_by: str = "popular_desc", outdoor_ceremony: bool = False,
-                      city: str = "", relax: list[str] = None) -> str:
+                      city: str = "", radius_miles: int = 0, relax: list[str] = None) -> str:
         """Search Tulle's venues (only ones with real pricing PDFs). Each result includes its pricing
         summary (rental fee, food and drink, ceremony, service charge, guest minimum, state comparison).
         Venues already shown in this chat, and the couple's Saved venues (unless they asked about those), are
@@ -719,11 +727,14 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         apply automatically to any of those you leave empty; `filters_used` shows what was searched.
 
         Args:
-            city: optional city or area the couple named, e.g. "New York City", "Manhattan", "Brooklyn",
-                "San Diego", "Napa": only venues whose address is there. Use it whenever they name a city or
-                area - keyword does not filter by location.
+            city: optional town or city the couple named or wants to stay near, e.g. "Flower Mound", "San
+                Diego", "Napa", "Manhattan", "Brooklyn": venues within radius_miles of it, nearest first, each
+                with distance_miles (NYC areas: addresses there). Use it whenever they name a place - keyword
+                does not filter by location. For a region, pass its main town ("Hill Country" -> "Fredericksburg",
+                "Hudson Valley" -> "Kingston") with a bigger radius_miles.
+            radius_miles: how far from the city (default 25, max 100). "Within an hour" ~ 50.
             relax: names of active filters to DROP because the couple changed or removed them, any of
-                "guests", "max_venue_fee", "max_food_per_person", "city". Only when they said so.
+                "guests", "max_venue_fee", "max_food_per_person", "city", "radius_miles". Only when they said so.
             states: US states or 'International', e.g. ["New York"]. Use the couple's location if unsure.
             guests: the party size. Venues must seat at least this many, and venues whose guest minimum is
                 above it are left out (0 = any) - so for a small wedding or elopement pass the real count.
@@ -755,7 +766,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         eff = merge_filters({"states": [s for s in (states or []) if s], "guests": int(guests or 0),
                              "max_venue_fee": int(max_venue_fee or 0),
                              "max_food_per_person": int(max_food_per_person or 0),
-                             "city": (city or "").strip()}, active, relax)
+                             "city": (city or "").strip(), "radius_miles": int(radius_miles or 0)},
+                            active, relax)
         states, guests = eff["states"], eff["guests"]
         max_venue_fee, max_food_per_person, city = eff["max_venue_fee"], eff["max_food_per_person"], eff["city"]
         q = dict(states=states, guests=guests, max_venue_fee=max_venue_fee, max_food_per_person=max_food_per_person,
@@ -765,7 +777,28 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         # "cheaper" bring venues they haven't seen. A venue the keyword or the couple's message names stays.
         hide = set(prior) | (set() if SAVED_ASK.search(last_user) else set(saved_ids))
         t_search = time.time()
-        if city or hide:
+        # A town the couple named -> every venue within radius_miles of it, nearest first (2026-10-21 chat 247).
+        # NYC areas keep the ZIP match below; a place that won't geocode (a region, a typo, a Xano or geocoder
+        # blip) falls back to matching the name in the address.
+        radius = max(5, min(int(eff.get("radius_miles") or NEAR_MILES), 100))
+        near = None
+        if city and _norm_city(city) not in _CITY_ZIPS and states != ["International"]:
+            try:
+                near = xano.geocode_city(city, states)
+            except Exception:
+                near = None
+        if near:
+            try:
+                r = xano.venues_near(near[0], near[1], radius, guests=guests, max_venue_fee=max_venue_fee,
+                                     max_food_per_person=max_food_per_person, venue_types=venue_types,
+                                     vibes=vibes, pricing_models=pricing_models, keyword=keyword,
+                                     outdoor_ceremony=outdoor_ceremony)
+                venues = r["venues"]
+            except Exception:
+                near = None
+        if near:
+            pass
+        elif city or hide:
             # Read the top 60 results. ep119 has no city filter, so a city keeps only the addresses in it; and
             # hiding shown venues from one 16-result page left 0-1 new ones on the 4th "more" (2026-10-14 replay
             # of chat 33: "you've now seen every venue" - untrue).
@@ -841,7 +874,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 if v["vendor_id"] not in searched:
                     searched.append(v["vendor_id"])
             row = {k: v.get(k) for k in ("vendor_id", "name", "state", "address", "venue_type",
-                                         "max_capacity_seated", "venue_fee_range", "description") if k in v}
+                                         "max_capacity_seated", "venue_fee_range", "description",
+                                         "distance_miles") if k in v}
             if not any(row.get("venue_fee_range") or []):
                 row["venue_fee_range"] = "rental not in this venue's PDF"   # never read a 0 placeholder as "$0"
             if i < len(prices) and prices[i]:
@@ -865,8 +899,15 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         res = {"total_matches": r["total_matches"], "venues": out}
         if city:   # ep119's total is the whole state's (candidates still being priced count as matches)
             res["total_matches"] = len(out) + len(rest) + len(later_f) + len(tail)
-            res["city_note"] = "only venues whose address is in %s, from the top 60 results for %s" % (
-                city, " and ".join(states) or "all states")
+            if near:
+                res["city_note"] = ("venues within %d miles of %s, nearest first (distance_miles on each)"
+                                    % (radius, near[2]))
+                if not out and radius < 100:
+                    res["city_note"] += (". None fit within %d miles: search again with a bigger radius_miles "
+                                         "(e.g. %d) before saying we have nothing nearby" % (radius, min(100, radius * 2)))
+            else:
+                res["city_note"] = "only venues whose address is in %s, from the top 60 results for %s" % (
+                    city, " and ".join(states) or "all states")
         if n_hidden:
             res["already_shown_left_out"] = n_hidden
         if any(removed.values()):
@@ -1189,6 +1230,14 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         # 2026-10-12 user 827: no state in the profile -> the model kept asking "which state?" and showed
         # 0 venues on 3 of 4 replies. Say so explicitly so the NO-location rule in SYSTEM applies.
         context += "\nLOCATION: NONE IN PROFILE (see the no-location rule)."
+    elif states != ["International"] and not (active or {}).get("city"):
+        # 2026-10-21 chat 247: the profile only says "Texas", so the opening picks were Abilene, San Antonio and
+        # Plano for a couple near Flower Mound, and nothing asked where. The profile has no city field.
+        context += ("\nLOCATION: STATE ONLY (%s) - no city or area yet (see the state-only rule). Unless this chat, "
+                    "the notes or what they asked you to keep in mind already say where, END your message with the "
+                    "question which city or area of %s they want to be close to - in the message itself, not only "
+                    "as a chip. It takes the place of the closing next-step line in this reply."
+                    % (", ".join(states), " or ".join(states)))
     if free:
         context += "\nDETAIL: FREE. This couple has no Tulle plan: no prices of any kind (see FREE MODE)."
         try:

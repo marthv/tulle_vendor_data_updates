@@ -66,7 +66,12 @@ def pricing(rental):
 def world(monkeypatch):
     """xano stubs: search_venues returns st["venues"] (or per-page lists), pricing by st["rental"]."""
     agent, xano = _mods()
-    st = {"venues": [], "pages": None, "calls": [], "rental": {}, "saved": [], "log": []}
+    st = {"venues": [], "pages": None, "calls": [], "rental": {}, "saved": [], "log": [], "geo": {}, "near": [],
+          "near_calls": []}
+
+    def near(lat, lng, radius, **f):
+        st["near_calls"].append(dict(f, lat=lat, lng=lng, radius=radius))
+        return {"total_matches": len(st["near"]), "venues": copy.deepcopy(st["near"])}
 
     def search(token, *, states, page_size=8, **f):
         st["calls"].append(dict(f, states=states, page_size=page_size))
@@ -83,6 +88,8 @@ def world(monkeypatch):
     monkeypatch.setattr(xano, "saved_vendor_ids", lambda u: list(st["saved"]))
     monkeypatch.setattr(xano, "vendor_card", lambda vid: venue(vid))
     monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Location_Updated": ["New York"]})
+    monkeypatch.setattr(xano, "geocode_city", lambda city, states=(): st["geo"].get(city))
+    monkeypatch.setattr(xano, "venues_near", near)
 
     def run(script, ask="more options", prior=(), active=None, detail="full", messages=None):
         st["log"].clear()
@@ -350,3 +357,171 @@ def test_hiding_shown_venues_backfills_from_later_pages(world):
     ids = [v["vendor_id"] for v in _search_result(world["log"])["venues"]]
     assert ids[:3] == ["V6", "V7", "V8"] and not {"V1", "V5"} & set(ids)
     assert [c["vendor_id"] for c in res["more_cards"]] == ["V9", "V10", "V11", "V12", "V13", "V14"]
+
+
+# ---------------------------------------------------------------- near a town (2026-10-21 chat 247)
+
+def test_a_town_is_searched_by_distance_not_by_address(world):
+    """'Stay close to flower mound tx' -> 'no venues in Flower Mound': none had the town in its address, but 17
+    seating 175+ were within 15 miles. A geocoded town reads venues_near, nearest first, with distances."""
+    world["geo"]["Flower Mound"] = (33.01, -97.10, "Flower Mound, Texas")
+    world["near"] = [dict(venue("N1", addr="215 E Dallas Rd, Grapevine, TX 76051"), distance_miles=5.7),
+                     dict(venue("N2", addr="1213 Country Club Rd, Argyle, TX 76226"), distance_miles=9.2)]
+    res, _ = world["run"]([("search_venues", {"states": ["Texas"], "city": "Flower Mound", "guests": 175,
+                                              "venue_types": ["Country Club / Private Club"]}),
+                           present(["N1", "N2"])])
+    assert world["calls"] == []                               # ep119 not used for a geocoded town
+    c = world["near_calls"][0]
+    assert c["radius"] == 25 and c["guests"] == 175 and c["venue_types"] == ["Country Club / Private Club"]
+    r = _search_result(world["log"])
+    assert [v["vendor_id"] for v in r["venues"]] == ["N1", "N2"]
+    assert r["venues"][0]["distance_miles"] == 5.7
+    assert "within 25 miles of Flower Mound, Texas" in r["city_note"]
+    assert res["search_filters"]["city"] == "Flower Mound"
+
+
+def test_nothing_within_the_radius_tells_the_model_to_widen(world):
+    world["geo"]["Marfa"] = (30.3, -104.0, "Marfa, Texas")
+    world["run"]([("search_venues", {"states": ["Texas"], "city": "Marfa", "radius_miles": 30}), present([])])
+    r = _search_result(world["log"])
+    assert world["near_calls"][0]["radius"] == 30
+    assert "bigger radius_miles (e.g. 60)" in r["city_note"]
+
+
+def test_radius_is_clamped_and_sticky_but_resets_for_a_new_town(world):
+    world["geo"]["Austin"] = (30.27, -97.74, "Austin, Texas")
+    world["run"]([("search_venues", {"states": ["Texas"], "city": "Austin", "radius_miles": 500}), present([])])
+    assert world["near_calls"][0]["radius"] == 100
+    agent = _mods()[0]
+    active = {"states": ["Texas"], "city": "Austin", "radius_miles": 50}
+    assert agent.merge_filters({"states": ["Texas"], "city": ""}, active)["radius_miles"] == 50
+    assert not agent.merge_filters({"states": ["Texas"], "city": "Dallas"}, active).get("radius_miles")
+    assert not agent.merge_filters({"states": ["Texas"], "city": ""}, active, ["radius_miles"]).get("radius_miles")
+
+
+def test_a_place_that_does_not_geocode_falls_back_to_the_address_match(world):
+    up = lambda i: venue("U%d" % i, addr="%d Main St, Tarrytown, NY 10591" % i)
+    world["pages"] = {1: [up(1), venue("A1"), up(2)]}
+    world["run"]([("search_venues", {"states": ["New York"], "city": "Tarrytown"}), present(["U1"])])
+    assert world["near_calls"] == [] and [c["page_size"] for c in world["calls"]] == [60]
+    r = _search_result(world["log"])
+    assert [v["vendor_id"] for v in r["venues"]] == ["U1", "U2"]
+    assert "address is in Tarrytown" in r["city_note"]
+
+
+def test_a_geocoder_error_falls_back_instead_of_failing(world, monkeypatch):
+    _, xano = _mods()
+
+    def boom(city, states=()):
+        raise RuntimeError("geocoder down")
+    monkeypatch.setattr(xano, "geocode_city", boom)
+    world["pages"] = {1: [venue("A1")]}
+    world["run"]([("search_venues", {"states": ["New York"], "city": "Albany"}), present(["A1"])])
+    assert [v["vendor_id"] for v in _search_result(world["log"])["venues"]] == ["A1"]
+
+
+def _row(i, lat, lng, **kw):
+    r = {"id": i, "Vendor_ID": "V%d" % i, "Name": "Venue %d" % i, "State": "Texas", "Address": "x",
+         "Venue_Type": "x", "Max_Capacity_Seated": 200, "lat": lat, "lng": lng, "Validated_Data": "1",
+         "Category": "Venue", "flt_min_venue_fee": 5000, "flt_max_venue_fee": 6000, "flt_min_ppfb": 0,
+         "flt_venue_types": ["Barn / Ranch"], "flt_venue_attributes": ["Tall / Vaulted Ceilings"],
+         "flt_venue_offerings": ["Raw Space"], "flt_outdoor_ceremony": True, "flt_glance": None,
+         "image_1": None, "Description": ""}
+    r.update(kw)
+    return r
+
+
+def test_venues_near_filters_like_ep119_and_sorts_by_distance(monkeypatch):
+    _, xano = _mods()
+    rows = [_row(1, 33.20, -97.10),                                   # ~13 mi
+            _row(2, 33.02, -97.10),                                   # ~0.5 mi
+            _row(3, 34.50, -97.10),                                   # ~100 mi: outside
+            _row(4, 33.03, -97.10, Max_Capacity_Seated=100),          # too small
+            _row(5, 33.03, -97.10, Max_Capacity_Seated=0),            # capacity unknown: out when guests given
+            _row(6, 33.03, -97.10, Validated_Data="0"),               # not validated
+            _row(7, 33.03, -97.10, flt_venue_types=["Hotel / Resort"]),
+            _row(8, 33.03, -97.10, flt_min_venue_fee=0)]              # fee unknown: out when capped
+    seen = []
+
+    def meta(method, path, json=None):
+        seen.append(json)
+        return {"items": rows, "nextPage": None}
+    monkeypatch.setattr(xano, "_meta", meta)
+    r = xano.venues_near(33.0146, -97.0970, 25, guests=175, venue_types=["Barn / Ranch"], max_venue_fee=9000)
+    assert [v["vendor_id"] for v in r["venues"]] == ["V2", "V1"] and r["total_matches"] == 2
+    assert r["venues"][0]["distance_miles"] < 1 < r["venues"][1]["distance_miles"] < 25
+    box = {k: v for d in seen[0]["search"] for k, v in d.items()}
+    assert box["Category"] == "Venue" and box["lat|>="] < 33.0146 < box["lat|<="]
+
+
+def test_venues_near_stops_paging_if_the_box_filter_is_ignored(monkeypatch):
+    _, xano = _mods()
+    pages = []
+
+    def meta(method, path, json=None):
+        pages.append(json["page"])
+        return {"items": [], "nextPage": json["page"] + 1}
+    monkeypatch.setattr(xano, "_meta", meta)
+    xano.venues_near(33.0, -97.0, 25)
+    assert pages == [1, 2, 3, 4]
+
+
+def test_geocode_city_wants_a_town_in_the_couples_state(monkeypatch):
+    _, xano = _mods()
+    xano._GEO.clear()
+    hits = [{"name": "Flower Mound", "admin1": "New Jersey", "latitude": 38.9, "longitude": -74.8,
+             "feature_code": "PPL", "population": None},
+            {"name": "Flower Mound", "admin1": "Texas", "latitude": 33.01, "longitude": -97.09,
+             "feature_code": "PPL", "population": 71253},
+            {"name": "Flower Mound Airport", "admin1": "Texas", "latitude": 33.02, "longitude": -97.12,
+             "feature_code": "AIRP"}]
+    calls = []
+
+    class R:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"results": hits}
+
+    def get(url, params=None, timeout=None):
+        calls.append(params["name"])
+        return R()
+    monkeypatch.setattr(xano.requests, "get", get)
+    assert xano.geocode_city("Flower Mound, TX", ["Texas"]) == (33.01, -97.09, "Flower Mound, Texas")
+    assert xano.geocode_city("flower mound", ["Texas"]) == (33.01, -97.09, "Flower Mound, Texas")
+    assert calls == ["Flower Mound"]                              # cached; state suffix stripped
+    assert xano.geocode_city("Flower Mound", ["Ohio"]) is None    # never a same-name town in another state
+    hits[:] = [{"name": "Hudson Valley Mobile Home Park", "admin1": "New York", "latitude": 1, "longitude": 1,
+                "feature_code": "PPL"},
+               {"name": "Catskill Mountains", "admin1": "New York", "latitude": 1, "longitude": 1,
+                "feature_code": "MTS"}]
+    assert xano.geocode_city("Catskills", ["New York"]) is None   # mountains are not a populated place
+    assert xano.geocode_city("Hudson Valley", ["New York"]) is None   # a mobile home park is not the region
+    xano._GEO.clear()
+
+
+def _first_message(monkeypatch, active=None):
+    agent = _mods()[0]
+    got = {}
+
+    class Runner:
+        def __init__(self, **kw):
+            got["first"] = kw["messages"][0]["content"]
+
+        def __iter__(self):
+            yield _Msg()
+
+    class Client:
+        def __init__(self):
+            self.beta = types.SimpleNamespace(messages=types.SimpleNamespace(tool_runner=lambda **kw: Runner(**kw)))
+    monkeypatch.setattr(agent.anthropic, "Anthropic", Client, raising=False)
+    agent.run("tok", {"id": 0}, True, [{"role": "user", "content": "hi"}], active_filters=active)
+    return got["first"]
+
+
+def test_state_only_profile_tells_the_model_to_ask_where(world, monkeypatch):
+    first = _first_message(monkeypatch)
+    assert "LOCATION: STATE ONLY (New York)" in first and "close to - in the message itself" in first
+    assert "STATE ONLY" not in _first_message(monkeypatch, {"states": ["New York"], "city": "Albany"})
+    assert "LOCATION: STATE ONLY" in _mods()[0].SYSTEM
