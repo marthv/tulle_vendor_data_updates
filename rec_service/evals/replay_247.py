@@ -21,7 +21,7 @@ NOTES = [{"kind": "pref", "key": "style", "values": ["Country Club / Private Clu
          {"kind": "pref", "key": "catering", "values": ["Raw Space"]},
          {"kind": "pref", "key": "ceremony", "values": ["elsewhere"]},
          {"kind": "pref", "key": "priority", "values": ["Room for our guest count"]}]
-ASKS = ["Stay close to flower mound tx"]
+ASKS = ["Stay close to flower mound tx", "Populate new recommendations based on my information provided and style"]
 
 
 def main():

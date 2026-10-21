@@ -87,3 +87,11 @@ def test_v2_options_cover_discovery_vocab_and_feel_is_soft():
     h = prefs.search_hint({"feel": ["Rustic", "Romantic"], "style": ["Zoo / Aquarium"]})
     assert "venue_types=['Zoo / Aquarium']" in h and "Rustic, Romantic" in h and "no search filter" in h
     assert prefs.to_notes({"feel": ["Coastal"]})[0]["note"] == "Overall feel: Coastal"
+
+
+def test_byo_caterer_searches_raw_space_or_semi_inclusive():
+    # 2026-10-21 chat 247: Raw Space alone = 8 of 503 Texas venues seating 175+; Semi-Inclusive allows outside catering
+    h = prefs.search_hint({"catering": ["Raw Space"]})
+    assert "pricing_models=['Raw Space', 'Semi-Inclusive']" in h
+    assert "Food and setup: Bring our own caterer" in h
+    assert "pricing_models=['All-Inclusive']" in prefs.search_hint({"catering": ["All-Inclusive"]})

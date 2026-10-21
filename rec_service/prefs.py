@@ -41,6 +41,11 @@ QUESTIONS = [
          "Staying on budget", "The look and feel", "Room for our guest count", "The location")]},
 ]
 _BY_ID = {q["id"]: q for q in QUESTIONS}
+# "Bring our own caterer" is stored as "Raw Space" but searched as Raw Space OR Semi-Inclusive. MEASURED 2026-10-21
+# (chat 247, Texas venues seating 175+): Raw Space alone = 8 of 503, because the classifier only calls a venue Raw
+# Space when it supplies NOTHING (no tables or chairs), while Semi-Inclusive = "the couple CAN bring outside
+# catering" = 348. With 8 to choose from the model dropped the caterer preference first.
+_CATERING_FILTER = {"Raw Space": ["Raw Space", "Semi-Inclusive"]}
 _NOTE_PREFIX = {"style": "Style", "feel": "Overall feel", "setting": "Setting must-haves", "catering": "Food and setup",
                 "ceremony": "Ceremony", "priority": "Matters most"}
 
@@ -103,7 +108,7 @@ def search_hint(answers):
     if a.get("setting"):
         f.append("vibes=" + repr(a["setting"]))
     if a.get("catering"):
-        f.append("pricing_models=" + repr(a["catering"]))
+        f.append("pricing_models=" + repr(_CATERING_FILTER.get(a["catering"][0], a["catering"])))
     if a.get("ceremony") == ["outdoor"]:
         f.append("outdoor_ceremony=true")
     line = ("The couple's preference answers (they chose these themselves): "

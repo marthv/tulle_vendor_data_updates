@@ -322,8 +322,9 @@ def tools(search_venues, search_pe, saved_venues, venue_details, save_note, pres
                 beach/lake/river -> "Waterfront"; city views -> "Rooftop / Skyline Views"; loft -> "Industrial / Warehouse".
                 glasshouse/conservatory/atrium -> "Greenhouse"; light-filled -> "Natural Light / Large Windows";
                 historic/grand building -> "Historic Architecture"; elegant/black-tie -> "Ballroom" plus "Historic Architecture".
-            pricing_models: optional: "All-Inclusive" (catering + rentals included), "Semi-Inclusive", "Raw Space"
-                (bring your own caterer and rentals).
+            pricing_models: optional: "All-Inclusive" (outside catering NOT allowed), "Semi-Inclusive" (some
+                rentals included, outside catering allowed), "Raw Space" (empty space only, no tables or chairs; rare).
+                Bring their own caterer / outside catering -> ["Raw Space", "Semi-Inclusive"], never "Raw Space" alone.
             keyword: optional free text - a city or a venue name. Prefer the tag filters above for styles.
             sort_by: popular_desc (default), recent_desc, capacity_asc or capacity_desc.
             outdoor_ceremony: true = only venues whose PDF lists an outdoor ceremony space.

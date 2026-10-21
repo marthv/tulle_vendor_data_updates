@@ -752,8 +752,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 glasshouse/glass house/conservatory/atrium/glass walls -> "Greenhouse"; lots of windows/light-filled ->
                 "Natural Light / Large Windows"; architectural/historic/grand building -> "Historic Architecture";
                 upscale/elegant/luxury/black-tie -> "Ballroom" plus "Historic Architecture" (any of).
-            pricing_models: optional: "All-Inclusive" (catering + rentals included), "Semi-Inclusive", "Raw Space"
-                (bring your own caterer and rentals).
+            pricing_models: optional: "All-Inclusive" (outside catering NOT allowed), "Semi-Inclusive" (some
+                rentals included, outside catering allowed), "Raw Space" (empty space only, no tables or chairs; rare).
+                Bring their own caterer / outside catering -> ["Raw Space", "Semi-Inclusive"], never "Raw Space" alone.
             outdoor_ceremony: true = only venues whose PDF lists an outdoor ceremony space (garden, lawn,
                 terrace, courtyard...). Use it when the couple wants an outdoor ceremony.
             keyword: optional free text - a city or a venue name. Prefer the tag filters above for styles.
