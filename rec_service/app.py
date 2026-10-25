@@ -37,7 +37,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import agent
-from chips import STARTER_CHIPS, dedupe_chips, ensure_chips, more_chips
+from chips import (STARTER_CHIPS, STARTER_CHIPS_COST_TOOLS, CHIP_TOPUPS, dedupe_chips, ensure_chips,
+                   guarantee_next_step, more_chips, place_action_chip, tool_chips)
 import config
 import cost_tools
 import free_mode
@@ -328,13 +329,33 @@ def _opening_title(user):
     return "Venue picks" + (" · " + ", ".join(b for b in bits if b) if any(bits) else "")
 
 
+def _starter_chips(price_locked):
+    """Fixed opening chips. REC_COST_TOOLS_IN_CHAT on (2026-10-25): "What will our wedding cost?" (the estimate cost
+    tool - open to free users too) takes the venue-check slot. Off: exactly as before."""
+    if config.COST_TOOLS_IN_CHAT:
+        return free_mode.STARTER_CHIPS_COST_TOOLS if price_locked else STARTER_CHIPS_COST_TOOLS
+    return free_mode.STARTER_CHIPS if price_locked else STARTER_CHIPS
+
+
+def _next_step(out, history=()):
+    """Chip post-processing after de-dupe and the free price guard (owner 2026-10-25: "make sure the chips still
+    exist to push them to the next step"). Flag on: a reply with a cost widget always carries a planning or action
+    chip (chips.guarantee_next_step). Always: at most one action chip, last, never the same one twice in a row
+    (a no-op when the reply has no action chip, so the flag-off path is unchanged)."""
+    locked = bool(out.get("price_locked"))
+    chips = out.get("chips") or []
+    if config.COST_TOOLS_IN_CHAT:
+        chips = guarantee_next_step(chips, out.get("widgets"), history, free=locked)
+    return place_action_chip(chips, history, topups=free_mode.TOPUPS if locked else CHIP_TOPUPS)
+
+
 @app.post("/rec/opening")
 def opening(background: BackgroundTasks, authorization: str = Header(None)):
     token, user = _auth(authorization)
     # Create the chat only AFTER the guard allowed and the model answered - a blocked (402/429/503) or
     # failed opening must not leave an empty conversation behind. Costs ~0.3s.
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}])
-    out["chips"] = list(free_mode.STARTER_CHIPS if out.get("price_locked") else STARTER_CHIPS)
+    out["chips"] = list(_starter_chips(bool(out.get("price_locked"))))
     chat = xano.create_chat(user["id"], _opening_title(user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     return _public(out, chat_id=chat["id"])
@@ -348,7 +369,8 @@ def _refine_in_chat(token, user, chat, text, background):
                        active_filters=kw["active_filters"])
     out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
     if out.get("price_locked"):
-        out["chips"] = free_mode.chips(out["chips"], history)
+        out["chips"] = free_mode.chips(out["chips"], history, planning=config.COST_TOOLS_IN_CHAT)
+    out["chips"] = _next_step(out, history)
     if (chat.get("title") or "").startswith("Venue picks"):
         chat["title"] = text[:80]
 
@@ -407,7 +429,8 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
     out = _run_guarded("refine", token, user, msgs)
     out["chips"] = ensure_chips(out.get("chips"))
     if out.get("price_locked"):
-        out["chips"] = free_mode.chips(out["chips"])
+        out["chips"] = free_mode.chips(out["chips"], planning=config.COST_TOOLS_IN_CHAT)
+    out["chips"] = _next_step(out)   # client-held turns carry no chips
     chat = xano.create_chat(user["id"], text[:80])
     earlier = msgs[:-1]
 
@@ -465,8 +488,10 @@ def _more_reply(history, access=True):
     text = agent.more_text(picks, filters, priced=access)
     chips = more_chips(history)
     if not access:
-        picks, chips = [free_mode.card(c) for c in picks], free_mode.chips(chips)
+        picks, chips = [free_mode.card(c) for c in picks], free_mode.chips(chips, planning=config.COST_TOOLS_IN_CHAT)
         text = free_mode.sanitize_text(text)[0]
+    # more_chips carries the last answer's chips forward - an action chip there would show twice in a row.
+    chips = place_action_chip(chips, history, topups=CHIP_TOPUPS if access else free_mode.TOPUPS)
     return {"text": text, "cards": picks, "chips": chips, "left": len(remaining) - len(picks)}
 
 
@@ -548,6 +573,9 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         raise HTTPException(502, {"status": "error"})
     widget = out["widget"] if access else free_mode.widget(out["widget"])
     text = cost_tools.summary_text(widget)
+    # Next-step chips (owner 2026-10-25), computed in code like the widget - flag-independent, as /rec/tool is.
+    # No chat history is read here (one more Xano call per tap); the next typed reply's de-dupe sees these chips.
+    chips = tool_chips(name, free=not access, widget=widget)
     ms = int((dt.datetime.now(dt.timezone.utc) - t0).total_seconds() * 1000)
     _POOL.submit(xano.log_usage, dict(base, status="ok", latency_ms=ms))
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
@@ -557,10 +585,10 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     if chat:
         def persist():   # same order as a typed question: the quick action, then the answer with its widget
             xano.add_message(chat["id"], "user", TOOL_LABELS[name])
-            xano.add_message(chat["id"], "assistant", text, [{"meta": "widget", "widget": widget}], [])
+            xano.add_message(chat["id"], "assistant", text, [{"meta": "widget", "widget": widget}], chips)
             xano.touch_chat(chat)
         background.add_task(persist)
-    return {"tool": name, "text": text, "widgets": [widget], "chat_id": chat["id"] if chat else None,
+    return {"tool": name, "text": text, "widgets": [widget], "chips": chips, "chat_id": chat["id"] if chat else None,
             "price_locked": not access}
 
 

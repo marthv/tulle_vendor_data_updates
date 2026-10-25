@@ -17,6 +17,8 @@ Pure module (only json/re + the anthropic tool decorator) so it is unit-testable
 import json
 import re
 
+import chips as _chips   # pure too (no app/config imports)
+
 try:   # tests stub the SDK out; tools() is the only part that needs it
     from anthropic import beta_tool
 except Exception:  # pragma: no cover
@@ -117,6 +119,10 @@ _PRICE_CHIP = re.compile(r"cost|price|pricing|cheap|budget|afford|expens|fee|\$|
                          r"charge|tax|per guest|per head|realistic|spend|money|off[- ]?peak", re.I)
 STARTER_CHIPS = ["Try a different style", "Is a venue I like a good fit?", "Outdoor ceremony space",
                  "Change my guest count"]
+# REC_COST_TOOLS_IN_CHAT on (2026-10-25): the whole-wedding estimate is open to free users (market averages, not
+# vendor prices), so it takes the venue-fit slot the same way it does in chips.STARTER_CHIPS_COST_TOOLS.
+STARTER_CHIPS_COST_TOOLS = ["Try a different style", "What will our wedding cost?", "Outdoor ceremony space",
+                            "Change my guest count"]
 TOPUPS = ["All-inclusive venues", "Bring-your-own-caterer venues", "Outdoor ceremony space", "Waterfront venues",
           "Historic Architecture venues", "Find a photographer"]
 
@@ -125,14 +131,17 @@ def _key(c):
     return re.sub(r"[^a-z0-9 ]", "", (c or "").lower()).strip()
 
 
-def chips(chip_list, history=()):
+def chips(chip_list, history=(), planning=False):
     """Drop chips about money (cost, cheaper, budget, fees, value, dates = off-peak pricing); top up to 2 from
-    TOPUPS, skipping any chip already offered earlier in the chat."""
+    TOPUPS, skipping any chip already offered earlier in the chat. planning=True (REC_COST_TOOLS_IN_CHAT on,
+    2026-10-25): next-planning-step and action chips pass even though they say "cost" / "budget" - the estimate,
+    split and budget status are market averages or the couple's own numbers, and free compare shows only their
+    own quotes. Price-FILTERED searches ("Find venues within my venue budget") still drop (chips.free_ok)."""
     offered = {_key(c) for t in history or () if t.get("role") == "assistant" for c in (t.get("chips") or [])}
     out, keys = [], set()
     for c in chip_list or []:
         k = _key(c)
-        if k and k not in keys and not _PRICE_CHIP.search(c):
+        if k and k not in keys and ((planning and _chips.free_ok(c)) or not _PRICE_CHIP.search(c)):
             out.append(c)
             keys.add(k)
     for c in TOPUPS:
@@ -297,7 +306,8 @@ RULES = """FREE MODE - this couple has no Tulle plan. These rules OVERRIDE every
 
 
 # Appended to RULES only when config.COST_TOOLS_IN_CHAT is on (agent.run).
-COST_TOOLS_RULE = """- Cost tools (estimate_wedding_cost, split_budget, budget_status, compare_venues): you may call them when the couple asks what a wedding costs, how to split their budget, where their budget stands or to compare their venues. Their numbers appear to the couple in a chart under your message - your own text stays figure-free ("Here's a typical-cost estimate for your state and guest count"). compare_venues shows only the couple's own quotes on this plan."""
+COST_TOOLS_RULE = """- Cost tools (estimate_wedding_cost, split_budget, budget_status, compare_venues): you may call them when the couple asks what a wedding costs, how to split their budget, where their budget stands or to compare their venues. Their numbers appear to the couple in a chart under your message - your own text stays figure-free ("Here's a typical-cost estimate for your state and guest count"). compare_venues shows only the couple's own quotes on this plan.
+- Next-step chips (NEXT PLANNING STEP above) are allowed on this plan even though they mention cost or budget: "What will our wedding cost?", "Split our budget by category", "Compare my saved venues", "What's left for photography?" and the action chips. Not the price-filtered searches ("Find venues within my venue budget", "Find a photographer in my budget") - offer "Find a photographer" instead."""
 
 
 def _tool(name):
