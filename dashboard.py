@@ -52,6 +52,7 @@ from cohorts import render_cohorts_tab
 from endpoint_health import render_endpoint_health
 from perf_digest import render_perf_digest, render_health_report
 from drive_protect import render_drive_protect_panel
+from experiments_tab import render_experiments_tab
 import theme
 
 
@@ -743,10 +744,14 @@ EXPORT_SECRET = os.environ.get(
 # and feedback_triage.py). tab_vp below is Venue Pricing — a different, long-standing tab.
 # The 🗺️ Roadmap Orders tab was removed 2026-09-27 — the Budget Roadmap offer was killed.
 # roadmap_orders.py is kept on disk so it can be re-wired if the offer ever comes back.
-tab_co, tab_vp, tab2, tab5, tab_health = st.tabs([
-    "📈 Cohorts",
+tab_co, tab_exp, tab_vp, tab2, tab5, tab_health = st.tabs([
+    "📈 Cohorts", "🧪 Experiments",
     "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction", "🩺 Health",
 ])
+
+# Experiment registry (2026-10-25): reads experiments/experiment_log.json only, no network calls.
+with tab_exp:
+    render_experiments_tab()
 
 # Health lives in its own tab (2026-09-27, was above every tab). All three panels are
 # collapsed and button-driven: they page Xano's request history, which is too expensive to

@@ -1,0 +1,280 @@
+{
+ "_about": "Tulle experiment registry. Read by the Experiments tab in dashboard.py. Edit this file (Claude Code) and push to main; Railway redeploys. Dates are YYYY-MM-DD (UTC); null start_date = planned. results[].counts = {\"control\":{\"n\":..,\"conv\":..},\"treatment\":{\"n\":..,\"conv\":..}} enables the significance check.",
+ "experiments": [
+  {
+   "id": "EXP-2026-10-pricing-phase2",
+   "name": "Pricing test phase 2 (raised arm vs baseline; NY/CA/International prices)",
+   "status": "reading",
+   "themes": [
+    "pricing"
+   ],
+   "goal": "More revenue per day without losing Forever buyers",
+   "primary_metric": "revenue/day per arm; new Forever buys vs expected",
+   "guardrail": "",
+   "start_date": "2026-10-01",
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "2026-10-01 (approx; brief day 23.4 on 10-24)",
+   "design": "A/B by arm",
+   "results": [
+    {
+     "date": "2026-10-24",
+     "note": "10-24 brief: raised $213/d (was $225) vs baseline $221/d (was $199); Forever buys raised 22 vs 28.4 expected, baseline 19 vs 21.7 expected; 46 post-launch Forever buys; 6 price/arm mismatches"
+    }
+   ],
+   "stat_sig": "not computed",
+   "decision": "keep NY/CA/International prices or revert",
+   "confounds_noted": [
+    "10-14 bundle (price raise + 20% offer + bonus views + free assistant)",
+    "6 buyers paid another arm's price"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-ny-tier",
+   "name": "NY tier $35/$60/$135",
+   "status": "reading",
+   "themes": [
+    "pricing"
+   ],
+   "goal": "Revenue/day in NY vs prior $149-era prices",
+   "primary_metric": "NY revenue/day",
+   "guardrail": "",
+   "start_date": "2026-10-07",
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "2026-10-07 (approx; brief day 17.5 on 10-24)",
+   "design": "pre/post",
+   "results": [
+    {
+     "date": "2026-10-24",
+     "note": "$138/d vs $80/d on $149 prices, $158/d before 10-01"
+    }
+   ],
+   "stat_sig": "not computed",
+   "decision": "",
+   "confounds_noted": [
+    "10-14 bundle"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-hub-pricing",
+   "name": "Rest-of-US + Texas baseline raised to $35/$60/$135 (10-14 bundle)",
+   "status": "live",
+   "themes": [
+    "pricing",
+    "paywall"
+   ],
+   "goal": "Revenue/day >= $170",
+   "primary_metric": "revenue/day",
+   "guardrail": "",
+   "start_date": "2026-10-14",
+   "end_date": null,
+   "review_date": "2026-11-04",
+   "dates_note": "2026-10-14",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "shipped together with 20% exploding offer, +2 bonus free views, assistant free mode - cannot separate effects (owner choice)"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-free-assistant",
+   "name": "Tulle Assistant free questions for free users",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "activation"
+   ],
+   "goal": "Free users reach a pricing PDF / convert without cannibalising Forever",
+   "primary_metric": "free-assistant users: PDF opens + conversion",
+   "guardrail": "",
+   "start_date": "2026-10-14",
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "2026-10-14 (free mode, 1 question); 2026-10-24 18:16 -> 2 questions (REC_FREE_REFINES=2)",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "assistant OUTAGE 2026-10-22 06:22 -> 10-24 15:13 UTC (Anthropic key revoked, 40 users) - exclude from any read",
+    "10-14 bundle"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-signup-checkbox",
+   "name": "Remove T&C checkbox on sign-up ('By clicking Sign up, you agree...')",
+   "status": "planned",
+   "themes": [
+    "signup",
+    "legal"
+   ],
+   "goal": "+10-15% sign-up rate (owner est); co-founder: absorb risk if signups +~10%",
+   "primary_metric": "sign-up page view -> account created (Mixpanel); NOT raw signups (daily 75-130 swing)",
+   "guardrail": "",
+   "start_date": null,
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "planned: next production publish after 2026-10-24",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "same publish: sign-in/up layout fix, tour reset, PDF popup copy, cost tools consolidation, 5-star Trustpilot ask"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-pdf-popup-copy",
+   "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
+   "status": "planned",
+   "themes": [
+    "paywall"
+   ],
+   "goal": "Less negative wall experience while holding payment rate",
+   "primary_metric": "wall green-CTA click -> purchase (baseline ~140 clicks -> 19 purchases / 30d); warning 88 -> 11",
+   "guardrail": "payment rate",
+   "start_date": null,
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "planned: next production publish",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "same publish as checkbox removal etc."
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-trustpilot-5star",
+   "name": "NPS thank-you Trustpilot ask only for 5-star raters (owner test)",
+   "status": "planned",
+   "themes": [
+    "reviews"
+   ],
+   "goal": "Trustpilot reviews",
+   "primary_metric": "nps_review_clicked / nps_review_offered; new Trustpilot reviews",
+   "guardrail": "",
+   "start_date": null,
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "planned: next production publish (component 7964bf1)",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "past-buyer review email 2026-10-24 (148 sends) also drives reviews"
+   ],
+   "risks": [
+    "review gating - against Trustpilot guidelines and FTC review-solicitation guidance; revert = component prop 'Minimum stars for Trustpilot ask' = 1"
+   ],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-tours-v2",
+   "name": "Assistant tours reset to v2 keys + Cost tools step",
+   "status": "planned",
+   "themes": [
+    "activation",
+    "assistant"
+   ],
+   "goal": "Discovery of Budget/Cost tools",
+   "primary_metric": "tour completion; Budget/Cost tools tab opens",
+   "guardrail": "",
+   "start_date": null,
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "planned: next production publish",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-search-railway",
+   "name": "Vendor search: Railway (Meilisearch) with Xano ep119 fallback",
+   "status": "planned",
+   "themes": [
+    "performance",
+    "search"
+   ],
+   "goal": "Faster search without reliability loss",
+   "primary_metric": "client-measured search latency p50/p90 + error/fallback rate (Mixpanel)",
+   "guardrail": "",
+   "start_date": null,
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "planned (proposal: 20% of users by user id, then 100%)",
+   "design": "pre/post",
+   "results": [
+    {
+     "date": "2026-10-25",
+     "note": "baseline: 2026-10-25 end-to-end from outside Railway, real search shapes: ep119 cache-miss p50 1653 / p90 3000 ms; ep119 hit 268 ms; Railway 158 / 186 ms (+~230 ms first search per user for auth/me)"
+    }
+   ],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [],
+   "risks": [
+    "data freshness: daily sync 08:30 UTC = up to 24h stale",
+    "auth still depends on Xano auth/me"
+   ],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  }
+ ],
+ "changes": [
+  {
+   "date": "2026-10-14",
+   "end_date": null,
+   "what": "Prices raised (NY/hub), 20% offer, +2 bonus views, assistant free mode - one publish"
+  },
+  {
+   "date": "2026-10-22",
+   "end_date": "2026-10-24",
+   "what": "Tulle Assistant outage (Anthropic 401), 40 users"
+  },
+  {
+   "date": "2026-10-24",
+   "end_date": null,
+   "what": "Free views survive account deletion; terms_version + TC_Agreement_Time stamped on sign-up"
+  },
+  {
+   "date": "2026-10-24",
+   "end_date": null,
+   "what": "Trustpilot review email sent once to 148 past buyers"
+  },
+  {
+   "date": "2026-10-24",
+   "end_date": null,
+   "what": "Assistant free questions 1 -> 2"
+  }
+ ]
+}
