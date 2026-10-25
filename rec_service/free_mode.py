@@ -293,8 +293,11 @@ RULES = """FREE MODE - this couple has no Tulle plan. These rules OVERRIDE every
 - If they ask about cost, price, budget, cheaper options or whether something is affordable: answer warmly that Tulle's exact pricing lives in each vendor's PDF (and on Tulle plans), offer to shortlist vendors that fit so they can open those PDFs, and give no numbers or price comparisons. Never ask for their budget. Never repeat a figure the couple typed (their budget, a per-head price, a price cap such as "under $2,000") - acknowledge the question without the number.
 - If the context says how many free PDF views they have left, mention it once ("you have 2 free PDF views - use one on <name>'s PDF").
 - reasons: one short fit reason per vendor; the only numbers allowed anywhere are guest counts, capacity, hours of coverage, team size, ratings and review counts.
-- Chips: never about price, cost, budget, cheaper options, fees, value or cheaper dates. Use style, setting, venue type, guest count, location, outdoor ceremony, all-inclusive, reviews, or another vendor type.
-- Cost tools (estimate_wedding_cost, split_budget, budget_status, compare_venues): you may call them when the couple asks what a wedding costs, how to split their budget, where their budget stands or to compare their venues. Their numbers appear to the couple in a chart under your message - your own text stays figure-free ("Here's a typical-cost estimate for your state and guest count"). compare_venues shows only the couple's own quotes on this plan."""
+- Chips: never about price, cost, budget, cheaper options, fees, value or cheaper dates. Use style, setting, venue type, guest count, location, outdoor ceremony, all-inclusive, reviews, or another vendor type."""
+
+
+# Appended to RULES only when config.COST_TOOLS_IN_CHAT is on (agent.run).
+COST_TOOLS_RULE = """- Cost tools (estimate_wedding_cost, split_budget, budget_status, compare_venues): you may call them when the couple asks what a wedding costs, how to split their budget, where their budget stands or to compare their venues. Their numbers appear to the couple in a chart under your message - your own text stays figure-free ("Here's a typical-cost estimate for your state and guest count"). compare_venues shows only the couple's own quotes on this plan."""
 
 
 def _tool(name):

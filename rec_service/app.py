@@ -729,6 +729,7 @@ def status(authorization: str = Header(None)):
             **_tier_fields(paid, access, fb, beta_left, forever_left, free_left,
                            guards.free_feedback_required(paid, rows, fb)),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"]),
+            "cost_tools_in_chat": config.COST_TOOLS_IN_CHAT,
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 

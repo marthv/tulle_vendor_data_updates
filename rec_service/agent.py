@@ -119,9 +119,10 @@ CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip 
 Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (florists, catering, beauty, planners, attire, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
 
-COST TOOLS (2026-10-25: the Cost tools tab moved into this chat). For ANY question about what a whole wedding costs, how to split their budget, where their budget stands, or comparing the venues they saved or quoted, call the matching tool - estimate_wedding_cost, split_budget, budget_status, compare_venues - even if you also search. Each one draws a chart or table for the couple under your message, so let the widget carry the numbers: quote at most the one or two figures that answer the question (from the tool's facts, exactly), never re-list the table. For a what-if ("what if 120 guests?", "without a planner?") call the tool again with the new argument. A per-venue all-in is still estimate_cost; compare_venues is for the couple's saved venues and their own quotes together.
-
 Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends with which vendor's PDF to open first and what to look for in it), 3-5 vendor_ids in the order you recommend them (fewer only if fewer fit; 1 for a single-venue COST BREAKDOWN), a short reason per vendor (at most about 15 words) that says what sets it apart from the other picks with a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
+
+# Appended to SYSTEM only when config.COST_TOOLS_IN_CHAT is on (off = the prompt is exactly origin/main's).
+COST_TOOLS_RULES = """COST TOOLS (2026-10-25: the Cost tools tab moved into this chat). For ANY question about what a whole wedding costs, how to split their budget, where their budget stands, or comparing the venues they saved or quoted, call the matching tool - estimate_wedding_cost, split_budget, budget_status, compare_venues - even if you also search. Each one draws a chart or table for the couple under your message, so let the widget carry the numbers: quote at most the one or two figures that answer the question (from the tool's facts, exactly), never re-list the table. For a what-if ("what if 120 guests?", "without a planner?") call the tool again with the new argument. A per-venue all-in is still estimate_cost; compare_venues is for the couple's saved venues and their own quotes together."""
 
 # A COST BREAKDOWN is long (more tokens, more cost), so only an explicit ask unlocks it (user 2026-10-05:
 # short replies preferred; Forever gets the itemized detail ONLY when they specifically ask).
@@ -1185,7 +1186,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         "how much have we spent?", "what do we still owe?"."""
         return _cost_tool("budget_status", {})
 
-    cost_tool_list = [estimate_wedding_cost, split_budget, compare_venues, budget_status]
+    # REC_COST_TOOLS_IN_CHAT off (default): no cost tools, no prompt paragraph, widgets stays [] - chat as before.
+    cost_on = config.COST_TOOLS_IN_CHAT
+    cost_tool_list = [estimate_wedding_cost, split_budget, compare_venues, budget_status] if cost_on else []
 
     saved_notes = []
 
@@ -1395,8 +1398,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     runner = client.beta.messages.tool_runner(
         model=config.MODEL,
         max_tokens=8000,
-        system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}]
-               + ([{"type": "text", "text": free_mode.RULES}] if free else []),
+        system=[{"type": "text", "text": SYSTEM + ("\n\n" + COST_TOOLS_RULES if cost_on else ""),
+                 "cache_control": {"type": "ephemeral"}}]
+               + ([{"type": "text", "text": free_mode.RULES + ("\n" + free_mode.COST_TOOLS_RULE if cost_on else "")}]
+                  if free else []),
         # LIGHT gets no market-rate tools (market_benchmarks / pe_market_rates are all figures).
         # FREE gets no price-bearing tool at all, and price-free wrappers of the rest (free_mode.tools).
         # Cost tools (2026-10-25) at every level: their widget is the couple's to see; the model only gets their

@@ -55,6 +55,10 @@ FREE_FEEDBACK_BONUS = int(os.environ.get("REC_FREE_FEEDBACK_BONUS", "0"))
 FREE_DAILY_USD = float(os.environ.get("REC_FREE_DAILY_USD", "15"))
 # Whole service: stop spending above this many USD per UTC day.
 GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
+# Cost tools in the CHAT (2026-10-25): "1" = the model gets the 4 cost tools + the COST TOOLS prompt paragraph and
+# answers carry their widgets. Default OFF until the WeWeb widget component is published - the live page can't
+# draw widgets, so the model must not say "see the chart below" yet. POST /rec/tool works either way.
+COST_TOOLS_IN_CHAT = os.environ.get("REC_COST_TOOLS_IN_CHAT", "0") == "1"
 # "1" = off. One env var flip on Railway, no deploy.
 KILL_SWITCH = os.environ.get("REC_KILL_SWITCH", "0") == "1"
 

@@ -307,6 +307,7 @@ def _fake_client(script, seen):
         def __init__(self, tools, **kw):
             self.tools = {(getattr(t, "name", None) or t.__name__): t for t in tools}
             seen["tool_names"] = list(self.tools)
+            seen["system"] = " ".join(b["text"] for b in kw.get("system") or [])
 
         def __iter__(self):
             for name, args in script:
@@ -320,9 +321,10 @@ def _fake_client(script, seen):
     return Client
 
 
-def _run(monkeypatch, script, detail, access):
-    import agent, xano
+def _run(monkeypatch, script, detail, access, flag=True):
+    import agent, config, xano
     seen = {}
+    monkeypatch.setattr(config, "COST_TOOLS_IN_CHAT", flag)
     monkeypatch.setattr(xano, "state_average_rows", lambda tok: STATE_ROWS)
     monkeypatch.setattr(xano, "guest_modifier", lambda tok, n: MODIFIERS.get(n))
     monkeypatch.setattr(xano, "market_benchmarks", lambda s, g=0: {"state": s, "metrics": {}})
@@ -365,3 +367,52 @@ def test_zero_means_profile_but_an_explicit_false_is_kept():
     user = dict(USER, Wedding_Guest_Count=82, Peak_Season=True, Major_City=True)
     w = cost_tools.run_tool("estimate_cost", {"guests": 0, "peak_season": False}, "tok", user, access=True, xano=fx)["widget"]
     assert (w["guests"], w["peak_season"], w["major_city"]) == (82, False, True)
+
+
+
+COST_NAMES = {"estimate_wedding_cost", "split_budget", "compare_venues", "budget_status"}
+PRESENT = ("present_recommendations", {"message": "m", "vendor_ids": [], "reasons": [], "chips": []})
+
+
+@pytest.mark.parametrize("detail,access", [("full", True), ("light", True), ("free", False)])
+def test_flag_off_chat_is_exactly_as_before(monkeypatch, detail, access):
+    """REC_COST_TOOLS_IN_CHAT off (default until the WeWeb widget ships): no cost tools, no COST TOOLS prompt
+    text, widgets []."""
+    import agent, free_mode
+    res, _, seen = _run(monkeypatch, [PRESENT], detail, access, flag=False)
+    assert not COST_NAMES & set(seen["tool_names"])
+    assert "COST TOOLS" not in seen["system"] and agent.COST_TOOLS_RULES not in seen["system"]
+    assert free_mode.COST_TOOLS_RULE not in seen["system"] and "estimate_wedding_cost" not in seen["system"]
+    assert res["widgets"] == []
+
+
+@pytest.mark.parametrize("detail,access", [("full", True), ("light", True), ("free", False)])
+def test_flag_on_registers_the_tools_and_the_prompt(monkeypatch, detail, access):
+    import agent, free_mode
+    _, _, seen = _run(monkeypatch, [PRESENT], detail, access, flag=True)
+    assert COST_NAMES <= set(seen["tool_names"])
+    assert agent.COST_TOOLS_RULES in seen["system"]
+    assert (free_mode.COST_TOOLS_RULE in seen["system"]) == (detail == "free")
+
+
+def test_flag_defaults_off(monkeypatch):
+    import importlib, config
+    monkeypatch.delenv("REC_COST_TOOLS_IN_CHAT", raising=False)
+    try:
+        assert importlib.reload(config).COST_TOOLS_IN_CHAT is False
+        monkeypatch.setenv("REC_COST_TOOLS_IN_CHAT", "1")
+        assert importlib.reload(config).COST_TOOLS_IN_CHAT is True
+    finally:
+        monkeypatch.delenv("REC_COST_TOOLS_IN_CHAT", raising=False)
+        importlib.reload(config)
+
+
+@pytest.mark.parametrize("flag", [False, True])
+def test_tool_endpoint_ignores_the_flag_and_status_reports_it(env, monkeypatch, flag):
+    import app, config, xano
+    monkeypatch.setattr(config, "COST_TOOLS_IN_CHAT", flag)
+    monkeypatch.setattr(xano, "user_usage", lambda uid: [])
+    monkeypatch.setattr(app, "_memory_row", lambda uid: {})
+    c = TestClient(app.app)
+    assert c.post("/rec/tool", json={"tool": "split_budget", "args": {"total": 1000}}).status_code == 200
+    assert c.get("/rec/status").json()["cost_tools_in_chat"] is flag
