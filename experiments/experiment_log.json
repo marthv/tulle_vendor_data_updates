@@ -2,8 +2,275 @@
  "_about": "Tulle experiment registry. Read by the Experiments tab in dashboard.py. Edit this file (Claude Code) and push to main; Railway redeploys. Dates are YYYY-MM-DD (UTC); null start_date = planned. results[].counts = {\"control\":{\"n\":..,\"conv\":..},\"treatment\":{\"n\":..,\"conv\":..}} enables the significance check.",
  "experiments": [
   {
+   "guardrail": "",
+   "review_date": null,
+   "dates_note": "",
+   "design": "pre/post",
+   "stat_sig": "not computed",
+   "decision": "Killed 2026-09-27",
+   "confounds_noted": [],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-09-27",
+     "note": "Owner: the experiment \"failed spectacularly\". Killed; admin tab removed. Order counts not recorded here."
+    }
+   ],
+   "id": "EXP-2026-08-budget-roadmap",
+   "name": "Budget Roadmap: custom budget PDF, $40 one-time",
+   "status": "reverted",
+   "themes": [
+    "upsell",
+    "revenue"
+   ],
+   "goal": "New revenue line beyond memberships",
+   "primary_metric": "roadmap orders",
+   "start_date": "2026-08-09",
+   "end_date": "2026-09-27"
+  },
+  {
+   "guardrail": "",
+   "review_date": null,
+   "dates_note": "Built 08-16; published around 08-19 (exact date not recorded)",
+   "design": "pre/post",
+   "stat_sig": "no read recorded",
+   "decision": "",
+   "confounds_noted": [],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-08-16",
+     "note": "Pre-launch estimate +1.5 to +3 purchases/week (+4-9%). Topline A/B underpowered at ~35 purchases/week."
+    },
+    {
+     "date": "2026-10-14",
+     "note": "Correction: PDF wall ~18% of purchases (30/170, 30d), not 40%. Warning CTA 88 clicks -> 11 buys (1d)."
+    }
+   ],
+   "id": "EXP-2026-08-pdf-warning-view3",
+   "name": "\"Last free pricing PDF\" warning on the 3rd free view",
+   "status": "live",
+   "themes": [
+    "paywall"
+   ],
+   "goal": "Catch the ~157 users/week who use 3 PDFs and never return to hit the wall",
+   "primary_metric": "PDF view 3 -> 4 step (baseline 36%); purchases",
+   "start_date": "2026-08-19"
+  },
+  {
+   "guardrail": "",
+   "review_date": null,
+   "dates_note": "",
+   "design": "pre/post",
+   "stat_sig": "not computed",
+   "decision": "Moved NY to $35/$60/$135 on 2026-10-07",
+   "confounds_noted": [
+    "October-wide lift: untouched Rest+TX also ran x1.30 Oct 1-13"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-10-21",
+     "note": "NY at $149 ran x0.63 of pre-period revenue. Replaced 10-07 by NY tier $35/$60/$135 (x1.17)."
+    }
+   ],
+   "id": "EXP-2026-10-ny-149",
+   "name": "NY Forever at $149 (geo test raised arm)",
+   "status": "reverted",
+   "themes": [
+    "pricing"
+   ],
+   "goal": "+15% price in NY without losing revenue",
+   "primary_metric": "NY revenue/day vs Aug 4 - Sep 30",
+   "start_date": "2026-10-01",
+   "end_date": "2026-10-06"
+  },
+  {
+   "guardrail": "",
+   "review_date": "2026-11-04",
+   "dates_note": "",
+   "design": "pre/post",
+   "stat_sig": "not computed; ~120 buys/arm needed to detect -30%",
+   "decision": "Holding; re-read 2026-11-04",
+   "confounds_noted": [
+    "October-wide lift (Rest+TX x1.30 with no price change)"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-10-21",
+     "note": "Revenue x1.58 vs Aug 4 - Sep 30 ($112 vs $71/day); 2-day conversion 5.2% vs 5.6%. BNPL usage: zero."
+    }
+   ],
+   "id": "EXP-2026-10-ca-intl-149",
+   "name": "CA + International Forever at $149 with BNPL",
+   "status": "reading",
+   "themes": [
+    "pricing"
+   ],
+   "goal": "+15% price without lower conversion",
+   "primary_metric": "revenue/day per arm; 2-day conversion",
+   "start_date": "2026-10-01"
+  },
+  {
+   "guardrail": "",
+   "review_date": null,
+   "dates_note": "",
+   "design": "pre/post",
+   "stat_sig": "not computed",
+   "decision": "Opened to all signed-in users with a free question allowance (10-14)",
+   "confounds_noted": [],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-10-14",
+     "note": "Chat review: 22 chats / 21 users / 114 messages, average rating 2.6/5. Opened to free users 10-14 (free mode)."
+    }
+   ],
+   "id": "EXP-2026-10-assistant-forever-beta",
+   "name": "Tulle Assistant beta: Forever members only",
+   "status": "concluded",
+   "themes": [
+    "assistant"
+   ],
+   "goal": "Test the AI planner with paying members before opening it up",
+   "primary_metric": "usage, feedback ratings",
+   "start_date": "2026-10-03",
+   "end_date": "2026-10-14"
+  },
+  {
+   "guardrail": "",
+   "review_date": null,
+   "dates_note": "",
+   "design": "pre/post",
+   "stat_sig": "n/a (no read)",
+   "decision": "Removed 2026-10-14",
+   "confounds_noted": [],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-10-14",
+     "note": "Owner disliked it the same day: it showed A-Z unfiltered venues. Deleted; onload workflow disabled."
+    }
+   ],
+   "id": "EXP-2026-10-handoff-card",
+   "name": "First-session \"Start here\" PDF handoff card",
+   "status": "reverted",
+   "themes": [
+    "activation"
+   ],
+   "goal": "Get new sign-ups to their first PDF",
+   "primary_metric": "first-hour PDF open rate",
+   "start_date": "2026-10-14",
+   "end_date": "2026-10-14"
+  },
+  {
+   "guardrail": "",
+   "review_date": null,
+   "dates_note": "",
+   "design": "pre/post",
+   "stat_sig": "29% vs 57% on these counts is significant, but windows differ (1 week vs ~1 day) - treat as directional",
+   "decision": "Kept",
+   "confounds_noted": [],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-10-15",
+     "note": "Baseline: 196 of 684 onboarded users (29%) started the old tour in the week to 10-15."
+    },
+    {
+     "date": "2026-10-17",
+     "note": "New tour reached 42 of 74 new members (57%); 10 of 14 assistant visitors got their first picks (71%)."
+    }
+   ],
+   "id": "EXP-2026-10-after-onboarding-tour",
+   "name": "After-onboarding tour (Discovery card -> vendor PDFs -> Assistant) replacing the 4-step vendor tour",
+   "status": "concluded",
+   "themes": [
+    "activation"
+   ],
+   "goal": "More new members find pricing PDFs and the assistant",
+   "primary_metric": "% of new members who start/complete the tour",
+   "start_date": "2026-10-16",
+   "end_date": "2026-10-17"
+  },
+  {
+   "guardrail": "",
+   "review_date": null,
+   "dates_note": "",
+   "design": "pre/post",
+   "stat_sig": "not computed",
+   "decision": "Kept",
+   "confounds_noted": [],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-10-14",
+     "note": "14-day baseline (non-forced): 294 shown -> 4 rated. Forced since 10-12: 2/2 rated early on."
+    },
+    {
+     "date": "2026-10-24",
+     "note": "Daily brief: 1-2 ratings/day, 7-day average 4.6/5 from 14 ratings."
+    }
+   ],
+   "id": "EXP-2026-10-nps-forced",
+   "name": "NPS: forced return-from-PDF card (rating + comment required)",
+   "status": "concluded",
+   "themes": [
+    "feedback"
+   ],
+   "goal": "At least 1 rating/day",
+   "primary_metric": "ratings per day",
+   "start_date": "2026-10-12"
+  },
+  {
+   "guardrail": "",
+   "review_date": null,
+   "dates_note": "",
+   "design": "pre/post",
+   "stat_sig": "measured gain not recorded (check table 78 cache_hit_pct >= 10-05)",
+   "decision": "Kept; accepted up to 24h staleness for hidden vendors",
+   "confounds_noted": [],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "",
+   "results": [
+    {
+     "date": "2026-10-03",
+     "note": "Simulated: hit rate ~58% -> ~64%, ~156 fewer slow searches/day. 90% of misses are first-ever keys no cache can help."
+    }
+   ],
+   "id": "EXP-2026-10-ep119-cache-24h",
+   "name": "Search cache lifetime 2h -> 24h (ep119)",
+   "status": "concluded",
+   "themes": [
+    "performance",
+    "search"
+   ],
+   "goal": "Fewer slow (~1.4s) uncached searches",
+   "primary_metric": "search cache hit rate (baseline ~60-63%)",
+   "start_date": "2026-10-03",
+   "end_date": "2026-10-05"
+  },
+  {
    "id": "EXP-2026-10-pricing-phase2",
-   "name": "Pricing test phase 2 (raised arm vs baseline; NY/CA/International prices)",
+   "name": "Pricing phase 2: raised arm vs baseline (daily brief tracker)",
    "status": "reading",
    "themes": [
     "pricing"

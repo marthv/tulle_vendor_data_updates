@@ -90,22 +90,14 @@ def render_experiments_tab():
     changes = log.get("changes", [])
     today = dt.date.today()
 
-    st.caption("Registry of every experiment: goal, dates, results, confounds and significance. "
+    st.caption("Every experiment: goal, dates, results, confounds and significance. "
                "Source: `experiments/experiment_log.json` (edit + push to update).")
 
-    by_status = {s: sum(1 for e in exps if e.get("status") == s) for s in STATUSES}
-    cols = st.columns(len(STATUSES))
-    for col, s in zip(cols, STATUSES):
-        col.metric(s.capitalize(), by_status[s])
+    groups = {"Running": ("planned", "live", "reading"), "Past": ("concluded", "reverted"), "All": tuple(STATUSES)}
+    pick = st.segmented_control("Show", list(groups), default="Running", key="exp_view") or "All"
+    shown = [e for e in exps if e.get("status") in groups[pick]]
 
-    all_themes = sorted({t for e in exps for t in e.get("themes", [])})
-    f1, f2 = st.columns(2)
-    pick_status = f1.multiselect("Status", STATUSES, default=[s for s in STATUSES if by_status[s]])
-    pick_theme = f2.multiselect("Theme", all_themes)
-    shown = [e for e in exps
-             if e.get("status") in pick_status and (not pick_theme or set(pick_theme) & set(e.get("themes", [])))]
-
-    # Timeline: experiments as bars, logged changes as rules. Overlap = possible confound.
+    # Timeline: experiments as bars, logged changes as dashed rules. Overlap = possible confound.
     rows = []
     for e in shown:
         w = _window(e, today)
@@ -116,8 +108,8 @@ def render_experiments_tab():
         bars = alt.Chart(df).mark_bar(cornerRadius=3, height=14).encode(
             x=alt.X("start:T", title=None), x2="end:T",
             y=alt.Y("experiment:N", title=None, sort=None),
-            color=alt.Color("status:N", scale=alt.Scale(domain=STATUSES,
-                            range=["#CDD0D8", "#00A368", "#D97706", "#0D5C3A", "#C53030"])),
+            color=alt.Color("status:N", legend=alt.Legend(orient="bottom", title=None), scale=alt.Scale(
+                domain=STATUSES, range=["#CDD0D8", "#00A368", "#D97706", "#0D5C3A", "#C53030"])),
             tooltip=["experiment", "status", alt.Tooltip("start:T"), alt.Tooltip("end:T")],
         )
         ch = pd.DataFrame([{"date": _d(c["date"]), "what": c["what"]} for c in changes if _d(c.get("date"))])
@@ -125,20 +117,22 @@ def render_experiments_tab():
         if not ch.empty:
             layers.append(alt.Chart(ch).mark_rule(color="#7E8189", strokeDash=[4, 3]).encode(
                 x="date:T", tooltip=["what", alt.Tooltip("date:T")]))
-        st.altair_chart(alt.layer(*layers).properties(height=max(120, 28 * len(rows))), use_container_width=True)
-        st.caption("Dashed lines = other changes shipped (hover for detail). Overlapping bars/lines can confound a read.")
-    else:
-        st.info("No experiments with a start date in this filter (planned ones appear once they start).")
+        st.altair_chart(alt.layer(*layers).properties(height=max(120, 26 * len(rows))), use_container_width=True)
+        st.caption("Dashed lines = other changes shipped (hover). Anything overlapping an experiment can muddy its result.")
+    elif not shown:
+        st.info("Nothing here.")
 
-    table = pd.DataFrame([{
-        "Experiment": e["name"], "Status": e["status"], "Themes": ", ".join(e.get("themes", [])),
-        "Start": e.get("start_date") or "planned", "End": e.get("end_date") or "",
-        "Metric": e.get("primary_metric", ""), "Decision": e.get("decision", ""),
-    } for e in shown])
-    if not table.empty:
-        st.dataframe(table, use_container_width=True, hide_index=True)
+    def _latest(e):
+        r = e.get("results") or []
+        return r[-1].get("note", "") if r else ""
 
-    st.markdown("#### Details")
+    if shown:
+        st.dataframe(pd.DataFrame([{
+            "Experiment": e["name"], "Status": e["status"],
+            "Dates": f"{e.get('start_date') or 'planned'} → {e.get('end_date') or ('open' if e.get('start_date') else '')}",
+            "Latest result": _latest(e) or "—",
+        } for e in shown]), use_container_width=True, hide_index=True)
+
     for e in shown:
         w = _window(e, today)
         with st.expander(f"{e['name']}  ·  {e['status']}"):
@@ -195,12 +189,11 @@ def render_experiments_tab():
                     st.markdown(_verdict(two_proportion_test(int(n1), int(c1), int(n2), int(c2))))
 
     concluded = [e for e in exps if e.get("status") in ("concluded", "reverted")]
-    st.markdown("#### What we've learned, by theme")
-    if not concluded:
-        st.caption("Nothing concluded yet. Concluded and reverted experiments are summarised here by theme.")
-    for t in sorted({t for e in concluded for t in e.get("themes", [])}):
-        st.markdown(f"**{t}**")
-        for e in concluded:
-            if t in e.get("themes", []):
-                last = (e.get("results") or [{}])[-1].get("note", "")
-                st.markdown(f"- {e['name']} ({e['status']}): {e.get('decision') or last}")
+    with st.expander("What we've learned, by theme"):
+        if not concluded:
+            st.caption("Nothing concluded yet.")
+        for t in sorted({t for e in concluded for t in e.get("themes", [])}):
+            st.markdown(f"**{t}**")
+            for e in concluded:
+                if t in e.get("themes", []):
+                    st.markdown(f"- {e['name']} ({e['status']}): {e.get('decision') or _latest(e)}")
