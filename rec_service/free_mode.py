@@ -150,6 +150,23 @@ def chips(chip_list, history=()):
     return out[:4]
 
 
+# ---------------------------------------------------------------- cost-tool widgets (2026-10-25)
+
+def widget(w):
+    """A cost-tool widget safe for a free user. Estimate / split / budget status are market averages and the
+    couple's own numbers (owner 2026-10-25: allowed). venue_compare must not show vendor PDF pricing: only the
+    couple's manual quotes stay, locked=True with reason unlock_pdf_pricing (also for a widget stored while
+    they had a plan)."""
+    if not isinstance(w, dict) or w.get("type") != "venue_compare":
+        return w
+    return dict(w, rows=[r for r in w.get("rows") or [] if r.get("source") == "manual"], unpriced=[],
+                locked=True, reason="unlock_pdf_pricing")
+
+
+def widgets(ws):
+    return [widget(w) for w in ws or []]
+
+
 # ---------------------------------------------------------------- whole responses
 
 def sanitize_result(result):
@@ -159,7 +176,8 @@ def sanitize_result(result):
     cards = [card(c) for c in result.get("cards") or []]
     removed += sum(1 for c, o in zip(result.get("cards") or [], cards) if (c.get("reason") or "") and not o["reason"])
     return dict(result, text=text, cards=cards, more_cards=[card(c) for c in result.get("more_cards") or []],
-                chips=chips(result.get("chips")), price_locked=True, price_redactions=removed)
+                chips=chips(result.get("chips")), widgets=widgets(result.get("widgets")), price_locked=True,
+                price_redactions=removed)
 
 
 def sanitize_turns(turns):
@@ -173,6 +191,8 @@ def sanitize_turns(turns):
             if "more_cards" in t:
                 t["more_cards"] = [card(c) for c in t.get("more_cards") or []]
             t["chips"] = chips(t.get("chips")) if t.get("chips") else t.get("chips")
+            if "widgets" in t:
+                t["widgets"] = widgets(t.get("widgets"))
             t["price_locked"] = True
         out.append(t)
     return out
@@ -273,7 +293,8 @@ RULES = """FREE MODE - this couple has no Tulle plan. These rules OVERRIDE every
 - If they ask about cost, price, budget, cheaper options or whether something is affordable: answer warmly that Tulle's exact pricing lives in each vendor's PDF (and on Tulle plans), offer to shortlist vendors that fit so they can open those PDFs, and give no numbers or price comparisons. Never ask for their budget. Never repeat a figure the couple typed (their budget, a per-head price, a price cap such as "under $2,000") - acknowledge the question without the number.
 - If the context says how many free PDF views they have left, mention it once ("you have 2 free PDF views - use one on <name>'s PDF").
 - reasons: one short fit reason per vendor; the only numbers allowed anywhere are guest counts, capacity, hours of coverage, team size, ratings and review counts.
-- Chips: never about price, cost, budget, cheaper options, fees, value or cheaper dates. Use style, setting, venue type, guest count, location, outdoor ceremony, all-inclusive, reviews, or another vendor type."""
+- Chips: never about price, cost, budget, cheaper options, fees, value or cheaper dates. Use style, setting, venue type, guest count, location, outdoor ceremony, all-inclusive, reviews, or another vendor type.
+- Cost tools (estimate_wedding_cost, split_budget, budget_status, compare_venues): you may call them when the couple asks what a wedding costs, how to split their budget, where their budget stands or to compare their venues. Their numbers appear to the couple in a chart under your message - your own text stays figure-free ("Here's a typical-cost estimate for your state and guest count"). compare_venues shows only the couple's own quotes on this plan."""
 
 
 def _tool(name):

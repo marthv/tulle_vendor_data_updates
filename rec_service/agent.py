@@ -28,6 +28,7 @@ import anthropic
 from anthropic import beta_tool
 
 import config
+import cost_tools
 import estimate
 import free_mode
 import xano
@@ -117,6 +118,8 @@ CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip 
 - another supported vendor type, when it is the couple's natural next decision (e.g. "Find a photographer" after venues).
 Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (florists, catering, beauty, planners, attire, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
+
+COST TOOLS (2026-10-25: the Cost tools tab moved into this chat). For ANY question about what a whole wedding costs, how to split their budget, where their budget stands, or comparing the venues they saved or quoted, call the matching tool - estimate_wedding_cost, split_budget, budget_status, compare_venues - even if you also search. Each one draws a chart or table for the couple under your message, so let the widget carry the numbers: quote at most the one or two figures that answer the question (from the tool's facts, exactly), never re-list the table. For a what-if ("what if 120 guests?", "without a planner?") call the tool again with the new argument. A per-venue all-in is still estimate_cost; compare_venues is for the couple's saved venues and their own quotes together.
 
 Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends with which vendor's PDF to open first and what to look for in it), 3-5 vendor_ids in the order you recommend them (fewer only if fewer fit; 1 for a single-venue COST BREAKDOWN), a short reason per vendor (at most about 15 words) that says what sets it apart from the other picks with a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
 
@@ -1108,6 +1111,82 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         """
         return _ev(xano.market_benchmarks(state, guests))
 
+    widgets = []          # cost-tool widgets shown under this answer (cost_tools.py), in call order
+    tool_user = dict(user, **profile) if profile_override is not None else user
+
+    def _cost_tool(name, args):
+        """Run a cost tool, keep its widget for the page, and hand the model its facts (FULL) - or, at LIGHT / FREE
+        (no figures for the model), only what was shown. The widget is the couple's to see either way; free mode's
+        widget guard (free_mode.widget) keeps vendor PDF prices out of venue_compare."""
+        try:
+            out = cost_tools.run_tool(name, args, token, tool_user, access=paid, xano=xano)
+        except Exception as e:
+            return _ev({"error": "could not run %s right now" % name, "detail": str(e)[:100]})
+        w = free_mode.widget(out["widget"]) if free else out["widget"]
+        widgets[:] = [x for x in widgets if x.get("type") != w.get("type")] + [w]   # a what-if replaces the last
+        if light:
+            return _ev({"shown": w["type"], "missing": w.get("missing") or [], "locked": bool(w.get("locked")),
+                        "note": "The couple sees this as a chart under your message. Describe it in words - no figures."})
+        return _ev({"shown": w["type"], "facts": out["facts"],
+                    "note": "The couple sees this as a chart under your message - don't re-list it."})
+
+    @beta_tool
+    @timed
+    def estimate_wedding_cost(state: str = "", guests: int = 0, major_city: bool = None, peak_season: bool = None,
+                              budget: int = 0) -> str:
+        """What a whole wedding typically costs in a state for a guest count: Minimalist / Average / Luxury tiers
+        (Tulle's state average wedding cost x a guest-count factor, x1.2 peak season, x1.3 major city) and how the
+        couple's budget compares with Average. Shown to the couple as a chart. Use it for "how much will our
+        wedding cost?", "is our budget enough?", and what-ifs on guests, season or city.
+
+        Args:
+            state: a US state, e.g. "New York" (empty = the couple's).
+            guests: guest count (0 = the couple's).
+            major_city: true = in or near a major city (empty = the couple's profile setting).
+            peak_season: true = peak-season date (empty = the couple's profile setting).
+            budget: total budget to compare against (0 = the couple's).
+        """
+        return _cost_tool("estimate_cost", {"state": state, "guests": guests, "major_city": major_city,
+                                            "peak_season": peak_season, "budget": budget})
+
+    @beta_tool
+    @timed
+    def split_budget(total: int = 0, focus: str = "normal", excluded_categories: list[str] = None) -> str:
+        """Split a total wedding budget across Tulle's 13 budget categories (Venue, Food and Beverage, Photography,
+        Flowers, Entertainment, Wedding Planner, Attire, ...), shown as a chart. Use it for "how should we split our
+        budget?", "how much for flowers?", or a what-if without a category.
+
+        Args:
+            total: the total to split (0 = the couple's budget).
+            focus: what they want to prioritise: "normal" (balanced), "venue", "food", "flowers", "planner" or
+                "entertainment".
+            excluded_categories: category names they don't need, e.g. ["Wedding Planner"]; the rest re-scale to 100%.
+        """
+        return _cost_tool("split_budget", {"total": total, "focus": focus,
+                                           "excluded_categories": excluded_categories or []})
+
+    @beta_tool
+    @timed
+    def compare_venues(guests: int = 0) -> str:
+        """Compare the couple's SAVED venues (all-in from each venue's pricing PDF, the venue page's formula) with
+        the venue quotes they entered themselves, cheapest first, against their budget - shown as a table. Use it
+        for "compare my venues", "which of my saved venues is cheapest?".
+
+        Args:
+            guests: guest count to price the saved venues at (0 = the couple's).
+        """
+        return _cost_tool("compare_venues", {"guests": guests})
+
+    @beta_tool
+    @timed
+    def budget_status() -> str:
+        """Where the couple's own budget stands: what they've added on their Budget tab, paid and still owe, by
+        category, against their total budget - shown as a chart. Use it for "how are we doing on budget?",
+        "how much have we spent?", "what do we still owe?"."""
+        return _cost_tool("budget_status", {})
+
+    cost_tool_list = [estimate_wedding_cost, split_budget, compare_venues, budget_status]
+
     saved_notes = []
 
     @beta_tool
@@ -1320,12 +1399,15 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                + ([{"type": "text", "text": free_mode.RULES}] if free else []),
         # LIGHT gets no market-rate tools (market_benchmarks / pe_market_rates are all figures).
         # FREE gets no price-bearing tool at all, and price-free wrappers of the rest (free_mode.tools).
+        # Cost tools (2026-10-25) at every level: their widget is the couple's to see; the model only gets their
+        # figures at FULL (_cost_tool).
         tools=(free_mode.tools(search_venues, search_photographers_entertainment, saved_venues, venue_details,
-                               save_note, present_recommendations) if free else
+                               save_note, present_recommendations) + cost_tool_list if free else
                [search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
-                save_note, present_recommendations] if light else
+                save_note, present_recommendations] + cost_tool_list if light else
                [search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
-                estimate_cost, market_benchmarks, pe_market_rates, save_note, present_recommendations]),
+                estimate_cost, market_benchmarks, pe_market_rates, save_note, present_recommendations]
+               + cost_tool_list),
         messages=msgs,
         output_config={"effort": config.EFFORT},
         **config.thinking_kwargs(),
@@ -1431,6 +1513,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
               # stored with this answer (hidden) - the chat's active filters from now on
               "search_filters": dict(vprimary["filters"]) if vprimary else dict(active),
               "notes_saved": saved_notes,
+              "widgets": list(widgets),
               "dropped_unverified_ids": [v for v in final.get("vendor_ids", []) if v not in seen]}
     usage["repeat_bounced"] = bool(guard.get("repeat_bounced"))
     usage["repeats_shown"] = guard.get("repeats_shown") or []

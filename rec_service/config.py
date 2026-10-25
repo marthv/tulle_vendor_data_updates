@@ -7,6 +7,9 @@ XANO_META = XANO_BASE + "/api:meta/workspace/" + os.environ.get("XANO_WORKSPACE_
 # App endpoint groups (see tulletogether/.claude/xano_backups for the endpoint sources).
 API_SEARCH_GROUP = XANO_BASE + "/api:GynP5T1B"   # ep119 search, ep231/230 pricing intelligence, favorites
 API_AUTH_GROUP = XANO_BASE + "/api:v1keLQ2a"     # auth/me
+# The WeWeb app's own group (Cost tools / Budget read these with the user's token, 2026-10-25): /number_of_guests,
+# /admin_location_adjustment, /budget_breakdown_current_budget_breakdown, /packages, /venue_calculator_entries_v1.
+API_APP_GROUP = XANO_BASE + "/api:WGW_G49d"
 XANO_METADATA_TOKEN = os.environ.get("XANO_METADATA_TOKEN", "")
 
 USAGE_TABLE_ID = int(os.environ.get("REC_USAGE_TABLE_ID", "79"))       # rec_usage, created 2026-10-03

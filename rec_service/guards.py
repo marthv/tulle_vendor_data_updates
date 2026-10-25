@@ -17,6 +17,12 @@ def _ok(rows):
     return [r for r in rows if r.get("status") == "ok"]
 
 
+def _prompts(rows):
+    """ok rows that count as a prompt. Quick-action cost tools (kind "tool_<name>", POST /rec/tool, 2026-10-25)
+    make no model call and never count toward any allowance (owner decision)."""
+    return [r for r in _ok(rows) if not str(r.get("kind") or "").startswith("tool_")]
+
+
 def free_used(usage_rows):
     """Free questions spent so far (lifetime)."""
     return sum(1 for r in _ok(usage_rows) if r.get("counted_as_free"))
@@ -55,7 +61,7 @@ def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True, free
         return False, "killed", False
     if spend_today >= config.GLOBAL_DAILY_USD:
         return False, "blocked_global_cap", False
-    ok = _ok(usage_rows)
+    ok = _prompts(usage_rows)
     if paid:
         # Forever: quiet monthly ceiling first (calendar month, UTC), then 40 prompts per UTC day,
         # openings and questions combined (user decisions 2026-10-03).
@@ -86,7 +92,7 @@ def forever_left_today(paid, usage_rows, today):
     """Forever prompts left today (None for non-Forever users)."""
     if not paid:
         return None
-    return max(0, config.PAID_DAILY_REFINES - sum(1 for r in _ok(usage_rows) if r.get("usage_day") == today))
+    return max(0, config.PAID_DAILY_REFINES - sum(1 for r in _prompts(usage_rows) if r.get("usage_day") == today))
 
 
 def free_refines_left(paid, usage_rows, feedback_given=False):

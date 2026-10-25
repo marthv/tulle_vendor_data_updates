@@ -12,6 +12,10 @@ POST /rec/more {chat_id}   -> "Show 3 more": next 3 venues from the latest answe
 GET  /rec/status           -> free refinements left, paid flag, whether the service is on, and the page-state
                               keys tier / price_locked / questions_left / feedback_required / feedback_done /
                               paywall (also on every answer and every blocked response)
+POST /rec/tool             -> {tool, args, chat_id?}: one cost tool (estimate_cost | split_budget | compare_venues |
+                              budget_status) for the chat's quick actions. No model call, never counts toward free
+                              questions or the daily caps (owner 2026-10-25); its widget is saved in the chat if given.
+                              Every answer (opening / refine / more) carries `widgets` ([] unless a cost tool ran).
 POST /rec/feedback         -> beta check-in {rating, would_use, text}. Paid members: unlocks questions.
                               Free users (2026-10-14): required once after their free question(s); earns nothing more.
 
@@ -35,6 +39,7 @@ from pydantic import BaseModel
 import agent
 from chips import STARTER_CHIPS, dedupe_chips, ensure_chips, more_chips
 import config
+import cost_tools
 import free_mode
 import guards
 import notify
@@ -88,7 +93,9 @@ def _public(out, **extra):
     filters stay server-side (stored with the answer for "Show 3 more" and the next question)."""
     resp = {k: v for k, v in out.items() if k not in ("more_cards", "search_filters")}
     n = len(out.get("more_cards") or [])
-    return dict(resp, more_available=n if n >= agent.MORE_STEP else 0, **extra)
+    # widgets (cost tools, 2026-10-25): always present, [] by default, so the current page is unaffected.
+    return dict(resp, more_available=n if n >= agent.MORE_STEP else 0, widgets=list(out.get("widgets") or []),
+                **extra)
 
 
 def _stored_cards(out):
@@ -98,6 +105,8 @@ def _stored_cards(out):
     stored = list(out.get("cards") or []) + [dict(c, more=True) for c in (out.get("more_cards") or [])]
     if out.get("search_filters"):
         stored.append({"meta": "search", "filters": out["search_filters"]})
+    # Cost-tool widgets ride along the same way (2026-10-25), so a reopened chat redraws them.
+    stored += [{"meta": "widget", "widget": w} for w in out.get("widgets") or []]
     return stored
 
 
@@ -492,8 +501,67 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
     background.add_task(persist)
     left = reply["left"]
     return dict(text=text, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
-                more_available=left if left >= agent.MORE_STEP else 0,
+                more_available=left if left >= agent.MORE_STEP else 0, widgets=[],
                 **_counters("refine", paid, rows, counted_free, feedback_given, access))
+
+
+class ToolBody(BaseModel):
+    tool: str
+    args: dict = {}
+    chat_id: int = 0
+
+
+# What the chat shows as the couple's side of a quick action (stored as the user turn, so the history alternates).
+TOOL_LABELS = {"estimate_cost": "Estimate my cost", "split_budget": "Split my budget",
+               "compare_venues": "Compare my venues", "budget_status": "Budget check"}
+
+
+@app.post("/rec/tool")
+def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = Header(None)):
+    """A quick action (owner decision 2026-10-25): one cost tool, computed in code - NO model call, NOT counted
+    toward free questions or the daily/monthly caps (its rec_usage row is kind "tool_<name>", cost 0, which
+    guards._prompts leaves out). Respects the kill switch. Free users (no plan) get the same tools, but
+    compare_venues never shows vendor PDF pricing (free_mode.widget). Args left out come from the profile.
+    With chat_id the quick action and its widget are saved in that chat, so it shows in the history and the
+    next typed question can refer to it."""
+    token, user = _auth(authorization)
+    if config.KILL_SWITCH:
+        raise HTTPException(503, {"status": "killed"})
+    name = (body.tool or "").strip()
+    if name not in cost_tools.TOOLS:
+        raise HTTPException(400, {"status": "unknown_tool", "tools": list(cost_tools.TOOLS)})
+    chat = None
+    if body.chat_id:
+        chat = xano.get_chat(user["id"], body.chat_id)
+        if not chat:
+            raise HTTPException(404, "conversation not found")
+    access = xano.has_paid_access(user)
+    paid = xano.beta_member(user)
+    base = {"user_id": user["id"], "kind": "tool_" + name, "chat_id": int(body.chat_id or 0), "model": "none",
+            "tier": "paid" if paid else "free", "counted_as_free": False, "input_tokens": 0, "cache_read_tokens": 0,
+            "cache_write_tokens": 0, "output_tokens": 0, "tool_calls": 0, "cost_usd": 0}
+    t0 = dt.datetime.now(dt.timezone.utc)
+    try:
+        out = cost_tools.run_tool(name, body.args or {}, token, user, access=access, xano=xano)
+    except Exception as e:
+        _POOL.submit(xano.log_usage, dict(base, status="error", error=str(e)[:500]))
+        raise HTTPException(502, {"status": "error"})
+    widget = out["widget"] if access else free_mode.widget(out["widget"])
+    text = cost_tools.summary_text(widget)
+    ms = int((dt.datetime.now(dt.timezone.utc) - t0).total_seconds() * 1000)
+    _POOL.submit(xano.log_usage, dict(base, status="ok", latency_ms=ms))
+    _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
+        "kind": "tool_" + name, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid,
+        "has_access": access, "source": "rec_service", "cost_usd": 0, "latency_s": round(ms / 1000.0, 1),
+        "widget": widget.get("type"), "locked": bool(widget.get("locked")), "chat_id": int(body.chat_id or 0)})
+    if chat:
+        def persist():   # same order as a typed question: the quick action, then the answer with its widget
+            xano.add_message(chat["id"], "user", TOOL_LABELS[name])
+            xano.add_message(chat["id"], "assistant", text, [{"meta": "widget", "widget": widget}], [])
+            xano.touch_chat(chat)
+        background.add_task(persist)
+    return {"tool": name, "text": text, "widgets": [widget], "chat_id": chat["id"] if chat else None,
+            "price_locked": not access}
 
 
 class ContextBody(BaseModel):

@@ -19,8 +19,9 @@ class XanoError(Exception):
     pass
 
 
-def _get(url, token=None, params=None):
+def _get(url, token=None, params=None, extra_headers=None):
     headers = {"Authorization": "Bearer " + token} if token else {}
+    headers.update(extra_headers or {})
     r = requests.get(url, headers=headers, params=params, timeout=TIMEOUT)
     if r.status_code == 401:
         raise XanoError("unauthorized")
@@ -780,13 +781,15 @@ def parse_message_row(r):
     them. It is never a card; `filters` is server-side state the page doesn't get (app.chat_detail drops it)."""
     allc = [c for c in (r.get("cards") or []) if isinstance(c, dict)]
     meta = next((c for c in allc if c.get("meta") == "search"), None)
+    widgets = [c["widget"] for c in allc if c.get("meta") == "widget" and isinstance(c.get("widget"), dict)]
     allc = [c for c in allc if not c.get("meta")]
     strip = lambda c: {k: v for k, v in c.items() if k not in ("more", "via_more")}
     turn = {"id": r.get("id"), "role": r["role"], "text": r.get("content") or "",
             "cards": [strip(c) for c in allc if not c.get("more")],
             "more_cards": [strip(c) for c in allc if c.get("more")],
             "is_more": any(c.get("via_more") for c in allc),
-            "chips": r.get("chips") or []}
+            "chips": r.get("chips") or [],
+            "widgets": widgets}   # cost-tool widgets (2026-10-25), stored as hidden {"meta": "widget"} entries
     if meta and isinstance(meta.get("filters"), dict):
         turn["filters"] = meta["filters"]
     return turn
@@ -886,3 +889,75 @@ def delete_memory_note(user_id, index):
     notes.pop(visible[int(index)])
     _put_full(MEMORY_TABLE, row, {"notes": notes})
     return notes
+
+
+# ---------------------------------------------------------------- cost tools (2026-10-25)
+# The same GETs the WeWeb Cost tools / Budget tabs make, with the user's own token. WeWeb sends the token in an
+# Auth_Token header as well as Authorization, so we send both (Xano reads Authorization; Auth_Token is harmless).
+# Reference tables (state averages, guest modifiers, categories) change rarely: cached in process for an hour.
+
+_REF_TTL_S = 3600
+_REF = {}
+
+
+def _app_get(path, token, params=None):
+    return _get(config.API_APP_GROUP + path, token, params, extra_headers={"Auth_Token": token or ""})
+
+
+def _cached(key, fetch):
+    hit = _REF.get(key)
+    now = dt.datetime.now(dt.timezone.utc).timestamp()
+    if hit and now - hit[0] < _REF_TTL_S:
+        return hit[1]
+    val = fetch()
+    _REF[key] = (now, val)
+    return val
+
+
+def state_average_rows(token):
+    """Xano table 4 via GET /admin_location_adjustment: [{State, Cost_of_Average_Wedding, ...}] (53 rows)."""
+    return _cached("t4", lambda: _app_get("/admin_location_adjustment", token) or [])
+
+
+def guest_modifier(token, guest_count):
+    """Xano table 3 via GET /number_of_guests?Guest_count=N (exact match on "0".."300" in steps of 5) ->
+    the Modifier as a float, or None (no row - e.g. 7 - or not a number)."""
+    def fetch():
+        d = _app_get("/number_of_guests", token, {"Guest_count": int(guest_count)})
+        first = d[0] if isinstance(d, list) and d else (d.get("items") or [None])[0] if isinstance(d, dict) else None
+        try:
+            v = float((first or {}).get("Modifier"))
+        except (TypeError, ValueError):
+            return None
+        return v if v > 0 else None
+    return _cached(("t3", int(guest_count)), fetch)
+
+
+def budget_categories(token):
+    """Xano table 19 via GET /budget_breakdown_current_budget_breakdown: 13 categories with Budget_Focus_* %."""
+    return _cached("t19", lambda: _app_get("/budget_breakdown_current_budget_breakdown", token) or [])
+
+
+def user_packages(token, user_id):
+    """The couple's budget items (Xano table 33) via GET /packages?user_id=, re-filtered to this user in code."""
+    uid = int(user_id)
+    rows = _app_get("/packages", token, {"user_id": uid}) or []
+    return [r for r in rows if isinstance(r, dict) and int(r.get("user_id") or 0) == uid]
+
+
+def venue_quotes(token, email):
+    """The couple's manually entered venue quotes (Venue Calculator, venue_calculator_entries_v1, ep196) via the
+    app's GET ?user_email=&page=&per_page=. NOTE ep196 is PUBLIC and filters by the email it is given; we only
+    ever pass the verified user's own email, and re-filter in code."""
+    email = (email or "").strip().lower()
+    if not email:
+        return []
+    out, page = [], 1
+    while page <= 10:
+        d = _app_get("/venue_calculator_entries_v1", token, {"user_email": email, "page": page, "per_page": 50}) or {}
+        items = d.get("items") if isinstance(d, dict) else d
+        out += [r for r in items or [] if (r.get("user_email") or "").strip().lower() == email]
+        if not isinstance(d, dict) or not d.get("nextPage"):
+            break
+        page += 1
+    return out
