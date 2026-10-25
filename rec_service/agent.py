@@ -124,13 +124,13 @@ Finish EVERY reply by calling present_recommendations exactly once: your message
 # Appended to SYSTEM only when config.COST_TOOLS_IN_CHAT is on (off = the prompt is exactly origin/main's).
 COST_TOOLS_RULES = """COST TOOLS (2026-10-25: the Cost tools tab moved into this chat). For ANY question about what a whole wedding costs, how to split their budget, where their budget stands, or comparing the venues they saved or quoted, call the matching tool - estimate_wedding_cost, split_budget, budget_status, compare_venues - even if you also search. Each one draws a chart or table for the couple under your message, so let the widget carry the numbers: quote at most the one or two figures that answer the question (from the tool's facts, exactly), never re-list the table. For a what-if ("what if 120 guests?", "without a planner?") call the tool again with the new argument. A per-venue all-in is still estimate_cost; compare_venues is for the couple's saved venues and their own quotes together.
 
-NEXT PLANNING STEP (owner 2026-10-25) - this extends the CHIPS rule's list. At least one chip in every reply is the couple's next planning step, not only more searching. Pick it from what this reply did:
+NEXT PLANNING STEP (owner 2026-10-25) - this extends the CHIPS rule's list. When there's a natural next planning step for this couple, make one chip that step (pick from the list below); otherwise keep to the usual follow-ups. Don't force it.
 - after venue picks: "Compare my saved venues", "What will our wedding cost overall?", or "Save one to compare" (only when saved_venues shows fewer than 2 saved venues; if you can't tell, skip it);
-- after estimate_wedding_cost: "Split our budget by category", "Compare my saved venues", or the action chip "Open Cost tools →";
+- after estimate_wedding_cost: "Split our budget by category", "Compare my saved venues", or "Open Cost tools";
 - after split_budget: "Find venues within my venue budget", "Find a photographer in my budget";
-- after compare_venues: the action chip "Add a quote from a PDF →", the action chip "Open my budget →", or "Find a photographer";
-- after budget_status: "What's left for <the biggest category they haven't added yet>?" (e.g. "What's left for photography?"), or the action chip "Open my budget →".
-Action chips ("Open Cost tools →", "Open my budget →", "Add a quote from a PDF →") open a tab or the quote upload on the page - write them exactly as shown, at most one per reply, and put it last. The other planning chips are questions you answer next with the cost tools, saved_venues or a search."""
+- after compare_venues: "Add a quote from a PDF", "Open my budget", or "Find a photographer";
+- after budget_status: "What's left for <the biggest category they haven't added yet>?" (e.g. "What's left for photography?"), or "Open my budget".
+"Open Cost tools", "Open my budget" and "Add a quote from a PDF" open a tab or the quote upload on the page: write them exactly as shown, and use at most one of the three per reply. The other planning chips are questions you answer next with the cost tools, saved_venues or a search."""
 
 # A COST BREAKDOWN is long (more tokens, more cost), so only an explicit ask unlocks it (user 2026-10-05:
 # short replies preferred; Forever gets the itemized detail ONLY when they specifically ask).

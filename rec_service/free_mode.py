@@ -307,7 +307,7 @@ RULES = """FREE MODE - this couple has no Tulle plan. These rules OVERRIDE every
 
 # Appended to RULES only when config.COST_TOOLS_IN_CHAT is on (agent.run).
 COST_TOOLS_RULE = """- Cost tools (estimate_wedding_cost, split_budget, budget_status, compare_venues): you may call them when the couple asks what a wedding costs, how to split their budget, where their budget stands or to compare their venues. Their numbers appear to the couple in a chart under your message - your own text stays figure-free ("Here's a typical-cost estimate for your state and guest count"). compare_venues shows only the couple's own quotes on this plan.
-- Next-step chips (NEXT PLANNING STEP above) are allowed on this plan even though they mention cost or budget: "What will our wedding cost?", "Split our budget by category", "Compare my saved venues", "What's left for photography?" and the action chips. Not the price-filtered searches ("Find venues within my venue budget", "Find a photographer in my budget") - offer "Find a photographer" instead."""
+- Next-step chips (NEXT PLANNING STEP above) are allowed on this plan even though they mention cost or budget: "What will our wedding cost?", "Split our budget by category", "Compare my saved venues", "What's left for photography?", "Open Cost tools", "Open my budget" and "Add a quote from a PDF". Not the price-filtered searches ("Find venues within my venue budget", "Find a photographer in my budget") - offer "Find a photographer" instead."""
 
 
 def _tool(name):

@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import chips as ch  # noqa: E402
 import free_mode  # noqa: E402
 
-OPEN_COST, OPEN_BUDGET, ADD_PDF = "Open Cost tools →", "Open my budget →", "Add a quote from a PDF →"
+OPEN_COST, OPEN_BUDGET, ADD_PDF = "Open Cost tools", "Open my budget", "Add a quote from a PDF"
 
 
 def _asst(*chips):
@@ -28,12 +28,24 @@ def _asst(*chips):
 
 # ---------------------------------------------------------------- action chips
 
+def test_emitted_chips_look_like_every_other_chip():
+    """Owner 2026-10-25: next-step chips blend in - no arrow or marker on anything the backend emits."""
+    import agent
+    emitted = (list(ch.ACTION_CHIPS) + [c for v in ch.NEXT_STEPS.values() for c in v] + list(ch.GUARANTEE_DEFAULT.values())
+               + ch.FREE_FALLBACK_STEPS + ch.STARTER_CHIPS_COST_TOOLS + free_mode.STARTER_CHIPS_COST_TOOLS
+               + [c for t in ch.TOOL_WIDGET for f in (False, True) for c in ch.tool_chips(t, free=f)])
+    assert not [c for c in emitted if "→" in c or "->" in c]
+    assert "→" not in agent.COST_TOOLS_RULES and "put it last" not in agent.COST_TOOLS_RULES
+    assert "Don't force it." in agent.COST_TOOLS_RULES and "at most one of the three per reply" in agent.COST_TOOLS_RULES
+
+
 def test_action_chips_are_exactly_three():
     assert ch.ACTION_CHIPS == {OPEN_COST: "open_cost_tools", OPEN_BUDGET: "open_budget", ADD_PDF: "add_pdf_quote"}
 
 
-def test_action_label_ignores_case_punctuation_and_a_missing_arrow():
+def test_action_label_ignores_case_punctuation_and_an_arrow():
     assert ch.action_label("open my budget") == OPEN_BUDGET
+    assert ch.action_label("Open my budget →") == OPEN_BUDGET and ch.action_label("Open Cost tools ->") == OPEN_COST
     assert ch.action_label("Add a quote from a PDF") == ADD_PDF
     assert ch.action_label("Open my budget tab") is None
 

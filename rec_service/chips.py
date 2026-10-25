@@ -68,8 +68,10 @@ def dedupe_chips(chips, history):
 
 # ACTION chips: the front end handles these WITHOUT calling the model (switches tab / opens the PDF-quote flow), so
 # they never spend a free question. Label -> action id the page switches on. Exact labels - the page matches them.
-ACTION_CHIPS = {"Open Cost tools →": "open_cost_tools", "Open my budget →": "open_budget",
-                "Add a quote from a PDF →": "add_pdf_quote"}
+# No arrow or other marker (owner 2026-10-25: they must look and read like every other chip); action_label still
+# maps an arrow / case / punctuation variant from the model back to these.
+ACTION_CHIPS = {"Open Cost tools": "open_cost_tools", "Open my budget": "open_budget",
+                "Add a quote from a PDF": "add_pdf_quote"}
 _ACTION_BY_KEY = {chip_key(k): k for k in ACTION_CHIPS}
 
 # Starter chips when REC_COST_TOOLS_IN_CHAT is on: the whole-wedding estimate replaces "Is a venue I like realistic?"
@@ -90,18 +92,18 @@ PRICE_FILTER_PLANNING = {"find venues within my venue budget", "find a photograp
 # Next steps per cost widget type, best first. The code guarantee and /rec/tool use them; the prompt
 # (agent.COST_TOOLS_RULES, NEXT PLANNING STEP) gives the model the same menu.
 NEXT_STEPS = {
-    "cost_estimate": ["Split our budget by category", "Compare my saved venues", "Open Cost tools →"],
-    "budget_split": ["Find venues within my venue budget", "Find a photographer in my budget", "Open my budget →"],
-    "venue_compare": ["Add a quote from a PDF →", "Open my budget →", "Find a photographer"],
-    "budget_status": ["What's left for photography?", "Open my budget →"],
+    "cost_estimate": ["Split our budget by category", "Compare my saved venues", "Open Cost tools"],
+    "budget_split": ["Find venues within my venue budget", "Find a photographer in my budget", "Open my budget"],
+    "venue_compare": ["Add a quote from a PDF", "Open my budget", "Find a photographer"],
+    "budget_status": ["What's left for photography?", "Open my budget"],
 }
 TOOL_WIDGET = {"estimate_cost": "cost_estimate", "split_budget": "budget_split", "compare_venues": "venue_compare",
                "budget_status": "budget_status"}
 # What the code guarantee appends when a cost reply has no planning/action chip (owner spec 2026-10-25).
 GUARANTEE_DEFAULT = {"cost_estimate": "Split our budget by category", "budget_split": "Find venues within my venue budget",
-                     "venue_compare": "Add a quote from a PDF →", "budget_status": "Open my budget →"}
+                     "venue_compare": "Add a quote from a PDF", "budget_status": "Open my budget"}
 # Free plan: same steps minus the price-filtered searches, topped up with steps a free user can take.
-FREE_FALLBACK_STEPS = ["Compare my saved venues", "What will our wedding cost?", "Open my budget →", "Find a photographer"]
+FREE_FALLBACK_STEPS = ["Compare my saved venues", "What will our wedding cost?", "Open my budget", "Find a photographer"]
 
 
 # "What's left for <the biggest unbooked category>?" after budget_status: the first of these (Tulle's largest budget
