@@ -400,6 +400,7 @@ def build(token, now_ms=None, short=False):
 
 
 KILL = "`python .claude/xano_backups/revert_geo_pricing.py --off`"
+PRICING_DECIDED = "2026-10-25 keep NY/CA/International + Rest/TX prices"
 
 
 def _short(k, live, post_days, cpost, mism):
@@ -426,10 +427,12 @@ def _short(k, live, post_days, cpost, mism):
         checks.append(f":rotating_light: {k['bad30']} Stripe webhook failure(s)")
         alerts.append(f"Stripe webhook ep30 failed {k['bad30']}x in 24h - someone may have paid without getting access.")
     c_r = k["p"].get("raised")
-    if c_r and c_r[2] <= 0.05:
+    # 2026-10-25 owner: "we're keeping the prices ... stop asking". The keep/revert prompts are off; the revenue
+    # line, mismatch/BNPL/webhook checks above stay as monitoring. Set PRICING_DECIDED = "" to bring them back.
+    if c_r and c_r[2] <= 0.05 and not PRICING_DECIDED:
         alerts.append(f"Pricing test: raised-arm Forever buys are well below the pre-launch rate ({c_r[0]} vs {c_r[1]:.1f}, "
                       f"P={c_r[2]:.0%}). Decide: keep running or revert ({KILL}).")
-    if n >= 30:
+    if n >= 30 and not PRICING_DECIDED:
         alerts.append(f"Pricing test has {n} post-launch Forever buys - enough to read. Decide: keep the NY/CA/International "
                       "prices or revert.")
     ny = k.get("ny")
@@ -438,7 +441,7 @@ def _short(k, live, post_days, cpost, mism):
         l1 += (f"\nNY tier (day {d_new:.1f}): ${r_new:.0f}/d vs ${r_old:.0f}/d on $149 prices, "
                f"${r_pre:.0f}/d before 10-01.")
     l2 = ("Checks: " + (" · ".join(checks) if checks else "routing, BNPL, Stripe webhook OK :white_check_mark:")
-          + (f" · {n} of ~30 buys needed before calling it" if n < 30 else ""))
+          + (f" · {n} of ~30 buys needed before calling it" if n < 30 and not PRICING_DECIDED else ""))
     return l1 + "\n" + l2
 
 

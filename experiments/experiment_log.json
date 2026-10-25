@@ -97,7 +97,7 @@
    "dates_note": "",
    "design": "pre/post",
    "stat_sig": "not computed; ~120 buys/arm needed to detect -30%",
-   "decision": "Holding; re-read 2026-11-04",
+   "decision": "Kept (owner 2026-10-25: \"we're keeping the prices\")",
    "confounds_noted": [
     "October-wide lift (Rest+TX x1.30 with no price change)"
    ],
@@ -108,17 +108,22 @@
     {
      "date": "2026-10-21",
      "note": "Revenue x1.58 vs Aug 4 - Sep 30 ($112 vs $71/day); 2-day conversion 5.2% vs 5.6%. BNPL usage: zero."
+    },
+    {
+     "date": "2026-10-25",
+     "note": "Owner decision: keep current prices. Brief keep/revert prompts turned off (bnpl_watch PRICING_DECIDED); revenue line stays as monitoring."
     }
    ],
    "id": "EXP-2026-10-ca-intl-149",
    "name": "CA + International Forever at $149 with BNPL",
-   "status": "reading",
+   "status": "concluded",
    "themes": [
     "pricing"
    ],
    "goal": "+15% price without lower conversion",
    "primary_metric": "revenue/day per arm; 2-day conversion",
-   "start_date": "2026-10-01"
+   "start_date": "2026-10-01",
+   "end_date": "2026-10-25"
   },
   {
    "guardrail": "",
@@ -271,7 +276,7 @@
   {
    "id": "EXP-2026-10-pricing-phase2",
    "name": "Pricing phase 2: raised arm vs baseline (daily brief tracker)",
-   "status": "reading",
+   "status": "concluded",
    "themes": [
     "pricing"
    ],
@@ -279,7 +284,7 @@
    "primary_metric": "revenue/day per arm; new Forever buys vs expected",
    "guardrail": "",
    "start_date": "2026-10-01",
-   "end_date": null,
+   "end_date": "2026-10-25",
    "review_date": null,
    "dates_note": "2026-10-01 (approx; brief day 23.4 on 10-24)",
    "design": "A/B by arm",
@@ -287,10 +292,14 @@
     {
      "date": "2026-10-24",
      "note": "10-24 brief: raised $213/d (was $225) vs baseline $221/d (was $199); Forever buys raised 22 vs 28.4 expected, baseline 19 vs 21.7 expected; 46 post-launch Forever buys; 6 price/arm mismatches"
+    },
+    {
+     "date": "2026-10-25",
+     "note": "Owner decision: keep current prices. Brief keep/revert prompts turned off (bnpl_watch PRICING_DECIDED); revenue line stays as monitoring."
     }
    ],
    "stat_sig": "not computed",
-   "decision": "keep NY/CA/International prices or revert",
+   "decision": "Kept (owner 2026-10-25: \"we're keeping the prices\")",
    "confounds_noted": [
     "10-14 bundle (price raise + 20% offer + bonus views + free assistant)",
     "6 buyers paid another arm's price"
@@ -302,7 +311,7 @@
   {
    "id": "EXP-2026-10-ny-tier",
    "name": "NY tier $35/$60/$135",
-   "status": "reading",
+   "status": "concluded",
    "themes": [
     "pricing"
    ],
@@ -310,7 +319,7 @@
    "primary_metric": "NY revenue/day",
    "guardrail": "",
    "start_date": "2026-10-07",
-   "end_date": null,
+   "end_date": "2026-10-25",
    "review_date": null,
    "dates_note": "2026-10-07 (approx; brief day 17.5 on 10-24)",
    "design": "pre/post",
@@ -318,10 +327,14 @@
     {
      "date": "2026-10-24",
      "note": "$138/d vs $80/d on $149 prices, $158/d before 10-01"
+    },
+    {
+     "date": "2026-10-25",
+     "note": "Owner decision: keep current prices. Brief keep/revert prompts turned off (bnpl_watch PRICING_DECIDED); revenue line stays as monitoring."
     }
    ],
    "stat_sig": "not computed",
-   "decision": "",
+   "decision": "Kept (owner 2026-10-25: \"we're keeping the prices\")",
    "confounds_noted": [
     "10-14 bundle"
    ],
@@ -332,7 +345,7 @@
   {
    "id": "EXP-2026-10-hub-pricing",
    "name": "Rest-of-US + Texas baseline raised to $35/$60/$135 (10-14 bundle)",
-   "status": "live",
+   "status": "concluded",
    "themes": [
     "pricing",
     "paywall"
@@ -341,13 +354,18 @@
    "primary_metric": "revenue/day",
    "guardrail": "",
    "start_date": "2026-10-14",
-   "end_date": null,
-   "review_date": "2026-11-04",
+   "end_date": "2026-10-25",
+   "review_date": null,
    "dates_note": "2026-10-14",
    "design": "pre/post",
-   "results": [],
+   "results": [
+    {
+     "date": "2026-10-25",
+     "note": "Owner decision: keep current prices. Brief keep/revert prompts turned off (bnpl_watch PRICING_DECIDED); revenue line stays as monitoring."
+    }
+   ],
    "stat_sig": "",
-   "decision": "",
+   "decision": "Kept (owner 2026-10-25: \"we're keeping the prices\")",
    "confounds_noted": [
     "shipped together with 20% exploding offer, +2 bonus free views, assistant free mode - cannot separate effects (owner choice)"
    ],
