@@ -533,28 +533,32 @@
   },
   {
    "id": "EXP-2026-10-search-railway",
-   "name": "Vendor search: Railway (Meilisearch) with Xano ep119 fallback",
-   "status": "planned",
+   "name": "Assistant venue search on Railway (Meilisearch) with Xano ep119 fallback - 15% of users",
+   "status": "live",
    "themes": [
     "performance",
     "search"
    ],
    "goal": "Faster search without reliability loss",
-   "primary_metric": "client-measured search latency p50/p90 + error/fallback rate (Mixpanel)",
-   "guardrail": "",
-   "start_date": null,
+   "primary_metric": "assistant search_ms and total answer latency (railway vs ep119 arm), fallback rate, error rate - daily brief block",
+   "guardrail": "fallback rate <5%, error rate not above ep119",
+   "start_date": "2026-10-26",
    "end_date": null,
    "review_date": null,
-   "dates_note": "planned (proposal: 20% of users by user id, then 100%)",
-   "design": "pre/post",
+   "dates_note": "Live 2026-10-26 01:08 UTC at 15% (stable user-id bucket) + owner account forced on; hourly data sync from 01:10 UTC",
+   "design": "A/B by stable user bucket (15% railway / 85% ep119)",
    "results": [
     {
      "date": "2026-10-25",
      "note": "baseline: 2026-10-25 end-to-end from outside Railway, real search shapes: ep119 cache-miss p50 1653 / p90 3000 ms; ep119 hit 268 ms; Railway 158 / 186 ms (+~230 ms first search per user for auth/me)"
+    },
+    {
+     "date": "2026-10-26",
+     "note": "Launch check: Georgia barn search on Railway took 234 ms (assistant ep119 avg ~4.1s); whole answer 12.6s. Parity 22/23 same venue sets; popular-sort order drift from stale click counts (now synced hourly)."
     }
    ],
    "stat_sig": "",
-   "decision": "",
+   "decision": "Ramp to 25% when the brief says green (>=50 Railway requests, fallback <5%, search p50 >=30% faster)",
    "confounds_noted": [],
    "risks": [
     "data freshness: daily sync 08:30 UTC = up to 24h stale",
