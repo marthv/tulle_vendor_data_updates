@@ -5,12 +5,14 @@ import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
 import math
 import re
+import time
 
 import requests
 
 import config
 import estimate
 import prefs
+import railway_search
 
 TIMEOUT = 20
 
@@ -184,12 +186,20 @@ VIBES = ["Scenic / Nature Views", "Natural Light / Large Windows", "Historic Arc
 PRICING_MODELS = ["All-Inclusive", "Semi-Inclusive", "Raw Space"]
 
 
-def search_venues(token, *, states, page_size=8, **filters):
+def search_venues(token, *, states, page_size=8, search_log=None, **filters):
     """Several states -> one ep119 search PER STATE, results interleaved. MEASURED 2026-10-04: a single
     multi-state search sorted by popularity hands every slot to the most-clicked state (Georgia+Illinois
     top 12 = 12 Illinois; Louisiana+California+Florida top 12 = 0 Louisiana), so couples comparing states
-    got picks from one of them and the model told them they hadn't picked a state."""
-    return _interleave(_search_one, token, states, page_size, "venues", **filters)
+    got picks from one of them and the model told them they hadn't picked a state.
+    search_log: a railway_search.SearchLog (2026-10-26) - Railway arm users' searches go to the Railway search-api
+    first, ep119 on any failure; None = ep119 only, exactly as before."""
+    if search_log is None:
+        return _interleave(_search_one, token, states, page_size, "venues", **filters)
+    t = time.time()
+    try:
+        return _interleave(_search_one, token, states, page_size, "venues", search_log=search_log, **filters)
+    finally:
+        search_log.add_wall((time.time() - t) * 1000)
 
 
 def _interleave(search_one, token, states, page_size, key, **filters):
@@ -224,9 +234,23 @@ def _interleave(search_one, token, states, page_size, key, **filters):
 
 def _search_one(token, *, states, guests=0, max_venue_fee=0, max_food_per_person=0,
                 venue_types=None, vibes=None, pricing_models=None, keyword="", sort_by="popular_desc",
-                outdoor_ceremony=False, page_size=8, page=1):
+                outdoor_ceremony=False, page_size=8, page=1, search_log=None):
     """ep119 - the same search the Vendor Discovery grid uses. `states` match the multi-value State
     field server-side (never equality). max_capacity means 'seats AT LEAST N'."""
+    params = venue_search_params(states=states, guests=guests, max_venue_fee=max_venue_fee,
+                                 max_food_per_person=max_food_per_person, venue_types=venue_types, vibes=vibes,
+                                 pricing_models=pricing_models, keyword=keyword, sort_by=sort_by,
+                                 outdoor_ceremony=outdoor_ceremony, page_size=page_size, page=page)
+    d = railway_search.fetch(lambda tk, p: _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_search", tk, p),
+                             token, params, search_log)
+    return _venue_result(d)
+
+
+def venue_search_params(*, states, guests=0, max_venue_fee=0, max_food_per_person=0, venue_types=None, vibes=None,
+                        pricing_models=None, keyword="", sort_by="popular_desc", outdoor_ceremony=False, page_size=8,
+                        page=1):
+    """The exact ep119 query of one venue search (also sent, unchanged, to the Railway search-api; and used by
+    evals/railway_search_parity.py so the parity check runs the queries the assistant really sends)."""
     params = {"Category_Input": "Venue", "page": max(1, int(page or 1)), "page_size": max(1, min(int(page_size), 60)),
               "states[]": list(states or []), "State_Input": (states or [""])[0],
               "max_capacity": int(guests or 0), "capacity_ceiling": 10000,
@@ -243,7 +267,10 @@ def _search_one(token, *, states, guests=0, max_venue_fee=0, max_food_per_person
         params["pricing_models[]"] = pm
     if outdoor_ceremony:
         params["outdoor_ceremony"] = "yes"   # ep119 -> flt_outdoor_ceremony == true (from table 36 Outside_Ceremony_Space)
-    d = _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_search", token, params)
+    return params
+
+
+def _venue_result(d):
     out = []
     for it in d.get("items", []):
         out.append({

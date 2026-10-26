@@ -9,7 +9,7 @@ User ask 2026-10-04: the DM had grown long (the pricing-test section alone was ~
     Decisions        only things that need a human today (from every section's alerts), else "none"
     Endpoint health  UNCHANGED (perf_digest.format_health_short) - the user asked to keep it
     Pricing test     2 lines (bnpl_watch short=True); full tables stay in the logs + dashboard
-    Tulle Assistant  1 line (rec_watch)
+    Tulle Assistant  1 line (rec_watch) + the Railway search block (rec_watch.railway_section, 2026-10-26)
     NPS              1 line - goal is >= 1 rating/day (user, 2026-10-04)
 
 Every section is isolated: one failing never costs the others or the endpoint report.
@@ -149,6 +149,21 @@ def compose(token, health_text, now_ms=None):
         rec_tl = ",".join(line.split(" - ", 1)[1].split(",")[:2]) if " - " in line else None
     except Exception as e:
         sections.append(f":warning: _Tulle Assistant section failed: {e}_")
+
+    # Railway search rollout (2026-10-26): its own block under the Tulle Assistant line + one TL;DR bullet.
+    # rec_watch.railway_section never raises; the try is belt and braces so the brief always goes out.
+    try:
+        import rec_watch
+        lines, rail_tl, light = rec_watch.railway_section(token)
+        sections.append("\n".join(lines))
+        tldr.append(rail_tl)
+        if light == ":red_circle:":
+            decisions.append("Railway search: fallbacks or errors over the hold line - check Railway search-api, "
+                             "consider REC_RAILWAY_SEARCH_PCT=0 on rec-engine.")
+        elif light == ":large_green_circle:":
+            decisions.append("Railway search on track - decide whether to ramp REC_RAILWAY_SEARCH_PCT to 25.")
+    except Exception as e:
+        sections.append(f":warning: _Railway search section failed: {e}_")
 
     try:
         n = nps(token, now_ms)

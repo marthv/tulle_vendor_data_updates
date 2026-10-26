@@ -32,6 +32,7 @@ import cost_tools
 import estimate
 import free_mode
 import progress as progress_mod
+import railway_search
 import xano
 
 SYSTEM = """You are Tulle's wedding vendor guide for VENUES, PHOTOGRAPHERS and ENTERTAINMENT. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and hundreds of photographers, DJs, bands and musicians, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
@@ -638,7 +639,7 @@ def strip_repeat_caveat(text):
 
 
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
-        detail="full", prior_vendor_ids=(), preferences="", active_filters=None, progress=None):
+        detail="full", prior_vendor_ids=(), preferences="", active_filters=None, progress=None, search_log=None):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
@@ -651,8 +652,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         checked before every model call and before every tool call (and between search and pricing inside
         search_venues); once set, no further model or tool call runs and the result is {"stopped": True, ...}.
         None = no labels, never stops (exactly as before).
+    search_log: a railway_search.SearchLog (2026-10-26); None = one for this user's arm (railway_search.arm). Its
+        summary is usage["search"] (engine / fallback / ms of the ep119-path venue searches).
     Returns (result_dict, usage_dict)."""
     prog = progress or progress_mod.NULL
+    slog = search_log if search_log is not None else railway_search.SearchLog(railway_search.arm((user or {}).get("id")))
     free = detail == "free"
     light = detail in ("light", "free")
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
@@ -835,15 +839,15 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             # (6 states): identical venues in identical order, 2.9-4.8s vs 5.9-11.6s - the three parallel
             # pages collided in Xano, and pages 2-3 take ep119's id-list path. A failure retries once at 20.
             try:
-                r = xano.search_venues(token, page_size=SEARCH_POOL, **q)
+                r = xano.search_venues(token, page_size=SEARCH_POOL, search_log=slog, **q)
             except Exception:
-                r = xano.search_venues(token, page_size=20, **q)
+                r = xano.search_venues(token, page_size=20, search_log=slog, **q)
             dedup = {}
             for v in r["venues"]:
                 dedup.setdefault(v.get("vendor_id"), v)
             venues = [v for v in dedup.values() if in_city(v.get("address"), city)]
         else:
-            r = xano.search_venues(token, page_size=16, **q)
+            r = xano.search_venues(token, page_size=16, search_log=slog, **q)
             venues = r["venues"]
         timing["search_ms"] += int((time.time() - t_search) * 1000)
         timing["searches"] += 1
@@ -1512,7 +1516,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         usage.update(latency_ms=int((time.time() - t0) * 1000), model=model_used, stopped=True,
                      tool_breakdown=dict(timing["tools"]), search_ms=timing["search_ms"],
                      pricing_ms=timing["pricing_ms"], searches=timing["searches"], priced_sync=timing["priced"],
-                     deferred_wait_ms=0, figure_bounced=guard["bounced"], unsupported_figures=guard["unsupported"])
+                     deferred_wait_ms=0, figure_bounced=guard["bounced"], unsupported_figures=guard["unsupported"],
+                     search=slog.summary())
         return ({"stopped": True, "text": "", "cards": [], "chips": [], "more_cards": [], "search_filters": {},
                  "notes_saved": saved_notes, "widgets": [], "dropped_unverified_ids": []}, usage)
     t_def = time.time()
@@ -1530,6 +1535,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         usage["no_present_fallback"] = True
     usage["latency_ms"] = int((time.time() - t0) * 1000)
     usage["search_ms"] = timing["search_ms"]          # ep119 inside search_venues
+    usage["search"] = slog.summary()                  # Railway search rollout (2026-10-26): engine / fallback / ms
     usage["pricing_ms"] = timing["pricing_ms"]        # ep230/231 inside search_venues, waits only (not background)
     usage["searches"] = timing["searches"]
     usage["priced_sync"] = timing["priced"]

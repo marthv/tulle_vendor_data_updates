@@ -59,6 +59,23 @@ GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
 # answers carry their widgets. Default OFF until the WeWeb widget component is published - the live page can't
 # draw widgets, so the model must not say "see the chart below" yet. POST /rec/tool works either way.
 COST_TOOLS_IN_CHAT = os.environ.get("REC_COST_TOOLS_IN_CHAT", "0") == "1"
+# Railway search (owner decision 2026-10-26): this % of assistant users (stable per user, see railway_search.arm)
+# get their venue searches from the Railway search-api instead of ep119, with ep119 as the fallback. 0 = off (the
+# search-api is never called). Start: 10. Set it back to 0 to turn it off without a deploy.
+def _pct(v):
+    try:
+        return max(0, min(100, int(float(v))))
+    except (TypeError, ValueError):
+        return 0
+
+
+RAILWAY_SEARCH_PCT = _pct(os.environ.get("REC_RAILWAY_SEARCH_PCT", "0"))
+RAILWAY_SEARCH_URL = os.environ.get("REC_RAILWAY_SEARCH_URL",
+                                    "https://search-api-production-66bb.up.railway.app/search")
+try:
+    RAILWAY_SEARCH_TIMEOUT_S = float(os.environ.get("REC_RAILWAY_SEARCH_TIMEOUT_S", "3.0"))
+except ValueError:
+    RAILWAY_SEARCH_TIMEOUT_S = 3.0
 # "1" = off. One env var flip on Railway, no deploy.
 KILL_SWITCH = os.environ.get("REC_KILL_SWITCH", "0") == "1"
 

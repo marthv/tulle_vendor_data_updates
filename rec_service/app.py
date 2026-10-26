@@ -53,6 +53,7 @@ import guards
 import notify
 import prefs
 import progress
+import railway_search
 import xano
 
 app = FastAPI(title="Tulle recommendations")
@@ -196,6 +197,23 @@ def _memory_notes(user_id):
     return _memory(user_id)[0]
 
 
+def _search_cols(summary):
+    """rec_usage columns for the Railway search rollout (2026-10-26; added to table 79 in Xano)."""
+    s = summary or {}
+    return {"search_engine": s.get("search_engine") or "", "search_fallback": s.get("search_fallback") or "",
+            "search_ms": int(s.get("search_ms") or 0)}
+
+
+def _search_props(user, summary=None):
+    """Mixpanel rec_server_request props for the rollout. search_arm = the user's bucket even if no search ran."""
+    s = summary or {}
+    return {"search_arm": s.get("search_arm") or railway_search.arm(user.get("id")),
+            "search_engine": s.get("search_engine") or "", "search_fallback": s.get("search_fallback") or "",
+            "railway_search_ms": int(s.get("railway_search_ms") or 0),
+            "ep119_search_ms": int(s.get("ep119_search_ms") or 0),
+            "search_fallbacks": int(s.get("search_fallbacks") or 0)}
+
+
 def _gate(kind, user, chat_id=0):
     """The one question check. Raises the blocked response (402/403/429/503) or returns what the caller
     needs to log the use and report the counters. Used by typed questions AND "Show 3 more"."""
@@ -218,7 +236,8 @@ def _gate(kind, user, chat_id=0):
     if not allowed:
         xano.log_usage(dict(base, status=status))
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
-                     {"kind": kind, "status": status, "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service"})
+                     {"kind": kind, "status": status, "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
+                      "search_arm": railway_search.arm(user.get("id"))})
         code = (402 if status in ("blocked_free_limit", "forever_only") else 403 if status == "feedback_required"
                 else 503 if status in ("killed", "blocked_global_cap", "blocked_free_cap") else 429)
         extra = {}
@@ -291,17 +310,18 @@ def _log_stopped(base, kind, user, paid, access, usage=None):
     free question or a daily prompt) with the cost actually incurred - the daily spend caps still see it."""
     u = usage or {}
     cost = guards.cost_usd(u["model"], u) if u.get("model") else 0
+    search = u.get("search")
     _POOL.submit(xano.log_usage, dict(base, status="stopped", counted_as_free=False, model=u.get("model") or "none",
                                       input_tokens=u.get("input_tokens", 0),
                                       cache_read_tokens=u.get("cache_read_tokens", 0),
                                       cache_write_tokens=u.get("cache_write_tokens", 0),
                                       output_tokens=u.get("output_tokens", 0), tool_calls=u.get("tool_calls", 0),
-                                      cost_usd=cost, latency_ms=u.get("latency_ms", 0)))
+                                      cost_usd=cost, latency_ms=u.get("latency_ms", 0), **_search_cols(search)))
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": kind, "status": "stopped", "forever": xano.has_forever(user), "beta_member": paid,
         "has_access": access, "source": "rec_service", "cost_usd": cost,
         "latency_s": round((u.get("latency_ms") or 0) / 1000, 1), "tool_calls": u.get("tool_calls", 0),
-        "model_turns": len(u.get("turns") or [])})
+        "model_turns": len(u.get("turns") or []), **_search_props(user, search)})
 
 
 def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None, tracker=None):
@@ -310,6 +330,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
     if tracker and tracker.cancelled():   # Stop before the model started: no model call, nothing spent
         _log_stopped(base, kind, user, paid, access)
         return _stopped(kind, paid, access, rows, feedback_given)
+    slog = railway_search.SearchLog(railway_search.arm(user.get("id")))   # Railway search rollout (2026-10-26)
     try:
         row = f_mem.result()
         raw = row.get("notes") or []
@@ -323,10 +344,11 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
                                   detail="full" if paid else "light" if access else "free",
                                   prior_vendor_ids=prior_ids, active_filters=active_filters,
                                   preferences=pref_hint,
-                                  on_note=lambda n: xano.add_memory_note(user["id"], n),
+                                  on_note=lambda n: xano.add_memory_note(user["id"], n), search_log=slog,
                                   **({"progress": tracker} if tracker else {}))
     except Exception as e:  # never charge a free refine for our own failure
-        xano.log_usage(dict(base, status="error", error=str(e)[:500]))
+        # The venue searches that ran before the failure (if any) keep the row attributable to an engine.
+        xano.log_usage(dict(base, status="error", error=str(e)[:500], **_search_cols(slog.summary())))
         raise HTTPException(502, {"status": "error"})
     # Stopped (2026-10-25) - also when Stop came after the last model call: the page has already given up on this
     # answer, so it is not shown, not counted and not saved (the same as an error).
@@ -341,7 +363,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
     _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model=usage["model"],
                         input_tokens=usage["input_tokens"], cache_read_tokens=usage["cache_read_tokens"],
                         cache_write_tokens=usage["cache_write_tokens"], output_tokens=usage["output_tokens"],
-                        tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"]))
+                        tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"],
+                        **_search_cols(usage.get("search"))))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": kind, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
@@ -361,7 +384,9 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         "searches": usage.get("searches"), "priced_sync": usage.get("priced_sync"),
         "deferred_wait_ms": usage.get("deferred_wait_ms"),
         "tool_breakdown": usage.get("tool_breakdown") or {},
-        **{"tool_ms_" + k: v for k, v in (usage.get("tool_breakdown") or {}).items()}})
+        **{"tool_ms_" + k: v for k, v in (usage.get("tool_breakdown") or {}).items()},
+        # Railway search rollout (2026-10-26): which engine answered the venue searches, and the user's arm.
+        **_search_props(user, usage.get("search"))})
     return dict(result, paid=paid, has_access=access,
                 **_counters(kind, paid, rows, counted_free, feedback_given, access))
 
@@ -623,7 +648,8 @@ def _show_more(user, body, background, tracker):
         "kind": "more", "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
         "cost_usd": 0, "cards": len(picks), "more_cards": reply["left"],
         "free_refines_left": guards.free_refines_left(
-            paid, rows + ([{"status": "ok", "counted_as_free": True}] if counted_free else []), feedback_given)})
+            paid, rows + ([{"status": "ok", "counted_as_free": True}] if counted_free else []), feedback_given),
+        "search_arm": railway_search.arm(user.get("id"))})
 
     def persist():   # same order as a typed question: user turn, assistant turn, bump the chat
         xano.add_message(chat["id"], "user", "Show 3 more")
@@ -687,7 +713,8 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": "tool_" + name, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid,
         "has_access": access, "source": "rec_service", "cost_usd": 0, "latency_s": round(ms / 1000.0, 1),
-        "widget": widget.get("type"), "locked": bool(widget.get("locked")), "chat_id": int(body.chat_id or 0)})
+        "widget": widget.get("type"), "locked": bool(widget.get("locked")), "chat_id": int(body.chat_id or 0),
+        "search_arm": railway_search.arm(user.get("id"))})
     if chat:
         def persist():   # same order as a typed question: the quick action, then the answer with its widget
             xano.add_message(chat["id"], "user", TOOL_LABELS[name])
@@ -864,6 +891,8 @@ def status(authorization: str = Header(None)):
                            guards.free_feedback_required(paid, rows, fb)),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"]),
             "cost_tools_in_chat": config.COST_TOOLS_IN_CHAT,
+            # Railway search rollout (2026-10-26): this user's stable bucket, so the split can be checked live.
+            "search_arm": railway_search.arm(user.get("id")), "railway_search_pct": config.RAILWAY_SEARCH_PCT,
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 
