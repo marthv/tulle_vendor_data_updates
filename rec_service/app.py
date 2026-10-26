@@ -246,9 +246,11 @@ def _turn_props(usage):
             "pricing_cache_bypass": int(pc.get("bypass") or 0)}
 
 
-def _gate(kind, user, chat_id=0):
+def _gate(kind, user, chat_id=0, waive_free=False):
     """The one question check. Raises the blocked response (402/403/429/503) or returns what the caller
-    needs to log the use and report the counters. Used by typed questions AND "Show 3 more"."""
+    needs to log the use and report the counters. Used by typed questions AND "Show 3 more".
+    waive_free (2026-10-26): the message answers one of OUR thin-profile questions, so it must not spend one of a
+    free user's questions (or be refused for having none left). Paid caps, spend caps and the kill switch still apply."""
     # `paid` = full beta member: Forever, plus every active plan when REC_BETA_AUDIENCE=paid (2026-10-08).
     # `access` (exact prices from ep230) = any active plan.
     paid = xano.beta_member(user)
@@ -262,6 +264,10 @@ def _gate(kind, user, chat_id=0):
     spend, free_spend = f_spend.result()
     allowed, status, counted_free = guards.decide(kind, paid, rows, spend, xano.today(), feedback_given,
                                                   free_spend_today=free_spend)
+    if waive_free and not paid:
+        if not allowed and status in ("blocked_free_limit", "feedback_required"):
+            allowed, status = True, "ok"
+        counted_free = False
     # tier is written for the free cap; Xano drops it until table 79 has a `tier` column (see config).
     base = {"user_id": user["id"], "kind": kind, "chat_id": chat_id, "model": config.MODEL,
             "tier": "paid" if paid else "free"}
@@ -358,11 +364,11 @@ def _log_stopped(base, kind, user, paid, access, usage=None):
 
 
 def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None, tracker=None,
-                 history=(), saved_lines=()):
+                 history=(), saved_lines=(), waive_free=False):
     """history: the chat's stored turns (the upgrade prompt shows at most once per chat). saved_lines: memory lines
     this request already saved from the couple's answer to a thin-profile question (shown as notes_saved)."""
     f_mem = _POOL.submit(_memory_row, user["id"])
-    paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id)
+    paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id, waive_free=waive_free)
     if tracker and tracker.cancelled():   # Stop before the model started: no model call, nothing spent
         _log_stopped(base, kind, user, paid, access)
         return _stopped(kind, paid, access, rows, feedback_given)
@@ -761,7 +767,8 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
     if out is None:
         msgs, kw = _model_inputs(history, text)
         out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
-                           active_filters=kw["active_filters"], tracker=tracker, history=history, saved_lines=lines)
+                           active_filters=kw["active_filters"], tracker=tracker, history=history, saved_lines=lines,
+                           waive_free=bool(answered))
     if out.get("stopped"):
         return dict(out, chat_id=chat["id"])   # nothing saved: not even the question (as on an error)
     out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
