@@ -533,20 +533,20 @@
   },
   {
    "id": "EXP-2026-10-search-railway",
-   "name": "Assistant venue search on Railway (Meilisearch) with Xano ep119 fallback - 15% of users",
+   "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 20% of users",
    "status": "live",
    "themes": [
     "performance",
     "search"
    ],
    "goal": "Faster search without reliability loss",
-   "primary_metric": "assistant search_ms and total answer latency (railway vs ep119 arm), fallback rate, error rate - daily brief block",
+   "primary_metric": "assistant search_ms + total latency (table 79 search_engine), Discovery ep119 duration split by X-Search-Engine header; fallback + error rate",
    "guardrail": "fallback rate <5%, error rate not above ep119",
    "start_date": "2026-10-26",
    "end_date": null,
    "review_date": null,
-   "dates_note": "Live 2026-10-26 01:08 UTC at 15% (stable user-id bucket) + owner account forced on; hourly data sync from 01:10 UTC",
-   "design": "A/B by stable user bucket (15% railway / 85% ep119)",
+   "dates_note": "Assistant live 2026-10-26 01:08 UTC at 15%; Discovery (ep119 proxy) live 01:39 UTC at 15%; both ramped to 20% at 01:53 UTC (owner request, before the 25% ramp rule had data). Owner account forced on. Hourly data sync from 01:10 UTC",
+   "design": "A/B by stable user bucket sha256('railsearch:'+user_id)%100 (20% railway / 80% ep119); same bucket in the assistant (REC_RAILWAY_SEARCH_PCT) and Discovery (ep119 $rw_pct), so users who were in at 15% stay in",
    "results": [
     {
      "date": "2026-10-25",
@@ -555,14 +555,19 @@
     {
      "date": "2026-10-26",
      "note": "Launch check: Georgia barn search on Railway took 234 ms (assistant ep119 avg ~4.1s); whole answer 12.6s. Parity 22/23 same venue sets; popular-sort order drift from stale click counts (now synced hourly)."
+    },
+    {
+     "date": "2026-10-26",
+     "note": "Discovery launch: owner 0.76/1.03s, in-bucket test account 0.98/2.28s on Railway vs 2.5-5.1s ep119; forced fallback (SEARCH_ENABLED=0) returned full results. First push 01:33 failed ('Invalid op: in'), auto-rolled back in 15s, 2 real searches failed. Ramp 15->20% at 01:53 UTC (owner)."
     }
    ],
    "stat_sig": "",
    "decision": "Ramp to 25% when the brief says green (>=50 Railway requests, fallback <5%, search p50 >=30% faster)",
    "confounds_noted": [],
    "risks": [
-    "data freshness: daily sync 08:30 UTC = up to 24h stale",
-    "auth still depends on Xano auth/me"
+    "data freshness: hourly sync (was daily 08:30 UTC)",
+    "auth still depends on Xano auth/me",
+    "Discovery Railway answers enter ep119's shared 24h cache (owner accepted, option A)"
    ],
    "owner": "Vivek",
    "launched_by": "Claude Code"
@@ -691,6 +696,10 @@
    "date": "2026-10-26",
    "end_date": null,
    "what": "Onboarding vibes + venue-customization answers saved again (broken since 2026-07-10, ~10.2k users missing)"
+  },
+  {
+   "date": "2026-10-26",
+   "what": "Tulle Planner venue cards: 'All-inclusive - seats up to N' line hidden, address shortened to 'City, ST' (published ~01:51 UTC)"
   }
  ]
 }
