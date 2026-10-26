@@ -403,7 +403,7 @@
   {
    "id": "EXP-2026-10-signup-checkbox",
    "name": "Remove T&C checkbox on sign-up ('By clicking Sign up, you agree...')",
-   "status": "planned",
+   "status": "live",
    "themes": [
     "signup",
     "legal"
@@ -411,16 +411,22 @@
    "goal": "+10-15% sign-up rate (owner est); co-founder: absorb risk if signups +~10%",
    "primary_metric": "sign-up page view -> account created (Mixpanel); NOT raw signups (daily 75-130 swing)",
    "guardrail": "",
-   "start_date": null,
+   "start_date": "2026-10-26",
    "end_date": null,
    "review_date": null,
-   "dates_note": "planned: next production publish after 2026-10-24",
+   "dates_note": "Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data).",
    "design": "pre/post",
-   "results": [],
+   "results": [
+    {
+     "date": "2026-10-26",
+     "note": "Started. Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data)."
+    }
+   ],
    "stat_sig": "",
    "decision": "",
    "confounds_noted": [
-    "same publish: sign-in/up layout fix, tour reset, PDF popup copy, cost tools consolidation, 5-star Trustpilot ask"
+    "same publish: sign-in/up layout fix, tour reset, PDF popup copy, cost tools consolidation, 5-star Trustpilot ask",
+    "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
    ],
    "risks": [],
    "owner": "Vivek",
@@ -429,23 +435,29 @@
   {
    "id": "EXP-2026-10-pdf-popup-copy",
    "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
-   "status": "planned",
+   "status": "live",
    "themes": [
     "paywall"
    ],
    "goal": "Less negative wall experience while holding payment rate",
    "primary_metric": "wall green-CTA click -> purchase (baseline ~140 clicks -> 19 purchases / 30d); warning 88 -> 11",
    "guardrail": "payment rate",
-   "start_date": null,
+   "start_date": "2026-10-26",
    "end_date": null,
    "review_date": null,
-   "dates_note": "planned: next production publish",
+   "dates_note": "Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data).",
    "design": "pre/post",
-   "results": [],
+   "results": [
+    {
+     "date": "2026-10-26",
+     "note": "Started. Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data)."
+    }
+   ],
    "stat_sig": "",
    "decision": "",
    "confounds_noted": [
-    "same publish as checkbox removal etc."
+    "same publish as checkbox removal etc.",
+    "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
    ],
    "risks": [],
    "owner": "Vivek",
@@ -454,23 +466,33 @@
   {
    "id": "EXP-2026-10-trustpilot-5star",
    "name": "NPS thank-you Trustpilot ask only for 5-star raters (owner test)",
-   "status": "planned",
+   "status": "live",
    "themes": [
     "reviews"
    ],
    "goal": "Trustpilot reviews",
    "primary_metric": "nps_review_clicked / nps_review_offered; new Trustpilot reviews",
    "guardrail": "",
-   "start_date": null,
+   "start_date": "2026-10-26",
    "end_date": null,
    "review_date": null,
-   "dates_note": "planned: next production publish (component 7964bf1)",
+   "dates_note": "Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data).",
    "design": "pre/post",
-   "results": [],
+   "results": [
+    {
+     "date": "2026-10-26",
+     "note": "Started. Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data)."
+    },
+    {
+     "date": "2026-10-26",
+     "note": "Confirmed in the live bundle: reviewMinScore defaults to 5 and the instance does not override it, so only 5-star raters see the ask."
+    }
+   ],
    "stat_sig": "",
    "decision": "",
    "confounds_noted": [
-    "past-buyer review email 2026-10-24 (148 sends) also drives reviews"
+    "past-buyer review email 2026-10-24 (148 sends) also drives reviews",
+    "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
    ],
    "risks": [
     "review gating - against Trustpilot guidelines and FTC review-solicitation guidance; revert = component prop 'Minimum stars for Trustpilot ask' = 1"
@@ -481,7 +503,7 @@
   {
    "id": "EXP-2026-10-tours-v2",
    "name": "Assistant tours reset to v2 keys + Cost tools step",
-   "status": "planned",
+   "status": "live",
    "themes": [
     "activation",
     "assistant"
@@ -489,15 +511,22 @@
    "goal": "Discovery of Budget/Cost tools",
    "primary_metric": "tour completion; Budget/Cost tools tab opens",
    "guardrail": "",
-   "start_date": null,
+   "start_date": "2026-10-26",
    "end_date": null,
    "review_date": null,
-   "dates_note": "planned: next production publish",
+   "dates_note": "Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data).",
    "design": "pre/post",
-   "results": [],
+   "results": [
+    {
+     "date": "2026-10-26",
+     "note": "Started. Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data)."
+    }
+   ],
    "stat_sig": "",
    "decision": "",
-   "confounds_noted": [],
+   "confounds_noted": [
+    "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
+   ],
    "risks": [],
    "owner": "Vivek",
    "launched_by": "Claude Code"
@@ -533,6 +562,94 @@
    ],
    "owner": "Vivek",
    "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-chat-cost-cards",
+   "name": "Cost cards inside Tulle Planner chat answers (estimate / split / compare / budget)",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "planning"
+   ],
+   "goal": "Couples get cost answers as charts in the chat and move to the next planning step",
+   "primary_metric": "share of planner answers with a cost card; next-step/action chip taps; PDF opens after",
+   "guardrail": "answer latency, thumbs-down rate",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "REC_COST_TOOLS_IN_CHAT=1 turned on right after the publish",
+   "design": "pre/post",
+   "results": [
+    {
+     "date": "2026-10-26",
+     "note": "Started. Rollback: set REC_COST_TOOLS_IN_CHAT=0 on Railway rec-engine."
+    }
+   ],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-next-step-chips",
+   "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "planning"
+   ],
+   "goal": "Push couples from searching to planning (cost tools, saved vendors, quotes)",
+   "primary_metric": "rec_action_chip taps; planning-chip taps; Budget/Cost tools tab opens from chat",
+   "guardrail": "free-question usage",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "backend bd2535b deployed 10-25 23:50 UTC; front end in the 10-26 publish",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-stop-progress",
+   "name": "Live progress labels + Stop button on planner answers",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "performance"
+   ],
+   "goal": "Slow answers feel less stuck; users can abandon instead of leaving",
+   "primary_metric": "rec_stopped rate; drop-off while loading; thumbs on slow answers",
+   "guardrail": "compute spend from start/stop loops (daily $ caps)",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "backend 86f4495 live 10-26 00:17 UTC (verified stop in 2.1s)",
+   "design": "pre/post",
+   "results": [
+    {
+     "date": "2026-10-25",
+     "note": "Baseline answer latency (283 real requests 10-18..10-25): p50 ~12.6s, p90 23-24s; model 43%, Xano 55%."
+    }
+   ],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
   }
  ],
  "changes": [
@@ -560,6 +677,16 @@
    "date": "2026-10-24",
    "end_date": null,
    "what": "Assistant free questions 1 -> 2"
+  },
+  {
+   "date": "2026-10-26",
+   "end_date": null,
+   "what": "Production publish: Tulle Planner rename + 3 tabs, cost tools tour, tours start with no delay + per-account seen keys, sign-up consent paragraph (no checkbox), /terms, softer PDF popups, compare-venue stacked bars with live totals"
+  },
+  {
+   "date": "2026-10-26",
+   "end_date": null,
+   "what": "Onboarding vibes + venue-customization answers saved again (broken since 2026-07-10, ~10.2k users missing)"
   }
  ]
 }
