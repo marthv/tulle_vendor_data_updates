@@ -70,6 +70,14 @@ def pe_label(category):
     return "Searching photographers…" if str(category or "").lower().startswith("photo") else "Searching entertainment…"
 
 
+_LISTING_LABELS = {"Flowers": "Searching florists…", "Beauty": "Searching hair and makeup…",
+                   "Food and Beverage": "Searching caterers…", "Wedding Planner": "Searching wedding planners…"}
+
+
+def listing_label(category):
+    return _LISTING_LABELS.get(category, "Searching vendors…")
+
+
 def pricing_label(n):
     return "Checking real pricing for %d venues…" % n if n and n > 1 else PRICING
 

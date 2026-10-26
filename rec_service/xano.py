@@ -655,6 +655,81 @@ def pe_bucket_for(bench, package_type):
     return bench.get("headline")
 
 
+# ---------------------------------------------------------------- listings-only categories (2026-10-26)
+# Owner 2026-10-26: "roll in other vendors into the planner now, don't limit to just venues". These are the other
+# Discovery categories ep119 serves (its whitelist COLS: Flowers, Beauty, Food and Beverage, Wedding Planner).
+# Table 11 rows counted 2026-10-26 (Xano MCP, all Validated_Data): Flowers 739, Food and Beverage 150, Beauty 73,
+# Wedding Planner 9 (vs Venue 13,120 / Entertainment 3,010 / Photography 2,365). NONE of them has structured
+# pricing: the extraction pipeline only extracts Venue / Photography / Entertainment PDFs
+# (extract_core.SUPPORTED_CATEGORIES) and every sampled row has flt_min_venue_fee 0 and pricing_row_count 0. So
+# these are LISTINGS: name, state, address, image, a description - the PDF is on the vendor page, the price is not
+# in our data. Description is couple-typed free text that sometimes quotes a price ("Stations Menu $109.49") - it
+# is never verified, so money sentences are stripped from it for every user (agent._listing_card / _listing_row).
+LISTING_CATEGORIES = ("Flowers", "Beauty", "Food and Beverage", "Wedding Planner")
+LISTING_FETCH = 20
+
+
+def listing_search_params(*, category, states, page_size=8, page=1, sort_by="popular_desc"):
+    """The exact ep119 query of one listings search: the venue query with every venue/price filter off and
+    Category_Input = the category (ep119's generic table-11 path; Railway's search-api indexes Category too)."""
+    return {"Category_Input": category, "page": max(1, int(page or 1)), "page_size": max(1, min(int(page_size), 60)),
+            "states[]": list(states or []), "State_Input": (states or [""])[0],
+            "max_capacity": 0, "capacity_ceiling": 10000, "base_fee_max": 0, "fb_per_person_max": 0,
+            "Search_Input": "", "sort_by": sort_by or "", "fallback_all": "false"}
+
+
+def _listing_text(it):
+    g = it.get("flt_glance") if isinstance(it.get("flt_glance"), dict) else {}
+    return " ".join([it.get("Name") or "", it.get("Description") or "", g.get("pdf_description") or "",
+                     it.get("Type_of_Beauty") or "", it.get("Address") or ""])
+
+
+def _listing_item(it, category, searched_state, stems):
+    g = it.get("flt_glance") if isinstance(it.get("flt_glance"), dict) else {}
+    return {"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"),
+            "state": _pe_state(it.get("State"), searched_state), "category": category,
+            "address": it.get("Address") or "", "subtype": it.get("Type_of_Beauty") or "",
+            "image": it.get("image_1"),
+            "description": (g.get("pdf_description") or it.get("Description") or "")[:400],
+            "keyword_match": _kw_hit(_listing_text(it), stems) if stems else None}
+
+
+def _search_listing_one(token, *, states, category, keyword="", sort_by="popular_desc", page_size=8,
+                        search_log=None):
+    """One state. ep119's Search_Input is a full-text match on table 11 that misses most descriptions, so (as for
+    P/E) a keyword ranks results HERE instead of filtering them away: matches first, the rest as alternatives."""
+    stems = _stems(keyword)
+    params = listing_search_params(category=category, states=states, sort_by=sort_by,
+                                   page_size=LISTING_FETCH if stems else max(1, min(int(page_size), LISTING_FETCH)))
+    d = railway_search.fetch(lambda tk, p: _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_search", tk, p),
+                             token, params, search_log)
+    st = (states or [""])[0]
+    out = [_listing_item(it, category, st, stems) for it in d.get("items") or [] if it.get("Vendor_ID")]
+    res = {"total_matches": d.get("itemsTotal") or 0}
+    if stems:
+        out.sort(key=lambda v: not v["keyword_match"])
+        res["keyword_matches"] = sum(1 for v in out if v["keyword_match"])
+    res["vendors"] = out[:max(1, int(page_size))]
+    return res
+
+
+def search_listings(token, category, *, states, keyword="", sort_by="popular_desc", page_size=8, search_log=None):
+    """Florists, beauty, caterers, planners via the Discovery search (ep119; Railway first for Railway-arm users with
+    ep119 as the fallback, exactly like venues). One search per state, interleaved. No prices: we hold none."""
+    if category not in LISTING_CATEGORIES:
+        raise ValueError("category must be one of %s" % ", ".join(LISTING_CATEGORIES))
+    sort_by = sort_by if sort_by in ("popular_desc", "recent_desc") else "popular_desc"
+    if search_log is None:
+        return _interleave(_search_listing_one, token, states, page_size, "vendors", category=category,
+                           keyword=keyword, sort_by=sort_by)
+    t = time.time()
+    try:
+        return _interleave(_search_listing_one, token, states, page_size, "vendors", category=category,
+                           keyword=keyword, sort_by=sort_by, search_log=search_log)
+    finally:
+        search_log.add_wall((time.time() - t) * 1000)
+
+
 def saved_vendor_ids(user):
     """The couple's saved vendors = user.favorited_vendors (what the Saved tab shows). 2026-10-03: the old
     wptp_updated_mappings_favorites GET returned [] for a user with 4 saved vendors, so the assistant said
@@ -684,6 +759,8 @@ def vendor_card(vendor_id):
                                else it.get("Type_of_Entertainment")) or cat,
                 "price_range": [lo, hi] if lo else None, "image": img,
                 "description": (it.get("Description") or "")[:300]}
+    if it.get("Category") in LISTING_CATEGORIES:   # florist / beauty / caterer / planner shown earlier: no pricing
+        return dict(_listing_item(it, it["Category"], "", []), image=img)
     return {"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"),
             "state": it.get("State"), "address": it.get("Address"), "category": it.get("Category"),
             "venue_type": it.get("flt_venue_types") or it.get("Venue_Type"),

@@ -37,7 +37,7 @@ def _fake_client(script, log):
     every return in `log`, then ends."""
     class Runner:
         def __init__(self, tools, **kw):
-            self.tools = {getattr(t, "__name__", None): t for t in tools}
+            self.tools = {(getattr(t, "name", None) or getattr(t, "__name__", None)): t for t in tools}
         def __iter__(self):
             for name, args in script:
                 if callable(args):

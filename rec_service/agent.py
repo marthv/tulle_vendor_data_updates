@@ -123,6 +123,36 @@ Pick chips for THIS couple and THIS reply - the next decision they face, not a f
 
 Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends with which vendor's PDF to open first and what to look for in it), 3-5 vendor_ids in the order you recommend them (fewer only if fewer fit; 1 for a single-venue COST BREAKDOWN), a short reason per vendor (at most about 15 words) that says what sets it apart from the other picks with a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
 
+# Listings-only vendor types (2026-10-26, REC_LISTINGS_IN_CHAT, default on): SYSTEM above stays exactly origin/main's
+# text; these (old, new) line edits turn it into the prompt that also covers florists, hair and makeup, caterers and
+# planners. system_prompt() applies them and fails loudly if SYSTEM drifts so an edit no longer matches.
+LISTINGS_PROMPT_EDITS = [
+    ('You are Tulle\'s wedding vendor guide for VENUES, PHOTOGRAPHERS and ENTERTAINMENT. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and hundreds of photographers, DJs, bands and musicians, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.',
+     'You are Tulle\'s wedding vendor guide for VENUES, PHOTOGRAPHERS and ENTERTAINMENT, and you can also find florists, hair and makeup artists, caterers and wedding planners (listings only - see SCOPE). Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and hundreds of photographers, DJs, bands and musicians, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.'),
+    ('SCOPE - three vendor types:',
+     'SCOPE - three vendor types WITH pricing, four as LISTINGS ONLY:'),
+    ("- Anything else (florists and flowers, catering on its own, hair and makeup, planners, dresses and attire, cakes, rentals, stationery): say in one sentence that the assistant doesn't have solid pricing for those yet and Tulle's Discovery page shows what we do have, then offer help with venues, photographers or entertainment. Officiants: Tulle has no officiant data at all - say so. Never give advice, tips, question lists or budgets for these, and never offer a chip about them.",
+     '- LISTINGS ONLY (search_vendors): florists (category "Flowers"), hair and makeup ("Beauty"), caterers on their own ("Food and Beverage"), wedding planners ("Wedding Planner"). Tulle lists these vendors but holds NO pricing for them yet. Search them, show the picks, and recommend on location, kind and description only. Say it plainly once, using the result\'s say_this line with its real count (e.g. "We list 41 florists in New York; pricing for florists is still being added."). Never state, estimate, compare or rank by a price, package, range, per-person cost or budget share for these - not even an industry norm - and never call one affordable, economical or high-end. "Economical flowers" or "a cheap caterer": say we can\'t compare their prices yet, show the listings, and suggest asking each vendor for a quote. If total_matches is 0, say we don\'t list any there yet and offer another state or a supported type. Their cards open the vendor\'s Tulle page: never promise a pricing PDF for them. Destinations abroad (e.g. Italy) -> states ["International"].\n- Anything else (rentals and tents, dresses and attire, cakes, stationery and invitations, transportation, hotel room blocks): say in one sentence that the assistant doesn\'t have those vendors yet and Tulle\'s Discovery page shows what we do have, then offer help with a type we cover. Hotels: we have "Hotel / Resort" venues (search_venues) but don\'t track room blocks. Officiants: Tulle has no officiant data at all - say so. Never give advice, tips, question lists or budgets for these, and never offer a chip about them.'),
+    ('YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue\'s PDF for a venue question, the photographer\'s or entertainer\'s own pricing PDF for theirs (never send a photographer question to a venue PDF). A reply that doesn\'t make opening a specific PDF the obvious next step has failed. Couples asked for MORE options and for help telling them apart (2026-10-14: a third of all messages were "more"): for a search, show 4-5 picks when the results allow, and make each card\'s reason say how it DIFFERS from the other picks (price position, size, style, fee structure, location), never the same sentence twice. The message itself is 2-3 sentences (about 60 words; only a COST BREAKDOWN or a budget question may run longer): lead with the top pick and why.',
+     'YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue\'s PDF for a venue question, the photographer\'s or entertainer\'s own pricing PDF for theirs (never send a photographer question to a venue PDF); for a listings-only type (florist, hair and makeup, caterer, planner) the goal is opening that vendor\'s Tulle page. A reply that doesn\'t make opening a specific PDF the obvious next step has failed. Couples asked for MORE options and for help telling them apart (2026-10-14: a third of all messages were "more"): for a search, show 4-5 picks when the results allow, and make each card\'s reason say how it DIFFERS from the other picks (price position, size, style, fee structure, location), never the same sentence twice. The message itself is 2-3 sentences (about 60 words; only a COST BREAKDOWN or a budget question may run longer): lead with the top pick and why.'),
+    ('- Never name a vendor you did not get from a tool in this conversation (search_venues, search_photographers_entertainment or saved_venues).',
+     '- Never name a vendor you did not get from a tool in this conversation (search_venues, search_photographers_entertainment, search_vendors or saved_venues).'),
+    ('- another supported vendor type, when it is the couple\'s natural next decision (e.g. "Find a photographer" after venues).\nNever offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (florists, catering, beauty, planners, attire, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.',
+     '- for listings-only types (florists, hair and makeup, caterers, planners): another state or a keyword of search_vendors (e.g. "Florists in New Jersey", "Bridal makeup artists") - never a price, budget, cheaper or package chip for them, since we hold no prices;\n- another supported vendor type, when it is the couple\'s natural next decision (e.g. "Find a photographer" after venues, "Find a florist" once the venue is picked).\nNever offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (rentals, attire, cakes, stationery, transportation, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.'),
+]
+
+
+def system_prompt(listings=None):
+    """SYSTEM, with the listings-only scope applied when `listings` (default config.LISTINGS_IN_CHAT)."""
+    listings = config.LISTINGS_IN_CHAT if listings is None else listings
+    text = SYSTEM
+    if listings:
+        for old, new in LISTINGS_PROMPT_EDITS:
+            if text.count(old) != 1:
+                raise RuntimeError("LISTINGS_PROMPT_EDITS no longer matches SYSTEM: %r" % old[:60])
+            text = text.replace(old, new)
+    return text
+
 # Appended to SYSTEM only when config.COST_TOOLS_IN_CHAT is on (off = the prompt is exactly origin/main's).
 COST_TOOLS_RULES = """COST TOOLS (2026-10-25: the Cost tools tab moved into this chat). For ANY question about what a whole wedding costs, how to split their budget, where their budget stands, or comparing the venues they saved or quoted, call the matching tool - estimate_wedding_cost, split_budget, budget_status, compare_venues - even if you also search. Each one draws a chart or table for the couple under your message, so let the widget carry the numbers: quote at most the one or two figures that answer the question (from the tool's facts, exactly), never re-list the table. For a what-if ("what if 120 guests?", "without a planner?") call the tool again with the new argument. A per-venue all-in is still estimate_cost; compare_venues is for the couple's saved venues and their own quotes together.
 
@@ -331,6 +361,76 @@ def _pe_row(v, bench, light):
         out["price_range"] = v.get("price_range")
         out["card_price"] = _pe_card(v, light=False).get("price_label")   # what the card shows - quote this one
     return {k: val for k, val in out.items() if val not in (None, "", [])}
+
+
+# ---------------------------------------------------------------- listings-only vendor types (2026-10-26)
+# Florists, hair and makeup, caterers, planners: Tulle lists them but holds NO pricing (xano.LISTING_CATEGORIES).
+# Their cards and model rows never carry a figure, at any DETAIL level - the description is couple-typed free text,
+# unverified, so its money sentences are dropped for everyone.
+
+LISTING_LABEL = {"Flowers": "Florist", "Beauty": "Hair & makeup", "Food and Beverage": "Caterer",
+                 "Wedding Planner": "Wedding planner"}
+LISTING_NOUN = {"Flowers": "florists", "Beauty": "hair and makeup artists", "Food and Beverage": "caterers",
+                "Wedding Planner": "wedding planners"}
+# The couple's (or the model's) words -> a category. Order matters: first match wins.
+_CATEGORY_WORDS = [
+    ("Entertainment", r"photo\s?booth"),
+    ("Photography", r"photo|video|filmmak"),
+    ("Entertainment", r"\bdj|band|music|entertain|singer|pianist|harp|violin|quartet|ensemble|soloist"),
+    ("Venue", r"venue"),
+    ("Flowers", r"flower|floral|florist|bouquet|centerpiece"),
+    ("Beauty", r"beauty|hair|make[\s-]?up|\bmua\b|\bhmu\b|stylist|cosmet"),
+    ("Food and Beverage", r"cater|food|beverage|f\s?&\s?b|\bchef\b|bartend|bar service"),
+    ("Wedding Planner", r"planner|planning|coordinat"),
+]
+UNSUPPORTED_NOTE = {
+    "hotel": "Tulle has \"Hotel / Resort\" venues (search_venues with venue_types [\"Hotel / Resort\"]) but does not "
+             "track guest room blocks or hotels to stay at.",
+    "officiant": "Tulle has no officiant data at all.",
+}
+
+
+def resolve_category(text):
+    """'florist' -> 'Flowers', 'makeup artist' -> 'Beauty', 'DJ' -> 'Entertainment', 'tent rentals' -> None."""
+    t = str(text or "").strip().lower()
+    for cat in LISTING_CATEGORIES_ALL:
+        if t == cat.lower():
+            return cat
+    for cat, pat in _CATEGORY_WORDS:
+        if re.search(pat, t):
+            return cat
+    return None
+
+
+LISTING_CATEGORIES_ALL = ("Venue", "Photography", "Entertainment") + xano.LISTING_CATEGORIES
+
+
+def _listing_card(v):
+    """Card for a listings-only vendor: the venue/P-E card keys that mean the same thing (vendor_id, vendor_idx,
+    name, state, address, category, venue_type = the line under the name, image, description) and no price key
+    of any kind."""
+    cat = v.get("category")
+    sub = (v.get("subtype") or "").strip()
+    card = {"vendor_id": v.get("vendor_id"), "vendor_idx": v.get("vendor_idx"), "name": v.get("name"),
+            "state": v.get("state"), "address": v.get("address"), "category": cat,
+            "venue_type": LISTING_LABEL.get(cat, cat) + (" - " + sub if sub and cat == "Beauty" else ""),
+            "image": v.get("image"), "description": _no_figures(v.get("description"))[:300]}
+    return {k: val for k, val in card.items() if val not in (None, "")}
+
+
+def _listing_row(v):
+    """What the MODEL sees for one listings-only vendor: fit facts only, never a figure."""
+    out = {"vendor_id": v.get("vendor_id"), "name": v.get("name"), "state": v.get("state"),
+           "address": v.get("address"), "kind": _listing_card(v).get("venue_type"),
+           "description": _no_figures(v.get("description"))[:300], "keyword_match": v.get("keyword_match")}
+    return {k: val for k, val in out.items() if val not in (None, "", [])}
+
+
+def _listing_say(category, total, states):
+    noun = LISTING_NOUN.get(category, "vendors")
+    where = (" in " + " and ".join(states)) if states and "International" not in states else (
+        " outside the US" if states else "")
+    return "We list %d %s%s; pricing for %s is still being added." % (int(total or 0), noun, where, noun)
 
 
 def _market_row(bench, types):
@@ -1026,6 +1126,70 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
     @beta_tool
     @timed
+    def search_vendors(category: str, states: list[str], keyword: str = "", sort_by: str = "popular_desc") -> str:
+        """Search Tulle's LISTINGS-ONLY vendor types: florists, hair and makeup, caterers, wedding planners. Tulle
+        lists these vendors but holds NO pricing for them yet - results have name, location, kind and description,
+        never a price. Use say_this for the honest count + "pricing is still being added" line.
+
+        Args:
+            category: "Flowers" (florists), "Beauty" (hair and makeup), "Food and Beverage" (caterers, food
+                trucks, bar service) or "Wedding Planner" (planners, coordinators). The couple's words work too
+                ("florist", "makeup artist", "catering").
+            states: US states or 'International' (anywhere outside the US, e.g. Italy), e.g. ["New York"]. Use the
+                couple's location if unsure.
+            keyword: optional style or specialty matched against names and descriptions, e.g. "bridal", "airbrush",
+                "garden roses", "vegan". Results that mention it come first (keyword_matches = how many). It does not
+                filter by price: we hold no prices for these.
+            sort_by: popular_desc (default) or recent_desc.
+        """
+        cat = resolve_category(category)
+        if cat in ("Photography", "Entertainment"):
+            return _ev({"error": "use search_photographers_entertainment", "category": cat,
+                        "note": "Photographers and entertainers have real package pricing - search them with "
+                                "search_photographers_entertainment(category=\"%s\")." % cat})
+        if cat == "Venue":
+            return _ev({"error": "use search_venues"})
+        if cat not in xano.LISTING_CATEGORIES:
+            low = str(category or "").lower()
+            note = next((n for k, n in UNSUPPORTED_NOTE.items() if k in low), None)
+            return _ev({"supported": False, "category": category,
+                        "say_this": note or ("The assistant doesn't have %s yet - Tulle's Discovery page shows the "
+                                             "vendor types we do have." % (category or "that vendor type")),
+                        "note": "Give that one sentence, offer venues, photographers, entertainment, florists, hair "
+                                "and makeup, caterers or planners instead, and present 0 vendor_ids for this type."})
+        prog.set(progress_mod.listing_label(cat))
+        sts = [s for s in (states or []) if s] or _states_of(profile)
+        r = xano.search_listings(token, cat, states=sts, keyword=keyword, sort_by=sort_by, page_size=14,
+                                 search_log=slog)
+        out = []
+        for i, v in enumerate(r["vendors"]):
+            card = _listing_card(v)
+            vid = card.get("vendor_id")
+            if not vid:
+                continue
+            if i < 8:                       # the model sees the top 8; the rest only feed "Show 3 more"
+                seen[vid] = card
+                out.append(_listing_row(v))
+            elif vid not in seen:
+                extra[vid] = card
+            if vid not in searched:
+                searched.append(vid)
+        searches.append({"filters": {"category": cat, "states": sts},
+                         "ids": [v.get("vendor_id") for v in r["vendors"] if v.get("vendor_id")]})
+        res = {"category": cat, "pricing_held": False, "total_matches": r["total_matches"],
+               "say_this": _listing_say(cat, r["total_matches"], sts), "vendors": out,
+               "note": "LISTINGS ONLY: no prices, packages, ranges or budget shares exist for %s in Tulle's data - "
+                       "never state, estimate or compare one, and never call a pick affordable or economical. "
+                       "Recommend on location, kind and description; the card opens the vendor's Tulle page."
+                       % LISTING_NOUN[cat]}
+        if "keyword_matches" in r:
+            res["keyword_matches"] = r["keyword_matches"]
+        if r.get("matches_by_state"):
+            res["matches_by_state"] = r["matches_by_state"]
+        return _ev(res)
+
+    @beta_tool
+    @timed
     def pe_market_rates(category: str, state: str) -> str:
         """What photographers or entertainers typically cost in a state: package-price quartiles (p25 /
         median / p75, with sample sizes) overall, by package type and coverage hours (Photography) or by
@@ -1219,6 +1383,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
     # REC_COST_TOOLS_IN_CHAT off (default): no cost tools, no prompt paragraph, widgets stays [] - chat as before.
     cost_on = config.COST_TOOLS_IN_CHAT
+    # REC_LISTINGS_IN_CHAT off: no search_vendors, SYSTEM exactly origin/main's.
+    listings_on = config.LISTINGS_IN_CHAT
+    listing_tools = [search_vendors] if listings_on else []
     cost_tool_list = [estimate_wedding_cost, split_budget, compare_venues, budget_status] if cost_on else []
 
     saved_notes = []
@@ -1250,7 +1417,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             message: 2-3 short sentences to the couple (about 60 words). Only a COST BREAKDOWN the couple
                 explicitly asked for is longer and uses the itemized "• " list; a budget question may take 4.
-            vendor_ids: 3-5 vendor_ids from search_venues, search_photographers_entertainment or saved_venues,
+            vendor_ids: 3-5 vendor_ids from search_venues, search_photographers_entertainment, search_vendors or
+                saved_venues,
                 best first (fewer only if fewer fit; 1 for a single-venue breakdown, 0 for a question only about an
                 unsupported vendor type).
             reasons: one short reason per vendor_id (at most about 15 words), same order, each saying how it
@@ -1431,7 +1599,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     runner = client.beta.messages.tool_runner(
         model=config.MODEL,
         max_tokens=8000,
-        system=[{"type": "text", "text": SYSTEM + ("\n\n" + COST_TOOLS_RULES if cost_on else ""),
+        system=[{"type": "text", "text": system_prompt(listings_on) + ("\n\n" + COST_TOOLS_RULES if cost_on else ""),
                  "cache_control": {"type": "ephemeral"}}]
                + ([{"type": "text", "text": free_mode.RULES + ("\n" + free_mode.COST_TOOLS_RULE if cost_on else "")}]
                   if free else []),
@@ -1439,12 +1607,15 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         # FREE gets no price-bearing tool at all, and price-free wrappers of the rest (free_mode.tools).
         # Cost tools (2026-10-25) at every level: their widget is the couple's to see; the model only gets their
         # figures at FULL (_cost_tool).
+        # search_vendors (listings only, 2026-10-26) carries no figure at any level, so every level gets it as is.
         tools=(free_mode.tools(search_venues, search_photographers_entertainment, saved_venues, venue_details,
-                               save_note, present_recommendations) + cost_tool_list if free else
-               [search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
-                save_note, present_recommendations] + cost_tool_list if light else
-               [search_venues, search_photographers_entertainment, saved_venues, venue_pricing, venue_details,
-                estimate_cost, market_benchmarks, pe_market_rates, save_note, present_recommendations]
+                               save_note, present_recommendations) + listing_tools + cost_tool_list if free else
+               [search_venues, search_photographers_entertainment] + listing_tools
+               + [saved_venues, venue_pricing, venue_details, save_note, present_recommendations] + cost_tool_list
+               if light else
+               [search_venues, search_photographers_entertainment] + listing_tools
+               + [saved_venues, venue_pricing, venue_details, estimate_cost, market_benchmarks, pe_market_rates,
+                  save_note, present_recommendations]
                + cost_tool_list),
         messages=msgs,
         output_config={"effort": config.EFFORT},
@@ -1554,6 +1725,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 c = None
             if c and c.get("category") in xano.PE_CATEGORIES:   # photographer / entertainer: no venue pricing
                 seen[vid] = _pe_card(c, light)
+            elif c and c.get("category") in xano.LISTING_CATEGORIES:   # listings only: no pricing at all
+                seen[vid] = _listing_card(c)
             elif c:
                 c = card(c, raw_pricing_or_none(vid))
                 seen[vid] = _light_card(c) if light else c

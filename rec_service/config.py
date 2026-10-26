@@ -116,3 +116,8 @@ FEEDBACK_SLACK_WEBHOOK = os.environ.get("REC_FEEDBACK_SLACK_WEBHOOK", "")   # Tu
 FEEDBACK_SLACK_CHANNEL = os.environ.get("REC_FEEDBACK_SLACK_CHANNEL", "C07JML6NMLM")
 FEEDBACK_TABLE_ID = int(os.environ.get("REC_FEEDBACK_TABLE_ID", "81"))
 FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))
+
+# Listings-only vendor types in the assistant (owner 2026-10-26: "roll in other vendors into the planner now"):
+# search_vendors (florists, hair and makeup, caterers, planners - no pricing held) + the prompt scope that offers
+# them. Default ON; REC_LISTINGS_IN_CHAT=0 = the tool list and SYSTEM prompt exactly as before.
+LISTINGS_IN_CHAT = os.environ.get("REC_LISTINGS_IN_CHAT", "1") == "1"

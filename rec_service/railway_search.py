@@ -4,6 +4,8 @@ Railway search-api (tulle-search repo, Meilisearch, ep119-compatible params + re
 a Railway timeout / connection error / non-200 / response without the ep119 shape -> the same search goes to ep119
 straight away. Default 0 = off: nobody is bucketed into Railway and the search-api is never called.
 
+Also on this path since 2026-10-26: the listings-only categories (xano._search_listing_one - Flowers, Beauty, Food and
+Beverage, Wedding Planner), same params shape with Category_Input set; their searches count in the same SearchLog.
 Unchanged (never Railway): the radius path (xano.venues_near, table 11), photographers/entertainment
 (xano._search_pe_one), pricing (ep230/231).
 
