@@ -59,6 +59,10 @@ GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
 # answers carry their widgets. Default OFF until the WeWeb widget component is published - the live page can't
 # draw widgets, so the model must not say "see the chart below" yet. POST /rec/tool works either way.
 COST_TOOLS_IN_CHAT = os.environ.get("REC_COST_TOOLS_IN_CHAT", "0") == "1"
+# Thin-profile questions on the opening (owner decision 2026-10-26, profile_questions.py): "0" = the opening is
+# exactly as before (starter chips, no `questions`). Works on the current page: the first question's answers are
+# the opening's chips.
+PROFILE_QUESTIONS = os.environ.get("REC_PROFILE_QUESTIONS", "1") == "1"
 # Railway search (owner decision 2026-10-26): this % of assistant users (stable per user, see railway_search.arm)
 # get their venue searches from the Railway search-api instead of ep119, with ep119 as the fallback. 0 = off (the
 # search-api is never called). Start: 10. Set it back to 0 to turn it off without a deploy.

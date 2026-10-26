@@ -333,6 +333,9 @@ def test_free_pe_search_has_no_prices(monkeypatch):
 def api(monkeypatch, free_on):
     agent, app, config, _, _, xano = _mods()
     from fastapi.testclient import TestClient
+    # These tests check the starter chips / counters; the empty test profile would otherwise get the thin-profile
+    # questions (2026-10-26) as its opening chips - covered in test_upsell_and_profile_questions.py.
+    monkeypatch.setattr(config, "PROFILE_QUESTIONS", False)
     st = {"rows": [], "logged": [], "feedback": False, "access": False, "beta": False, "spend": (0.0, 0.0),
           "details": [], "fb_rows": []}
 
