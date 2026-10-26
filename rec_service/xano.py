@@ -909,33 +909,27 @@ def card_from_row(it):
             "image": img, "description": (it.get("Description") or "")[:300]}
 
 
-NAME_SEARCH_PAGE = 20   # rows per name-key search; each row carries a ~15 KB google_data_cache, so keep it small
+NAME_SEARCH_PAGE = 20   # venues per name search
 
 
-def name_search(term, per_page=NAME_SEARCH_PAGE):
-    """Venue lookup by name (lookup.py, 2026-10-26): table-11 venues whose mk_name_key (lowercase alphanumerics of
-    the name, e.g. "kohlmansion") contains `term` (already a key: [a-z0-9] only, so never a '|' operator), most
-    clicked first. Validated venues only (the ones the app shows). Returns the card shape plus google_name (the
-    Google Places name - "Harold Pratt House and Peterson Hall" for "Harold Pratt House") for rescoring."""
-    term = re.sub(r"[^a-z0-9]", "", (term or "").lower())
+def name_search(term, token="", per_page=NAME_SEARCH_PAGE):
+    """Venue lookup by name (lookup.py, 2026-10-26): the Discovery venue search (Search_Input = the name or one of
+    its words, all states, most clicked first), from the Railway search-api for EVERY user (milliseconds) with ep119
+    as the fallback. The first version read table 11 through the metadata API: a full scan returning ~15 KB rows,
+    measured 2026-10-26 at >20 s per call (timeouts), so every lookup fell back to the model after 6 s.
+    term: words, e.g. "kohl mansion" / "oheka". Returns the card shape (+ google_name "" - not on this path)."""
+    term = re.sub(r"[^a-z0-9 ]", " ", (term or "").lower())
+    term = re.sub(r"\s+", " ", term).strip()
     if len(term) < 2:
         return []
-    body = {"search": [{"mk_name_key|includes": term}, {"Category": "Venue"}], "page": 1, "per_page": int(per_page),
-            "sort": {"Clicks_on_Venue": "desc"}}
-    try:
-        d = _meta("POST", "/table/11/content/search", json=body)
-    except XanoError:
-        body.pop("sort")   # never let an unsupported sort sink the lookup
-        d = _meta("POST", "/table/11/content/search", json=body)
+    params = venue_search_params(states=[], keyword=term, sort_by="popular_desc", page_size=int(per_page))
+    d, why = railway_search.railway_get(token, params) if token else (None, "no_token")
+    if d is None:
+        d = _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_search", token, params)
     out = []
-    for it in (d or {}).get("items", []):
-        if str(it.get("Validated_Data")) != "1" or it.get("Category") != "Venue":
-            continue
-        c = card_from_row(it)
-        c["google_name"] = ((it.get("google_data_cache") or {}).get("name") or "") if isinstance(
-            it.get("google_data_cache"), dict) else ""
-        c["lat"], c["lng"] = it.get("lat"), it.get("lng")
-        out.append(c)
+    for v in _venue_result(d or {})["venues"]:
+        if v.get("vendor_id"):
+            out.append(dict(v, category="Venue", google_name=""))
     return out
 
 

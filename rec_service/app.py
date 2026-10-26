@@ -491,7 +491,7 @@ def _price_or_none(token, vid, full):
 
 def _find_and_price(q, token, full):
     """lookup.find, then the pricing panel of every match in parallel - all while the question is being gated."""
-    res = lookup.find(q, xano.name_search)
+    res = lookup.find(q, lambda term: xano.name_search(term, token))
     ids = [m["vendor_id"] for m in res["matches"]] if res["status"] in ("found", "choices") else []
     if ids:
         with ThreadPoolExecutor(max_workers=len(ids)) as ex:

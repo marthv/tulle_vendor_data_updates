@@ -109,10 +109,12 @@ TABLE = [
 
 
 def fake_search(term, calls=None):
-    """Mirrors xano.name_search: mk_name_key (alphanumerics of the name) contains the term."""
+    """Mirrors xano.name_search (2026-10-26: the venue search box): every WORD of the term is a word of the name."""
     if calls is not None:
         calls.append(term)
-    return [dict(r) for r in TABLE if term in lookup.key(r["name"]) or term in r["name"].lower().replace(" ", "")]
+    words = term.split()
+    return [dict(r) for r in TABLE
+            if all(w in lookup.tokens(r["name"]) or w in lookup.key(r["name"]) for w in words)]
 
 
 def look(text):
@@ -161,10 +163,10 @@ def test_not_in_our_data(text):
 def test_a_correct_name_costs_one_round_typos_a_second():
     calls = []
     lookup.find(lookup.detect("oheka castle"), lambda t: fake_search(t, calls))
-    assert calls == ["ohekacastle", "oheka"]
+    assert calls == ["oheka castle", "oheka"]
     calls.clear()
     lookup.find(lookup.detect("Khol mansion"), lambda t: fake_search(t, calls))
-    assert "kohl" in calls and len(calls) <= 5 + 8
+    assert "kohl" in calls and len(calls) <= 6 + 8
 
 
 def test_xano_down_is_an_error_not_a_missing_venue():
@@ -216,7 +218,7 @@ def env(monkeypatch):
     monkeypatch.setattr(xano, "mp_track", lambda uid, ev, props: st["mp"].append((ev, props)))
     monkeypatch.setattr(xano, "today", lambda: TODAY)
     monkeypatch.setattr(xano, "plan_label", lambda u: "Forever")
-    monkeypatch.setattr(xano, "name_search", lambda t: st["search"](t))
+    monkeypatch.setattr(xano, "name_search", lambda t, token="": st["search"](t))
     monkeypatch.setattr(xano, "venue_pricing", lambda tok, vid, full: dict(PRICING, vendor_id=vid))
     monkeypatch.setattr(xano, "search_venues", lambda tok, **kw: {"total_matches": 2, "venues": [
         {"vendor_id": "V50", "name": "Nearby One", "state": "New York", "venue_fee_range": [5000, 9000]},

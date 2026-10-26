@@ -93,7 +93,12 @@ def score(query, name, location=""):
     missing = sum(1 for t in qt if t in GENERIC and t not in qd and not _best(t, ct, 0.9))
     # ...and a smaller one for a type word only the candidate has ("the Astoria" vs "Astoria Ballroom").
     extra = sum(1 for t in ct if t in GENERIC and t not in cd and not _best(t, qt + lt, 0.9))
-    return max(0.0, 0.6 * q_cov + 0.3 * c_cov + 0.1 * char - min(0.2, 0.1 * missing) - min(0.1, 0.05 * extra))
+    base = max(0.0, 0.6 * q_cov + 0.3 * c_cov + 0.1 * char - min(0.2, 0.1 * missing) - min(0.1, 0.05 * extra))
+    # The whole candidate name, 2+ distinctive words, typed in order inside a longer message ("Harold Pratt House"
+    # in "The Harold Pratt House and Peterson Hall"; "Royal Palm" in "royal palm mansion") is a near-certain match.
+    if len(cd) >= 2 and not extra and " %s " % " ".join(cd) in " %s " % " ".join(qd):
+        base = max(base, 0.9)
+    return base
 
 
 def strong(query, name):
@@ -269,13 +274,19 @@ def _variants(tok):
 def first_queries(name, alt_name=""):
     """Stage 1 key searches: the whole name key, then each distinctive token (longest first)."""
     qs = []
-    for n in (name, alt_name):
-        k = key(n)
-        if len(k) >= 3:
-            qs.append(k)
+    for n in (name, alt_name):   # the whole name as words ("kohl mansion"): the search matches whole words
+        w = " ".join(tokens(n))
+        if len(key(n)) >= 3 and w:
+            qs.append(w)
+    # The name's distinctive words in order, without type words ("royal palm" for "Royal palm mansion"; "harold
+    # pratt" for "The Harold Pratt House and Peterson Hall"): the search ANDs words, and most clicked first means a
+    # lone common word ("royal") can push the venue off the page (2026-10-26 live check).
+    od = [t for t in tokens(name) if t not in GENERIC]
+    if len(od) >= 2:
+        qs += [" ".join(od[:2]), " ".join(od)]
     d = [t for t in tokens(name) if t not in GENERIC and (len(t) >= 4 or any(c.isdigit() for c in t))]
     qs += sorted(d, key=len, reverse=True)[:3]
-    return list(dict.fromkeys(qs))[:5]
+    return list(dict.fromkeys(qs))[:6]
 
 
 def typo_queries(name, done=()):
