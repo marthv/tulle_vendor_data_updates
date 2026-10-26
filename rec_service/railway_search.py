@@ -26,6 +26,8 @@ def arm(user_id, pct=None):
     """'railway' or 'ep119' for this user. Stable: the same user always lands in the same arm for a given pct, and
     raising pct only moves users ep119 -> railway (bucket < pct). Free and paid users are both eligible."""
     pct = config.RAILWAY_SEARCH_PCT if pct is None else pct
+    if user_id not in (None, "") and str(user_id) in config.RAILWAY_SEARCH_FORCE_IDS:
+        return RAILWAY   # forced users (REC_RAILWAY_SEARCH_FORCE_USER_IDS) - ep119 is still their fallback
     if pct <= 0 or user_id in (None, ""):
         return EP119
     if pct >= 100:

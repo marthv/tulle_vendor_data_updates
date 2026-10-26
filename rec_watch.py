@@ -84,6 +84,9 @@ RAMP_SPEEDUP = 0.30
 BLOCK = "*Railway search (assistant)*"
 
 
+INTERNAL_USER_IDS = {14998, 30614, 32636}   # owner / test / team accounts (memory: exclude internal accounts)
+
+
 def search_rows(token, now=None, fetch=None):
     """Rows with search_engine set, today backwards, stopping at the first earlier day whose rows carry no
     search_engine at all (= before the rec_service deploy that writes the column) or after LOOKBACK_DAYS.
@@ -93,7 +96,8 @@ def search_rows(token, now=None, fetch=None):
     out = []
     for i in range(LOOKBACK_DAYS):
         day_rows = fetch((now - dt.timedelta(days=i)).strftime("%Y-%m-%d"))
-        tagged = [r for r in day_rows if r.get("search_engine")]
+        # Internal accounts (owner, test, team) are forced onto Railway or test by hand - keep them out of the comparison.
+        tagged = [r for r in day_rows if r.get("search_engine") and int(r.get("user_id") or 0) not in INTERNAL_USER_IDS]
         out += tagged
         if day_rows and not tagged and i > 0:
             break

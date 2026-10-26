@@ -347,3 +347,13 @@ def test_status_reports_arm_and_pct(api):
     assert d["search_arm"] == "railway" and d["railway_search_pct"] == 10
     api["uid"] = EP_UID
     assert api["client"].get("/rec/status").json()["search_arm"] == "ep119"
+
+
+def test_forced_user_always_railway(monkeypatch):
+    """Owner 2026-10-26: listed user ids are always on Railway search (ep119 stays their fallback), at any pct."""
+    import config, railway_search
+    monkeypatch.setattr(config, "RAILWAY_SEARCH_FORCE_IDS", {"14998"})
+    for pct in (0, 15, 100):
+        assert railway_search.arm(14998, pct=pct) == railway_search.RAILWAY
+        assert railway_search.arm("14998", pct=pct) == railway_search.RAILWAY
+    assert railway_search.arm(1, pct=0) == railway_search.EP119

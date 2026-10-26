@@ -130,3 +130,10 @@ def test_daily_brief_carries_block_and_one_tldr(monkeypatch):
     monkeypatch.setattr(rw, "railway_section", boom)
     out = daily_brief.compose("t", "health ok", now_ms=MS(0))
     assert "Railway search section failed" in out and "*Tulle Assistant*" in out
+
+
+def test_internal_accounts_excluded_from_comparison():
+    import rec_watch
+    rows = [{"user_id": 14998, "search_engine": "railway"}, {"user_id": 5, "search_engine": "railway"}]
+    got = rec_watch.search_rows("t", fetch=lambda d: rows if d else [])
+    assert all(r["user_id"] != 14998 for r in got) and any(r["user_id"] == 5 for r in got)

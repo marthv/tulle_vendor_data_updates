@@ -76,6 +76,8 @@ try:
     RAILWAY_SEARCH_TIMEOUT_S = float(os.environ.get("REC_RAILWAY_SEARCH_TIMEOUT_S", "3.0"))
 except ValueError:
     RAILWAY_SEARCH_TIMEOUT_S = 3.0
+# Users always on Railway search, whatever the pct (owner 2026-10-26: his own account 14998). Comma-separated ids.
+RAILWAY_SEARCH_FORCE_IDS = {x.strip() for x in os.environ.get("REC_RAILWAY_SEARCH_FORCE_USER_IDS", "").split(",") if x.strip()}
 # "1" = off. One env var flip on Railway, no deploy.
 KILL_SWITCH = os.environ.get("REC_KILL_SWITCH", "0") == "1"
 
