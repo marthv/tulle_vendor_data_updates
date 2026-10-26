@@ -59,6 +59,11 @@ GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
 # answers carry their widgets. Default OFF until the WeWeb widget component is published - the live page can't
 # draw widgets, so the model must not say "see the chart below" yet. POST /rec/tool works either way.
 COST_TOOLS_IN_CHAT = os.environ.get("REC_COST_TOOLS_IN_CHAT", "0") == "1"
+# Venue name lookup fast path (owner decision 2026-10-26, lookup.py): "oheka castle" / "Khol mansion" / "is X listed?"
+# is answered from table 11 in code, without the model. 0 = off (every message goes to the model, as before).
+NAME_LOOKUP = os.environ.get("REC_NAME_LOOKUP", "1") == "1"
+# Missing venues ("We don't have X in Tulle yet") are posted to the feedback Slack channel for the data team.
+VENUE_REQUEST_SLACK = os.environ.get("REC_VENUE_REQUEST_SLACK", "1") == "1"
 # Railway search (owner decision 2026-10-26): this % of assistant users (stable per user, see railway_search.arm)
 # get their venue searches from the Railway search-api instead of ep119, with ep119 as the fallback. 0 = off (the
 # search-api is never called). Start: 10. Set it back to 0 to turn it off without a deploy.

@@ -5,6 +5,9 @@ POST /rec/opening          -> new conversation with opening picks; returns chat_
 POST /rec/refine           -> {chat_id, message}: one refinement in that conversation (FREE_REFINES free - 1 since 2026-10-14 - then 402)
                               no chat_id ({messages:[...]} or {message}): continues the user's chat from the
                               last 30 min, else starts one; turns saved, chat_id returned (2026-10-12)
+                              A venue asked for by NAME ("oheka castle", "is X listed?") is answered from table 11
+                              without the model (lookup.py, 2026-10-26): lookup {status, query} + venue_request
+                              {name, location} when we don't have it (both null otherwise). REC_NAME_LOOKUP=0 = off.
 GET  /rec/chats            -> the user's conversations, newest first
 GET  /rec/chats/{chat_id}  -> one conversation's turns (text, cards, chips) to re-render it
 POST /rec/more {chat_id}   -> "Show 3 more": next 3 venues from the latest answer's searches. Spends ONE
@@ -36,6 +39,7 @@ about the couple live in rec_memory (80) and are fed into every later conversati
 """
 from typing import Optional
 import datetime as dt
+import time
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -50,6 +54,7 @@ import config
 import cost_tools
 import free_mode
 import guards
+import lookup
 import notify
 import prefs
 import progress
@@ -102,6 +107,10 @@ def _public(out, **extra):
     """What the page gets: the hidden extras become a count (they cost a question to reveal); the search
     filters stay server-side (stored with the answer for "Show 3 more" and the next question)."""
     resp = {k: v for k, v in out.items() if k not in ("more_cards", "search_filters")}
+    # Venue name lookup (2026-10-26): lookup = {status, query} on a fast-path answer, venue_request = {name, location}
+    # when we don't have the venue (the page can offer "Request this venue"). Both null on every other answer.
+    resp.setdefault("lookup", None)
+    resp.setdefault("venue_request", None)
     n = len(out.get("more_cards") or [])
     # widgets (cost tools, 2026-10-25): always present, [] by default, so the current page is unaffected.
     return dict(resp, more_available=n if n >= agent.MORE_STEP else 0, widgets=list(out.get("widgets") or []),
@@ -391,6 +400,209 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
                 **_counters(kind, paid, rows, counted_free, feedback_given, access))
 
 
+# ---------------------------------------------------------------- venue name lookup fast path (2026-10-26)
+# The most common typed request is one venue by name ("oheka castle", "Khol mansion", "is X listed?"); about half
+# failed after ~12 s of model + search. lookup.detect spots them, lookup.find looks the name up in table 11 (name
+# key, distinctive tokens, typo variants, rescored in code) and the answer is built here WITHOUT the model:
+#   found      -> that venue's card (same card + pricing code as a search: DETAIL LIGHT strips figures, free mode
+#                 strips every price) + a short templated line + chips
+#   choices    -> up to 3 close matches as cards, "which one did you mean?", one chip per name
+#   not_found  -> "We don't have <name> in Tulle yet" + up to 3 venues in the area if we know it, venue_request
+#                 {name, location} for the page, and a Slack notice (#feedback) + Mixpanel rec_venue_request for the
+#                 data team's list of venues to add.
+# Accounting: spends one question exactly like a typed one / "Show 3 more" (same _gate, rec_usage kind "refine",
+# so the free counters, daily caps, beta check-in and the daily brief's refine count are unchanged); model "lookup"
+# and cost 0 mark the row. Mixpanel rec_server_request kind "lookup". Anything unsure -> None -> the model as before.
+LOOKUP_TIMEOUT_S = 6.0
+LOOKUP_SIMILAR = 3
+
+
+def _place_label(c):
+    """'Burlingame, California' from the address + state, else the state."""
+    parts = [p.strip() for p in str(c.get("address") or "").split(",") if p.strip()]
+    state = c.get("state") or ""
+    state = state[0] if isinstance(state, list) and state else state
+    if state == "International":
+        return ", ".join(parts[-2:]) if len(parts) >= 2 else "outside the US"
+    city = parts[-2] if len(parts) >= 3 else ""
+    return ", ".join(x for x in (city, state) if x) or "Tulle"
+
+
+def _price_or_none(token, vid, full):
+    try:
+        return xano.venue_pricing(token, vid, full)
+    except Exception:
+        return None
+
+
+def _find_and_price(q, token, full):
+    """lookup.find, then the pricing panel of every match in parallel - all while the question is being gated."""
+    res = lookup.find(q, xano.name_search)
+    ids = [m["vendor_id"] for m in res["matches"]] if res["status"] in ("found", "choices") else []
+    if ids:
+        with ThreadPoolExecutor(max_workers=len(ids)) as ex:
+            res["pricing"] = dict(zip(ids, ex.map(lambda v: _price_or_none(token, v, full), ids)))
+    return res
+
+
+def _lookup_card(c, p, full, guests, budget, reason=""):
+    """The same card a search builds: the PI panel's rental + (FULL) all-in estimate; LIGHT/FREE: no figures."""
+    c = {k: v for k, v in c.items() if k not in ("google_name", "lat", "lng")}
+    c = agent._with_rental(c, p, guests, budget)
+    if not full:
+        c = agent._light_card(c)
+    return dict(c, reason=reason), p
+
+
+def _similar_near(token, q, user, slog, exclude=()):
+    """Up to LOOKUP_SIMILAR real venues in the area the couple named (or their profile state): one fast search.
+    ([], '') when the area is unknown or the search fails - the honest "we don't have it" still stands."""
+    loc = q.get("location") or q.get("alt_location") or ""
+    state = lookup.state_of(loc) if loc else ""
+    venues, where = [], ""
+    try:
+        if loc and not state:
+            near = xano.geocode_city(loc)
+            if near:
+                venues = xano.venues_near(near[0], near[1], 25)["venues"]
+                where = "near " + near[2]
+        if not venues:
+            states = [state] if state else agent._states_of(xano.profile_of(user))[:1]
+            if states:
+                venues = xano.search_venues(token, states=states, page_size=LOOKUP_SIMILAR + 3,
+                                            search_log=slog)["venues"]
+                where = "in " + ("international destinations" if states == ["International"] else states[0])
+    except Exception:
+        return [], ""
+    out = [v for v in venues if v.get("vendor_id") and v["vendor_id"] not in set(exclude)][:LOOKUP_SIMILAR]
+    return out, (where if out else "")
+
+
+def _display_name(name):
+    return name if any(ch.isupper() for ch in name) else " ".join(w.capitalize() for w in name.split())
+
+
+def _state1(st):
+    return st[0] if isinstance(st, list) and st else st
+
+
+def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None):
+    """The fast answer for "look up <venue>", or None (not a lookup, or unsure -> the model answers as before)."""
+    if not config.NAME_LOOKUP:
+        return None
+    q = lookup.detect(text, last_assistant)
+    if not q:
+        return None
+    t0 = time.time()
+    full = xano.beta_member(user)    # FULL detail = full members, exactly as agent.run's detail="full"
+    f_find = _POOL.submit(_find_and_price, q, token, full)          # runs while the question is gated
+    paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat_id)   # raises when blocked
+    if tracker and tracker.cancelled():
+        _log_stopped(base, "lookup", user, paid, access)
+        return _stopped("refine", paid, access, rows, feedback_given)
+    try:
+        res = f_find.result(timeout=LOOKUP_TIMEOUT_S)
+    except Exception as e:   # Xano down / slow: never say "we don't have it" because of our own failure
+        print("lookup fell back to the model:", repr(e)[:200])
+        return None
+    status = res["status"]
+    if status == "not_found" and not q["cue"] and q["words"] == 1:
+        return None          # one bare word we can't place: let the model read it
+    profile = xano.profile_of(user)
+    try:
+        guests = int(profile.get("Wedding_Guest_Count") or 0)
+    except (TypeError, ValueError):
+        guests = 0
+    try:
+        budget = int(profile.get("Wedding_Budget") or 0)
+    except (TypeError, ValueError):
+        budget = 0
+    slog = railway_search.SearchLog(railway_search.arm(user.get("id")))
+    saved = xano.saved_vendor_ids(user)
+    name = _display_name(q["name"])
+    venue_request, filters = None, {}
+    if status == "found":
+        m = res["matches"][0]
+        p = (res.get("pricing") or {}).get(m["vendor_id"])
+        card, p = _lookup_card(m, p, full, guests, budget, "The venue you asked about")
+        cards = [card]
+        vn = card.get("name")
+        text_out = "Here's %s in %s." % (vn, _place_label(card))
+        if full and card.get("estimate_label"):
+            text_out += " %s." % card["estimate_label"]
+        verdict = (p or {}).get("verdict") or ""
+        if verdict and (full or (access and not agent._DIGITS.search(verdict))):
+            text_out += " " + verdict.rstrip(".") + "."
+        text_out += " Open its pricing PDF on the card for everything the venue sent couples."
+        chips = ["Similar venues near %s" % vn,
+                 ("Cost breakdown for %s" % vn) if full else ("Is %s a good fit for us?" % vn)]
+        if saved and card.get("vendor_id") not in saved:
+            chips.append("Compare %s with my saved venues" % vn)
+        if card.get("state"):
+            filters = {"states": [_state1(card["state"])]}
+    elif status == "choices":
+        cards = [_lookup_card(m, (res.get("pricing") or {}).get(m["vendor_id"]), full, guests, budget)[0]
+                 for m in res["matches"]]
+        if len(cards) == 1:
+            text_out = ("The closest match we have to “%s” is %s in %s - is that the one you meant?"
+                        % (name, cards[0].get("name"), _place_label(cards[0])))
+        else:
+            text_out = ("We have %d venues that could be “%s” - which one did you mean? Tap its name below."
+                        % (len(cards), name))
+        names = [c.get("name") for c in cards]
+        chips = [(c.get("name") if names.count(c.get("name")) == 1 else "%s, %s" % (c.get("name"), _place_label(c)))
+                 for c in cards]
+    else:
+        similar, where = _similar_near(token, q, user, slog)
+        cards = []
+        for v in similar:
+            c = agent._with_rental(dict(v), None, guests, budget)
+            cards.append(dict(c if full else agent._light_card(c), reason=""))
+        loc = q.get("location") or q.get("alt_location") or ""
+        text_out = "We don't have %s in Tulle yet - I've passed it to our team to add." % name
+        if cards:
+            text_out += " Here are %d venues we do have %s, each with real pricing from couples." % (len(cards), where)
+        else:
+            text_out += " Tell me the city or area and I'll show you venues we do have there."
+        venue_request = {"name": name, "location": loc}
+        chips = (["More venues %s" % where] if where else []) + ["Find a photographer"]
+        if cards and cards[0].get("state"):
+            filters = {"states": [_state1(cards[0]["state"])]}
+        _POOL.submit(_venue_request_log, user, name, loc, text, chat_id, res.get("near") or [])
+    result = {"text": text_out, "cards": cards, "chips": chips, "more_cards": [], "search_filters": filters,
+              "notes_saved": [], "widgets": [], "dropped_unverified_ids": [],
+              "lookup": {"status": status, "query": name}, "venue_request": venue_request}
+    if not access:   # free mode: the same price guard as a model answer (text, cards, chips)
+        result = free_mode.sanitize_result(result)
+        result.pop("price_redactions", None)
+    ms = int((time.time() - t0) * 1000)
+    search = slog.summary()
+    _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model="lookup",
+                                      input_tokens=0, cache_read_tokens=0, cache_write_tokens=0, output_tokens=0,
+                                      tool_calls=0, cost_usd=0, latency_ms=ms, **_search_cols(search)))
+    used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
+    _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
+        "kind": "lookup", "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access,
+        "source": "rec_service", "cost_usd": 0, "latency_s": round(ms / 1000, 2), "cards": len(result["cards"]),
+        "lookup_status": status, "lookup_queries": len(res.get("queries") or []), "lookup_scores": res.get("scores"),
+        "price_locked": not access, "free_refines_left": guards.free_refines_left(paid, used, feedback_given),
+        **_search_props(user, search)})
+    return dict(result, paid=paid, has_access=access,
+                **_counters("refine", paid, rows, counted_free, feedback_given, access))
+
+
+def _venue_request_log(user, name, location, question, chat_id, near):
+    """The missing-venue list for the data team: Mixpanel rec_venue_request (queryable) + a Slack notice."""
+    try:
+        xano.mp_track(user["id"], "rec_venue_request", {"venue_name": name, "location": location,
+                                                        "question": (question or "")[:300], "chat_id": chat_id,
+                                                        "closest": list(near)[:3], "source": "rec_service"})
+        if config.VENUE_REQUEST_SLACK:
+            notify.venue_request(user, name, location, question, xano.plan_label(user), chat_id, near)
+    except Exception as e:
+        print("venue request log failed:", repr(e)[:200])
+
+
 def _opening_title(user):
     """'Venue picks · Arizona, 80 guests' so a list of opening-only chats is tellable apart."""
     p = xano.profile_of(user)
@@ -459,9 +671,12 @@ def _opening(token, user, background, tracker):
 def _refine_in_chat(token, user, chat, text, background, tracker=None):
     """One typed question inside a stored conversation: server-held history in, both turns saved after."""
     history = xano.get_messages(chat["id"])
-    msgs, kw = _model_inputs(history, text)
-    out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
-                       active_filters=kw["active_filters"], tracker=tracker)
+    last_a = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "assistant"), "")
+    out = _lookup_fast(token, user, text, last_a, chat["id"], tracker)   # "oheka castle": no model (2026-10-26)
+    if out is None:
+        msgs, kw = _model_inputs(history, text)
+        out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
+                           active_filters=kw["active_filters"], tracker=tracker)
     if out.get("stopped"):
         return dict(out, chat_id=chat["id"])   # nothing saved: not even the question (as on an error)
     out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
@@ -527,7 +742,10 @@ def _refine(token, user, body, background, tracker):
         return _refine_in_chat(token, user, chat, text, background, tracker)
     # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard
     # allowed and the model answered, so a blocked or failed question leaves no empty conversation behind.
-    out = _run_guarded("refine", token, user, msgs, tracker=tracker)
+    last_a = next((m["content"] for m in reversed(msgs[:-1]) if m["role"] == "assistant"), "")
+    out = _lookup_fast(token, user, text, last_a, 0, tracker)            # venue by name: no model (2026-10-26)
+    if out is None:
+        out = _run_guarded("refine", token, user, msgs, tracker=tracker)
     if out.get("stopped"):
         return out           # no chat created, nothing saved
     out["chips"] = ensure_chips(out.get("chips"))
