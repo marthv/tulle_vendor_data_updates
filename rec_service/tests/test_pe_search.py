@@ -229,7 +229,7 @@ def _fake_client(script):
     """A stand-in tool runner: calls the named tools with the given args, then yields one message."""
     class Runner:
         def __init__(self, tools, **kw):
-            self.tools = {t.__name__: t for t in tools}
+            self.tools = {(getattr(t, "name", None) or t.__name__): t for t in tools}
         def __iter__(self):
             out = {}
             for name, args in script:

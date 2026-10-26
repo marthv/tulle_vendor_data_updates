@@ -131,3 +131,7 @@ FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))
 # a paid payload never reaches a free or locked user. 0 disables. Prices edited in Xano show up within this long.
 PRICING_CACHE_S = max(0, int(os.environ.get("REC_PRICING_CACHE_S", "3600") or 0))
 PRICING_CACHE_MAX = max(1, int(os.environ.get("REC_PRICING_CACHE_MAX", "5000") or 5000))
+# Listings-only vendor types in the assistant (owner 2026-10-26: "roll in other vendors into the planner now"):
+# search_vendors (florists, hair and makeup, caterers, planners - no pricing held) + the prompt scope that offers
+# them. Default ON; REC_LISTINGS_IN_CHAT=0 = the tool list and SYSTEM prompt exactly as before.
+LISTINGS_IN_CHAT = os.environ.get("REC_LISTINGS_IN_CHAT", "1") == "1"
