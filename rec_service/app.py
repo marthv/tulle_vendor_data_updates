@@ -16,6 +16,13 @@ POST /rec/tool             -> {tool, args, chat_id?}: one cost tool (estimate_co
                               budget_status) for the chat's quick actions. No model call, never counts toward free
                               questions or the daily caps (owner 2026-10-25); its widget is saved in the chat if given.
                               Every answer (opening / refine / more) carries `widgets` ([] unless a cost tool ran).
+POST /rec/opening|refine|more also take an optional `request_id` (client UUID, max 64 chars, 2026-10-25):
+GET  /rec/progress/{id}    -> {state: running|done|stopped|unknown, label, step} for the page's "working on it" line
+                              (owner only, else 404; unknown/expired -> state "unknown"; kept 10 min after finishing)
+POST /rec/cancel/{id}      -> {ok: true}: Stop. The request ends at its next checkpoint (no further model or tool call)
+                              and answers 200 {status: "stopped", stopped: true, text: "", cards: [], ...}: not counted
+                              as a question, logged to rec_usage as status "stopped" with its real cost, nothing saved
+                              to the chat (same as an error). See progress.py (in memory: one replica only).
 POST /rec/feedback         -> beta check-in {rating, would_use, text}. Paid members: unlocks questions.
                               Free users (2026-10-14): required once after their free question(s); earns nothing more.
 
@@ -34,7 +41,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import agent
 from chips import (STARTER_CHIPS, STARTER_CHIPS_COST_TOOLS, CHIP_TOPUPS, dedupe_chips, ensure_chips,
@@ -45,6 +52,7 @@ import free_mode
 import guards
 import notify
 import prefs
+import progress
 import xano
 
 app = FastAPI(title="Tulle recommendations")
@@ -147,6 +155,11 @@ class RefineBody(BaseModel):
     chat_id: int = 0
     message: str = ""
     messages: list[Turn] = []     # legacy shape: prior turns + the new user message last
+    request_id: str = Field("", max_length=progress.MAX_ID_LEN)   # optional: progress + Stop (2026-10-25)
+
+
+class OpeningBody(BaseModel):
+    request_id: str = Field("", max_length=progress.MAX_ID_LEN)
 
 
 def _auth(authorization):
@@ -248,11 +261,12 @@ def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_lef
             "free_feedback_required": bool(free_fb), "free_feedback_bonus": config.FREE_FEEDBACK_BONUS}
 
 
-def _counters(kind, paid, rows, counted_free, feedback_given, access=True):
-    """Allowance left AFTER this request, for the page's counters."""
-    used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
-    used_today = rows + [{"status": "ok", "usage_day": xano.today()}]
-    used_fq = rows + ([{"status": "ok", "kind": "refine"}] if paid and kind == "refine" else [])
+def _counters(kind, paid, rows, counted_free, feedback_given, access=True, spent=True):
+    """Allowance left AFTER this request, for the page's counters. spent=False: a stopped request (2026-10-25) -
+    it used nothing, so the counters are the ones before it."""
+    used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free and spent else [])
+    used_today = rows + ([{"status": "ok", "usage_day": xano.today()}] if spent else [])
+    used_fq = rows + ([{"status": "ok", "kind": "refine"}] if paid and kind == "refine" and spent else [])
     c = dict(upsell="forever",
              beta_questions_left=guards.beta_questions_left(paid, used_fq, feedback_given),
              beta_feedback_after=config.BETA_FEEDBACK_AFTER,
@@ -264,9 +278,38 @@ def _counters(kind, paid, rows, counted_free, feedback_given, access=True):
     return c
 
 
-def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None):
+def _stopped(kind, paid, access, rows, feedback_given, chat_id=None):
+    """The answer to a request the couple stopped (2026-10-25): every key the page reads on an answer, empty, plus
+    the counters as they were before it (a stopped request is never counted)."""
+    return dict(status="stopped", stopped=True, text="", cards=[], chips=[], widgets=[], more_available=0,
+                notes_saved=[], chat_id=chat_id, paid=paid, has_access=access,
+                **_counters(kind, paid, rows, False, feedback_given, access, spent=False))
+
+
+def _log_stopped(base, kind, user, paid, access, usage=None):
+    """rec_usage row for a stopped request: status "stopped" (guards count only "ok" rows, so it never spends a
+    free question or a daily prompt) with the cost actually incurred - the daily spend caps still see it."""
+    u = usage or {}
+    cost = guards.cost_usd(u["model"], u) if u.get("model") else 0
+    _POOL.submit(xano.log_usage, dict(base, status="stopped", counted_as_free=False, model=u.get("model") or "none",
+                                      input_tokens=u.get("input_tokens", 0),
+                                      cache_read_tokens=u.get("cache_read_tokens", 0),
+                                      cache_write_tokens=u.get("cache_write_tokens", 0),
+                                      output_tokens=u.get("output_tokens", 0), tool_calls=u.get("tool_calls", 0),
+                                      cost_usd=cost, latency_ms=u.get("latency_ms", 0)))
+    _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
+        "kind": kind, "status": "stopped", "forever": xano.has_forever(user), "beta_member": paid,
+        "has_access": access, "source": "rec_service", "cost_usd": cost,
+        "latency_s": round((u.get("latency_ms") or 0) / 1000, 1), "tool_calls": u.get("tool_calls", 0),
+        "model_turns": len(u.get("turns") or [])})
+
+
+def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None, tracker=None):
     f_mem = _POOL.submit(_memory_row, user["id"])
     paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id)
+    if tracker and tracker.cancelled():   # Stop before the model started: no model call, nothing spent
+        _log_stopped(base, kind, user, paid, access)
+        return _stopped(kind, paid, access, rows, feedback_given)
     try:
         row = f_mem.result()
         raw = row.get("notes") or []
@@ -280,10 +323,16 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
                                   detail="full" if paid else "light" if access else "free",
                                   prior_vendor_ids=prior_ids, active_filters=active_filters,
                                   preferences=pref_hint,
-                                  on_note=lambda n: xano.add_memory_note(user["id"], n))
+                                  on_note=lambda n: xano.add_memory_note(user["id"], n),
+                                  **({"progress": tracker} if tracker else {}))
     except Exception as e:  # never charge a free refine for our own failure
         xano.log_usage(dict(base, status="error", error=str(e)[:500]))
         raise HTTPException(502, {"status": "error"})
+    # Stopped (2026-10-25) - also when Stop came after the last model call: the page has already given up on this
+    # answer, so it is not shown, not counted and not saved (the same as an error).
+    if result.get("stopped") or (tracker and tracker.cancelled()):
+        _log_stopped(base, kind, user, paid, access, usage)
+        return _stopped(kind, paid, access, rows, feedback_given)
     redactions = None
     if not access:   # free mode: price guard on text, cards and chips (code, not only the prompt)
         result = free_mode.sanitize_result(result)
@@ -349,24 +398,47 @@ def _next_step(out, history=()):
     return place_action_chip(chips, history, topups=free_mode.TOPUPS if locked else CHIP_TOPUPS)
 
 
+def _tracked(request_id, user, handler):
+    """Run handler(tracker) with the request's progress entry (None without a request_id), and mark it done or
+    stopped however the handler ends (a blocked 402/429 or a 502 reads "done": the page has its answer)."""
+    tracker = progress.start(request_id, user["id"])
+    state = "done"
+    try:
+        out = handler(tracker)
+        if isinstance(out, dict) and out.get("stopped"):
+            state = "stopped"
+        return out
+    finally:
+        if tracker:
+            tracker.finish(state)
+
+
 @app.post("/rec/opening")
-def opening(background: BackgroundTasks, authorization: str = Header(None)):
+def opening(background: BackgroundTasks, body: Optional[OpeningBody] = None, authorization: str = Header(None)):
     token, user = _auth(authorization)
+    return _tracked(body.request_id if body else "", user, lambda tr: _opening(token, user, background, tr))
+
+
+def _opening(token, user, background, tracker):
     # Create the chat only AFTER the guard allowed and the model answered - a blocked (402/429/503) or
     # failed opening must not leave an empty conversation behind. Costs ~0.3s.
-    out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}])
+    out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}], tracker=tracker)
+    if out.get("stopped"):
+        return out           # no chat created, nothing saved
     out["chips"] = list(_starter_chips(bool(out.get("price_locked"))))
     chat = xano.create_chat(user["id"], _opening_title(user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     return _public(out, chat_id=chat["id"])
 
 
-def _refine_in_chat(token, user, chat, text, background):
+def _refine_in_chat(token, user, chat, text, background, tracker=None):
     """One typed question inside a stored conversation: server-held history in, both turns saved after."""
     history = xano.get_messages(chat["id"])
     msgs, kw = _model_inputs(history, text)
     out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
-                       active_filters=kw["active_filters"])
+                       active_filters=kw["active_filters"], tracker=tracker)
+    if out.get("stopped"):
+        return dict(out, chat_id=chat["id"])   # nothing saved: not even the question (as on an error)
     out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
     if out.get("price_locked"):
         out["chips"] = free_mode.chips(out["chips"], history, planning=config.COST_TOOLS_IN_CHAT)
@@ -402,6 +474,10 @@ def _recent_chat(user_id):
 @app.post("/rec/refine")
 def refine(body: RefineBody, background: BackgroundTasks, authorization: str = Header(None)):
     token, user = _auth(authorization)
+    return _tracked(body.request_id, user, lambda tr: _refine(token, user, body, background, tr))
+
+
+def _refine(token, user, body, background, tracker):
     if body.chat_id:
         chat = xano.get_chat(user["id"], body.chat_id)
         if not chat:
@@ -409,7 +485,7 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
         text = (body.message or "").strip()[:2000]
         if not text:
             raise HTTPException(400, "message required")
-        return _refine_in_chat(token, user, chat, text, background)
+        return _refine_in_chat(token, user, chat, text, background, tracker)
     # No chat_id (the page asks before any opening has created a conversation). Until 2026-10-12 this ran
     # statelessly and saved nothing: user 827's 3 rated questions were lost and each one started from scratch,
     # so a state named in one question was forgotten by the next. Now: continue the user's conversation from
@@ -423,10 +499,12 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
     text = msgs[-1]["content"].strip()
     chat = _recent_chat(user["id"])
     if chat:
-        return _refine_in_chat(token, user, chat, text, background)
+        return _refine_in_chat(token, user, chat, text, background, tracker)
     # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard
     # allowed and the model answered, so a blocked or failed question leaves no empty conversation behind.
-    out = _run_guarded("refine", token, user, msgs)
+    out = _run_guarded("refine", token, user, msgs, tracker=tracker)
+    if out.get("stopped"):
+        return out           # no chat created, nothing saved
     out["chips"] = ensure_chips(out.get("chips"))
     if out.get("price_locked"):
         out["chips"] = free_mode.chips(out["chips"], planning=config.COST_TOOLS_IN_CHAT)
@@ -442,6 +520,26 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
         xano.touch_chat(chat)
     background.add_task(persist)
     return _public(out, chat_id=chat["id"])
+
+
+@app.get("/rec/progress/{request_id}")
+def get_progress(request_id: str, authorization: str = Header(None)):
+    """Poll while an answer is being worked on (2026-10-25). Owner only: another user's id is a 404, so ids can't
+    be probed. Unknown or expired (10 min after finishing) -> {"state": "unknown", "label": "", "step": 0}."""
+    _, user = _auth(authorization)
+    p = progress.get(request_id, user["id"])
+    if p is None:
+        raise HTTPException(404, "not found")
+    return p
+
+
+@app.post("/rec/cancel/{request_id}")
+def cancel_request(request_id: str, authorization: str = Header(None)):
+    """Stop (2026-10-25). The request stops at its next checkpoint - see progress.py and agent.run."""
+    _, user = _auth(authorization)
+    if not progress.cancel(request_id, user["id"]):
+        raise HTTPException(404, "not found")
+    return {"ok": True}
 
 
 @app.get("/rec/chats")
@@ -470,6 +568,7 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
 
 class MoreBody(BaseModel):
     chat_id: int
+    request_id: str = Field("", max_length=progress.MAX_ID_LEN)   # optional: progress + Stop (2026-10-25)
 
 
 MORE_TEXT = "Here are 3 more from the same search."   # until 2026-10-14; now more_text() describes the batch
@@ -501,6 +600,10 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
     2026-10-07): same gate, same usage row (kind refine), same counters. No model call - the venues were
     found by that answer's own searches and stored with it."""
     token, user = _auth(authorization)
+    return _tracked(body.request_id, user, lambda tr: _show_more(user, body, background, tr))
+
+
+def _show_more(user, body, background, tracker):
     chat = xano.get_chat(user["id"], body.chat_id)
     if not chat:
         raise HTTPException(404, "conversation not found")
@@ -508,6 +611,9 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
     if len(_more_remaining(history)) < agent.MORE_STEP:   # checked BEFORE the gate: never charge for nothing
         raise HTTPException(409, {"status": "no_more"})
     paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat["id"])
+    if tracker and tracker.cancelled():   # no model call here: the one checkpoint is before the question is spent
+        _log_stopped(base, "more", user, paid, access)
+        return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat["id"])
     reply = _more_reply(history, access)
     picks, chips, text = reply["cards"], reply["chips"], reply["text"]
     xano.log_usage(dict(base, status="ok", counted_as_free=counted_free, model="none", input_tokens=0,

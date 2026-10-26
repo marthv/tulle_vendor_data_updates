@@ -31,6 +31,7 @@ import config
 import cost_tools
 import estimate
 import free_mode
+import progress as progress_mod
 import xano
 
 SYSTEM = """You are Tulle's wedding vendor guide for VENUES, PHOTOGRAPHERS and ENTERTAINMENT. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and hundreds of photographers, DJs, bands and musicians, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
@@ -637,7 +638,7 @@ def strip_repeat_caveat(text):
 
 
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
-        detail="full", prior_vendor_ids=(), preferences="", active_filters=None):
+        detail="full", prior_vendor_ids=(), preferences="", active_filters=None, progress=None):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
@@ -646,7 +647,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     prior_vendor_ids: venues earlier turns of this chat showed as cards (server-stored, so trusted).
     active_filters: the filters of the chat's latest search (stored with that answer) - inherited by search_venues
         (merge_filters) so a stated location, city, guest count or price cap holds until the couple changes it.
+    progress: a progress.Tracker (request_id sent, 2026-10-25) - friendly labels as the stages run, and Stop: it is
+        checked before every model call and before every tool call (and between search and pricing inside
+        search_venues); once set, no further model or tool call runs and the result is {"stopped": True, ...}.
+        None = no labels, never stops (exactly as before).
     Returns (result_dict, usage_dict)."""
+    prog = progress or progress_mod.NULL
     free = detail == "free"
     light = detail in ("light", "free")
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
@@ -675,9 +681,18 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # search_venues.
     timing = {"search_ms": 0, "pricing_ms": 0, "searches": 0, "priced": 0, "tools": {}}
 
+    batch = {"pricing": 0}   # pricing lookups (one venue each) the current model turn asked for, for the label
+
     def timed(f):
         @functools.wraps(f)
         def w(*a, **k):
+            # Stop checkpoint + progress label (2026-10-25). A stopped request runs no tool at all: Stopped becomes
+            # an error tool result inside the runner, and the loop below breaks before the next model call.
+            prog.check()
+            if f.__name__ in progress_mod.PRICING_TOOLS:
+                prog.set(progress_mod.pricing_label(batch["pricing"]))
+            else:
+                prog.set(progress_mod.TOOL_LABELS.get(f.__name__))
             t = time.time()
             try:
                 return f(*a, **k)
@@ -783,6 +798,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                             active, relax)
         states, guests = eff["states"], eff["guests"]
         max_venue_fee, max_food_per_person, city = eff["max_venue_fee"], eff["max_food_per_person"], eff["city"]
+        prog.set(progress_mod.search_label(states or _states_of(profile), city))
         q = dict(states=states, guests=guests, max_venue_fee=max_venue_fee, max_food_per_person=max_food_per_person,
                  venue_types=venue_types, vibes=vibes, pricing_models=pricing_models, keyword=keyword,
                  sort_by=sort_by, outdoor_ceremony=outdoor_ceremony)
@@ -855,10 +871,12 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         tail = ([] if guests else venues[len(window):])     # kept unpriced, as before
         pairs, i = [], 0
         while i < len(window) and (len(pairs) < SHOWN_MAX or not filtering):
-            batch = window[i:i + PRICE_WAVE] if filtering else window
-            raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in batch]))
-            i += len(batch)
-            for v, p in zip(batch, raws):
+            wave = window[i:i + PRICE_WAVE] if filtering else window
+            prog.check()   # Stop between the search and each pricing wave (2026-10-25)
+            prog.set(progress_mod.pricing_label(len(wave)))
+            raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in wave]))
+            i += len(wave)
+            for v, p in zip(wave, raws):
                 why = _misfit(p, guests, max_venue_fee, max_food_per_person)
                 if why:
                     removed[why] += 1
@@ -966,6 +984,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             sort_by: popular_desc (default) or recent_desc.
         """
         category = "Photography" if str(category).lower().startswith("photo") else "Entertainment"
+        prog.set(progress_mod.pe_label(category))
         sts = [s for s in (states or []) if s] or _states_of(profile)
         bench_f = {s: pool.submit(bench_or_none, category, s) for s in sts}
         r = xano.search_pe(token, category, states=sts, max_price=max_price, types=types, offers=offers,
@@ -1248,6 +1267,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         if bad and not guard["bounced"]:
             guard["bounced"] = True
             guard["first_try"] = bad
+            prog.set(progress_mod.THINKING)
             return ("NOT SHOWN. These dollar figures are not in any data you were given: %s. Quote only figures "
                     "from your tools or the context (estimate_cost gives every total, per-guest cost and what-if), "
                     "or describe it in words. Then call present_recommendations again." % ", ".join(bad))
@@ -1261,6 +1281,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         if again and (claims_new or not asked_back) and not guard.get("repeat_bounced"):
             guard["repeat_bounced"] = True
             guard["repeat_first_try"] = [names.get(v) or v for v in again]
+            prog.set(progress_mod.THINKING)
             return ("NOT SHOWN. %s %s already shown in this chat or on their Saved list, and the couple didn't ask "
                     "about %s. Replace %s with venues they haven't seen (search again if you need more), or if one "
                     "really is still the best answer keep it and say plainly it's one they've seen. Never call a "
@@ -1437,21 +1458,27 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # (thinking vs visible text vs tool arguments); think_chars is 0 when thinking is off or omitted.
     usage["turns"] = []
     t_turn = time.time()
+    # Stop (2026-10-25): checked before the first model call, after every model turn (before its tools run) and
+    # after its tools (before the next model call). The model call in flight when Stop is tapped can't be
+    # interrupted; its tokens are counted below and nothing after it runs.
+    stopped = prog.cancelled()
     try:
-        for message in runner:
+        for message in ([] if stopped else runner):
             now = time.time()
             texts = [b.text for b in message.content if b.type == "text" and (b.text or "").strip()]
             if texts:
                 last_text = "\n\n".join(texts)
             u = message.usage
             tools_used = [b.name for b in message.content if b.type == "tool_use"]
+            batch["pricing"] = sum(1 for n in tools_used if n in progress_mod.PRICING_TOOLS)
+            stopped = prog.cancelled()     # this turn's tools never run
             # Run this turn's tools NOW (the runner caches the result and reuses it for the next request, so
             # nothing runs twice). Two wins: tool time is measured on its own, and once present_recommendations
             # is accepted (final set) we stop here instead of paying for one more model turn whose text is
             # thrown away (measured 2026-10-16: ~2-3s on every answer). A bounced present_recommendations
             # ("NOT SHOWN ...") leaves final empty, so the model still gets its retry turn.
             tool_ms = 0
-            if tools_used and config.EARLY_STOP:
+            if tools_used and config.EARLY_STOP and not stopped:
                 t_tools = time.time()
                 runner.generate_tool_call_response()
                 tool_ms = int((time.time() - t_tools) * 1000)
@@ -1470,8 +1497,24 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             model_used = getattr(message, "model", model_used) or model_used
             if final:
                 break
+            if stopped or prog.cancelled():
+                stopped = True
+                break
+            # Between model turns: the model writes next (or asks for more tools, which relabel themselves).
+            prog.set(progress_mod.WRITING if any(n != "present_recommendations" for n in tools_used)
+                     else progress_mod.THINKING)
+    except progress_mod.Stopped:   # only if a checkpoint's exception escapes the runner (it normally catches it)
+        stopped = True
     finally:
         pool.shutdown(wait=False)
+    if stopped:
+        defer_pool.shutdown(wait=False, cancel_futures=True)   # no more background pricing for "Show 3 more"
+        usage.update(latency_ms=int((time.time() - t0) * 1000), model=model_used, stopped=True,
+                     tool_breakdown=dict(timing["tools"]), search_ms=timing["search_ms"],
+                     pricing_ms=timing["pricing_ms"], searches=timing["searches"], priced_sync=timing["priced"],
+                     deferred_wait_ms=0, figure_bounced=guard["bounced"], unsupported_figures=guard["unsupported"])
+        return ({"stopped": True, "text": "", "cards": [], "chips": [], "more_cards": [], "search_filters": {},
+                 "notes_saved": saved_notes, "widgets": [], "dropped_unverified_ids": []}, usage)
     t_def = time.time()
     try:
         _finish_deferred()
