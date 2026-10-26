@@ -809,6 +809,8 @@ def parse_message_row(r):
     allc = [c for c in (r.get("cards") or []) if isinstance(c, dict)]
     meta = next((c for c in allc if c.get("meta") == "search"), None)
     widgets = [c["widget"] for c in allc if c.get("meta") == "widget" and isinstance(c.get("widget"), dict)]
+    qmeta = next((c for c in allc if c.get("meta") == "questions"), None)   # thin-profile questions (2026-10-26)
+    upsold = any(c.get("meta") == "upsell" for c in allc)
     allc = [c for c in allc if not c.get("meta")]
     strip = lambda c: {k: v for k, v in c.items() if k not in ("more", "via_more")}
     turn = {"id": r.get("id"), "role": r["role"], "text": r.get("content") or "",
@@ -816,7 +818,11 @@ def parse_message_row(r):
             "more_cards": [strip(c) for c in allc if c.get("more")],
             "is_more": any(c.get("via_more") for c in allc),
             "chips": r.get("chips") or [],
-            "widgets": widgets}   # cost-tool widgets (2026-10-25), stored as hidden {"meta": "widget"} entries
+            "widgets": widgets,   # cost-tool widgets (2026-10-25), stored as hidden {"meta": "widget"} entries
+            # 2026-10-26: the opening's thin-profile questions (answers to them are saved on the next turn) and
+            # whether this answer carried the price-question upgrade prompt (at most once per chat).
+            "questions": list(qmeta.get("questions") or []) if qmeta else [],
+            "upsell_shown": upsold}
     if meta and isinstance(meta.get("filters"), dict):
         turn["filters"] = meta["filters"]
     return turn
@@ -828,6 +834,11 @@ def get_memory(user_id):
     return rows[0] if rows else None
 
 
+# Entries the model-note cap never trims: preference answers, the skip marker, and the opening's thin-profile
+# question markers (pref_asked, 2026-10-26: a question is asked on at most profile_questions.MAX_ASKS openings).
+_HIDDEN_KINDS = ("pref", "pref_skipped", "pref_asked")
+
+
 def add_memory_note(user_id, note, cap=20):
     row = get_memory(user_id)
     notes = list((row or {}).get("notes") or [])
@@ -835,8 +846,8 @@ def add_memory_note(user_id, note, cap=20):
     if not note or any(n.get("note", "").lower() == note.lower() for n in notes):
         return
     # The cap trims the model's own notes only - never the couple's preference answers (kind pref/pref_skipped).
-    kept = [n for n in notes if n.get("kind") in ("pref", "pref_skipped")]
-    own = [n for n in notes if n.get("kind") not in ("pref", "pref_skipped")]
+    kept = [n for n in notes if n.get("kind") in _HIDDEN_KINDS]
+    own = [n for n in notes if n.get("kind") not in _HIDDEN_KINDS]
     notes = kept + (own + [{"note": note, "at": today()}])[-cap:]
     now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
     if row:
@@ -850,17 +861,51 @@ def set_preferences(user_id, answers, skipped=False):
     skipped=True with no answers stores a hidden pref_skipped marker so the questions aren't pushed again.
     Returns the new pref entries (what the page tells the couple was added)."""
     row = get_memory(user_id)
-    notes = [n for n in list((row or {}).get("notes") or []) if n.get("kind") not in ("pref", "pref_skipped")]
+    notes = list((row or {}).get("notes") or [])
+    # Answers to the opening's inline questions with no questionnaire question (area, guests - 2026-10-26) survive
+    # a questionnaire save unless it sets them itself.
+    keep_inline = [n for n in notes if n.get("kind") == "pref" and n.get("key") in prefs.INLINE_IDS
+                   and n.get("key") not in (answers or {})]
+    notes = [n for n in notes if n.get("kind") not in ("pref", "pref_skipped")]
     new = [dict(n, at=today()) for n in prefs.to_notes(answers)]
     if not new and skipped:
         new = [{"kind": "pref_skipped", "at": today()}]
-    notes = new + notes
+    notes = new + keep_inline + notes
+    _write_notes(user_id, row, notes)
+    return new
+
+
+def _write_notes(user_id, row, notes):
     now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
     if row:
         _put_full(MEMORY_TABLE, row, {"notes": notes, "updated_at": now_ms})
     else:
         _meta("POST", "/table/%d/content" % MEMORY_TABLE, json={"user_id": int(user_id), "notes": notes})
+
+
+def merge_preferences(user_id, answers, src="chat"):
+    """Add / replace ONLY the given answers (the opening's thin-profile questions, 2026-10-26: a tap or a typed
+    reply), keeping every other answer and note. Same rec_memory row and note shape as set_preferences; entries
+    carry src="chat" so prefs.asked() still offers the full questionnaire. Returns the new pref entries."""
+    new = [dict(n, at=today(), src=src) for n in prefs.to_notes(answers)]
+    if not new:
+        return []
+    row = get_memory(user_id)
+    keys = {n["key"] for n in new}
+    notes = [n for n in list((row or {}).get("notes") or [])
+             if not (n.get("kind") == "pref" and n.get("key") in keys)]
+    _write_notes(user_id, row, new + notes)
     return new
+
+
+def mark_questions_asked(user_id, ids):
+    """Hidden pref_asked markers (no "note", so not shown in the panel) for the thin-profile questions an opening
+    showed. profile_questions.questions() stops asking one after MAX_ASKS markers."""
+    if not ids:
+        return
+    row = get_memory(user_id)
+    notes = list((row or {}).get("notes") or []) + [{"kind": "pref_asked", "key": i, "at": today()} for i in ids]
+    _write_notes(user_id, row, notes)
 
 
 # ---------------------------------------------------------------- Mixpanel (server side)

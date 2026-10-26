@@ -52,8 +52,10 @@ import free_mode
 import guards
 import notify
 import prefs
+import profile_questions
 import progress
 import railway_search
+import upsell
 import xano
 
 app = FastAPI(title="Tulle recommendations")
@@ -104,8 +106,9 @@ def _public(out, **extra):
     resp = {k: v for k, v in out.items() if k not in ("more_cards", "search_filters")}
     n = len(out.get("more_cards") or [])
     # widgets (cost tools, 2026-10-25): always present, [] by default, so the current page is unaffected.
+    # questions / upsell_prompt (2026-10-26): always present ([] / null by default), so the page can bind them.
     return dict(resp, more_available=n if n >= agent.MORE_STEP else 0, widgets=list(out.get("widgets") or []),
-                **extra)
+                questions=list(out.get("questions") or []), upsell_prompt=out.get("upsell_prompt"), **extra)
 
 
 def _stored_cards(out):
@@ -117,6 +120,12 @@ def _stored_cards(out):
         stored.append({"meta": "search", "filters": out["search_filters"]})
     # Cost-tool widgets ride along the same way (2026-10-25), so a reopened chat redraws them.
     stored += [{"meta": "widget", "widget": w} for w in out.get("widgets") or []]
+    # Thin-profile questions (so the next turn can save the couple's answer) and the upgrade prompt (once per
+    # chat), 2026-10-26 - hidden entries the same way.
+    if out.get("questions"):
+        stored.append({"meta": "questions", "questions": out["questions"]})
+    if out.get("upsell_prompt"):
+        stored.append({"meta": "upsell", "reason": out["upsell_prompt"].get("reason")})
     return stored
 
 
@@ -301,6 +310,7 @@ def _stopped(kind, paid, access, rows, feedback_given, chat_id=None):
     """The answer to a request the couple stopped (2026-10-25): every key the page reads on an answer, empty, plus
     the counters as they were before it (a stopped request is never counted)."""
     return dict(status="stopped", stopped=True, text="", cards=[], chips=[], widgets=[], more_available=0,
+                questions=[], upsell_prompt=None,
                 notes_saved=[], chat_id=chat_id, paid=paid, has_access=access,
                 **_counters(kind, paid, rows, False, feedback_given, access, spent=False))
 
@@ -324,7 +334,10 @@ def _log_stopped(base, kind, user, paid, access, usage=None):
         "model_turns": len(u.get("turns") or []), **_search_props(user, search)})
 
 
-def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None, tracker=None):
+def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None, tracker=None,
+                 history=(), saved_lines=()):
+    """history: the chat's stored turns (the upgrade prompt shows at most once per chat). saved_lines: memory lines
+    this request already saved from the couple's answer to a thin-profile question (shown as notes_saved)."""
     f_mem = _POOL.submit(_memory_row, user["id"])
     paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id)
     if tracker and tracker.cancelled():   # Stop before the model started: no model call, nothing spent
@@ -337,13 +350,25 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         # Preference answers go to the model as one structured line (filters + priority), not as loose notes.
         notes = [n.get("note") for n in raw if n.get("note") and n.get("kind") != "pref"]
         user_context = row.get("user_context") or ""
-        pref_hint = prefs.search_hint(prefs.from_notes(raw))
+        answers = prefs.from_notes(raw)
+        pref_hint = prefs.search_hint(answers)
+        # Thin profile (2026-10-26): the opening asks at most 2 questions with tap answers (profile_questions.py).
+        qs = (profile_questions.questions(xano.profile_of(user), raw, user_context, active_filters)
+              if kind == "opening" and config.PROFILE_QUESTIONS else [])
+        guests_extra = {"Wedding_Guest_Count": int(answers["guests"][0])} if answers.get("guests") else {}
+        # Price question from someone not on Forever (2026-10-26): answer on fit + one Forever line + the
+        # upgrade card, at most once per chat. Detected on the couple's own words, not left to the model.
+        last = messages[-1].get("content") if messages else ""
+        price_q = (kind != "opening" and not paid and isinstance(last, str) and upsell.is_price_question(last)
+                   and not upsell.shown_in(history))
         # Detail: full members get figures; a non-member with a plan gets fit, not numbers ("light"); no plan at
         # all gets no price of any kind ("free", 2026-10-14).
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
                                   detail="full" if paid else "light" if access else "free",
                                   prior_vendor_ids=prior_ids, active_filters=active_filters,
-                                  preferences=pref_hint,
+                                  preferences=pref_hint, profile_questions=qs,
+                                  known_area=(answers.get("area") or [""])[0], profile_extra=guests_extra,
+                                  price_question=price_q,
                                   on_note=lambda n: xano.add_memory_note(user["id"], n), search_log=slog,
                                   **({"progress": tracker} if tracker else {}))
     except Exception as e:  # never charge a free refine for our own failure
@@ -359,6 +384,11 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
     if not access:   # free mode: price guard on text, cards and chips (code, not only the prompt)
         result = free_mode.sanitize_result(result)
         redactions = result.pop("price_redactions", 0)
+    result = dict(result, questions=qs, upsell_prompt=None)
+    if price_q:
+        result.update(text=upsell.apply_text(result.get("text")), upsell_prompt=upsell.prompt(has_plan=access))
+    if saved_lines:
+        result["notes_saved"] = list(saved_lines) + list(result.get("notes_saved") or [])
     cost = guards.cost_usd(usage["model"], usage)
     _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model=usage["model"],
                         input_tokens=usage["input_tokens"], cache_read_tokens=usage["cache_read_tokens"],
@@ -372,6 +402,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         "cards": len(result.get("cards") or []), "more_cards": len(result.get("more_cards") or []),
         "notes_saved": len(result.get("notes_saved") or []), "price_locked": not access,
         "price_redactions": redactions,
+        "upsell_prompt": upsell.REASON if price_q else "", "profile_questions": [q["id"] for q in qs],
+        "profile_answers_saved": len(saved_lines or ()),
         "free_refines_left": guards.free_refines_left(paid, used, feedback_given), "model": usage["model"],
         # Per-step timing (2026-10-16 speed pass): where the wait goes.
         "prefetch_ms": usage.get("prefetch_ms"), "model_turns": len(usage.get("turns") or []),
@@ -451,23 +483,64 @@ def _opening(token, user, background, tracker):
     if out.get("stopped"):
         return out           # no chat created, nothing saved
     out["chips"] = list(_starter_chips(bool(out.get("price_locked"))))
+    if out.get("questions"):
+        # The first question's answers are the chips, so the current page already shows them as taps; a tap is
+        # sent as the next message and _refine_in_chat saves it (the page may also render `questions` itself).
+        out["chips"] = [o["label"] for o in out["questions"][0]["options"]][:4]
+        background.add_task(_mark_asked, user["id"], [q["id"] for q in out["questions"]])
     chat = xano.create_chat(user["id"], _opening_title(user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     return _public(out, chat_id=chat["id"])
 
 
+def _mark_asked(user_id, ids):
+    try:
+        xano.mark_questions_asked(user_id, ids)
+    except Exception as e:   # a lost marker only means the question may be asked once more
+        print("mark_questions_asked failed:", repr(e)[:200])
+
+
+def _pending_questions(history):
+    """The thin-profile questions the latest answer asked (only if it is the latest assistant turn)."""
+    last = next((t for t in reversed(history or []) if t.get("role") == "assistant"), None)
+    return list((last or {}).get("questions") or [])
+
+
+def _save_profile_answers(user, pending, text):
+    """The couple's tap or typed reply to a thin-profile question -> saved to their memory BEFORE the model runs
+    (so this answer already uses it, and no later save_note write races it). Returns (answers, lines)."""
+    answers = profile_questions.answers_from_reply(pending, text)
+    if not answers:
+        return {}, []
+    try:
+        added = xano.merge_preferences(user["id"], answers)
+    except Exception as e:   # never fail the question over the save
+        print("merge_preferences failed:", repr(e)[:200])
+        return answers, []
+    _POOL.submit(xano.mp_track, user["id"], "rec_profile_answer", {
+        "answered": sorted(answers), "source": "rec_service"})
+    return answers, [n["note"] for n in added if n.get("note")]
+
+
 def _refine_in_chat(token, user, chat, text, background, tracker=None):
     """One typed question inside a stored conversation: server-held history in, both turns saved after."""
     history = xano.get_messages(chat["id"])
+    pending = _pending_questions(history)
+    answered, lines = _save_profile_answers(user, pending, text) if pending else ({}, [])
     msgs, kw = _model_inputs(history, text)
     out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
-                       active_filters=kw["active_filters"], tracker=tracker)
+                       active_filters=kw["active_filters"], tracker=tracker, history=history, saved_lines=lines)
     if out.get("stopped"):
         return dict(out, chat_id=chat["id"])   # nothing saved: not even the question (as on an error)
     out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
     if out.get("price_locked"):
         out["chips"] = free_mode.chips(out["chips"], history, planning=config.COST_TOOLS_IN_CHAT)
     out["chips"] = _next_step(out, history)
+    rest = [q for q in pending if q["id"] not in answered]
+    if answered and rest:
+        # They answered one of the opening's 2 questions: ask the other one now, its answers as the chips.
+        out["questions"] = rest[:1]
+        out["chips"] = [o["label"] for o in rest[0]["options"]][:4]
     if (chat.get("title") or "").startswith("Venue picks"):
         chat["title"] = text[:80]
 
@@ -587,6 +660,9 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
     for i, t in enumerate(turns):
         t.pop("more_cards", None)         # unrevealed extras stay on the server until a question is spent
         t.pop("filters", None)            # server-side search state
+        t.pop("upsell_shown", None)       # server-side: the upgrade prompt shows once per chat
+        if i != last:
+            t["questions"] = []           # only the latest answer's questions are still open
         t["more_available"] = left if i == last else 0
     return {"chat_id": chat["id"], "title": chat.get("title") or "", "turns": turns}
 
@@ -658,7 +734,7 @@ def _show_more(user, body, background, tracker):
     background.add_task(persist)
     left = reply["left"]
     return dict(text=text, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
-                more_available=left if left >= agent.MORE_STEP else 0, widgets=[],
+                more_available=left if left >= agent.MORE_STEP else 0, widgets=[], questions=[], upsell_prompt=None,
                 **_counters("refine", paid, rows, counted_free, feedback_given, access))
 
 
@@ -752,6 +828,8 @@ def set_context(body: ContextBody, authorization: str = Header(None)):
 class PrefsBody(BaseModel):
     answers: dict = {}       # {question_id: [option value, ...]} - unknown ids/values are dropped
     skipped: bool = False    # "Skip for now": remember not to push the questions again
+    merge: bool = False      # 2026-10-26: add/replace only these answers (an opening question tapped on the page,
+                             # e.g. {"answers": {"area": ["Dallas, Texas"]}, "merge": true}); no question is spent
     context: Optional[str] = None   # last step "Anything else Tulle should know?" = the couple's own context
                                     # (same field as /rec/context; None = leave it alone, "" = clear it)
 
@@ -762,7 +840,9 @@ def get_preferences(authorization: str = Header(None)):
     _, user = _auth(authorization)
     row = _memory_row(user["id"])
     raw = row.get("notes") or []
-    return {"questions": prefs.QUESTIONS, "answers": prefs.from_notes(raw), "asked": prefs.asked(raw),
+    answers = prefs.from_notes(raw)
+    return {"questions": prefs.QUESTIONS, "answers": {k: v for k, v in answers.items() if k in prefs.QUESTION_IDS},
+            "profile_answers": {k: v for k, v in answers.items() if k in prefs.INLINE_IDS}, "asked": prefs.asked(raw),
             "context": row.get("user_context") or "", "context_max": xano.CONTEXT_MAX}
 
 
@@ -773,7 +853,10 @@ def save_preferences(body: PrefsBody, authorization: str = Header(None)):
     _, user = _auth(authorization)
     answers = prefs.clean(body.answers)
     has_context = bool((body.context or "").strip())
-    added = xano.set_preferences(user["id"], answers, skipped=body.skipped and not answers and not has_context)
+    if body.merge:
+        added = xano.merge_preferences(user["id"], answers)
+    else:
+        added = xano.set_preferences(user["id"], answers, skipped=body.skipped and not answers and not has_context)
     lines = [n["note"] for n in added if n.get("note")]
     if body.context is not None:
         saved = xano.set_user_context(user["id"], body.context)

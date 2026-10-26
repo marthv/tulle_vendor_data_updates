@@ -31,7 +31,9 @@ import config
 import cost_tools
 import estimate
 import free_mode
+import profile_questions as profile_questions_mod
 import progress as progress_mod
+import upsell
 import railway_search
 import xano
 
@@ -639,7 +641,8 @@ def strip_repeat_caveat(text):
 
 
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
-        detail="full", prior_vendor_ids=(), preferences="", active_filters=None, progress=None, search_log=None):
+        detail="full", prior_vendor_ids=(), preferences="", active_filters=None, progress=None, search_log=None,
+        profile_questions=None, known_area="", profile_extra=None, price_question=False):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
@@ -654,6 +657,14 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         None = no labels, never stops (exactly as before).
     search_log: a railway_search.SearchLog (2026-10-26); None = one for this user's arm (railway_search.arm). Its
         summary is usage["search"] (engine / fallback / ms of the ep119-path venue searches).
+    profile_questions: the thin-profile questions the page shows under this answer (profile_questions.py,
+        2026-10-26) - the model is told not to ask its own closing question, and an asked "area" replaces the
+        STATE ONLY instruction.
+    known_area: an area the couple chose ("Dallas, Texas") - the STATE ONLY instruction is skipped.
+    profile_extra: profile fields from their saved answers, used only where the profile is empty
+        (e.g. {"Wedding_Guest_Count": 150} from a tapped "100-150 guests").
+    price_question: the couple's latest message asks for price figures and they are not on Forever
+        (upsell.py) - the model is told to answer on fit plus one Forever line, never to refuse.
     Returns (result_dict, usage_dict)."""
     prog = progress or progress_mod.NULL
     slog = search_log if search_log is not None else railway_search.SearchLog(railway_search.arm((user or {}).get("id")))
@@ -676,6 +687,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     saved_cards_holder = {}
     # profile_override: eval runs only - real requests always use the verified user row.
     profile = profile_override if profile_override is not None else xano.profile_of(user)
+    profile = dict(profile, **{k: v for k, v in (profile_extra or {}).items() if v and not profile.get(k)})
+    pq_ids = {q.get("id") for q in profile_questions or ()}
     pool = ThreadPoolExecutor(max_workers=8)
     # Background pricing of "Show 3 more" candidates (2026-10-17): its own workers, so it never queues in front
     # of a tool call the model is waiting on.
@@ -1346,7 +1359,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         # 2026-10-12 user 827: no state in the profile -> the model kept asking "which state?" and showed
         # 0 venues on 3 of 4 replies. Say so explicitly so the NO-location rule in SYSTEM applies.
         context += "\nLOCATION: NONE IN PROFILE (see the no-location rule)."
-    elif states != ["International"] and not (active or {}).get("city"):
+    elif known_area and not (active or {}).get("city"):
+        context += ("\nLOCATION AREA: the couple chose to stay near %s - pass it as city to search_venues "
+                    "(don't ask where again)." % known_area)
+    elif states != ["International"] and not (active or {}).get("city") and "area" not in pq_ids:
         # 2026-10-21 chat 247: the profile only says "Texas", so the opening picks were Abilene, San Antonio and
         # Plano for a couple near Flower Mound, and nothing asked where. The profile has no city field.
         context += ("\nLOCATION: STATE ONLY (%s) - no city or area yet (see the state-only rule). Unless this chat, "
@@ -1407,6 +1423,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     "only): <<<" + user_context[:1000] + ">>>")
     if preferences:
         context += "\n" + preferences
+    if profile_questions:
+        context += profile_questions_mod.context_line(profile_questions)
+    if price_question and light:
+        context += upsell.CONTEXT
     if memory_notes:
         context += ("\nWhat we learned in earlier conversations (use it, don't repeat it back): "
                     + json.dumps(memory_notes))

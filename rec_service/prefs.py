@@ -7,6 +7,7 @@ outdoor_ceremony) or, for "priority", to how the model ranks. Answers are stored
 with kind="pref" (no schema change), so they also show - and can be deleted - in "What Tulle Assistant knows
 about you".
 """
+import re
 
 QUESTIONS = [
     # 2026-10-08 v2 (user: "we're missing some venue vibes ... and some place descriptions"): all 14 venue types
@@ -47,13 +48,32 @@ _BY_ID = {q["id"]: q for q in QUESTIONS}
 # catering" = 348. With 8 to choose from the model dropped the caterer preference first.
 _CATERING_FILTER = {"Raw Space": ["Raw Space", "Semi-Inclusive"]}
 _NOTE_PREFIX = {"style": "Style", "feel": "Overall feel", "setting": "Setting must-haves", "catering": "Food and setup",
-                "ceremony": "Ceremony", "priority": "Matters most"}
+                "ceremony": "Ceremony", "priority": "Matters most", "area": "Wants to stay near", "guests": "Guest count"}
+QUESTION_IDS = tuple(q["id"] for q in QUESTIONS)   # the questionnaire (GET /rec/preferences)
+# Answers to the opening's thin-profile questions (profile_questions.py, 2026-10-26) that have no questionnaire
+# question: "area" (one of profile_questions.CITIES_BY_STATE, stored "City, State") and "guests" (a count).
+INLINE_IDS = ("area", "guests")
+
+
+def _inline_ok(qid, v):
+    if qid == "guests":
+        return isinstance(v, str) and v.isdigit() and 2 <= int(v) <= 1500
+    if qid == "area":
+        import profile_questions   # lazy: profile_questions imports prefs
+        return v in profile_questions.all_area_values()
+    return False
 
 
 def clean(answers):
     """Keep only known questions and known option values (a public-ish endpoint: never store free text here)."""
     out = {}
     for qid, vals in (answers or {}).items():
+        if qid in INLINE_IDS:   # validated values only (a known area, a plain count) - still never free text
+            vals = [vals] if isinstance(vals, (str, int)) else list(vals or [])
+            v = str(vals[0]) if vals else ""
+            if _inline_ok(qid, v):
+                out[qid] = [v]
+            continue
         q = _BY_ID.get(qid)
         if not q:
             continue
@@ -70,7 +90,9 @@ def clean(answers):
 
 
 def _label(qid, value):
-    for o in _BY_ID[qid]["options"]:
+    if qid == "guests":
+        return "about %s" % value
+    for o in _BY_ID.get(qid, {}).get("options", []):
         if o["value"] == value:
             return o["label"]
     return value
@@ -93,8 +115,10 @@ def from_notes(notes):
 
 
 def asked(notes):
-    """True once the couple answered OR skipped the questions - don't ask again automatically."""
-    return any(isinstance(n, dict) and n.get("kind") in ("pref", "pref_skipped") for n in notes or [])
+    """True once the couple answered OR skipped the questionnaire - don't ask again automatically. Answers given
+    to the opening's inline questions (src="chat") don't count: the questionnaire asks more than they do."""
+    return any(isinstance(n, dict) and n.get("kind") in ("pref", "pref_skipped") and n.get("src") != "chat"
+               for n in notes or [])
 
 
 def search_hint(answers):
@@ -103,6 +127,10 @@ def search_hint(answers):
     if not a:
         return ""
     f = []
+    if a.get("area"):
+        f.append("city=" + repr(re.sub(r"^the ", "", a["area"][0].split(",")[0].strip())))
+    if a.get("guests"):
+        f.append("guests=" + a["guests"][0])
     if a.get("style"):
         f.append("venue_types=" + repr(a["style"]))
     if a.get("setting"):
