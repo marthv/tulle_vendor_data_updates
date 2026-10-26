@@ -363,6 +363,13 @@ def _log_stopped(base, kind, user, paid, access, usage=None):
         **_turn_props(u), **_search_props(user, search)})
 
 
+def _free_views(user):
+    try:
+        return int(user.get("FreeViewsRemaining"))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None, tracker=None,
                  history=(), saved_lines=(), waive_free=False):
     """history: the chat's stored turns (the upgrade prompt shows at most once per chat). saved_lines: memory lines
@@ -416,6 +423,10 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
     result = dict(result, questions=qs, upsell_prompt=None)
     if price_q:
         result.update(text=upsell.apply_text(result.get("text")), upsell_prompt=upsell.prompt(has_plan=access))
+    elif kind == "opening" and not access and _free_views(user) <= 0:
+        # Free couple with no free PDF views left: the upgrade card on the first answer of every chat (owner
+        # 2026-10-26, "forcing upgrades"). Card only - the text already says exact figures need a plan.
+        result["upsell_prompt"] = upsell.wall_prompt()
     if saved_lines:
         result["notes_saved"] = list(saved_lines) + list(result.get("notes_saved") or [])
     cost = guards.cost_usd(usage["model"], usage)

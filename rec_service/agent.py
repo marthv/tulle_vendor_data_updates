@@ -1552,6 +1552,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         if views > 0:
             context += ("\nThey have %d free PDF view%s left - invite them to use one on the PDF of your top pick."
                         % (views, "" if views == 1 else "s"))
+        else:
+            # Live check 2026-10-26: with 0 views the opening still said "you have free PDF views, so open...".
+            context += ("\nThey have NO free PDF views left: never tell them they have free views or to open a PDF. "
+                        "Your closing line is that Forever unlocks the exact prices in every PDF and here.")
     elif light:
         context += ("\nDETAIL: LIGHT. This couple is not on Forever: recommend on fit and comparisons only, "
                     "with no dollar figures (see DETAIL LEVEL). Forever unlocks the full price breakdown here.")
@@ -1599,7 +1603,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     if profile_questions:
         context += profile_questions_mod.context_line(profile_questions)
     if price_question and light:
-        context += upsell.CONTEXT
+        try:
+            _views = int(user.get("FreeViewsRemaining"))
+        except (TypeError, ValueError):
+            _views = 0
+        context += upsell.context(views=_views if free else 0, has_plan=not free)
     if memory_notes:
         context += ("\nWhat we learned in earlier conversations (use it, don't repeat it back): "
                     + json.dumps(memory_notes))

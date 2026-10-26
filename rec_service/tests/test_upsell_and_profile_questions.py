@@ -261,7 +261,9 @@ def api(monkeypatch):
 def test_thin_opening_asks_two_questions_then_saves_the_tapped_answer(api):
     c = api["c"]
     j = c.post("/rec/opening").json()
-    assert [q["id"] for q in j["questions"]] == ["guests", "area"] and j["upsell_prompt"] is None
+    assert [q["id"] for q in j["questions"]] == ["guests", "area"]
+    # a free couple with no PDF views left gets the upgrade card on the opening (owner 2026-10-26), never the price one
+    assert (j["upsell_prompt"] or {}).get("reason") in (None, "no_free_views")
     assert j["chips"] == ["Under 50 guests", "50-100 guests", "100-150 guests", "150+ guests"]
     assert j["cards"] and api["asked"] == [["guests", "area"]]
     assert [q["id"] for q in api["runs"][-1]["profile_questions"]] == ["guests", "area"]
@@ -323,3 +325,27 @@ def test_preferences_merge_endpoint_saves_one_answer_without_a_question(api):
     g = api["c"].get("/rec/preferences").json()
     assert g["profile_answers"] == {"area": ["Austin, Texas"]} and g["answers"] == {} and g["asked"] is False
     assert api["runs"] == []
+
+
+# ---- 2026-10-26 owner: push PDFs where possible, force the upgrade otherwise
+def test_price_context_sends_free_users_with_views_to_the_pdf_first():
+    import upsell as u
+    c = u.context(views=2)
+    assert "PDF" in c and "2 free PDF views left" in c and "Forever" in c
+    assert c.index("PDF") < c.index("Forever")
+
+
+def test_price_context_plan_holders_open_the_pdf():
+    import upsell as u
+    assert "their plan includes every PDF" in u.context(views=0, has_plan=True)
+
+
+def test_price_context_no_views_no_plan_is_forever():
+    import upsell as u
+    assert u.context(views=0) == u.CONTEXT
+
+
+def test_wall_card_shape():
+    import upsell as u
+    w = u.wall_prompt()
+    assert w["reason"] == "no_free_views" and w["cta"] and w["plan"] == "forever"

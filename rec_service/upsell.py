@@ -39,6 +39,32 @@ CONTEXT = ("\nPRICE QUESTION: the couple's latest message asks about prices, cos
            "and their full cost estimate come with Forever.")
 
 
+# Owner 2026-10-26: "for free users, we're still pushing them to open pdfs where possible and forcing upgrades".
+# Someone who CAN open a PDF (free views left, or a 1-week / 4-week plan) is sent to the top pick's PDF first;
+# Forever is the second line. Only someone with no way to see a PDF is sold Forever as the answer.
+PDF_FIRST = ("\nPRICE QUESTION: the couple's latest message asks about prices, cost or budget numbers. Do NOT refuse and "
+             "never say you can't give numbers. Answer on fit exactly as your detail level allows (search and show "
+             "picks that match everything else they asked for). Your closing line sends them to open your top pick's "
+             "pricing PDF now - %s - because that PDF is where the exact prices are. Then ONE short line that Forever "
+             "also puts exact prices and their full cost estimate right here.")
+
+
+def context(views=0, has_plan=False):
+    """The PRICE QUESTION context line: PDF first when they can open one, else Forever."""
+    if has_plan:
+        return PDF_FIRST % "their plan includes every PDF"
+    if views > 0:
+        return PDF_FIRST % ("they have %d free PDF view%s left" % (views, "" if views == 1 else "s"))
+    return CONTEXT
+
+
+def wall_prompt():
+    """First answer of a chat for a free couple with no free PDF views left (owner 2026-10-26: force the upgrade)."""
+    return {"reason": "no_free_views", "plan": "forever", "headline": "Unlock the exact prices",
+            "body": "You've used your free PDF views. Forever unlocks every venue's real pricing PDF and a full cost "
+                    "estimate for your wedding.", "cta": "See plans"}
+
+
 def is_price_question(text):
     """True when the couple's message asks for price / cost / budget figures."""
     return bool(_PRICE_Q.search(text or ""))
