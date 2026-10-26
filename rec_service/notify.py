@@ -78,3 +78,18 @@ def answer_feedback(user, text, question, answer, plan="", chat_id=0, vote="down
     if chat_id:
         msg += "\n_chat %s_" % chat_id
     return _post(msg)
+
+
+def venue_request(user, name, location="", question="", plan="", chat_id=0, near=()):
+    """A venue a couple asked for by name that table 11 doesn't have (lookup fast path, 2026-10-26) - the data
+    team's list of venues to add. Same channel and delivery as the feedback notices. Never raises."""
+    who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A couple", user.get("id"), plan or "plan unknown")
+    msg = "*Venue not in Tulle* - %s asked for *%s*%s" % (who, _clip(name, 120),
+                                                           (" (%s)" % _clip(location, 80)) if location else "")
+    if question and question.strip().lower() != (name or "").strip().lower():
+        msg += "\n*They typed:* %s" % _clip(question, 300)
+    if near:
+        msg += "\n_Closest names we have: %s_" % _clip(", ".join(near), 200)
+    if chat_id:
+        msg += "\n_chat %s_" % chat_id
+    return _post(msg)

@@ -809,7 +809,11 @@ def vendor_card(vendor_id):
     rows = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
     if not rows:
         return None
-    it = rows[0]
+    return card_from_row(rows[0])
+
+
+def card_from_row(it):
+    """A table-11 row -> the card shape vendor_card returns (venue or photographer / entertainer)."""
     img = it.get("image_1")
     if it.get("Category") in PE_CATEGORIES:   # photographer / entertainer shown earlier in this chat
         cat = it["Category"]
@@ -826,6 +830,36 @@ def vendor_card(vendor_id):
             "max_capacity_seated": it.get("Max_Capacity_Seated"),
             "venue_fee_range": [it.get("flt_min_venue_fee"), it.get("flt_max_venue_fee")],
             "image": img, "description": (it.get("Description") or "")[:300]}
+
+
+NAME_SEARCH_PAGE = 20   # rows per name-key search; each row carries a ~15 KB google_data_cache, so keep it small
+
+
+def name_search(term, per_page=NAME_SEARCH_PAGE):
+    """Venue lookup by name (lookup.py, 2026-10-26): table-11 venues whose mk_name_key (lowercase alphanumerics of
+    the name, e.g. "kohlmansion") contains `term` (already a key: [a-z0-9] only, so never a '|' operator), most
+    clicked first. Validated venues only (the ones the app shows). Returns the card shape plus google_name (the
+    Google Places name - "Harold Pratt House and Peterson Hall" for "Harold Pratt House") for rescoring."""
+    term = re.sub(r"[^a-z0-9]", "", (term or "").lower())
+    if len(term) < 2:
+        return []
+    body = {"search": [{"mk_name_key|includes": term}, {"Category": "Venue"}], "page": 1, "per_page": int(per_page),
+            "sort": {"Clicks_on_Venue": "desc"}}
+    try:
+        d = _meta("POST", "/table/11/content/search", json=body)
+    except XanoError:
+        body.pop("sort")   # never let an unsupported sort sink the lookup
+        d = _meta("POST", "/table/11/content/search", json=body)
+    out = []
+    for it in (d or {}).get("items", []):
+        if str(it.get("Validated_Data")) != "1" or it.get("Category") != "Venue":
+            continue
+        c = card_from_row(it)
+        c["google_name"] = ((it.get("google_data_cache") or {}).get("name") or "") if isinstance(
+            it.get("google_data_cache"), dict) else ""
+        c["lat"], c["lng"] = it.get("lat"), it.get("lng")
+        out.append(c)
+    return out
 
 
 _WEDDING_WORDS = re.compile(r"wedding|reception|ceremony|bride|groom|married|our event|rehearsal", re.I)
