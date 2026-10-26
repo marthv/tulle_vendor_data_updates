@@ -1,10 +1,13 @@
 """Everything that talks to Xano. Read-only against app data; the only write is one rec_usage row
 per request. Data calls go out WITH THE USER'S OWN TOKEN, so Xano's existing auth and paywall
 rules apply unchanged - the service can never see more than the user could in the app."""
+from collections import OrderedDict
+import copy
 import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
 import math
 import re
+import threading
 import time
 
 import requests
@@ -395,7 +398,140 @@ def venue_pricing(token, vendor_id, paid):
     return {"vendor_id": vendor_id, "headline": sp.get("headline_prefix"), "guest_minimum": sp.get("guest_floor"),
             "verdict": band.get("sentence"), "lines": rows, "source_note": sp.get("footer"),
             # raw figures for estimate.compute (paid payload only; ep231 has ranges, not these)
-            "cost_inputs": estimate.inputs_from_panel(d) if paid else None}
+            "cost_inputs": estimate.inputs_from_panel(d) if paid else None,
+            # ep230 only: which entitlement Xano rendered this payload for (forever / paid / below_threshold /
+            # never_paid). The pricing cache checks it before storing a paid response (cached_venue_pricing).
+            "access_reason": d.get("access_reason") if paid else None}
+
+
+# ---------------------------------------------------------------- pricing cache (2026-10-26 speed pass)
+# WHAT THE PANEL DEPENDS ON (read from the live endpoints 2026-10-26, workspace 1 group 10):
+#   ep231 /venue/pricing_intelligence (free): called WITHOUT a token, inputs vendor_id / space_key / cache_v only, and
+#     already Xano-response-cached for everyone -> the payload depends on vendor_id alone.
+#   ep230 /venue/pricing_intelligence_full (paid): auth=user, but the user is used for ONE thing - entitlement,
+#     `forever_access_purchased || total_amount_paid >= 50` (read live from the user row) - which is passed with
+#     vendor_id / space_key to fn56 utils/venue_pricing_panel (no $auth, no clock, DB reads by vendor only).
+#     The only other user-specific key is access_reason, which follows from the same two fields.
+# So the key is (endpoint, vendor_id, ep230 entitlement). We never pass space_key. A paid user whose entitlement
+# can't be read off the auth/me row is NOT cached, and a paid response is only STORED when its own access_reason
+# agrees with the key (a purchase or refund between auth/me and ep230 can't file a payload under the wrong key).
+_ENTITLED_REASONS = {"forever", "paid"}
+_LOCKED_REASONS = {"below_threshold", "never_paid"}
+PI_PAID_THRESHOLD = 50   # ep230's PAID_THRESHOLD (dollars, total_amount_paid)
+
+
+def pi_entitled(user):
+    """ep230's entitlement, computed the way ep230 does it; None when the row doesn't carry the fields."""
+    if not isinstance(user, dict):
+        return None
+    if user.get("forever_access_purchased"):
+        return True
+    if "total_amount_paid" not in user:
+        return None
+    try:
+        paid = float(user.get("total_amount_paid") or 0)
+    except (TypeError, ValueError):
+        return None
+    if paid != paid:   # NaN: JS Number(...) || 0 -> 0
+        paid = 0
+    return paid >= PI_PAID_THRESHOLD
+
+
+def pricing_cache_key(vendor_id, paid, user=None):
+    """The cache key for one venue_pricing call, or None = do not cache."""
+    vid = str(vendor_id or "").strip()
+    if not vid:
+        return None
+    if not paid:
+        return ("ep231", vid)
+    ent = pi_entitled(user)
+    if ent is None:
+        return None
+    return ("ep230", vid, "entitled" if ent else "locked")
+
+
+def _cacheable(key, p):
+    if not isinstance(p, dict) or not (p.get("lines") or p.get("headline") or p.get("guest_minimum")):
+        return False   # empty panel (no spaces / not found): don't pin it for an hour
+    if key[0] == "ep230":
+        reason = p.get("access_reason")
+        return reason in (_ENTITLED_REASONS if key[2] == "entitled" else _LOCKED_REASONS)
+    return True
+
+
+class _TTLCache:
+    """Thread-safe TTL + LRU (oldest-used evicted first) map. Values are deep-copied in and out."""
+
+    def __init__(self, ttl_s, max_entries):
+        self.ttl, self.max = ttl_s, max_entries
+        self._d = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        now = time.monotonic()
+        with self._lock:
+            hit = self._d.get(key)
+            if hit is None:
+                return None
+            if hit[0] <= now:
+                del self._d[key]
+                return None
+            self._d.move_to_end(key)
+            val = hit[1]
+        return copy.deepcopy(val)
+
+    def put(self, key, value):
+        val = copy.deepcopy(value)
+        with self._lock:
+            self._d[key] = (time.monotonic() + self.ttl, val)
+            self._d.move_to_end(key)
+            while len(self._d) > self.max:
+                self._d.popitem(last=False)
+
+    def clear(self):
+        with self._lock:
+            self._d.clear()
+
+    def __len__(self):
+        return len(self._d)
+
+
+PRICING_CACHE = _TTLCache(config.PRICING_CACHE_S, config.PRICING_CACHE_MAX)
+
+
+class PricingStats:
+    """Per-request cache counters (rec_server_request pricing_cache_*). Thread-safe: pricing runs in pools."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.hits = self.misses = self.bypass = 0
+
+    def add(self, kind):
+        with self._lock:
+            setattr(self, kind, getattr(self, kind) + 1)
+
+    def as_dict(self):
+        with self._lock:
+            return {"hits": self.hits, "misses": self.misses, "bypass": self.bypass}
+
+
+def cached_venue_pricing(token, vendor_id, paid, user=None, stats=None):
+    """venue_pricing through PRICING_CACHE (see the key notes above). Errors and empty panels are not cached.
+    stats (PricingStats): hits / misses (cacheable, fetched) / bypass (not cacheable: cache off or unknown
+    entitlement)."""
+    key = pricing_cache_key(vendor_id, paid, user) if PRICING_CACHE.ttl > 0 else None
+    if key is not None:
+        hit = PRICING_CACHE.get(key)
+        if hit is not None:
+            if stats:
+                stats.add("hits")
+            return hit
+    if stats:
+        stats.add("misses" if key is not None else "bypass")
+    p = venue_pricing(token, vendor_id, paid)   # module lookup on purpose: tests monkeypatch venue_pricing
+    if key is not None and _cacheable(key, p):
+        PRICING_CACHE.put(key, p)
+    return p
 
 
 # table 63 capacity bands (venue seated capacity). The pricing panel compares each venue with ITS OWN band, so

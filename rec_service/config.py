@@ -116,3 +116,9 @@ FEEDBACK_SLACK_WEBHOOK = os.environ.get("REC_FEEDBACK_SLACK_WEBHOOK", "")   # Tu
 FEEDBACK_SLACK_CHANNEL = os.environ.get("REC_FEEDBACK_SLACK_CHANNEL", "C07JML6NMLM")
 FEEDBACK_TABLE_ID = int(os.environ.get("REC_FEEDBACK_TABLE_ID", "81"))
 FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))
+
+# In-process cache of venue pricing panels (2026-10-26 speed pass; xano.cached_venue_pricing). Pricing was 3.45 s of
+# the 14.65 s average opening. Keyed ONLY by what ep230/ep231 depend on (vendor + endpoint + ep230 entitlement), so
+# a paid payload never reaches a free or locked user. 0 disables. Prices edited in Xano show up within this long.
+PRICING_CACHE_S = max(0, int(os.environ.get("REC_PRICING_CACHE_S", "3600") or 0))
+PRICING_CACHE_MAX = max(1, int(os.environ.get("REC_PRICING_CACHE_MAX", "5000") or 5000))

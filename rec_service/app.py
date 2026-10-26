@@ -214,6 +214,20 @@ def _search_props(user, summary=None):
             "search_fallbacks": int(s.get("search_fallbacks") or 0)}
 
 
+def _turn_props(usage):
+    """rec_server_request props (2026-10-26 speed pass): each model call's wall ms and the tools it asked for, so
+    turn 1 (which only picks search_venues args) can be weighed; and the cross-request pricing cache's counts."""
+    u = usage or {}
+    ms = [int(x or 0) for x in (u.get("turn_ms") or [])]
+    pc = u.get("pricing_cache") or {}
+    return {"model_turns": len(u.get("turns") or ms), "turn_ms": ms,
+            "turn1_model_ms": ms[0] if ms else None, "turn2_model_ms": ms[1] if len(ms) > 1 else None,
+            "turn1_tools": (u.get("turn_tools") or [[]])[0] if ms else [],
+            "turn_ms_has_tools": bool(u.get("turn_ms_has_tools")),
+            "pricing_cache_hits": int(pc.get("hits") or 0), "pricing_cache_misses": int(pc.get("misses") or 0),
+            "pricing_cache_bypass": int(pc.get("bypass") or 0)}
+
+
 def _gate(kind, user, chat_id=0):
     """The one question check. Raises the blocked response (402/403/429/503) or returns what the caller
     needs to log the use and report the counters. Used by typed questions AND "Show 3 more"."""
@@ -321,7 +335,7 @@ def _log_stopped(base, kind, user, paid, access, usage=None):
         "kind": kind, "status": "stopped", "forever": xano.has_forever(user), "beta_member": paid,
         "has_access": access, "source": "rec_service", "cost_usd": cost,
         "latency_s": round((u.get("latency_ms") or 0) / 1000, 1), "tool_calls": u.get("tool_calls", 0),
-        "model_turns": len(u.get("turns") or []), **_search_props(user, search)})
+        **_turn_props(u), **_search_props(user, search)})
 
 
 def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None, tracker=None):
@@ -385,6 +399,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         "deferred_wait_ms": usage.get("deferred_wait_ms"),
         "tool_breakdown": usage.get("tool_breakdown") or {},
         **{"tool_ms_" + k: v for k, v in (usage.get("tool_breakdown") or {}).items()},
+        # Per-model-call ms + tools, and pricing cache hit/miss (2026-10-26). model_turns is re-stated, same value.
+        **_turn_props(usage),
         # Railway search rollout (2026-10-26): which engine answered the venue searches, and the user's arm.
         **_search_props(user, usage.get("search"))})
     return dict(result, paid=paid, has_access=access,

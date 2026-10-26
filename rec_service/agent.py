@@ -722,12 +722,17 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         return _with_rental(v, p, guests, budget)
 
     pricing_cache = {}   # vendor_id -> raw pricing payload, fetched once per request
+    # Cross-request cache (xano.cached_venue_pricing, 2026-10-26): keyed by vendor + endpoint + ep230 entitlement.
+    pricing_stats = xano.PricingStats()
+
+    def fetch_pricing(vid):
+        return xano.cached_venue_pricing(token, vid, paid and not light, user=user, stats=pricing_stats)
 
     def raw_pricing_or_none(vid):
         if vid in pricing_cache:
             return pricing_cache[vid]
         try:
-            pricing_cache[vid] = xano.venue_pricing(token, vid, paid and not light)
+            pricing_cache[vid] = fetch_pricing(vid)
         except Exception:
             pricing_cache[vid] = None
         return pricing_cache[vid]
@@ -1047,7 +1052,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             vendor_id: a vendor_id returned by search_venues.
         """
-        p = xano.venue_pricing(token, vendor_id, paid and not light)
+        p = fetch_pricing(vendor_id)
         pricing_cache[vendor_id] = p
         return _ev(dict(shape(p), headline=p.get("headline"), source_note=p.get("source_note")))
 
@@ -1461,6 +1466,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # tools that ran in between + this turn's writing. The *_chars split shows where output tokens go
     # (thinking vs visible text vs tool arguments); think_chars is 0 when thinking is off or omitted.
     usage["turns"] = []
+    usage["turn_ms"] = []          # one per model call: wall ms of that call
+    usage["turn_tools"] = []       # one per model call: the tool names it asked for
+    usage["turn_ms_has_tools"] = not config.EARLY_STOP
     t_turn = time.time()
     # Stop (2026-10-25): checked before the first model call, after every model turn (before its tools run) and
     # after its tools (before the next model call). The model call in flight when Stop is tapped can't be
@@ -1486,6 +1494,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 t_tools = time.time()
                 runner.generate_tool_call_response()
                 tool_ms = int((time.time() - t_tools) * 1000)
+            # Per-turn model time (2026-10-26, for deciding whether turn 1 can be skipped). With EARLY_STOP (the
+            # default) this turn's tools run AFTER `now` and t_turn restarts after them, so the span is the model
+            # call alone; with EARLY_STOP off the runner runs the previous turn's tools inside it (turn_ms_has_tools).
+            usage["turn_ms"].append(int((now - t_turn) * 1000))
+            usage["turn_tools"].append(list(tools_used))
             usage["turns"].append({
                 "ms": int((now - t_turn) * 1000), "tool_ms": tool_ms, "out": u.output_tokens or 0,
                 "think_chars": sum(len(getattr(b, "thinking", "") or "") for b in message.content if b.type == "thinking"),
@@ -1517,7 +1530,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                      tool_breakdown=dict(timing["tools"]), search_ms=timing["search_ms"],
                      pricing_ms=timing["pricing_ms"], searches=timing["searches"], priced_sync=timing["priced"],
                      deferred_wait_ms=0, figure_bounced=guard["bounced"], unsupported_figures=guard["unsupported"],
-                     search=slog.summary())
+                     search=slog.summary(), pricing_cache=pricing_stats.as_dict())
         return ({"stopped": True, "text": "", "cards": [], "chips": [], "more_cards": [], "search_filters": {},
                  "notes_saved": saved_notes, "widgets": [], "dropped_unverified_ids": []}, usage)
     t_def = time.time()
@@ -1539,6 +1552,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     usage["pricing_ms"] = timing["pricing_ms"]        # ep230/231 inside search_venues, waits only (not background)
     usage["searches"] = timing["searches"]
     usage["priced_sync"] = timing["priced"]
+    usage["pricing_cache"] = pricing_stats.as_dict()   # cross-request pricing cache: hits / misses / bypass
     usage["tool_breakdown"] = dict(timing["tools"])   # ms per tool name, whole tool incl. search + pricing
     usage["figure_bounced"] = guard["bounced"]
     usage["unsupported_figures"] = guard["unsupported"]
