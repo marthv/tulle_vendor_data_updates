@@ -91,9 +91,9 @@ def _ep119_shape(d):
 
 def railway_get(token, params):
     """One search-api call. Returns (data, None) or (None, fallback_reason)."""
-    t = config.RAILWAY_SEARCH_TIMEOUT_S
+    # connect 1.0s, read REC_RAILWAY_SEARCH_TIMEOUT_S: a stalled Railway falls back to ep119 within ~4s worst case.
     try:
-        r = requests.get(config.RAILWAY_SEARCH_URL, params=params, timeout=(t, t),
+        r = requests.get(config.RAILWAY_SEARCH_URL, params=params, timeout=(1.0, config.RAILWAY_SEARCH_TIMEOUT_S),
                          headers={"Authorization": "Bearer " + token} if token else {})
     except requests.exceptions.Timeout:
         return None, "timeout"

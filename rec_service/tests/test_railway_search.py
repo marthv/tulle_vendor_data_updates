@@ -92,7 +92,7 @@ def test_railway_arm_uses_railway_with_same_params_and_token(net):
     assert [v["vendor_id"] for v in r["venues"]] == ["V21"] and r["total_matches"] == 1
     assert net["ep119"] == []
     call = net["rail"][0]
-    assert call["url"] == "https://rail.test/search" and call["timeout"] == (3.0, 3.0)
+    assert call["url"] == "https://rail.test/search" and call["timeout"] == (1.0, 3.0)
     assert call["headers"] == {"Authorization": "Bearer tok"}
     assert call["params"] == xano.venue_search_params(states=["Texas"], page_size=16, guests=120, vibes=["Waterfront"])
     s = log.summary()
@@ -120,6 +120,12 @@ def test_any_railway_failure_falls_back_to_ep119_same_search(net, resp, reason):
     assert net["ep119"][0]["params"] == net["rail"][0]["params"] and net["ep119"][0]["token"] == "tok"
     s = log.summary()
     assert s["search_engine"] == "mixed" and s["search_fallback"] == reason and s["search_fallbacks"] == 1
+
+
+def test_timeout_is_connect_1s_read_from_config(net, monkeypatch):
+    monkeypatch.setattr(config, "RAILWAY_SEARCH_TIMEOUT_S", 2.5)
+    xano.search_venues("tok", states=["Texas"], page_size=8, search_log=rs.SearchLog("railway"))
+    assert net["rail"][0]["timeout"] == (1.0, 2.5)
 
 
 def test_ep119_arm_never_calls_railway(net):
