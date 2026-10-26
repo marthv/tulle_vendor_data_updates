@@ -508,7 +508,7 @@ def _lookup_card(c, p, full, guests, budget, reason=""):
     return dict(c, reason=reason), p
 
 
-def _similar_near(token, q, user, slog, exclude=()):
+def _similar_near(token, q, user, slog, exclude=(), use_profile=True):
     """Up to LOOKUP_SIMILAR real venues in the area the couple named (or their profile state): one fast search.
     ([], '') when the area is unknown or the search fails - the honest "we don't have it" still stands."""
     loc = q.get("location") or q.get("alt_location") or ""
@@ -521,7 +521,9 @@ def _similar_near(token, q, user, slog, exclude=()):
                 venues = xano.venues_near(near[0], near[1], 25)["venues"]
                 where = "near " + near[2]
         if not venues:
-            states = [state] if state else agent._states_of(xano.profile_of(user))[:1]
+            # use_profile=False (a venue we don't have, no area named): their profile state is a guess - live test
+            # 2026-10-26, "Il Sereno on Lake Como" got "3 venues we do have in Alabama".
+            states = [state] if state else (agent._states_of(xano.profile_of(user))[:1] if use_profile else [])
             if states:
                 venues = xano.search_venues(token, states=states, page_size=LOOKUP_SIMILAR + 3,
                                             search_log=slog)["venues"]
@@ -607,7 +609,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None):
         chips = [(c.get("name") if names.count(c.get("name")) == 1 else "%s, %s" % (c.get("name"), _place_label(c)))
                  for c in cards]
     else:
-        similar, where = _similar_near(token, q, user, slog)
+        similar, where = _similar_near(token, q, user, slog, use_profile=False)
         cards = []
         for v in similar:
             c = agent._with_rental(dict(v), None, guests, budget)
