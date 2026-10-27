@@ -131,6 +131,18 @@ FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))
 # a paid payload never reaches a free or locked user. 0 disables. Prices edited in Xano show up within this long.
 PRICING_CACHE_S = max(0, int(os.environ.get("REC_PRICING_CACHE_S", "3600") or 0))
 PRICING_CACHE_MAX = max(1, int(os.environ.get("REC_PRICING_CACHE_MAX", "5000") or 5000))
+# Prefetch caches (2026-10-27, xano.BENCH_CACHE / CARD_CACHE): table 63 state benchmarks (rebuilt by a batch job, not
+# per edit) and table-11 vendor cards for the couple's Saved list. 0 disables either one.
+BENCH_CACHE_S = max(0, int(os.environ.get("REC_BENCH_CACHE_S", str(6 * 3600)) or 0))
+CARD_CACHE_S = max(0, int(os.environ.get("REC_CARD_CACHE_S", "3600") or 0))
+# Reuse today's opening (2026-10-27, owner OK #5; opening_reuse.py): the same couple opening the Planner again the
+# same ET day with nothing that shapes the answer changed gets the stored answer (~0.5 s, no model call, no usage
+# row). "0" = off (every visit generates, as before). Max age caps how old the reused cards' prices can be.
+OPENING_REUSE = os.environ.get("REC_OPENING_REUSE", "1") == "1"
+OPENING_REUSE_MAX_AGE_S = max(0, int(os.environ.get("REC_OPENING_REUSE_MAX_AGE_S", str(6 * 3600)) or 0))
+# Railway search circuit breaker (2026-10-27, owner OK #2): after a timeout / connection error / 5xx the Planner
+# skips the search-api for this many seconds and goes straight to ep119. 0 = no breaker (old behaviour).
+RAILWAY_BREAKER_S = max(0, int(os.environ.get("REC_RAILWAY_BREAKER_S", "60") or 0))
 # Listings-only vendor types in the assistant (owner 2026-10-26: "roll in other vendors into the planner now"):
 # search_vendors (florists, hair and makeup, caterers, planners - no pricing held) + the prompt scope that offers
 # them. Default ON; REC_LISTINGS_IN_CHAT=0 = the tool list and SYSTEM prompt exactly as before.

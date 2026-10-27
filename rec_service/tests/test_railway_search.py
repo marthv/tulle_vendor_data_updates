@@ -143,7 +143,10 @@ def test_no_log_is_origin_main_behaviour(net):
     assert r["total_matches"] == 2
 
 
-def test_parallel_states_mixed_when_one_falls_back(net):
+def test_parallel_states_mixed_when_one_falls_back(net, monkeypatch):
+    # Parallel per-state fallback on its own; with the breaker on (2026-10-27) the states still in flight would
+    # race it - covered by the breaker tests in test_railway_breaker.py.
+    monkeypatch.setattr(config, "RAILWAY_BREAKER_S", 0)
     lock, n = threading.Lock(), collections.Counter()
 
     def resp():

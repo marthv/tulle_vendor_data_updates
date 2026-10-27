@@ -21,7 +21,19 @@ import xano  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _pricing_cache_off(monkeypatch):
-    xano.PRICING_CACHE.clear()
-    monkeypatch.setattr(xano.PRICING_CACHE, "ttl", 0)
+    # Same for the prefetch caches (2026-10-27) and the opening reuse store: off unless a test turns them on.
+    caches = (xano.PRICING_CACHE, xano.BENCH_CACHE, xano.CARD_CACHE)
+    for c in caches:
+        c.clear()
+        monkeypatch.setattr(c, "ttl", 0)
+    import config
+    import opening_reuse
+    import railway_search
+    opening_reuse.STORE.clear()
+    monkeypatch.setattr(config, "OPENING_REUSE", False)
+    railway_search.BREAKER.reset()
     yield
-    xano.PRICING_CACHE.clear()
+    for c in caches:
+        c.clear()
+    opening_reuse.STORE.clear()
+    railway_search.BREAKER.reset()

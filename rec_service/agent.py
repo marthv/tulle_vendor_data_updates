@@ -837,6 +837,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     pricing_cache = {}   # vendor_id -> raw pricing payload, fetched once per request
     # Cross-request cache (xano.cached_venue_pricing, 2026-10-26): keyed by vendor + endpoint + ep230 entitlement.
     pricing_stats = xano.PricingStats()
+    prefetch_stats = xano.CacheStats()   # benchmark + saved-card cache hits / misses this request (2026-10-27)
 
     def fetch_pricing(vid):
         return xano.cached_venue_pricing(token, vid, paid and not light, user=user, stats=pricing_stats)
@@ -1323,7 +1324,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             state: a single state, e.g. "Texas", or "International".
         """
-        return _ev(xano.market_benchmarks(state, guests))
+        return _ev(xano.cached_market_benchmarks(state, guests, prefetch_stats))
 
     widgets = []          # cost-tool widgets shown under this answer (cost_tools.py), in call order
     tool_user = dict(user, **profile) if profile_override is not None else user
@@ -1510,17 +1511,40 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 d["entry"]["ids"].append(vid)
 
     t0 = time.time()
-    # Prefetch in parallel: the couple's state benchmarks + saved vendors.
+    # Prefetch in parallel: the couple's state benchmarks + saved vendors. Both go through cross-request caches
+    # (2026-10-27, xano.BENCH_CACHE / CARD_CACHE) and each part's wall ms is reported on its own (prefetch_bench_ms /
+    # prefetch_saved_ms), so the next speed pass can see which one still costs time.
     states = _states_of(profile)
-    bench_f = [] if light else [pool.submit(xano.market_benchmarks, s, guests) for s in states]
+    part_ms = {"bench": 0, "saved": 0}
+
+    def _timed_part(name, fn):
+        def run_part():
+            t = time.time()
+            try:
+                return fn()
+            finally:
+                part_ms[name] = int((time.time() - t) * 1000)
+        return run_part
+
+    def _benches():
+        out = []
+        for f in [pool.submit(xano.cached_market_benchmarks, s, guests, prefetch_stats) for s in states]:
+            try:
+                out.append(f.result())
+            except Exception:
+                pass
+        return out
+
     saved_ids = [] if profile_override is not None else xano.saved_vendor_ids(user)
-    saved_f = pool.submit(lambda: [c for c in pool.map(xano.vendor_card, saved_ids) if c])
+    bench_f = None if light or not states else pool.submit(_timed_part("bench", _benches))
+    saved_f = pool.submit(_timed_part("saved", lambda: [c for c in pool.map(
+        lambda v: xano.cached_vendor_card(v, prefetch_stats), saved_ids) if c]))
     benches = []
-    for f in bench_f:
+    if bench_f is not None:
         try:
-            benches.append(f.result())
+            benches = bench_f.result()
         except Exception:
-            pass
+            benches = []
     try:
         saved = saved_f.result()
     except Exception:
@@ -1628,7 +1652,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
     client = anthropic.Anthropic()
     usage = {"input_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "output_tokens": 0,
-             "tool_calls": 0, "prefetch_ms": int((time.time() - t0) * 1000)}
+             "tool_calls": 0, "prefetch_ms": int((time.time() - t0) * 1000),
+             "prefetch_bench_ms": part_ms["bench"], "prefetch_saved_ms": part_ms["saved"],
+             "prefetch_saved_n": len(saved_ids)}
     runner = client.beta.messages.tool_runner(
         model=config.MODEL,
         max_tokens=8000,
@@ -1729,7 +1755,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                      tool_breakdown=dict(timing["tools"]), search_ms=timing["search_ms"],
                      pricing_ms=timing["pricing_ms"], searches=timing["searches"], priced_sync=timing["priced"],
                      deferred_wait_ms=0, figure_bounced=guard["bounced"], unsupported_figures=guard["unsupported"],
-                     search=slog.summary(), pricing_cache=pricing_stats.as_dict())
+                     search=slog.summary(), pricing_cache=pricing_stats.as_dict(),
+                     prefetch_cache=prefetch_stats.as_dict())
         return ({"stopped": True, "text": "", "cards": [], "chips": [], "more_cards": [], "search_filters": {},
                  "notes_saved": saved_notes, "widgets": [], "dropped_unverified_ids": []}, usage)
     t_def = time.time()
@@ -1752,6 +1779,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     usage["searches"] = timing["searches"]
     usage["priced_sync"] = timing["priced"]
     usage["pricing_cache"] = pricing_stats.as_dict()   # cross-request pricing cache: hits / misses / bypass
+    usage["prefetch_cache"] = prefetch_stats.as_dict()  # benchmark + saved-card caches: hits / misses (2026-10-27)
     usage["tool_breakdown"] = dict(timing["tools"])   # ms per tool name, whole tool incl. search + pricing
     usage["figure_bounced"] = guard["bounced"]
     usage["unsupported_figures"] = guard["unsupported"]
@@ -1762,7 +1790,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     for i, vid in enumerate(final.get("vendor_ids", [])):
         if vid not in seen and vid in prior:
             try:
-                c = xano.vendor_card(vid)
+                c = xano.cached_vendor_card(vid, prefetch_stats)
             except Exception:
                 c = None
             if c and c.get("category") in xano.PE_CATEGORIES:   # photographer / entertainer: no venue pricing

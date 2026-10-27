@@ -56,6 +56,7 @@ import free_mode
 import guards
 import lookup
 import notify
+import opening_reuse
 import prefs
 import profile_questions
 import progress
@@ -229,7 +230,10 @@ def _search_props(user, summary=None):
             "search_engine": s.get("search_engine") or "", "search_fallback": s.get("search_fallback") or "",
             "railway_search_ms": int(s.get("railway_search_ms") or 0),
             "ep119_search_ms": int(s.get("ep119_search_ms") or 0),
-            "search_fallbacks": int(s.get("search_fallbacks") or 0)}
+            "search_fallbacks": int(s.get("search_fallbacks") or 0),
+            # Circuit breaker (2026-10-27): searches skipped straight to ep119 while open, and its state now.
+            "breaker_skips": int(s.get("breaker_skips") or 0),
+            "breaker_state": s.get("breaker_state") or ("open" if railway_search.BREAKER.is_open() else "closed")}
 
 
 def _turn_props(usage):
@@ -243,7 +247,18 @@ def _turn_props(usage):
             "turn1_tools": (u.get("turn_tools") or [[]])[0] if ms else [],
             "turn_ms_has_tools": bool(u.get("turn_ms_has_tools")),
             "pricing_cache_hits": int(pc.get("hits") or 0), "pricing_cache_misses": int(pc.get("misses") or 0),
-            "pricing_cache_bypass": int(pc.get("bypass") or 0)}
+            "pricing_cache_bypass": int(pc.get("bypass") or 0),
+            # Prefetch split + caches (2026-10-27): which prefetch part costs time, and how often the caches hit.
+            **_prefetch_props(u)}
+
+
+def _prefetch_props(usage):
+    u = usage or {}
+    pc = u.get("prefetch_cache") or {}
+    return {"prefetch_bench_ms": u.get("prefetch_bench_ms"), "prefetch_saved_ms": u.get("prefetch_saved_ms"),
+            "prefetch_saved_n": u.get("prefetch_saved_n"),
+            "bench_cache_hits": int(pc.get("bench_hits") or 0), "bench_cache_misses": int(pc.get("bench_misses") or 0),
+            "card_cache_hits": int(pc.get("card_hits") or 0), "card_cache_misses": int(pc.get("card_misses") or 0)}
 
 
 def _gate(kind, user, chat_id=0, waive_free=False):
@@ -397,6 +412,15 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         last = messages[-1].get("content") if messages else ""
         price_q = (kind != "opening" and not paid and isinstance(last, str) and upsell.is_price_question(last)
                    and not upsell.shown_in(history))
+        # Reuse today's opening (2026-10-27, opening_reuse.py): only after the full _gate above allowed it, and only
+        # when every input below is unchanged. No model call, no rec_usage row, nothing counted.
+        reuse_fp = None
+        if kind == "opening" and config.OPENING_REUSE:
+            reuse_fp = opening_reuse.fingerprint(_opening_fp_parts(
+                user, paid, access, raw, user_context, pref_hint, qs, answers, guests_extra))
+            hit = opening_reuse.STORE.get(user["id"], reuse_fp)
+            if hit is not None:
+                return _reused_opening(hit, user, paid, access, rows, feedback_given, tracker)
         # Detail: full members get figures; a non-member with a plan gets fit, not numbers ("light"); no plan at
         # all gets no price of any kind ("free", 2026-10-14).
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
@@ -429,6 +453,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         result["upsell_prompt"] = upsell.wall_prompt()
     if saved_lines:
         result["notes_saved"] = list(saved_lines) + list(result.get("notes_saved") or [])
+    if reuse_fp is not None and not (tracker and tracker.cancelled()):
+        opening_reuse.STORE.put(user["id"], reuse_fp, result)   # stores only a normal answer (opening_reuse.reusable)
     cost = guards.cost_usd(usage["model"], usage)
     _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model=usage["model"],
                         input_tokens=usage["input_tokens"], cache_read_tokens=usage["cache_read_tokens"],
@@ -444,6 +470,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         "price_redactions": redactions,
         "upsell_prompt": upsell.REASON if price_q else "", "profile_questions": [q["id"] for q in qs],
         "profile_answers_saved": len(saved_lines or ()),
+        "reused": False,   # opening reuse (2026-10-27): true only on _reused_opening's event
         "free_refines_left": guards.free_refines_left(paid, used, feedback_given), "model": usage["model"],
         # Per-step timing (2026-10-16 speed pass): where the wait goes.
         "prefetch_ms": usage.get("prefetch_ms"), "model_turns": len(usage.get("turns") or []),
@@ -464,6 +491,48 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
     return dict(result, paid=paid, has_access=access,
                 **_counters(kind, paid, rows, counted_free, feedback_given, access))
 
+
+
+def _opening_fp_parts(user, paid, access, memory_raw, user_context, pref_hint, qs, answers, guests_extra):
+    """Everything that shapes an opening answer (opening_reuse.py). Conservative: when in doubt, it goes in."""
+    try:
+        views = int(user.get("FreeViewsRemaining"))
+    except (TypeError, ValueError):
+        views = None
+    return {
+        "v": opening_reuse.VERSION,
+        "prompt": opening_reuse.fingerprint([agent.system_prompt(config.LISTINGS_IN_CHAT), agent.COST_TOOLS_RULES,
+                                             free_mode.RULES, free_mode.COST_TOOLS_RULE, OPENING_ASK]),
+        "model": [config.MODEL, config.EFFORT, config.THINKING, config.MAX_TOOL_ROUNDS],
+        "flags": [config.LISTINGS_IN_CHAT, config.COST_TOOLS_IN_CHAT, config.PROFILE_QUESTIONS, config.FOREVER_ONLY,
+                  config.BETA_AUDIENCE, config.FREE_REFINES],
+        "profile": xano.profile_of(user),
+        "saved": xano.saved_vendor_ids(user),
+        # Tier + entitlement: detail level, exact-price access, ep230's pricing entitlement and its inputs.
+        "tier": [paid, access, xano.has_forever(user), xano.pi_entitled(user),
+                 user.get("forever_access_purchased"), user.get("date_until_access"), user.get("total_amount_paid")],
+        "free_views": views,
+        "memory": [memory_raw or [], user_context or ""],
+        "prefs": [pref_hint or "", answers or {}, guests_extra or {}],
+        "questions": qs or [],
+    }
+
+
+def _reused_opening(stored, user, paid, access, rows, feedback_given, tracker):
+    """Today's stored opening, with fresh counters (nothing was spent: spent=False) - the Mixpanel event says so."""
+    t0 = time.time()
+    if tracker and tracker.cancelled():
+        return _stopped("opening", paid, access, rows, feedback_given)
+    out = dict(stored, paid=paid, has_access=access,
+               **_counters("opening", paid, rows, False, feedback_given, access, spent=False))
+    _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
+        "kind": "opening", "status": "ok", "reused": True, "forever": xano.has_forever(user), "beta_member": paid,
+        "has_access": access, "source": "rec_service", "cost_usd": 0, "model": "reuse",
+        "latency_s": round(time.time() - t0, 2), "tool_calls": 0, "cards": len(out.get("cards") or []),
+        "more_cards": len(out.get("more_cards") or []), "price_locked": not access,
+        "profile_questions": [q["id"] for q in out.get("questions") or []],
+        "search_arm": railway_search.arm(user.get("id"))})
+    return out
 
 # ---------------------------------------------------------------- venue name lookup fast path (2026-10-26)
 # The most common typed request is one venue by name ("oheka castle", "Khol mansion", "is X listed?"); about half

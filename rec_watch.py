@@ -138,6 +138,12 @@ def verdict(rail, ep):
         return ":white_circle:", "collecting data (%d/%d Railway requests)" % (rail["n"], MIN_REQUESTS)
     if rail["fallback_rate"] > HOLD_FALLBACK or rail["error_rate"] > ep["error_rate"] + HOLD_ERROR_PP:
         return ":red_circle:", "hold - check fallbacks / consider REC_RAILWAY_SEARCH_PCT=0"
+    if not ep["n"]:
+        # 100% rollout (owner 2026-10-27, Planner on Railway search with a breaker): no ep119 arm left to compare
+        # against. Fallbacks (incl. breaker_open skips during a search-api freeze) and errors are the signal.
+        if rail["n"] >= RAMP_REQUESTS and rail["fallback_rate"] < RAMP_FALLBACK:
+            return ":large_green_circle:", "at 100% - healthy"
+        return ":large_yellow_circle:", "at 100% - watching"
     if (rail["n"] >= RAMP_REQUESTS and rail["fallback_rate"] < RAMP_FALLBACK and rail["s50"] and ep["s50"]
             and rail["s50"] <= (1 - RAMP_SPEEDUP) * ep["s50"]):
         return ":large_green_circle:", "on track - ready to ramp to 25%"

@@ -498,6 +498,70 @@ class _TTLCache:
 
 PRICING_CACHE = _TTLCache(config.PRICING_CACHE_S, config.PRICING_CACHE_MAX)
 
+# Prefetch caches (2026-10-27 speed pass, owner OK #1). Paid openings spent a median 3.1 s (p90 4.9 s) in the prefetch
+# before the first model call: table 63 benchmarks per state + one table-11 search per saved vendor, both uncached
+# Xano metadata reads. Neither read uses the user's token or entitlement - every user gets the same rows for the same
+# key - so the keys carry no tier: benchmarks by (state, capacity band), cards by vendor id. The tier rules stay where
+# they were (agent.py: LIGHT/FREE never get benchmarks; _light_card / _pe_card strip figures per request).
+BENCH_CACHE = _TTLCache(config.BENCH_CACHE_S, 500)
+CARD_CACHE = _TTLCache(config.CARD_CACHE_S, 5000)
+
+
+def cached_market_benchmarks(state, guests=0, stats=None):
+    """market_benchmarks through BENCH_CACHE, keyed by state + the capacity band the guest count falls in (the only
+    inputs market_benchmarks reads). A result without metrics (unknown state, Xano blip) is not cached."""
+    band = capacity_band(guests)
+    key = ("bench", str(state or ""), band[0] if band else "") if BENCH_CACHE.ttl > 0 else None
+    if key is not None:
+        hit = BENCH_CACHE.get(key)
+        if hit is not None:
+            if stats:
+                stats.add("bench_hits")
+            return hit
+    if stats:
+        stats.add("bench_misses")
+    b = market_benchmarks(state, guests)   # module lookup on purpose: tests monkeypatch it
+    if key is not None and isinstance(b, dict) and b.get("metrics"):
+        BENCH_CACHE.put(key, b)
+    return b
+
+
+def cached_vendor_card(vendor_id, stats=None):
+    """vendor_card through CARD_CACHE (table-11 row -> card; no token, no entitlement in it). None (not found or a
+    failed read) is not cached."""
+    vid = str(vendor_id or "").strip()
+    key = ("card", vid) if vid and CARD_CACHE.ttl > 0 else None
+    if key is not None:
+        hit = CARD_CACHE.get(key)
+        if hit is not None:
+            if stats:
+                stats.add("card_hits")
+            return hit
+    if stats:
+        stats.add("card_misses")
+    c = vendor_card(vendor_id)   # module lookup on purpose: tests monkeypatch it
+    if key is not None and c:
+        CARD_CACHE.put(key, c)
+    return c
+
+
+class CacheStats:
+    """Per-request prefetch cache counters (rec_server_request bench_cache_* / card_cache_*). Thread-safe."""
+
+    KINDS = ("bench_hits", "bench_misses", "card_hits", "card_misses")
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._n = dict.fromkeys(self.KINDS, 0)
+
+    def add(self, kind):
+        with self._lock:
+            self._n[kind] += 1
+
+    def as_dict(self):
+        with self._lock:
+            return dict(self._n)
+
 
 class PricingStats:
     """Per-request cache counters (rec_server_request pricing_cache_*). Thread-safe: pricing runs in pools."""

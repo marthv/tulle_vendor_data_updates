@@ -53,7 +53,11 @@ def test_green_needs_50_requests_low_fallback_and_30pct_faster():
     assert verdict_of(rows(49, 200, rail_ms=150, ep_ms=1800)).startswith(":large_yellow_circle:")   # < 50 req
     assert verdict_of(rows(60, 200, rail_ms=1300, ep_ms=1800)).startswith(":large_yellow_circle:")  # only 28% faster
     assert verdict_of(rows(60, 200, rail_ms=150, ep_ms=1800, fallbacks=4)).startswith(":large_yellow_circle:")  # 6.7%
-    assert verdict_of(rows(60, 0)).startswith(":large_yellow_circle:")     # no ep119 baseline to compare
+    # 100% rollout (2026-10-27): no ep119 arm left - green on volume + low fallback alone, yellow otherwise.
+    assert "at 100% - healthy" in verdict_of(rows(60, 0))
+    assert verdict_of(rows(60, 0, fallbacks=4)).startswith(":large_yellow_circle:")
+    assert "at 100% - watching" in verdict_of(rows(40, 0))
+    assert verdict_of(rows(40, 0, fallbacks=7)).startswith(":red_circle:")   # hold still applies at 100%
 
 
 def test_block_format_counts_mixed_with_railway_and_lists_it():

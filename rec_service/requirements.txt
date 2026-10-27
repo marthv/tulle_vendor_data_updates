@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30
 anthropic>=0.116
 requests>=2.31
 pydantic>=2.6
+tzdata>=2024.1   # zoneinfo America/New_York (opening reuse ET day, 2026-10-27)

@@ -11,7 +11,14 @@ Unchanged (never Railway): the radius path (xano.venues_near, table 11), photogr
 
 Per request a SearchLog records every venue search (thread-safe: _interleave runs one search per state in
 parallel threads) -> the rec_usage columns search_engine / search_fallback / search_ms and the Mixpanel
-rec_server_request props (see SearchLog.summary)."""
+rec_server_request props (see SearchLog.summary).
+
+CIRCUIT BREAKER (2026-10-27, owner OK with the move to 100%): the search-api still freezes every 2-3 h. Without a
+breaker every search during a freeze paid the full timeout (connect 1.0 s / read REC_RAILWAY_SEARCH_TIMEOUT_S) before
+ep119. Now a timeout, connection error or 5xx opens the breaker for config.RAILWAY_BREAKER_S
+(60 s): searches in that window go straight to ep119 (fallback reason 'breaker_open'), and the first search after it
+tries Railway again. 4xx and bad_shape answers do not trip it (a request problem, not a freeze). One process-wide
+breaker: Railway runs one rec-engine replica."""
 import hashlib
 import threading
 import time
@@ -36,6 +43,42 @@ def arm(user_id, pct=None):
         return RAILWAY
     b = int(hashlib.sha256(("railsearch:%s" % user_id).encode()).hexdigest(), 16) % 100
     return RAILWAY if b < pct else EP119
+
+
+class Breaker:
+    """Process-wide circuit breaker for the search-api. Thread-safe. open_until is time.monotonic() seconds."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.open_until = 0.0
+        self.trips = 0          # since process start (for logs / tests)
+
+    def is_open(self, now=None):
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            return now < self.open_until
+
+    def trip(self, now=None):
+        if config.RAILWAY_BREAKER_S <= 0:
+            return
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            self.open_until = now + config.RAILWAY_BREAKER_S
+            self.trips += 1
+
+    def reset(self):
+        with self._lock:
+            self.open_until = 0.0
+            self.trips = 0
+
+
+BREAKER = Breaker()
+BREAKER_SKIP = "breaker_open"
+
+
+def trips_breaker(why):
+    """Freeze-like failures open the breaker: timeout, connection error, 5xx."""
+    return why in ("timeout", "error") or (isinstance(why, str) and why.startswith("http_5"))
 
 
 class SearchLog:
@@ -83,6 +126,10 @@ class SearchLog:
             engine = EP119
         return {"search_engine": engine, "search_fallback": fallbacks[0] if fallbacks else "",
                 "search_ms": wall, "search_fallbacks": len(fallbacks), "search_arm": self.arm,
+                # Breaker (2026-10-27): searches this request sent straight to ep119 because it was open, and its
+                # state when the request's searches were summarised.
+                "breaker_skips": sum(1 for f in fallbacks if f == BREAKER_SKIP),
+                "breaker_state": "open" if BREAKER.is_open() else "closed",
                 "railway_search_ms": sum(c["ms"] for c in calls if c["engine"] == RAILWAY),
                 "ep119_search_ms": sum(c["ms"] for c in calls if c["engine"] == EP119)}
 
@@ -117,12 +164,17 @@ def fetch(ep119_get, token, params, log=None):
     failure) `ep119_get(token, params)` - exactly the call origin/main makes. With no log or the ep119 arm the
     search-api is never touched."""
     if log is not None and log.railway:
-        t = time.time()
-        d, why = railway_get(token, params)
-        log.add_call(RAILWAY, (time.time() - t) * 1000, why or "")
-        if why is None:
-            log.add_search(RAILWAY)
-            return d
+        if BREAKER.is_open():
+            why = BREAKER_SKIP           # search-api failed in the last RAILWAY_BREAKER_S: don't wait on it again
+        else:
+            t = time.time()
+            d, why = railway_get(token, params)
+            log.add_call(RAILWAY, (time.time() - t) * 1000, why or "")
+            if why is None:
+                log.add_search(RAILWAY)
+                return d
+            if trips_breaker(why):
+                BREAKER.trip()
         t = time.time()
         try:
             return ep119_get(token, params)
