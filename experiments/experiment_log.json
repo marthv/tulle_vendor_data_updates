@@ -842,6 +842,39 @@
    ],
    "owner": "Vivek",
    "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-planner-speed-2a",
+   "name": "Planner speed 2a: prefetch caches (benchmarks + saved cards) + Railway search 100% with breaker + reuse today's opening",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "performance"
+   ],
+   "goal": "Opening p50 12.7 s -> ~9 s, p90 21 s -> ~16 s (estimates); repeat same-day openings ~1 s",
+   "primary_metric": "rec_server_request latency_s (opening) p50/p90; prefetch_ms + bench/card_cache hits; reused=true share and latency; search_engine / breaker_skips",
+   "guardrail": "answer correctness (reuse only on an unchanged fingerprint, after the full gate); fallback rate <5%; thumbs-down",
+   "start_date": "2026-10-27",
+   "end_date": null,
+   "review_date": "2026-10-28",
+   "dates_note": "rec-engine 12add68 deployed 05:53 UTC (deploy eeea9ac0); REC_RAILWAY_SEARCH_PCT 50 -> 100 at 05:54 UTC (deploy 2b2322fb). Baseline (v3, 10-26 23:18 -> 10-27): opening p50 12.7 s / p90 21.0 s; paid openings p50 12.6 s / p90 24.3 s, prefetch p50 3.1 s / p90 4.9 s. Rollback: REC_OPENING_REUSE=0, REC_RAILWAY_SEARCH_PCT=50 (or 0), REC_BENCH_CACHE_S=0 / REC_CARD_CACHE_S=0, REC_RAILWAY_BREAKER_S=0, or revert 12add68.",
+   "design": "pre/post",
+   "results": [
+    {
+     "date": "2026-10-27",
+     "note": "Live check, owner account 14998 (Forever, 5 saved): fresh opening 9.2 s with prefetch 1.4 s (cold caches); same-day repeat reused in 0.87 s client time, no rec_usage row, counters unchanged; after a context change a fresh run with prefetch 2 ms (2 benchmark + 5 card cache hits) but 18.1 s because the search-api froze (its own breaker 503, Meili ReadTimeout) and ep119 took 12.1 s; our breaker opened and the next search skipped Railway (breaker_open)."
+    }
+   ],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "search-api Meili freezes (fix deployed separately) send searches to slow ep119 during the breaker window"
+   ],
+   "risks": [
+    "reused openings show the same picks for the same day (incl. 'New chat')"
+   ],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
   }
  ],
  "changes": [
@@ -903,6 +936,10 @@
   {
    "date": "2026-10-26",
    "what": "WeWeb publish 23:43 UTC (7:43 PM ET): Planner upgrade card + 'Request this venue' button + tracking"
+  },
+  {
+   "date": "2026-10-27",
+   "what": "rec-engine 12add68 05:53 UTC: Planner prefetch caches, Railway search breaker, reuse today's opening; REC_RAILWAY_SEARCH_PCT 50 -> 100 (Planner only) 05:54 UTC"
   }
  ]
 }
