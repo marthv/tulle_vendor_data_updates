@@ -84,7 +84,7 @@ RAMP_SPEEDUP = 0.30
 BLOCK = "*Railway search (assistant)*"
 
 
-INTERNAL_USER_IDS = {14998, 30614, 32636}   # owner / test / team accounts (memory: exclude internal accounts)
+INTERNAL_USER_IDS = {14998, 30614, 32636, 118, 5622, 34249, 33167, 185}   # owner / test / team accounts (118 Desiree, 5622 Kate + their test accts, owner 2026-10-27) (memory: exclude internal accounts)
 
 
 def search_rows(token, now=None, fetch=None):
