@@ -16,7 +16,7 @@ def beta_feedback(user, rating, would_use, text, questions_used, plan=""):
         print("feedback slack: not configured")
         return False
     who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A member", user.get("id"), plan or "plan unknown")
-    quoted = "\n".join("> " + line for line in (text or "").splitlines() or [""])
+    quoted = "\n".join("> " + line for line in (text or "").splitlines()) or "_(rating only)_"
     msg = ("*Tulle Assistant beta feedback* - %s\n*Useful so far:* %s   *Keep using it:* %s   "
            "*Questions asked:* %s\n%s" % (who, STARS.get(rating, rating), would_use or "-", questions_used, quoted))
     try:

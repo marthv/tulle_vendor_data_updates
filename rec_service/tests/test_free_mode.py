@@ -422,6 +422,35 @@ def test_free_flow_end_to_end(api):
     assert (s["questions_left"], s["feedback_required"], s["feedback_done"], s["paywall"]) == (0, False, True, True)
 
 
+def test_feedback_rating_alone_is_enough_and_bonus_unlocks_one(api, monkeypatch):
+    # One tap (2026-10-27): no comment, no keep-using answer; REC_FREE_FEEDBACK_BONUS=1 earns one more question.
+    _, _, config, _, _, _ = _mods()
+    monkeypatch.setattr(config, "FREE_FEEDBACK_BONUS", 1)
+    c = api["c"]
+    c.post("/rec/opening")
+    for _ in range(3):
+        assert c.post("/rec/refine", json={"chat_id": 9, "message": "garden venues?"}).status_code == 200
+    assert c.post("/rec/feedback", json={"rating": 0}).json()["detail"]["status"] == "rating_required"
+    r = c.post("/rec/feedback", json={"rating": 5})
+    assert r.status_code == 200 and r.json()["questions_left"] == 1 and r.json()["paywall"] is False, r.text
+    assert api["fb_rows"][-1]["text"] == "" and api["fb_rows"][-1]["would_use"] == ""
+    api["feedback"] = True
+    assert c.post("/rec/refine", json={"chat_id": 9, "message": "one more?"}).status_code == 200
+    r = c.post("/rec/refine", json={"chat_id": 9, "message": "and another?"})
+    assert r.status_code == 402 and r.json()["detail"]["status"] == "blocked_free_limit"
+
+
+def test_rating_only_slack_text(monkeypatch):
+    _, _, config, _, _, _ = _mods()
+    import notify
+    sent = []
+    monkeypatch.setattr(config, "FEEDBACK_SLACK_WEBHOOK", "https://hooks.example/x")
+    monkeypatch.setattr(notify.requests, "post", lambda url, json=None, timeout=None, **k: (
+        sent.append(json["text"]), type("R", (), {"status_code": 200, "text": "ok"})())[1])
+    assert notify.beta_feedback({"id": 7}, 4, "", "", 2, "free")
+    assert "_(rating only)_" in sent[0] and "*Useful so far:* 4/5" in sent[0]
+
+
 def test_free_show_more_cards_have_no_price(api, monkeypatch):
     _, _, _, _, _, xano = _mods()
     hist = [{"role": "assistant", "text": "x", "cards": [{"vendor_id": "V1"}], "is_more": False, "chips": ["Cheaper options"],

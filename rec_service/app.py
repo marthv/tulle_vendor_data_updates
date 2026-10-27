@@ -1207,21 +1207,19 @@ class FeedbackBody(BaseModel):
     chat_id: int = 0
 
 
-FEEDBACK_MIN_CHARS = 10
-
-
 @app.post("/rec/feedback")
 def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
     """Beta check-in. One row per submission. Paid members: the first one unlocks questions for good.
-    Free users (2026-10-14): required once after their free question(s); it earns no more (FREE_FEEDBACK_BONUS=0),
-    so the next ask is the paywall."""
+    Free users (2026-10-14): required once after their free question(s); it earns FREE_FEEDBACK_BONUS more
+    questions (Railway 1 since 2026-10-27), then the paywall.
+    One tap (owner 2026-10-27): the rating alone is enough. 'Keep using it' and the comment are optional - the
+    10-character minimum cut completion to ~2% (58 free users shown the card 10-10..10-27, 1 sent). A comment sent
+    after the rating is just another row."""
     _, user = _auth(authorization)
     text = (body.text or "").strip()[:2000]
     would = (body.would_use or "").strip().lower()
     if not 1 <= body.rating <= 5:
         raise HTTPException(400, {"status": "rating_required"})
-    if len(text) < FEEDBACK_MIN_CHARS:
-        raise HTTPException(400, {"status": "text_too_short", "min_chars": FEEDBACK_MIN_CHARS})
     if would not in ("yes", "maybe", "no"):
         would = ""
     paid = xano.beta_member(user)
