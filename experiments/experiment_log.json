@@ -420,6 +420,10 @@
     {
      "date": "2026-10-26",
      "note": "Started. Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data)."
+    },
+    {
+     "date": "2026-10-26",
+     "note": "Day 1 (partial ET day): device-matched 70/84 sign-up page visitors created an account (83%) vs 67-79% per day 10-15..10-25 (funnel). Google share of sign-ups 31% vs ~21% before - the old checkbox also disabled the Google button (the 10-26 '~1-2% lift' estimate missed this). One day, n=84: promising, not a result. Re-read like-for-like (same funnel) after 2 weeks."
     }
    ],
    "stat_sig": "",
@@ -533,7 +537,7 @@
   },
   {
    "id": "EXP-2026-10-search-railway",
-   "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 20% of users",
+   "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 50% of users",
    "status": "live",
    "themes": [
     "performance",
@@ -545,7 +549,7 @@
    "start_date": "2026-10-26",
    "end_date": null,
    "review_date": null,
-   "dates_note": "Assistant live 2026-10-26 01:08 UTC at 15%; Discovery (ep119 proxy) live 01:39 UTC at 15%; both ramped to 20% at 01:53 UTC (owner request, before the 25% ramp rule had data). Owner account forced on. Hourly data sync from 01:10 UTC",
+   "dates_note": "Assistant live 2026-10-26 01:08 UTC at 15%; Discovery (ep119 proxy) live 01:39 UTC at 15%; both ramped to 20% at 01:53 UTC (owner request, before the 25% ramp rule had data). Owner account forced on. Hourly data sync from 01:10 UTC; 2026-10-26 22:03 UTC search-api circuit breaker (503 for 120 s after a Meili timeout) + Meili query timeout 1.5 s; 22:04 ep119 Railway wait 3 s -> 2 s; ~22:20 ramp 20% -> 50% (ep119 $rw_pct + REC_RAILWAY_SEARCH_PCT, owner); 23:32 root-cause fix: search-api/sync no longer PATCH /experimental-features on every reload (Meili held it 5-48 s).",
    "design": "A/B by stable user bucket sha256('railsearch:'+user_id)%100 (20% railway / 80% ep119); same bucket in the assistant (REC_RAILWAY_SEARCH_PCT) and Discovery (ep119 $rw_pct), so users who were in at 15% stay in",
    "results": [
     {
@@ -559,11 +563,26 @@
     {
      "date": "2026-10-26",
      "note": "Discovery launch: owner 0.76/1.03s, in-bucket test account 0.98/2.28s on Railway vs 2.5-5.1s ep119; forced fallback (SEARCH_ENABLED=0) returned full results. First push 01:33 failed ('Invalid op: in'), auto-rolled back in 15s, 2 real searches failed. Ramp 15->20% at 01:53 UTC (owner)."
+    },
+    {
+     "date": "2026-10-26",
+     "note": "A/B readout 01:53-21:00 UTC: Discovery cache-miss median 0.44 s Railway vs 1.52 s ep119 (p90 1.40 vs 6.55 s), IP-cluster 95% CI on the difference -1.85..-0.64 s, Mann-Whitney p 7e-11; cache hits identical (~55% of requests). Planner search step 68 ms vs 3,997 ms (7 vs 45 requests, p~1e-5 per user); whole answer 9.4 s vs 14.4 s (loose, CI -8.2..-1.0 s). Fallback 9% (31/345, all http_0), 24 of 31 at 16:00 and 19:00 UTC: ramp rule NOT met before the fixes."
+    },
+    {
+     "date": "2026-10-26",
+     "note": "Root cause of the fallbacks: Meilisearch freezes (8-65 s, ~11/day) - not memory/CPU, not the hourly sync itself; search-api's sync-meta check also blocked user searches on a 60 s client. Fixed 22:03 (breaker + fail-fast meta read). 3 of 4 breaker trips 22:50-23:25 sat inside a PATCH /experimental-features (5.4-48 s) -> fixed 23:32. One more 48 s freeze at 23:58 with no PATCH: residual cause unknown."
+    },
+    {
+     "date": "2026-10-26",
+     "note": "50% read 22:51-23:25 UTC: 179 Discovery searches, all 200; Railway misses median 0.49 s vs ep119 1.57 s; breaker caught 17 searches (fast http_503 fallbacks); slow http_0 5/79 (3 of them instant Xano-side connect failures). Next: 1 clean day with the 23:32 fix -> 100%."
     }
    ],
    "stat_sig": "",
    "decision": "Ramp to 25% when the brief says green (>=50 Railway requests, fallback <5%, search p50 >=30% faster)",
-   "confounds_noted": [],
+   "confounds_noted": [
+    "Railway answers enter the shared ep119 24 h cache (cache key excludes auth), so cache hits can't be attributed to an arm",
+    "Owner account forced to Railway (Discovery logs have no user id)"
+   ],
    "risks": [
     "data freshness: hourly sync (was daily 08:30 UTC)",
     "auth still depends on Xano auth/me",
@@ -659,6 +678,170 @@
    "risks": [],
    "owner": "Vivek",
    "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-planner-name-lookup",
+   "name": "Planner: instant venue lookup by name (no model)",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "performance",
+    "search"
+   ],
+   "goal": "Named-venue questions (~60 of ~250 typed, ~half failed) answered instantly and correctly; missing venues logged",
+   "primary_metric": "rec_server_request kind=lookup: found / choices / not_found split and latency_s; rec_venue_request count; PDF opens after",
+   "guardrail": "lookups for a venue we have that return not_found",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "review_date": "2026-11-02",
+   "dates_note": "rec-engine c4ec678 deployed 23:18 UTC (REC_NAME_LOOKUP=1; REC_VENUE_REQUEST_SLACK=1 posts misses to #feedback)",
+   "design": "pre/post",
+   "results": [
+    {
+     "date": "2026-10-26",
+     "note": "Live check: Khol mansion -> Kohl Mansion, Oheka, Bacchus, 74Wythe, Bowery, Prospect Park Boathouse, Harold Pratt House, Jungle Island found in 0.1-0.5 s search time (2.5-4.5 s end to end on the live service); Ashton Gardens / Royal Palm -> choices; Orchards of Molino, Cresthollow, Il Sereno -> not found. Known miss: villa d'este (apostrophe)."
+    }
+   ],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
+   ],
+   "risks": [
+    "Slack #feedback volume from missing venues"
+   ],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-planner-price-upsell",
+   "name": "Planner: free users' price questions -> answer + PDF first + upgrade card (no refusal); no-views users get the card on the first answer",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "paywall"
+   ],
+   "goal": "Turn free users' price questions into PDF opens and Forever purchases instead of 'I can't give cost numbers'",
+   "primary_metric": "rec_paywall_shown surface=planner_upsell_card -> rec_upsell_card_clicked -> purchase within 7 d; PDF opens after a Planner answer",
+   "guardrail": "Planner thumbs-down / drop-off after the card",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "review_date": "2026-11-09",
+   "dates_note": "Backend price-question card 23:18 UTC (c4ec678); PDF-first + no-views card 23:33 (ac172c7). WeWeb card + Request button published 23:43 UTC. Baseline: 1 Planner paywall shown in the 7 d to 10-26; 8 free price questions refused in 14 d.",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-planner-profile-questions",
+   "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "activation"
+   ],
+   "goal": "Better first picks for thin profiles ('it should ask more questions before showing random venues')",
+   "primary_metric": "rec_profile_answer per opening with questions; refine rate and card clicks for thin-profile openings vs before",
+   "guardrail": "opening latency",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "review_date": "2026-11-09",
+   "dates_note": "rec-engine c4ec678 23:18 UTC (REC_PROFILE_QUESTIONS=1)",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-planner-listings",
+   "name": "Planner: florists, hair & makeup, caterers, planners as listings (no prices)",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "coverage"
+   ],
+   "goal": "Answer non-venue vendor questions with real listings (739 florists, 150 F&B, 73 beauty, 9 planners)",
+   "primary_metric": "search_vendors tool calls and card clicks by category",
+   "guardrail": "no prices quoted for listings-only categories",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "review_date": "2026-11-09",
+   "dates_note": "rec-engine c4ec678 23:18 UTC (REC_LISTINGS_IN_CHAT=1). Demand so far ~1 ask each for flowers/makeup/planner in 14 d.",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [
+    "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-planner-speed-v3",
+   "name": "Planner speed: pricing cache (1 h, tier-safe) + Railway search 50% + per-turn timing",
+   "status": "live",
+   "themes": [
+    "assistant",
+    "performance"
+   ],
+   "goal": "Opening p50 12.3 s -> ~6-7 s, p90 22.7 s -> ~12 s (with a later skip-turn-1); paid users first (15.0 s median)",
+   "primary_metric": "rec_server_request latency_s (opening) p50/p90, pricing_cache hits/misses, turn1_model_ms / turn2_model_ms",
+   "guardrail": "pricing correctness (cache keyed by vendor + endpoint + entitlement)",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "review_date": "2026-11-02",
+   "dates_note": "rec-engine c4ec678 23:18 UTC. Baseline (7 d to 10-26): opening p50 12.3 s, p75 17.0 s, p90 22.7 s; model 6.1 s, ep119 search 3.9 s, pricing 3.45 s of a 14.65 s average. First live sample: turn 1 2.1 s, turn 2 5.9 s.",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "Skip-turn-1 decided after a few days of turn_ms data",
+   "confounds_noted": [
+    "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
+   ],
+   "risks": [],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-10-vendor-pdf-order",
+   "name": "Vendor pages list PDFs Primary first, then newest year (was oldest upload first)",
+   "status": "planned",
+   "themes": [
+    "paywall",
+    "data"
+   ],
+   "goal": "Couples (and free views) land on the current pricing PDF; 2 of 3 audited venues led with a stale past-season PDF",
+   "primary_metric": "share of PDF opens that are the vendor's Primary / newest PDF",
+   "guardrail": "",
+   "start_date": null,
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "WeWeb editor change 2026-10-26 (venue 0107d032 + other vendors 959d3645), awaiting owner publish. Audit of stale Primary + off-peak-as-peak headline rates running.",
+   "design": "pre/post",
+   "results": [],
+   "stat_sig": "",
+   "decision": "",
+   "confounds_noted": [],
+   "risks": [
+    "collection limit 5: a Primary older than the last 5 uploads is not listed"
+   ],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
   }
  ],
  "changes": [
@@ -700,6 +883,26 @@
   {
    "date": "2026-10-26",
    "what": "Tulle Planner venue cards: 'All-inclusive - seats up to N' line hidden, address shortened to 'City, ST' (published ~01:51 UTC)"
+  },
+  {
+   "date": "2026-10-26",
+   "what": "Railway search 20% -> 50% (Discovery + Planner) with a 2-min circuit breaker and a 2 s Xano wait (22:03-22:20 UTC)"
+  },
+  {
+   "date": "2026-10-26",
+   "what": "Meilisearch freeze root-cause fix: no PATCH /experimental-features on every reload (tulle-search 483029c, 23:32 UTC)"
+  },
+  {
+   "date": "2026-10-26",
+   "what": "Planner v3 deployed (rec-engine c4ec678, 23:18 UTC): instant name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache, per-turn timing"
+  },
+  {
+   "date": "2026-10-26",
+   "what": "Planner free users: PDF first where they can open one, upgrade card on the first answer when they have no free views (rec-engine ac172c7, 23:33 UTC)"
+  },
+  {
+   "date": "2026-10-26",
+   "what": "WeWeb publish 23:43 UTC (7:43 PM ET): Planner upgrade card + 'Request this venue' button + tracking"
   }
  ]
 }
