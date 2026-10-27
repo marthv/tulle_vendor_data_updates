@@ -956,6 +956,10 @@
   {
    "date": "2026-10-27",
    "what": "Florals promoted to v1: ep119 + fn83 (fl_* inputs, Flowers on Xano path). Backups api119_live_pre_florals / fn83_live_pre_florals. Meilisearch moved to meilisearch-b 17:35 UTC (rollback: MEILI_URL back to meilisearch.railway.internal). MEILI_QUERY_TIMEOUT_S 1.5 -> 0.8 -> 1.5 (reverted)."
+  },
+  {
+   "date": "2026-10-27",
+   "what": "~20:45 UTC florals v2 live (owner 'deploy'): ep119 + fn83 range inputs (fl_min_max + fl_min_include_unknown on new flt_fl_min_eff [stated $, 1 = no minimum, 0 = not stated]; fl_est/bouquet/centerpiece/bridesmaid/boutonniere/arch/aisle/cp_tall min/max). Table 11 +6 cols (5 item 'from' prices + min_eff) for 734 florists, verified read-back. New GET florals/benchmarks (api 560, static state medians/IQR). Rollback: push api119_florals_v1 / fn83_florals_v1. Smoke: NY florists 76; min<=5k 67 (7 excl. unknown); venue/photo unchanged."
   }
  ]
 }
