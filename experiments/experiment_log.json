@@ -579,6 +579,10 @@
     {
      "date": "2026-10-27",
      "note": "Discovery ep119 $rw_pct 50 -> 100 at 16:10 UTC (owner). Read before ramp, ep119 history 06:10-14:46 UTC, cache MISSES only: fallback 39% (33/84; 25 breaker 503, 6 http_502, 2 http_0) - above the 10% bar, ramped anyway on the owner's call because the Railway arm INCLUDING fallbacks was faster than Xano: median 0.62 vs 1.93 s, mean 1.52 vs 2.82 s, p90 4.1 vs 6.6 s (n=99 vs 143). Cache hits (60% of calls) ~0.02 s either way. Cause of fallbacks: Meilisearch itself freezes 30-40 s (15:53 UTC a meta doc GET time.busy=33.6 s, a search time.idle=39.3 s) with CPU ~0.1% - likely volume I/O. CORRECTION: earlier today we said the stalled requests never reached Meili (network); wrong, they do. search-api a868650 (fresh-connection retry: 0/7 recovered, now OFF via MEILI_FRESH_RETRY_S=0; /map/all cache-first kept). Meili redeployed 15:55 UTC (same image v1.54.3); froze again ~16:08. Copy test (api 557, deleted) + live smoke: railway, totals identical to fallback (9/1042/227). Backup .claude/xano_backups/api119_live_pre_100pct_2026-10-27.xs; byte-verified push."
+    },
+    {
+     "date": "2026-10-27",
+     "note": "16:25 UTC search-api 554bec3: breaker closes on a probe (min 10 s, every 5 s) - open 10-43 s per freeze vs 120 s; Discovery miss fallback 46% (16:10-16:26) -> 17.5% (16:26-17:06, 10/57). Meili redeploy 15:55 did NOT help (8.4 -> 13.6 freezes/h, busier hour). 17:35 UTC search-api + sync-cron moved to meilisearch-b (fresh volume, us-east4, seeded by meili-b-seed; counts identical). First 20 min on B: no 30-40 s freezes, but a few ~1.0-1.2 s waits failed under MEILI_QUERY_TIMEOUT_S=0.8 -> reverted to 1.5 at ~18:10. ~18:05 UTC ep119 + fn83 got the florals code (owner OK, option A): Flowers skips Railway (Xano path), fl_* filters inert unless sent; non-Flowers unchanged (copy test + live smoke: same totals)."
     }
    ],
    "stat_sig": "",
@@ -948,6 +952,10 @@
   {
    "date": "2026-10-27",
    "what": "ep119 $rw_pct 50 -> 100 at 16:10 UTC: Discovery fully on Railway search, ep119 Xano logic stays as fallback (rollback: push api119_live_pre_100pct_2026-10-27.xs). Meilisearch redeployed 15:55 UTC; search-api a868650 (retry OFF, /map/all cache-first)."
+  },
+  {
+   "date": "2026-10-27",
+   "what": "Florals promoted to v1: ep119 + fn83 (fl_* inputs, Flowers on Xano path). Backups api119_live_pre_florals / fn83_live_pre_florals. Meilisearch moved to meilisearch-b 17:35 UTC (rollback: MEILI_URL back to meilisearch.railway.internal). MEILI_QUERY_TIMEOUT_S 1.5 -> 0.8 -> 1.5 (reverted)."
   }
  ]
 }
