@@ -2105,7 +2105,7 @@ def _post_pricing_grid(rows, pdf_id, vendor_id, venue_name, timestamp):
 # "INGEST FAILED - 401 Unauthorized". Same value as the dashboard's ANALYTICS_EXPORT_SECRET.
 XANO_MACHINE_SECRET = os.environ.get(
     "ANALYTICS_EXPORT_SECRET",
-    "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
+    "",
 )
 
 

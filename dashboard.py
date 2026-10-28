@@ -734,7 +734,7 @@ XANO_BASE = os.environ.get("XANO_BASE_URL", "https://xqtb-2ma7-ijfy.n7e.xano.io/
 # set ANALYTICS_EXPORT_SECRET in Railway to rotate it in one place.
 EXPORT_SECRET = os.environ.get(
     "ANALYTICS_EXPORT_SECRET",
-    "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
+    "",
 )
 
 

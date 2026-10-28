@@ -35,7 +35,7 @@ import streamlit as st
 
 EXPORT_SECRET = os.environ.get(
     "ANALYTICS_EXPORT_SECRET",
-    "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
+    "",
 )
 
 # Promised turnaround. Orders older than this (in business days) are chased.

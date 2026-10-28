@@ -25,7 +25,7 @@ import requests
 # Same value as the dashboard's EXPORT_SECRET and extract_core's XANO_MACHINE_SECRET.
 EXPORT_SECRET = os.environ.get(
     "ANALYTICS_EXPORT_SECRET",
-    "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
+    "",
 )
 
 

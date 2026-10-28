@@ -27,7 +27,7 @@ import streamlit as st
 
 EXPORT_SECRET = os.environ.get(
     "ANALYTICS_EXPORT_SECRET",
-    "ttv_export_da19ae7c3fbcdd2c51747199117a63a33f848ca9",
+    "",
 )
 _ROLE_EXCLUDE = {"admin", "test", "staff", "superadmin", "dev"}
 _BACKFILL_START = "2026-07-21"
