@@ -883,6 +883,74 @@
    ],
    "owner": "Vivek",
    "launched_by": "Claude Code"
+  },
+  {
+   "id": "EXP-2026-11-texas-only-forever-89",
+   "name": "Texas-only Forever $89",
+   "status": "planned",
+   "themes": [
+    "pricing"
+   ],
+   "goal": "Owner request 2026-10-31: couples whose wedding location is Texas and ONLY Texas see Forever at $89 (vs $135 Rest+TX baseline). Does the lower price lift Texas-only Forever buys/day and revenue per sign-up?",
+   "primary_metric": "Texas-only Forever buys/day and $/sign-up (table 16 x table 1; cohort = normalised Wedding_Location_Updated == {Texas} after splitting comma-packed entries, trimming, lower-casing, dropping empties)",
+   "guardrail": "Texas+other (NY/CA/Intl or any other state), Rest, NY, CA/Intl prices unchanged; page price must equal charged price (WeWeb bindings + fn63 all gated on table 17 Product_ID 13)",
+   "start_date": null,
+   "end_date": null,
+   "review_date": null,
+   "dates_note": "Built 2026-10-31 with the switch OFF (table 17 row 16 parked as Product_ID 113; fn63 Texas block live but inert). Starts when the owner (1) creates the $89 Stripe price + payment link under prod_Ri5UAnkrymjxZ9 and puts it in row 16, (2) publishes the two Membership-page bindings, (3) sets row 16 Product_ID 113 -> 13. Read 2-3 weeks after that date.",
+   "design": "pre/post (no holdout). Treatment = Texas-only cohort; untreated comparison arms = Texas+other and Rest.",
+   "baseline": {
+    "cohort_size_2026-10-31": {
+     "texas_only": 3129,
+     "texas_plus_raised_NY_CA_Intl": 267,
+     "texas_plus_other_state": 241,
+     "texas_only_signups_last_90d": 902
+    },
+    "texas_only_pre_periods": {
+     "2026-08-04..09-30_at_$129 (58d)": {
+      "forever_buys": 3,
+      "forever_per_day": 0.05,
+      "all_buys": 21,
+      "rev_gross_incl_tax": 1046,
+      "rev_per_day": 18.0,
+      "signups": 574,
+      "rev_per_signup": 1.82
+     },
+     "2026-10-01..10-13_at_$129 (13d)": {
+      "forever_buys": 4,
+      "forever_per_day": 0.31,
+      "all_buys": 4,
+      "rev_gross_incl_tax": 516,
+      "rev_per_day": 39.7,
+      "signups": 144,
+      "rev_per_signup": 3.58
+     },
+     "2026-10-14..10-30_at_$135 (17d)": {
+      "forever_buys": 1,
+      "forever_per_day": 0.06,
+      "all_buys": 7,
+      "rev_gross_incl_tax": 420,
+      "rev_per_day": 24.7,
+      "signups": 167,
+      "rev_per_signup": 2.51
+     }
+    },
+    "note": "Payment log Amount includes tax, refunds not netted; roadmap rows excluded. $/sign-up = cohort revenue in window / cohort sign-ups in window (not age-matched). Base rate is tiny: at 0.05-0.3 Forever/day a 2-3 week read will be directional only."
+   },
+   "results": [],
+   "stat_sig": "not computed",
+   "decision": "",
+   "confounds_noted": [
+    "Nov-4 re-read of the Oct-14 Rest+TX $35/$60/$135 move: once switched on, Texas-only leaves the Rest+TX arm - compute Rest+TX excluding Texas-only for that readout (Texas-only was 1 of 11 Rest+TX Forever buys 10-14..10-30).",
+    "Only the Forever card changes; 1-week/4-week stay $35/$60, so plan mix shifts are expected, not noise.",
+    "Cohort is wedding location, not billing address; a Texas-only user who changes location mid-session flips arms."
+   ],
+   "risks": [
+    "Page shows $89 only after the WeWeb publish; if row 16 is set to 13 BEFORE the publish, the page shows/charges $135 while the upgrade path (fn63) quotes $89 - switch on only after the publish.",
+    "Kill switch: set row 16 Product_ID 13 -> 113 (one write, no publish). revert_geo_pricing.py --off also parks it and restores flat fn63."
+   ],
+   "owner": "Vivek",
+   "launched_by": "Claude Code"
   }
  ],
  "changes": [
@@ -960,6 +1028,10 @@
   {
    "date": "2026-10-27",
    "what": "~20:45 UTC florals v2 live (owner 'deploy'): ep119 + fn83 range inputs (fl_min_max + fl_min_include_unknown on new flt_fl_min_eff [stated $, 1 = no minimum, 0 = not stated]; fl_est/bouquet/centerpiece/bridesmaid/boutonniere/arch/aisle/cp_tall min/max). Table 11 +6 cols (5 item 'from' prices + min_eff) for 734 florists, verified read-back. New GET florals/benchmarks (api 560, static state medians/IQR). Rollback: push api119_florals_v1 / fn83_florals_v1. Smoke: NY florists 76; min<=5k 67 (7 excl. unknown); venue/photo unchanged."
+  },
+  {
+   "date": "2026-10-31",
+   "what": "Texas-only Forever $89 BUILT, switch OFF: fn63 compute_upgrade_offer pushed with a Texas-only block gated on table 17 Product_ID 13 (verified on test accounts: Texas-only -> texas_only_cohort true, price still $135 while parked; Texas+NY / NY / MD / no-location unchanged; throwaway copy gated on 113 returned $89 for Texas-only only). Table 17 row 16 added as Product_ID 113 (parked), Stripe link PENDING (claude.ai Stripe connector not authenticated; owner creates $89 price + link under prod_Ri5UAnkrymjxZ9 with metadata.weeks 'forever weeks'). WeWeb bindings NOT published: .claude/xano_backups/texas_price_forever.js + texas_button_forever.js. Backups: fn63_pre_texas89_2026-10-31.xs, table17_pre_texas89_2026-10-31.json."
   }
  ]
 }
