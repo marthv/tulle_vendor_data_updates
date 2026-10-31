@@ -101,7 +101,27 @@ def _fmt_delta(now, avg):
     return f" ({'+' if d >= 0 else ''}{d:.0f}% vs 7-day avg)"
 
 
+def _trim_health(health_text):
+    """Owner 2026-10-31: the brief got long. Keep the header, every non-green line and the Details link; when every
+    light is green the whole section collapses to one line. The full breakdown stays in the dashboard."""
+    lines = [l for l in (health_text or "").split("\n") if l.strip()]
+    if not lines:
+        return health_text
+    head, body = lines[0], lines[1:]
+    details = [l for l in body if l.startswith("_Details")]
+    keep = [l for l in body if not l.startswith("_Details") and not l.startswith(":large_green_circle:")]
+    if not keep:
+        return head + " - all green" + (" · " + details[0].strip("_") if details else "")
+    return "\n".join([head] + keep + details)
+
+
+def _trim_pricing(text):
+    """Keep the revenue line(s); the 'Checks:' line is dropped - anything wrong is already in Decisions."""
+    return "\n".join(l for l in (text or "").split("\n") if not l.startswith("Checks: "))
+
+
 def compose(token, health_text, now_ms=None):
+    health_text = _trim_health(health_text)
     now_ms = now_ms or int(dt.datetime.utcnow().timestamp() * 1000)
     today = dt.datetime.utcfromtimestamp(now_ms / 1000).strftime("%a %b %d")
     tldr, decisions, sections = [], [], []
@@ -136,7 +156,7 @@ def compose(token, health_text, now_ms=None):
 
     try:
         import bnpl_watch
-        sections.append(bnpl_watch.build(token, now_ms=now_ms, short=True))
+        sections.append(_trim_pricing(bnpl_watch.build(token, now_ms=now_ms, short=True)))
         decisions += getattr(bnpl_watch.build, "alerts", [])
     except Exception as e:
         sections.append(f":warning: _Pricing test section failed: {e}_")
@@ -155,7 +175,9 @@ def compose(token, health_text, now_ms=None):
     try:
         import rec_watch
         lines, rail_tl, light = rec_watch.railway_section(token)
-        sections.append("\n".join(lines))
+        # 2026-10-31: the TL;DR bullet carries the verdict; the full block only when something is wrong.
+        if light == ":red_circle:" or light is None:
+            sections.append("\n".join(lines))
         tldr.append(rail_tl)
         if light == ":red_circle:":
             decisions.append("Railway search: fallbacks or errors over the hold line - check Railway search-api, "
@@ -170,7 +192,7 @@ def compose(token, health_text, now_ms=None):
         light = ":large_green_circle:" if n["n24"] >= NPS_GOAL_PER_DAY else ":large_yellow_circle:"
         avg = f", 7-day avg {n['avg7']:.1f}/5 from {n['n7']}" if n["avg7"] else ""
         sections.append(f"{light} *NPS* - {n['n24']} rating(s) in 24h (goal {NPS_GOAL_PER_DAY}/day){avg}"
-                        f" · {n['comments24']} comment(s) - comments land in #feedback")
+                        f" · {n['comments24']} comment(s) in #feedback")
         tldr.append(f":speech_balloon: Assistant: {rec_tl or 'see below'} · NPS: {n['n24']} rating(s)")
         if n["n7"] == 0 and now_ms > 1791129600000 + 3 * DAY:   # 3+ days after the 2026-10-04 ~16:00 UTC modal publish
             decisions.append("NPS: 0 ratings in 7 days even with the modal back. Decide: turn on the one-click email "

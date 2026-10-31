@@ -19,7 +19,8 @@ import requests
 
 META = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:meta/workspace/1"
 TABLE = int(os.environ.get("REC_USAGE_TABLE_ID", "79"))
-CAP = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
+CAP = float(os.environ.get("REC_GLOBAL_DAILY_USD", "60"))        # owner 2026-10-31: $60/day for the whole service
+FREE_CAP = float(os.environ.get("REC_FREE_DAILY_USD", "30"))    # owner 2026-10-31: $30/day for free traffic
 
 
 def _rows_for_day(token, day):
@@ -51,16 +52,20 @@ def build(token, now=None):
     opening = sum(1 for r in ok if r.get("kind") == "opening")
     refine = sum(1 for r in ok if r.get("kind") == "refine")
     paywall = sum(1 for r in rows if r.get("status") == "blocked_free_limit")
+    daily_cap = sum(1 for r in rows if r.get("status") == "blocked_user_cap")
+    # Free spend = rows the engine flagged as free (counted_as_free, or tier "free" once table 79 has the column).
+    free_spend = sum(float(r.get("cost_usd") or 0) for r in ok if r.get("counted_as_free") or r.get("tier") == "free")
+    free_users = {r.get("user_id") for r in rows if r.get("counted_as_free") or r.get("tier") == "free"}
     errors = sum(1 for r in rows if r.get("status") == "error")
     capped = sum(1 for r in rows if r.get("status") in ("blocked_global_cap", "killed"))
     monthly = len({r.get("user_id") for r in rows if r.get("status") == "blocked_monthly_cap"})
     lat = [r.get("latency_ms") or 0 for r in ok if r.get("latency_ms")]
     light = ":red_circle:" if errors > max(2, 0.1 * len(rows)) or capped else ":large_green_circle:"
     lines = [
-        "%s %s - %d users, %d opening + %d refine, $%.2f spent ($%.0f/day cap), $%.3f per user"
-        % (light, head, len(users), opening, refine, spend, CAP, spend / max(len(users), 1)),
-        "Paywall shown (free limit hit): %d · errors: %d · blocked by cap/kill switch: %d · Forever users at the "
-        "300/month cap: %d · median %.1fs" % (paywall, errors, capped, monthly, (st.median(lat) / 1000) if lat else 0),
+        "%s %s - %d users (%d free), %d opening + %d refine · spent $%.2f (free $%.2f of $%.0f pool · $%.0f/day cap) · $%.3f per user"
+        % (light, head, len(users), len(free_users), opening, refine, spend, free_spend, FREE_CAP, CAP, spend / max(len(users), 1)),
+        "Paywall shown: %d · daily-cap hits: %d · errors: %d · blocked by cap/kill switch: %d · Forever users at the "
+        "300/month cap: %d · median %.1fs" % (paywall, daily_cap, errors, capped, monthly, (st.median(lat) / 1000) if lat else 0),
     ]
     return "\n".join(lines)
 
