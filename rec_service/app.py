@@ -32,6 +32,9 @@ POST /rec/feedback         -> beta check-in {rating, would_use, text}. Paid memb
 FREE MODE (owner decisions 2026-10-14, on when REC_FOREVER_ONLY=0): every signed-in user may use the assistant.
 No active plan -> tier "free": opening + FREE_REFINES questions for life (1 since 2026-10-14), then one required feedback, then the paywall,
 and NO price of any kind in text, cards or chips (free_mode.py; price_locked=true).
+POST /rec/profile          -> {guests?, budget?, states?, date?}: the Planner chat's quick profile edit (2026-10-31).
+                              Written through ep21 user/update_record with the couple's own token; returns the fresh
+                              profile. Counts nothing.
 GET  /health
 
 Conversations live in Xano rec_chats (42) / rec_messages (43); durable notes the model saves
@@ -1238,6 +1241,75 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
     return {"ok": True, "beta_questions_left": None, "free_refines_left": free_left,
             "forever_left_today": forever_left,
             **_tier_fields(paid, access, True, None, forever_left, free_left, False)}
+
+
+class ProfileBody(BaseModel):
+    """Quick profile update from the Planner chat (2026-10-31). Every field optional; only the ones given are written."""
+    guests: Optional[int] = None        # Wedding_Guest_Count, 2..1500
+    budget: Optional[int] = None        # Wedding_Budget in dollars, 1,000..5,000,000
+    states: Optional[list[str]] = None  # Wedding_Location_Updated: full US state names / "International", max 5
+    date: Optional[str] = None          # Wedding_Date, YYYY-MM-DD
+
+
+PROFILE_STATES = set(profile_questions.CITIES_BY_STATE) | {"International"}
+PROFILE_MAX_STATES = 5
+
+
+def profile_fields(body):
+    """(Xano columns to write, invalid field names). Pure, so tests can check the mapping alone."""
+    fields, bad = {}, []
+    if body.guests is not None:
+        if 2 <= int(body.guests) <= 1500:
+            fields["Wedding_Guest_Count"] = int(body.guests)
+        else:
+            bad.append("guests")
+    if body.budget is not None:
+        if 1000 <= int(body.budget) <= 5_000_000:
+            fields["Wedding_Budget"] = int(body.budget)
+        else:
+            bad.append("budget")
+    if body.states is not None:
+        sts = []
+        for s in body.states:
+            s = str(s or "").strip()
+            if s in PROFILE_STATES:
+                if s not in sts:
+                    sts.append(s)
+            elif s:
+                bad.append("states")
+        if "states" not in bad:
+            fields["Wedding_Location_Updated"] = sts[:PROFILE_MAX_STATES]
+    if body.date is not None:
+        d = str(body.date or "").strip()[:10]
+        try:
+            dt.date.fromisoformat(d)
+            fields["Wedding_Date"] = d
+        except ValueError:
+            bad.append("date")
+    return fields, sorted(set(bad))
+
+
+@app.post("/rec/profile")
+def update_profile(body: ProfileBody, authorization: str = Header(None)):
+    """The Planner chat's quick profile edit (owner 2026-10-31, roadmap item 2: couples change guests / budget /
+    location / date inside the assistant). Writes through ep21 user/update_record with the couple's own token
+    (xano.update_profile), tracks rec_profile_updated, and returns the fresh profile. Counts nothing. The next
+    opening regenerates on its own: the profile is part of the opening-reuse fingerprint."""
+    token, user = _auth(authorization)
+    fields, bad = profile_fields(body)
+    if bad:
+        raise HTTPException(400, {"status": "invalid", "fields": bad})
+    if not fields:
+        raise HTTPException(400, {"status": "nothing_to_update"})
+    try:
+        xano.update_profile(token, fields)
+    except xano.XanoError as e:
+        print("update_profile failed:", repr(e)[:200])
+        raise HTTPException(502, {"status": "error"})
+    fresh = xano.verify_user(token) or dict(user, **fields)
+    _POOL.submit(xano.mp_track, user["id"], "rec_profile_updated", {
+        "fields": sorted(fields), "source": "rec_service", "plan": xano.plan_label(user)})
+    return {"ok": True, "updated": sorted(fields), "profile": xano.profile_of(fresh)}
 
 
 class AnswerFeedbackBody(BaseModel):

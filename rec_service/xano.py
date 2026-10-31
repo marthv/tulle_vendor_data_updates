@@ -47,6 +47,24 @@ def _meta(method, path, **kw):
 
 # ---------------------------------------------------------------- auth + entitlement
 
+def update_profile(token, fields):
+    """Write wedding profile fields for the signed-in couple (2026-10-31, Planner chat: "quick profile updates").
+    PATCH user/update_record (ep21, auth=user, the WeWeb group) with the couple's OWN token - the same endpoint the
+    WeWeb profile pages use, so its guards (no self-granted access or free views, 2026-10-28) apply here as well,
+    and no metadata write to the user table is ever made from this service. Only the fields given are sent; ep21
+    keeps every other column. Returns ep21's response (the updated row) or {} on an empty body."""
+    r = requests.patch(config.API_APP_GROUP + "/user/update_record", json=fields,
+                       headers={"Authorization": "Bearer " + token}, timeout=TIMEOUT)
+    if r.status_code == 401:
+        raise XanoError("unauthorized")
+    if not r.ok:
+        raise XanoError("update_profile %s %s" % (r.status_code, r.text[:200]))
+    try:
+        return r.json() if r.text else {}
+    except ValueError:
+        return {}
+
+
 def verify_user(token):
     """The user's own Xano auth token -> their user row, or None. This is the ONLY identity check."""
     if not token:
