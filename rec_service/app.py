@@ -777,7 +777,7 @@ def _starter_chips(price_locked):
     return free_mode.STARTER_CHIPS if price_locked else STARTER_CHIPS
 
 
-_AREA_Q = _re.compile(r"(city|cities|area|areas|part of|where in|which town|near)", _re.I)
+_AREA_Q = _re.compile(r"\b(city|cities|area|areas|part of|where in|which town|near)\b", _re.I)
 
 
 def _opening_chips(text, model_chips, user, price_locked):
