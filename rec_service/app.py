@@ -786,8 +786,7 @@ def _opening_chips(text, model_chips, user, price_locked):
     profile_questions.area_options; any other closing question -> the model's own chips (the prompt makes them its
     answers). No closing question -> the starters exactly as before."""
     starters = list(_starter_chips(price_locked))
-    m = _re.search(r"([^.!?
-]{6,240}\?)\s*$", text or "")
+    m = _re.search(r"([^.!?\n]{6,240}\?)\s*$", text or "")
     q = m.group(1).strip() if m else ""
     answers = []
     if q and _AREA_Q.search(q):
