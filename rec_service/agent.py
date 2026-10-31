@@ -1495,8 +1495,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
     @beta_tool
     @timed
-    def present_recommendations(message: str, vendor_ids: list[str], reasons: list[str],
-                                chips: list[str]) -> str:
+    def present_recommendations(message: str, vendor_ids: list[str] = [], reasons: list[str] = [],
+                                chips: list[str] = []) -> str:
         """Show your answer to the couple. Call exactly once, last.
 
         Args:
