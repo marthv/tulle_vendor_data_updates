@@ -34,6 +34,9 @@ def _pricing_cache_off(monkeypatch):
     # Streamed answer text (2026-10-31) is off unless a test turns it on: the fake tool runners yield finished
     # messages, not event streams.
     monkeypatch.setattr(config, "STREAM_TEXT", False)
+    # Open planner (2026-10-31) is off in the suite unless a test turns it on: the free-tier tests below cover
+    # the lifetime rules; tests/test_free_daily.py covers the daily allowance.
+    monkeypatch.setattr(config, "FREE_DAILY_MODE", False)
     railway_search.BREAKER.reset()
     yield
     for c in caches:

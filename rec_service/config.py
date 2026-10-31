@@ -53,6 +53,14 @@ FREE_FEEDBACK_BONUS = int(os.environ.get("REC_FREE_FEEDBACK_BONUS", "0"))
 # global cap and lock paying members out -> 503 blocked_free_cap. Counted from rec_usage rows with tier "free"
 # or counted_as_free (table 79 has no tier column yet, so each free user's one free opening is NOT counted).
 FREE_DAILY_USD = float(os.environ.get("REC_FREE_DAILY_USD", "15"))
+# OPEN PLANNER (owner 2026-10-31): anyone signed in gets a DAILY allowance like Forever instead of the lifetime
+# free limit, no required feedback (the one-tap check-in stays a suggestion), and "light" pricing - fit, whether each
+# line is above or below the state, one broad state average, never a vendor's own figure; every answer points at the
+# PDF. Full figures stay a plan feature. "0" restores the 10-14 lifetime rules above. Pools: REC_FREE_DAILY_USD 30,
+# REC_GLOBAL_DAILY_USD 60 (owner 2026-10-31).
+FREE_DAILY_MODE = os.environ.get("REC_FREE_DAILY_MODE", "1") == "1"
+FREE_DAILY_REFINES = int(os.environ.get("REC_FREE_DAILY_REFINES", "40"))
+FREE_PRICING = os.environ.get("REC_FREE_PRICING", "light").strip().lower()   # light | none (price-free free_mode)
 # Whole service: stop spending above this many USD per UTC day.
 GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
 # Cost tools in the CHAT (2026-10-25): "1" = the model gets the 4 cost tools + the COST TOOLS prompt paragraph and

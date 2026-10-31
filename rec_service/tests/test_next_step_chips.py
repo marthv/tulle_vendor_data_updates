@@ -301,10 +301,33 @@ def _main_constants(path):
     return out
 
 
+PROMPT_EDITS_2026_10_31 = [
+    ("You get no dollar figures, and you must not give any: no prices, per-guest costs, fees, percentages, ranges or budget "
+     "splits, not even industry norms or your own estimates. You may repeat the couple's own budget and guest count back to them.",
+     "You get no vendor figures, and you must not give any for a vendor: no prices, per-guest costs, fees, percentages, "
+     "ranges or budget splits for a venue or vendor, no industry norms, no estimates of your own. The ONE kind of figure you "
+     "may quote is a broad state-level average from the State benchmarks in the context (e.g. \"venues in Arizona average "
+     "about $X all-in for your size\"), at most once per reply, to anchor what above or below average means. You may repeat "
+     "the couple's own budget and guest count back to them."),
+    ("Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends "
+     "with which vendor's PDF to open first and what to look for in it),",
+     "Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends "
+     "with which vendor's PDF to open first and what to look for in it; EVERY message ends with exactly one specific next "
+     "question for this couple - the next decision they face: which area, which date or season, which style, what matters "
+     "most, or which vendor's PDF to open - so they always have a way to keep going, and the chips answer that question),"),
+]
+
+
 def test_flag_off_prompt_and_chips_identical_to_origin_main():
     import agent
     a, f, c = _main_constants("agent.py"), _main_constants("free_mode.py"), _main_constants("chips.py")
-    assert agent.SYSTEM == a["SYSTEM"]
+    # 2026-10-31 (open planner): two deliberate prompt edits on top of origin/main's SYSTEM - the LIGHT paragraph allows
+    # one broad state average, and every reply ends with the next question. Apply them to main's text before comparing
+    # so this test keeps guarding against any OTHER drift (it is a no-op once main carries them).
+    main_system = a["SYSTEM"]
+    for old_t, new_t in PROMPT_EDITS_2026_10_31:
+        main_system = main_system.replace(old_t, new_t)
+    assert agent.SYSTEM == main_system
     assert free_mode.RULES == f["RULES"]
     assert free_mode.STARTER_CHIPS == f["STARTER_CHIPS"] and free_mode.TOPUPS == f["TOPUPS"]
     assert ch.STARTER_CHIPS == c["STARTER_CHIPS"] and ch.CHIP_TOPUPS == c["CHIP_TOPUPS"]

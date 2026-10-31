@@ -10,7 +10,18 @@ Free traffic has its own daily spend cap (blocked_free_cap, 503) so it can't tri
 FOREVER: 40 prompts per UTC day (openings + questions combined), shown to the user, plus a quiet
 300/calendar-month ceiling (blocked_monthly_cap) that bounds worst-case cost at ~$10/user/month.
 """
+import datetime as _dt
+
 import config
+
+
+def _today():
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+
+
+def used_today(usage_rows, today):
+    """Prompts (openings + questions, tool runs excluded) this user made on `today`."""
+    return sum(1 for r in _prompts(usage_rows) if r.get("usage_day") == today)
 
 
 def _ok(rows):
@@ -42,12 +53,18 @@ def beta_questions_left(paid, usage_rows, feedback_given):
 
 
 def free_limit(feedback_given):
-    """Lifetime free questions: FREE_REFINES, plus FREE_FEEDBACK_BONUS (0 since 2026-10-14) after feedback."""
+    """Free questions: a DAILY allowance (FREE_DAILY_REFINES) in open-planner mode (2026-10-31); otherwise the lifetime
+    FREE_REFINES plus FREE_FEEDBACK_BONUS (0 since 2026-10-14) after feedback."""
+    if config.FREE_DAILY_MODE:
+        return config.FREE_DAILY_REFINES
     return config.FREE_REFINES + (config.FREE_FEEDBACK_BONUS if feedback_given else 0)
 
 
 def free_feedback_required(paid, usage_rows, feedback_given):
-    """True when a free user has used the FREE_REFINES questions and still owes the one-time feedback."""
+    """True when a free user has used the FREE_REFINES questions and still owes the one-time feedback.
+    Never in open-planner mode (2026-10-31): feedback is a suggestion there, like the paid check-in."""
+    if config.FREE_DAILY_MODE:
+        return False
     return (not paid and not feedback_given and config.FREE_FEEDBACK_REQUIRED
             and free_used(usage_rows) >= config.FREE_REFINES)
 
@@ -81,6 +98,12 @@ def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True, free
     if kind == "opening":
         return True, "ok", False                      # 2026-10-16 (owner): every chat starts free - openings never
                                                       # spend a question, before or after the paywall
+    if config.FREE_DAILY_MODE:
+        # Open planner (2026-10-31): the same daily allowance as Forever, counted the same way (openings + questions
+        # per UTC day); rows stay counted_as_free so the free spend pool still sees them.
+        if used_today(usage_rows, today) >= config.FREE_DAILY_REFINES:
+            return False, "blocked_user_cap", False
+        return True, "ok", True
     if free_feedback_required(paid, usage_rows, feedback_given):
         return False, "feedback_required", False      # the one-time feedback, before the paywall
     if free_used(usage_rows) >= free_limit(feedback_given):
@@ -95,9 +118,11 @@ def forever_left_today(paid, usage_rows, today):
     return max(0, config.PAID_DAILY_REFINES - sum(1 for r in _prompts(usage_rows) if r.get("usage_day") == today))
 
 
-def free_refines_left(paid, usage_rows, feedback_given=False):
+def free_refines_left(paid, usage_rows, feedback_given=False, today=None):
     if paid:
         return None
+    if config.FREE_DAILY_MODE:
+        return max(0, config.FREE_DAILY_REFINES - used_today(usage_rows, today or _today()))
     return max(0, free_limit(feedback_given) - free_used(usage_rows))
 
 

@@ -332,8 +332,21 @@ def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_lef
     return {"tier": "paid" if paid else "free", "price_locked": not access, "questions_left": left,
             "feedback_required": fb_req, "feedback_done": bool(feedback_given),
             "feedback_suggested": bool(paid and beta_left == 0),
-            "paywall": (not paid) and (config.FOREVER_ONLY or (not fb_req and not left)),
+            # Open planner (2026-10-31): a free user who used today's allowance is capped (429), not paywalled.
+            "paywall": (not paid) and (config.FOREVER_ONLY or (not config.FREE_DAILY_MODE and not fb_req and not left)),
+            "free_daily_mode": config.FREE_DAILY_MODE,
+            "free_daily_limit": config.FREE_DAILY_REFINES if config.FREE_DAILY_MODE else None,
             "free_feedback_required": bool(free_fb), "free_feedback_bonus": config.FREE_FEEDBACK_BONUS}
+
+
+def _detail(paid, access):
+    """What the model may see: "full" (full members) / "light" (a plan without full figures - and, since the open
+    planner of 2026-10-31 with REC_FREE_PRICING=light, no plan at all) / "free" (no plan, price-free free_mode)."""
+    if paid:
+        return "full"
+    if access or (config.FREE_DAILY_MODE and config.FREE_PRICING == "light"):
+        return "light"
+    return "free"
 
 
 def _counters(kind, paid, rows, counted_free, feedback_given, access=True, spent=True):
@@ -427,7 +440,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         # Detail: full members get figures; a non-member with a plan gets fit, not numbers ("light"); no plan at
         # all gets no price of any kind ("free", 2026-10-14).
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
-                                  detail="full" if paid else "light" if access else "free",
+                                  detail=_detail(paid, access),
                                   prior_vendor_ids=prior_ids, active_filters=active_filters,
                                   preferences=pref_hint, profile_questions=qs,
                                   known_area=(answers.get("area") or [""])[0], profile_extra=guests_extra,
@@ -444,7 +457,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         _log_stopped(base, kind, user, paid, access, usage)
         return _stopped(kind, paid, access, rows, feedback_given)
     redactions = None
-    if not access:   # free mode: price guard on text, cards and chips (code, not only the prompt)
+    if _detail(paid, access) == "free":   # price-free mode: price guard on text, cards and chips (code, not only the prompt)
         result = free_mode.sanitize_result(result)
         redactions = result.pop("price_redactions", 0)
     result = dict(result, questions=qs, upsell_prompt=None)
@@ -711,7 +724,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None):
     result = {"text": text_out, "cards": cards, "chips": chips, "more_cards": [], "search_filters": filters,
               "notes_saved": [], "widgets": [], "dropped_unverified_ids": [],
               "lookup": {"status": status, "query": name}, "venue_request": venue_request}
-    if not access:   # free mode: the same price guard as a model answer (text, cards, chips)
+    if _detail(paid, access) == "free":   # price-free mode: the same price guard as a model answer (text, cards, chips)
         result = free_mode.sanitize_result(result)
         result.pop("price_redactions", None)
     ms = int((time.time() - t0) * 1000)
