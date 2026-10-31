@@ -33,10 +33,10 @@ def fresh():
 
 def test_lifecycle_running_then_done_and_steps_count_label_changes():
     t = progress.start("r1", 7)
-    assert progress.get("r1", 7) == {"state": "running", "label": progress.START, "step": 1}
+    assert progress.get("r1", 7) == {"state": "running", "label": progress.START, "step": 1, "text": ""}
     t.set(progress.START)                      # same label: no new step
     t.set("Searching venues in Texas…")
-    assert progress.get("r1", 7) == {"state": "running", "label": "Searching venues in Texas…", "step": 2}
+    assert progress.get("r1", 7) == {"state": "running", "label": "Searching venues in Texas…", "step": 2, "text": ""}
     t.finish("done")
     assert progress.get("r1", 7)["state"] == "done"
     t.set(progress.WRITING)                    # after finishing: ignored
@@ -45,7 +45,7 @@ def test_lifecycle_running_then_done_and_steps_count_label_changes():
 
 def test_no_request_id_is_not_tracked():
     assert progress.start("", 7) is None and progress.start(None, 7) is None
-    assert progress.get("nope", 7) == {"state": "unknown", "label": "", "step": 0}
+    assert progress.get("nope", 7) == {"state": "unknown", "label": "", "step": 0, "text": ""}
 
 
 def test_other_user_cannot_read_cancel_or_take_over():
@@ -71,7 +71,7 @@ def test_expiry_ten_minutes_after_finishing(monkeypatch):
     now[0] += progress.TTL_AFTER_FINISH_S - 1
     assert progress.get("r1", 7)["state"] == "done"
     now[0] += 2
-    assert progress.get("r1", 7) == {"state": "unknown", "label": "", "step": 0}
+    assert progress.get("r1", 7) == {"state": "unknown", "label": "", "step": 0, "text": ""}
 
 
 def test_bounded_size_evicts_oldest_finished_first(monkeypatch):
@@ -360,7 +360,7 @@ def test_request_without_request_id_is_unchanged(api):
 
 def test_progress_endpoint_lifecycle_and_owner_only(api):
     c = api["client"]
-    assert c.get("/rec/progress/abc").json() == {"state": "unknown", "label": "", "step": 0}
+    assert c.get("/rec/progress/abc").json() == {"state": "unknown", "label": "", "step": 0, "text": ""}
     r = c.post("/rec/refine", json={"chat_id": 3, "message": "barns?", "request_id": "abc"})
     assert r.status_code == 200 and r.json()["text"].startswith("Here are picks")
     assert "progress" in api["run_kw"][0]

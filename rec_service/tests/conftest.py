@@ -31,6 +31,9 @@ def _pricing_cache_off(monkeypatch):
     import railway_search
     opening_reuse.STORE.clear()
     monkeypatch.setattr(config, "OPENING_REUSE", False)
+    # Streamed answer text (2026-10-31) is off unless a test turns it on: the fake tool runners yield finished
+    # messages, not event streams.
+    monkeypatch.setattr(config, "STREAM_TEXT", False)
     railway_search.BREAKER.reset()
     yield
     for c in caches:

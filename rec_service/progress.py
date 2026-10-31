@@ -20,6 +20,7 @@ MAX_RUNNING_S = 1800        # safety net: a "running" entry older than this is t
                             # every request finishes its entry in a finally)
 MAX_ID_LEN = 64
 LABEL_MAX = 40
+TEXT_MAX = 4000             # streamed answer text kept per request (an answer is ~60 words; a breakdown a few hundred)
 
 START = "Reading your preferences…"
 THINKING = "Thinking it through…"
@@ -37,7 +38,7 @@ TOOL_LABELS = {   # static labels by tool name (search tools and batched pricing
 }
 PRICING_TOOLS = ("venue_pricing", "venue_details", "estimate_cost")   # one venue each: "for N venues" per batch
 
-UNKNOWN = {"state": "unknown", "label": "", "step": 0}
+UNKNOWN = {"state": "unknown", "label": "", "step": 0, "text": ""}
 
 _lock = threading.RLock()
 _entries = {}               # request_id -> entry dict (insertion order = age)
@@ -97,6 +98,13 @@ class Tracker:
                 self._e["label"] = label
                 self._e["step"] += 1
 
+    def text(self, partial):
+        """Streamed answer text so far (2026-10-31): the page polls it and shows it while the model is still writing.
+        "" clears it (a bounced present_recommendations: that draft is never shown). Capped at TEXT_MAX chars."""
+        with _lock:
+            if self._e["state"] == "running":
+                self._e["text"] = (partial or "")[:TEXT_MAX]
+
     def cancelled(self):
         with _lock:
             return bool(self._e["cancel"])
@@ -116,6 +124,9 @@ class Tracker:
 class _Null:
     """No request_id: every call is a no-op, so agent.run behaves exactly as before."""
     def set(self, label):
+        pass
+
+    def text(self, partial):
         pass
 
     def cancelled(self):
@@ -147,7 +158,7 @@ def _sweep(now):
 
 def _new(owner, now, state="running", cancel=False):
     return {"owner": owner, "state": state, "label": START if state == "running" else "", "step": 1 if state == "running" else 0,
-            "cancel": cancel, "started_at": now, "finished_at": None if state == "running" else now,
+            "text": "", "cancel": cancel, "started_at": now, "finished_at": None if state == "running" else now,
             "precancel": state != "running"}
 
 
@@ -189,7 +200,8 @@ def get(request_id, owner):
         state = e["state"]
         if state == "running" and now - e["started_at"] > MAX_RUNNING_S:
             state = "done"
-        return {"state": state, "label": e["label"] if state == "running" else "", "step": e["step"]}
+        return {"state": state, "label": e["label"] if state == "running" else "", "step": e["step"],
+                "text": e.get("text", "") if state == "running" else ""}
 
 
 def cancel(request_id, owner):

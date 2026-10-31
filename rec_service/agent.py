@@ -740,6 +740,70 @@ def strip_repeat_caveat(text):
     return " ".join(kept).strip() if kept else (text or "")
 
 
+def partial_message(buf):
+    """The `message` string inside a partially streamed JSON tool input (present_recommendations), decoded as far
+    as it has been written: "" until the key's opening quote has arrived; JSON escapes decoded; an escape cut
+    mid-way is left out until it completes. Pure."""
+    m = re.search(r'"message"\s*:\s*"', buf or "")
+    if not m:
+        return ""
+    i, n, out = m.end(), len(buf), []
+    while i < n:
+        c = buf[i]
+        if c == '"':
+            break
+        if c == "\\":
+            if i + 1 >= n:
+                break
+            e = buf[i + 1]
+            if e == "u":
+                if i + 6 > n:
+                    break
+                try:
+                    out.append(chr(int(buf[i + 2:i + 6], 16)))
+                except ValueError:
+                    pass
+                i += 6
+                continue
+            out.append({"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f"}.get(e, e))
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _drain_stream(stream, prog):
+    """Read one streamed model turn (REC_STREAM_TEXT, 2026-10-31): publish the answer text as it is being written -
+    the `message` argument of present_recommendations, or plain text when the model answers in prose - through
+    prog.text, then return the finished message (the same object a non-streamed call returns). Tool arguments
+    other than that message (vendor ids, reasons, chips, search filters) are never published."""
+    buf, plain, last, in_present = "", "", "", False
+    for ev in stream:
+        et = getattr(ev, "type", "")
+        if et == "content_block_start":
+            blk = getattr(ev, "content_block", None)
+            in_present = getattr(blk, "type", "") == "tool_use" and getattr(blk, "name", "") == "present_recommendations"
+            buf = ""
+            continue
+        if et != "content_block_delta":
+            continue
+        d = getattr(ev, "delta", None)
+        kind = getattr(d, "type", "")
+        if in_present and kind == "input_json_delta":
+            buf += getattr(d, "partial_json", "") or ""
+            txt = partial_message(buf)
+        elif kind == "text_delta" and not in_present:
+            plain += getattr(d, "text", "") or ""
+            txt = plain
+        else:
+            continue
+        if txt and txt != last:
+            last = txt
+            prog.text(txt)
+    return stream.get_final_message()
+
+
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
         detail="full", prior_vendor_ids=(), preferences="", active_filters=None, progress=None, search_log=None,
         profile_questions=None, known_area="", profile_extra=None, price_question=False):
@@ -1459,6 +1523,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             guard["bounced"] = True
             guard["first_try"] = bad
             prog.set(progress_mod.THINKING)
+            prog.text("")   # the streamed draft is withdrawn: the page shows the status line again
             return ("NOT SHOWN. These dollar figures are not in any data you were given: %s. Quote only figures "
                     "from your tools or the context (estimate_cost gives every total, per-guest cost and what-if), "
                     "or describe it in words. Then call present_recommendations again." % ", ".join(bad))
@@ -1473,6 +1538,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             guard["repeat_bounced"] = True
             guard["repeat_first_try"] = [names.get(v) or v for v in again]
             prog.set(progress_mod.THINKING)
+            prog.text("")
             return ("NOT SHOWN. %s %s already shown in this chat or on their Saved list, and the couple didn't ask "
                     "about %s. Replace %s with venues they haven't seen (search again if you need more), or if one "
                     "really is still the best answer keep it and say plainly it's one they've seen. Never call a "
@@ -1655,7 +1721,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
              "tool_calls": 0, "prefetch_ms": int((time.time() - t0) * 1000),
              "prefetch_bench_ms": part_ms["bench"], "prefetch_saved_ms": part_ms["saved"],
              "prefetch_saved_n": len(saved_ids)}
+    # Streamed answer text (2026-10-31): only with a tracker to publish to, and never for a couple with no plan (free
+    # mode redacts prices on the FINISHED answer; a half-written line could show one). Off = the call is unchanged.
+    stream_on = bool(config.STREAM_TEXT and progress is not None and not free)
     runner = client.beta.messages.tool_runner(
+        **({"stream": True} if stream_on else {}),
         model=config.MODEL,
         max_tokens=8000,
         system=[{"type": "text", "text": system_prompt(listings_on) + ("\n\n" + COST_TOOLS_RULES if cost_on else ""),
@@ -1700,7 +1770,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # interrupted; its tokens are counted below and nothing after it runs.
     stopped = prog.cancelled()
     try:
-        for message in ([] if stopped else runner):
+        for item in ([] if stopped else runner):
+            # stream_on: `item` is the turn's event stream - read it (publishing the text as it is written) and keep
+            # the finished message; otherwise `item` is the message itself, exactly as before.
+            message = _drain_stream(item, prog) if stream_on else item
             now = time.time()
             texts = [b.text for b in message.content if b.type == "text" and (b.text or "").strip()]
             if texts:

@@ -89,6 +89,11 @@ except ValueError:
 RAILWAY_SEARCH_FORCE_IDS = {x.strip() for x in os.environ.get("REC_RAILWAY_SEARCH_FORCE_USER_IDS", "").split(",") if x.strip()}
 # "1" = off. One env var flip on Railway, no deploy.
 KILL_SWITCH = os.environ.get("REC_KILL_SWITCH", "0") == "1"
+# Streamed answer text (owner 2026-10-31, Claude-style Planner chat): the final model turn is streamed and the answer
+# text written so far is published on GET /rec/progress/{request_id} as `text`, so the page shows it while the model is
+# still writing. Never for a couple with no plan (free mode redacts prices only on the finished answer). "0" = off: the
+# model is called exactly as before and `text` stays "".
+STREAM_TEXT = os.environ.get("REC_STREAM_TEXT", "1") == "1"
 
 ALLOWED_ORIGINS = [o.strip() for o in os.environ.get(
     "REC_ALLOWED_ORIGINS", "https://www.tulletogether.app,https://tulletogether.app").split(",") if o.strip()]
