@@ -60,6 +60,8 @@ import guards
 import lookup
 import notify
 import opening_reuse
+import re as _re
+
 import prefs
 import profile_questions
 import progress
@@ -775,6 +777,30 @@ def _starter_chips(price_locked):
     return free_mode.STARTER_CHIPS if price_locked else STARTER_CHIPS
 
 
+_AREA_Q = _re.compile(r"(city|cities|area|areas|part of|where in|which town|near)", _re.I)
+
+
+def _opening_chips(text, model_chips, user, price_locked):
+    """Opening chips (owner 2026-10-31): the likely ANSWERS to the closing question come first, the fixed starter
+    chips fill the rest. "Which city or area of Arizona?" -> "Near Phoenix", "Near Scottsdale", ... from
+    profile_questions.area_options; any other closing question -> the model's own chips (the prompt makes them its
+    answers). No closing question -> the starters exactly as before."""
+    starters = list(_starter_chips(price_locked))
+    m = _re.search(r"([^.!?
+]{6,240}\?)\s*$", text or "")
+    q = m.group(1).strip() if m else ""
+    answers = []
+    if q and _AREA_Q.search(q):
+        try:
+            answers = [o["label"] for o in profile_questions.area_options(profile_questions.state_of(xano.profile_of(user)))][:4]
+        except Exception:
+            answers = []
+    if q and not answers:
+        answers = [c for c in model_chips if isinstance(c, str) and c.strip() and c not in starters][:3]
+    out = answers + [c for c in starters if c not in answers]
+    return out[:4] if answers else starters
+
+
 def _next_step(out, history=()):
     """Chip post-processing after de-dupe and the free price guard (owner 2026-10-25: "make sure the chips still
     exist to push them to the next step"). Flag on: a reply with a cost widget always carries a planning or action
@@ -814,7 +840,7 @@ def _opening(token, user, background, tracker):
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}], tracker=tracker)
     if out.get("stopped"):
         return out           # no chat created, nothing saved
-    out["chips"] = list(_starter_chips(bool(out.get("price_locked"))))
+    out["chips"] = _opening_chips(out.get("text") or "", out.get("chips") or [], user, bool(out.get("price_locked")))
     if out.get("questions"):
         # The first question's answers are the chips, so the current page already shows them as taps; a tap is
         # sent as the next message and _refine_in_chat saves it (the page may also render `questions` itself).
