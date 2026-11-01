@@ -123,7 +123,7 @@ CHIPS - only offer follow-ups you can answer well from Tulle's data. Every chip 
 Never offer a chip about something none of these covers: availability or open dates, parking, lodging, accessibility, tastings, decor, a specific feature like a courtyard, a ceremony fee being included, or unsupported vendor types (florists, catering, beauty, planners, attire, officiants). Use the exact filter wording where it fits ("Barn / Ranch venues", "Waterfront venues", "All-inclusive venues"). A chip should be a short question or request the couple would tap, under 40 characters.
 Pick chips for THIS couple and THIS reply - the next decision they face, not a fixed set. The examples above are a menu, not a template: don't offer the same chips in every reply, don't repeat a chip from earlier in the chat, and include at most one chip about a single named venue. Offer "Cheaper dates at <venue>?" only when you know that venue's PDF has an off-peak rate (from venue_details) or the couple has asked about dates or season.
 
-Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends with which vendor's PDF to open first and what to look for in it; EVERY message ends with exactly one specific next question for this couple - the next decision they face: which area, which date or season, which style, what matters most, or which vendor's PDF to open - phrased so a tap answers it, ideally yes/no ("Want me to keep it to Scottsdale?", "Should I show only all-inclusive venues?"), so they always have a way to keep going; the first chips are that question's answers ("Yes, ..." / "No, ..."), then at most one other), 3-5 vendor_ids in the order you recommend them (fewer only if fewer fit; 1 for a single-venue COST BREAKDOWN), a short reason per vendor (at most about 15 words) that says what sets it apart from the other picks with a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
+Finish EVERY reply by calling present_recommendations exactly once: your message (the first reply in a chat ends with which vendor's PDF to open first and what to look for in it; EVERY message ends with exactly one specific next question for this couple - the next decision they face: which area, which date or season, which style, what matters most, or which vendor's PDF to open - phrased so a tap answers it, ideally yes/no ("Want me to keep it to Scottsdale?", "Should I show only all-inclusive venues?"), so they always have a way to keep going; the first chips are that question's answers ("Yes, ..." / "No, ..."), then at most one other), 3 vendor_ids in the order you recommend them (never more than 3 - anything past the third is cut and served by the Show 3 more button; fewer only if fewer fit; 1 for a single-venue COST BREAKDOWN), a short reason per vendor (at most about 15 words) that says what sets it apart from the other picks with a concrete number where we have one (its estimate for venues, when it has one), and 2-4 short follow-up chips that follow the CHIPS rule. A question only about an unsupported vendor type gets 0 vendor_ids."""
 
 # Listings-only vendor types (2026-10-26, REC_LISTINGS_IN_CHAT, default on): SYSTEM above stays exactly origin/main's
 # text; these (old, new) line edits turn it into the prompt that also covers florists, hair and makeup, caterers and
@@ -558,10 +558,22 @@ def derived_numbers(guests, budget, totals=()):
     return out
 
 
+MAX_PICKS = 3      # cards shown per answer (owner 2026-11-01: a 4th card sat alone under a row of 3)
 MORE_STEP = 3      # "Show 3 more" (beta feedback 2026-10-06): the button reveals this many per press
 # 2026-10-14: 6 -> 9. 37 of 114 real messages (11 of 21 users, Oct 3-14) asked for more; chats 42 and 64 pressed
 # the button twice and then typed "more" because the pool was empty.
 MORE_MAX = 9
+
+
+def trim_picks(cards, pool):
+    """At most MAX_PICKS cards per answer (owner 2026-11-01: the grid is 3 wide, so a 4th pick sat alone under
+    the others). The model is told 3; when it still sends more, the extras are cut here and put at the FRONT of
+    the "Show 3 more" pool, so they are the first cards that button reveals (their model reason is dropped, as
+    for every more-card). Returns (cards, pool, n_trimmed)."""
+    if len(cards) <= MAX_PICKS:
+        return cards, list(pool), 0
+    cut = [c.get("vendor_id") for c in cards[MAX_PICKS:]]
+    return cards[:MAX_PICKS], cut + [v for v in pool if v not in cut], len(cut)
 
 
 def more_cards(searched, seen, cards, prior):
@@ -1505,10 +1517,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             message: 2-3 short sentences to the couple (about 60 words). Only a COST BREAKDOWN the couple
                 explicitly asked for is longer and uses the itemized "• " list; a budget question may take 4.
-            vendor_ids: 3-5 vendor_ids from search_venues, search_photographers_entertainment, search_vendors or
-                saved_venues,
-                best first (fewer only if fewer fit; 1 for a single-venue breakdown, 0 for a question only about an
-                unsupported vendor type).
+            vendor_ids: 3 vendor_ids from search_venues, search_photographers_entertainment, search_vendors or
+                saved_venues, best first - never more than 3 (a 4th or 5th is cut and goes to the Show 3 more
+                button); fewer only if fewer fit; 1 for a single-venue breakdown, 0 for a question only about an
+                unsupported vendor type.
             reasons: one short reason per vendor_id (at most about 15 words), same order, each saying how it
                 differs from the others.
             chips: 2-4 short follow-ups that follow the CHIPS rule (each maps to a search filter, a pricing
@@ -1906,7 +1918,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         # The model occasionally ends its turn with plain text instead of calling present_recommendations
         # (1 of 3 runs of eval o12, 2026-10-04). Keep its answer rather than showing the couple nothing.
         # Cards: venues from THIS request's searches that the text names (rule 1 still holds).
-        named = [vid for vid, v in seen.items() if v.get("name") and v["name"].lower() in last_text.lower()][:4]
+        named = [vid for vid, v in seen.items() if v.get("name") and v["name"].lower() in last_text.lower()][:MAX_PICKS]
         final.update(message=last_text, vendor_ids=named, reasons=[""] * len(named), chips=[])
         usage["no_present_fallback"] = True
     usage["latency_ms"] = int((time.time() - t0) * 1000)
@@ -1945,6 +1957,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     picked = {c.get("vendor_id") for c in cards}
     primary = max(reversed(searches), key=lambda s: len(picked & set(s["ids"])), default=None)
     pool = primary["ids"] if primary else []
+    cards, pool, usage["picks_trimmed"] = trim_picks(cards, pool)
     venue_searches = [s for s in searches if not s["filters"].get("category")]
     vprimary = primary if primary in venue_searches else (venue_searches[-1] if venue_searches else None)
     text = final.get("message") or ""
