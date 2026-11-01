@@ -176,7 +176,11 @@ BREAKDOWN_ASK = re.compile(r"break ?down|itemi[sz]e|full (?:cost|price)|all[- ]i
 
 PRICED_PER_SEARCH = 6   # pricing fetched for the top N results of each search, in parallel
 PRICED_MAX = 24         # ...or up to this many when a guest count or price cap has to be checked per venue
-SHOWN_MAX = 8           # search results the model sees; the rest only feed "Show 3 more"
+SHOWN_MAX = 8           # search results the model sees at most; the rest only feed "Show 3 more"
+SHOWN_MIN = 5           # 2026-11-01: pricing waves stop once this many venues FIT (was: until SHOWN_MAX fit). Mixpanel 14d:
+                        # median priced_sync 13 on openings = two waves of 8 for a 3-pick answer; one wave ~1.0 s, two ~2.2 s,
+                        # three ~4.3 s (median pricing_ms by priced_sync bucket). The model still sees up to 8 when a wave
+                        # yields them; the rest of the window is priced in the background for "Show 3 more", as before.
 PRICE_WAVE = 8          # pricing calls per parallel wave (the model's 8 first, see search_venues)
 SEARCH_POOL = 60        # one ep119 page of this many when a city or hidden venues need a deeper pool
 DEFERRED_WAIT_S = 6.0   # max wait at the end of a request for background "Show 3 more" pricing
@@ -1074,7 +1078,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         window = venues[:PRICED_MAX] if filtering else venues[:PRICED_PER_SEARCH]
         tail = ([] if guests else venues[len(window):])     # kept unpriced, as before
         pairs, i = [], 0
-        while i < len(window) and (len(pairs) < SHOWN_MAX or not filtering):
+        while i < len(window) and (len(pairs) < SHOWN_MIN or not filtering):
             wave = window[i:i + PRICE_WAVE] if filtering else window
             prog.check()   # Stop between the search and each pricing wave (2026-10-25)
             prog.set(progress_mod.pricing_label(len(wave)))
