@@ -43,6 +43,7 @@ about the couple live in rec_memory (80) and are fed into every later conversati
 from typing import Optional
 import datetime as dt
 import time
+import re
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -774,6 +775,38 @@ def _opening_title(user):
     return "Venue picks" + (" · " + ", ".join(b for b in bits if b) if any(bits) else "")
 
 
+def _picks_title(out, user):
+    """Owner 2026-11-01 ('make Your chats more descriptive'): an opening is named after what it found -
+    'Scottsdale · Clayton House, The Willow, Gainey Ranch' - instead of the profile line every opening shared."""
+    cards = [c for c in (out.get("cards") or []) if isinstance(c, dict) and c.get("name")]
+    if not cards:
+        return _opening_title(user)
+    f = out.get("search_filters") or {}
+    states = f.get("states") or []
+    area = str(f.get("city") or (states[0] if states else "") or "").strip()
+    names = []
+    for c in cards[:3]:
+        n = str(c["name"]).strip()
+        names.append(n if len(n) <= 26 else n[:24].rstrip() + "\u2026")
+    return (area + " \u00b7 " if area else "Venue picks \u00b7 ") + ", ".join(names)
+
+
+_ASK_RE = re.compile(r"^\s*tell me about (.+?)(?:,? and whether it fits my wedding)?\s*[.?!]*\s*$", re.I)
+
+
+def _question_title(text):
+    """A typed question as a chat name: the vendor-page 'Ask Tulle' template collapses to 'About <vendor>'; anything
+    else is the question itself, first letter capitalised, trailing punctuation dropped, 80 characters max."""
+    t = " ".join(str(text or "").split())
+    m = _ASK_RE.match(t)
+    if m:
+        return ("About " + m.group(1).strip())[:80]
+    t = t.rstrip(" .!")
+    if t:
+        t = t[0].upper() + t[1:]
+    return t[:80]
+
+
 def _starter_chips(price_locked):
     """Fixed opening chips. REC_COST_TOOLS_IN_CHAT on (2026-10-25): "What will our wedding cost?" (the estimate cost
     tool - open to free users too) takes the venue-check slot. Off: exactly as before."""
@@ -850,7 +883,7 @@ def _opening(token, user, background, tracker):
         # sent as the next message and _refine_in_chat saves it (the page may also render `questions` itself).
         out["chips"] = [o["label"] for o in out["questions"][0]["options"]][:4]
         background.add_task(_mark_asked, user["id"], [q["id"] for q in out["questions"]])
-    chat = xano.create_chat(user["id"], _opening_title(user))
+    chat = xano.create_chat(user["id"], _picks_title(out, user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     return _public(out, chat_id=chat["id"])
 
@@ -909,7 +942,7 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
         out["questions"] = rest[:1]
         out["chips"] = [o["label"] for o in rest[0]["options"]][:4]
     if (chat.get("title") or "").startswith("Venue picks"):
-        chat["title"] = text[:80]
+        chat["title"] = _question_title(text)
 
     def persist():   # after the response: user turn, then assistant turn, then bump the chat
         xano.add_message(chat["id"], "user", text)
@@ -977,7 +1010,7 @@ def _refine(token, user, body, background, tracker):
     if out.get("price_locked"):
         out["chips"] = free_mode.chips(out["chips"], planning=config.COST_TOOLS_IN_CHAT)
     out["chips"] = _next_step(out)   # client-held turns carry no chips
-    chat = xano.create_chat(user["id"], text[:80])
+    chat = xano.create_chat(user["id"], _question_title(text))
     earlier = msgs[:-1]
 
     def persist():   # earlier client-held turns (if any), then this question and its answer
