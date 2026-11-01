@@ -200,6 +200,16 @@ def compose(token, health_text, now_ms=None):
     except Exception as e:
         sections.append(f":warning: _NPS section failed: {e}_")
 
+    # Mondays (2026-11-01): the weekly Tulle Planner digest rides under the daily brief - who used it, who came back,
+    # dead ends, the check-in card, and the week's questions grouped into themes (rec_watch.weekly_planner).
+    if dt.datetime.utcfromtimestamp(now_ms / 1000).weekday() == 0 or "--weekly" in sys.argv:
+        try:
+            import rec_watch
+            sections.append("")
+            sections.append(rec_watch.weekly_planner(token))
+        except Exception as e:
+            sections.append(f":warning: _Planner weekly digest failed: {e}_")
+
     out = [f"*Tulle daily - {today}*", "*TL;DR*"] + [f"• {t}" for t in tldr]
     out.append("*Decisions & suggestions*")
     out += [f"• {d}" for d in decisions] if decisions else ["• Nothing needs a decision today."]
