@@ -70,7 +70,7 @@ def test_next_question_continues_the_recent_chat_with_server_history(env):
 def test_stale_chat_is_not_reused(env):
     env["chats"] = [{"id": 40, "title": "old", "updated_at": int(time.time() * 1000) - 2 * 3600_000}]
     r = TestClient(app.app).post("/rec/refine", json={"message": "barns in Texas"})
-    assert r.status_code == 200 and r.json()["chat_id"] == 51 and env["created"] == ["barns in Texas"]
+    assert r.status_code == 200 and r.json()["chat_id"] == 51 and env["created"] == ["Barns in Texas"]   # 2026-11-01: chat names are tidied (first letter capitalised)
 
 
 def test_blocked_question_creates_no_chat(env, monkeypatch):

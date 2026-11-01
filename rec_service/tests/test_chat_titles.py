@@ -30,5 +30,5 @@ def test_ask_tulle_template_collapses_to_about_the_vendor():
 
 
 def test_plain_questions_are_tidied():
-    assert app._question_title("  what do photographers cost in arizona?  ") == "What do photographers cost in arizona"
+    assert app._question_title("  what do photographers cost in arizona?  ") == "What do photographers cost in arizona?"
     assert len(app._question_title("x" * 200)) == 80
