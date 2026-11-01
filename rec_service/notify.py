@@ -7,6 +7,15 @@ import requests
 
 import config
 
+
+def _who(user, plan="", fallback="A member"):
+    """'Maria (maria@x.com, user 31469, Forever)'. The email is what the team looks people up by (owner
+    2026-11-01: 'we want the user emails on this, not just their ids'); the id stays for the admin dash."""
+    name = (user.get("first_name") or "").strip() or fallback
+    email = (user.get("email") or "").strip()
+    return "%s (%suser %s, %s)" % (name, (email + ", ") if email else "", user.get("id"), plan or "plan unknown")
+
+
 STARS = {1: "1/5", 2: "2/5", 3: "3/5", 4: "4/5", 5: "5/5"}
 
 
@@ -15,7 +24,7 @@ def beta_feedback(user, rating, would_use, text, questions_used, plan=""):
     if not config.FEEDBACK_SLACK_WEBHOOK and not (config.SLACK_BOT_TOKEN and config.FEEDBACK_SLACK_CHANNEL):
         print("feedback slack: not configured")
         return False
-    who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A member", user.get("id"), plan or "plan unknown")
+    who = _who(user, plan)
     quoted = "\n".join("> " + line for line in (text or "").splitlines()) or "_(rating only)_"
     msg = ("*Tulle Assistant beta feedback* - %s\n*Useful so far:* %s   *Keep using it:* %s   "
            "*Questions asked:* %s\n%s" % (who, STARS.get(rating, rating), would_use or "-", questions_used, quoted))
@@ -67,7 +76,7 @@ def _clip(s, n):
 def answer_feedback(user, text, question, answer, plan="", chat_id=0, vote="down"):
     """A thumbs down (with the couple's words) or a thumbs up on one Tulle Assistant answer (2026-10-16), plus the
     question and the start of the answer it is about."""
-    who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A member", user.get("id"), plan or "plan unknown")
+    who = _who(user, plan)
     msg = "*Tulle Assistant thumbs %s* - %s" % ("up :+1:" if vote == "up" else "down", who)
     if text:
         msg += "\n" + "\n".join("> " + line for line in text.splitlines() or [""])
@@ -83,7 +92,7 @@ def answer_feedback(user, text, question, answer, plan="", chat_id=0, vote="down
 def still_looking(user, text, plan="", source="", chat_id=0):
     """A line a couple typed at a dead end or on an error card (owner 2026-11-01: this is 'remember this for next
     time', NOT a thumbs down - it is saved to their memory notes; this is the team's copy). Never raises."""
-    who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A member", user.get("id"), plan or "plan unknown")
+    who = _who(user, plan)
     msg = "*Tulle Assistant - still looking for* - %s" % who
     msg += "\n> " + _clip(text, 300)
     if source:
@@ -96,7 +105,7 @@ def still_looking(user, text, plan="", source="", chat_id=0):
 def venue_request(user, name, location="", question="", plan="", chat_id=0, near=()):
     """A venue a couple asked for by name that table 11 doesn't have (lookup fast path, 2026-10-26) - the data
     team's list of venues to add. Same channel and delivery as the feedback notices. Never raises."""
-    who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A couple", user.get("id"), plan or "plan unknown")
+    who = _who(user, plan, "A couple")
     msg = "*Venue not in Tulle* - %s asked for *%s*%s" % (who, _clip(name, 120),
                                                            (" (%s)" % _clip(location, 80)) if location else "")
     if question and question.strip().lower() != (name or "").strip().lower():
