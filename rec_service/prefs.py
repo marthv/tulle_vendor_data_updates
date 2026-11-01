@@ -121,6 +121,26 @@ def asked(notes):
                for n in notes or [])
 
 
+def search_filters(answers):
+    """The search_venues arguments the couple's own answers map to - the same mapping search_hint describes to the
+    model - for the opening's pre-search (2026-11-01). {} when nothing maps."""
+    a = clean(answers)
+    f = {}
+    if a.get("area"):
+        f["city"] = re.sub(r"^the ", "", a["area"][0].split(",")[0].strip())
+    if a.get("guests"):
+        f["guests"] = int(a["guests"][0])
+    if a.get("style"):
+        f["venue_types"] = list(a["style"])
+    if a.get("setting"):
+        f["vibes"] = list(a["setting"])
+    if a.get("catering"):
+        f["pricing_models"] = list(_CATERING_FILTER.get(a["catering"][0], a["catering"]))
+    if a.get("ceremony") == ["outdoor"]:
+        f["outdoor_ceremony"] = True
+    return f
+
+
 def search_hint(answers):
     """The line the model gets: which search_venues filters the answers map to, plus the ranking priority."""
     a = clean(answers)

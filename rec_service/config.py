@@ -152,6 +152,11 @@ CARD_CACHE_S = max(0, int(os.environ.get("REC_CARD_CACHE_S", "3600") or 0))
 # same ET day with nothing that shapes the answer changed gets the stored answer (~0.5 s, no model call, no usage
 # row). "0" = off (every visit generates, as before). Max age caps how old the reused cards' prices can be.
 OPENING_REUSE = os.environ.get("REC_OPENING_REUSE", "1") == "1"
+# Pre-search (2026-11-01 speed pass): the opening's first search_venues call is run from the profile BEFORE the
+# first model call and handed to the model as a finished tool call, so the model starts on what used to be
+# turn 2 (turn 1 only picked search arguments: median 1.8 s of a 10.3 s opening). REC_PRESEARCH=0 restores
+# the two-turn opening.
+PRESEARCH = os.environ.get("REC_PRESEARCH", "1") == "1"
 OPENING_REUSE_MAX_AGE_S = max(0, int(os.environ.get("REC_OPENING_REUSE_MAX_AGE_S", str(6 * 3600)) or 0))
 # Railway search circuit breaker (2026-10-27, owner OK #2): after a timeout / connection error / 5xx the Planner
 # skips the search-api for this many seconds and goes straight to ep119. 0 = no breaker (old behaviour).

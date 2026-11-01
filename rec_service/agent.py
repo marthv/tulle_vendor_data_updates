@@ -808,7 +808,7 @@ def _drain_stream(stream, prog):
 
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
         detail="full", prior_vendor_ids=(), preferences="", active_filters=None, progress=None, search_log=None,
-        profile_questions=None, known_area="", profile_extra=None, price_question=False):
+        profile_questions=None, known_area="", profile_extra=None, price_question=False, presearch=None):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
@@ -831,6 +831,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         (e.g. {"Wedding_Guest_Count": 150} from a tapped "100-150 guests").
     price_question: the couple's latest message asks for price figures and they are not on Forever
         (upsell.py) - the model is told to answer on fit plus one Forever line, never to refuse.
+    presearch: an opening (2026-11-01): run the first search_venues call here, from the profile (+ these extra filters
+        from the couple's preference answers, prefs.search_filters), and hand it to the model as a finished tool
+        call. None = the model searches itself (every refine, and REC_PRESEARCH=0).
     Returns (result_dict, usage_dict)."""
     prog = progress or progress_mod.NULL
     slog = search_log if search_log is not None else railway_search.SearchLog(railway_search.arm((user or {}).get("id")))
@@ -1715,14 +1718,86 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         context += ("\nALREADY SAID in this chat: which PDF to open. Don't write \"open X's PDF\" again - the cards "
                     "have the button. If the top pick's PDF answers something specific, say what it shows "
                     "(\"its PDF lists the per-head menu tiers\") in a few words.")
+    t_prefetch_end = time.time()   # prefetch_ms stays the benchmark + saved-card prefetch alone; the pre-search has its own ms
+    # LIGHT gets no market-rate tools (market_benchmarks / pe_market_rates are all figures).
+    # FREE gets no price-bearing tool at all, and price-free wrappers of the rest (free_mode.tools).
+    # Cost tools (2026-10-25) at every level: their widget is the couple's to see; the model only gets their
+    # figures at FULL (_cost_tool).
+    # search_vendors (listings only, 2026-10-26) carries no figure at any level, so every level gets it as is.
+    tool_list = (free_mode.tools(search_venues, search_photographers_entertainment, saved_venues, venue_details,
+                                 save_note, present_recommendations) + listing_tools + cost_tool_list if free else
+                 [search_venues, search_photographers_entertainment] + listing_tools
+                 + [saved_venues, venue_pricing, venue_details, save_note, present_recommendations] + cost_tool_list
+                 if light else
+                 [search_venues, search_photographers_entertainment] + listing_tools
+                 + [saved_venues, venue_pricing, venue_details, estimate_cost, market_benchmarks, pe_market_rates,
+                    save_note, present_recommendations]
+                 + cost_tool_list)
+
+    def _presearch():
+        """The opening's first search, run here instead of by the model (2026-11-01 speed pass). Measured over the
+        14 days before: 548 of 589 openings took exactly 2 model turns and turn 1 only picked search_venues arguments
+        from the profile (median 1.8 s of a 10.3 s opening). The tool called is the one the model would get at this
+        detail level (free mode's wrapper for a couple with no plan), so the result text, the figure evidence, the
+        cards and "Show 3 more" are exactly what the model's own call would have produced. Returns
+        (messages_to_append, venues_shown, note_for_context); ([], 0, "") = let the model search, as before."""
+        tool = next((t for t in tool_list
+                     if (getattr(t, "name", None) or getattr(t, "__name__", None)) == "search_venues"), None)
+        if tool is None:
+            return [], 0, ""
+        fn = getattr(tool, "func", None) or tool
+        args = {"states": list(states)}
+        if guests:
+            args["guests"] = int(guests)
+        city = (presearch or {}).get("city") or (known_area.split(",")[0].strip() if known_area else "")
+        if city:
+            args["city"] = city
+        pref_f = {k: v for k, v in (presearch or {}).items()
+                  if k in ("venue_types", "vibes", "pricing_models", "outdoor_ceremony") and v}
+        tries = [dict(args, **pref_f)] + ([args] if pref_f else [])
+        note = ""
+        for a in tries:
+            out = fn(**a)
+            try:
+                n = len(json.loads(out).get("venues") or [])
+            except Exception:
+                n = 0
+            if n >= 3 or a is tries[-1]:
+                if not n:
+                    return [], 0, ""
+                if a is not tries[0]:
+                    note = (" Their preference filters (%s) left fewer than 3 fits, so it was repeated without them: say "
+                            "in a few words which preference you relaxed." % ", ".join(sorted(pref_f)))
+                return ([{"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_presearch_1",
+                                                             "name": "search_venues", "input": a}]},
+                         {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_presearch_1",
+                                                       "content": out}]}], n, note)
+        return [], 0, ""
+
+    presearch_msgs, presearch_ms, presearch_n = [], 0, 0
+    if presearch is not None and states and not prog.cancelled():
+        t_pre = time.time()
+        try:
+            presearch_msgs, presearch_n, pre_note = _presearch()
+        except progress_mod.Stopped:        # Stop tapped during the search: the loop below sees prog.cancelled()
+            presearch_msgs, presearch_n, pre_note = [], 0, ""
+        except Exception:                   # a search failure here is not fatal: the model searches itself
+            presearch_msgs, presearch_n, pre_note = [], 0, ""
+        presearch_ms = int((time.time() - t_pre) * 1000)
+        if presearch_msgs:
+            context += ("\nPRE-SEARCH: search_venues has already run for this couple from their profile - its result is "
+                        "the tool result below. Pick from those venues and call present_recommendations; search again "
+                        "only if fewer than 3 of them fit or they need a different place or filter." + pre_note)
     msgs = [dict(m) for m in messages]
     msgs[0] = {"role": msgs[0]["role"], "content": context + "\n\n" + msgs[0]["content"]}
+    msgs += presearch_msgs
 
     client = anthropic.Anthropic()
     usage = {"input_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "output_tokens": 0,
-             "tool_calls": 0, "prefetch_ms": int((time.time() - t0) * 1000),
+             "tool_calls": 0, "prefetch_ms": int((t_prefetch_end - t0) * 1000),
              "prefetch_bench_ms": part_ms["bench"], "prefetch_saved_ms": part_ms["saved"],
-             "prefetch_saved_n": len(saved_ids)}
+             "prefetch_saved_n": len(saved_ids),
+             "presearch": bool(presearch_msgs), "presearch_ms": presearch_ms, "presearch_n": presearch_n}
     # Streamed answer text (2026-10-31): only with a tracker to publish to, and never for a couple with no plan (free
     # mode redacts prices on the FINISHED answer; a half-written line could show one). Off = the call is unchanged.
     stream_on = bool(config.STREAM_TEXT and progress is not None and not free)
@@ -1734,20 +1809,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                  "cache_control": {"type": "ephemeral"}}]
                + ([{"type": "text", "text": free_mode.RULES + ("\n" + free_mode.COST_TOOLS_RULE if cost_on else "")}]
                   if free else []),
-        # LIGHT gets no market-rate tools (market_benchmarks / pe_market_rates are all figures).
-        # FREE gets no price-bearing tool at all, and price-free wrappers of the rest (free_mode.tools).
-        # Cost tools (2026-10-25) at every level: their widget is the couple's to see; the model only gets their
-        # figures at FULL (_cost_tool).
-        # search_vendors (listings only, 2026-10-26) carries no figure at any level, so every level gets it as is.
-        tools=(free_mode.tools(search_venues, search_photographers_entertainment, saved_venues, venue_details,
-                               save_note, present_recommendations) + listing_tools + cost_tool_list if free else
-               [search_venues, search_photographers_entertainment] + listing_tools
-               + [saved_venues, venue_pricing, venue_details, save_note, present_recommendations] + cost_tool_list
-               if light else
-               [search_venues, search_photographers_entertainment] + listing_tools
-               + [saved_venues, venue_pricing, venue_details, estimate_cost, market_benchmarks, pe_market_rates,
-                  save_note, present_recommendations]
-               + cost_tool_list),
+        tools=tool_list,
         messages=msgs,
         output_config={"effort": config.EFFORT},
         **config.thinking_kwargs(),
