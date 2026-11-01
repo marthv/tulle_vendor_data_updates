@@ -296,7 +296,7 @@ def _themes(questions, api_key):
         client = anthropic.Anthropic(api_key=api_key)
         body = "\n".join("- " + q.strip()[:300] for q in questions[:400])
         msg = client.messages.create(
-            model=DIGEST_MODEL, max_tokens=900, temperature=0,
+            model=DIGEST_MODEL, max_tokens=900,
             system="You summarise what couples asked a wedding-planning assistant this week for the founder's Monday "
                    "Slack digest. Group the questions into at most 8 themes, most common first. Output plain text lines "
                    "only, no markdown headers: each theme as '• <theme> (<n>) - \"<one short verbatim quote>\"'. Then a "
