@@ -128,6 +128,7 @@ STATE_ABBR = {
     "ok": "oklahoma", "or": "oregon", "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina",
     "sd": "south dakota", "tn": "tennessee", "tx": "texas", "ut": "utah", "vt": "vermont", "va": "virginia",
     "wa": "washington", "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming", "dc": "district of columbia"}
+_AMBIG_ABBR = {"in", "or", "me", "hi", "la", "ok", "de"}   # state codes that are also plain words
 # Places couples answer "which area?" with. A bare place is never a venue lookup.
 PLACES = {"nyc", "new york city", "manhattan", "brooklyn", "queens", "bronx", "staten island", "long island",
           "hudson valley", "catskills", "the catskills", "hamptons", "the hamptons", "westchester", "jersey shore",
@@ -243,6 +244,19 @@ def detect(text, last_assistant=""):
     m = re.match(r"^(.+?)\s+at\s+(.+)$", name, re.I)
     if m and not location and len(m.group(2).split()) <= 3:
         alt_name, alt_location = m.group(1), m.group(2)
+    # "Bear brook nj" / "The Mill new jersey": a bare state at the end of the name, no comma or "in" (Kate,
+    # 2026-11-01: a couple typed that and was told we don't have it; Bear Brook Valley scored 0.67 with "nj" counted
+    # as part of the name). An alternative reading only - the full name is still tried - and never for an
+    # abbreviation that is also a word a venue name can end with ("in", "or", "me", "hi", "la", "ok", "de").
+    if not location and not alt_name:
+        nw = name.split()
+        for k in (2, 1):
+            if len(nw) > k:
+                tail = norm(" ".join(nw[-k:]))
+                rest = [t for t in tokens(" ".join(nw[:-k])) if t not in GENERIC]   # "Hotel Washington": no alt
+                if rest and (tail in US_STATES or (k == 1 and tail in STATE_ABBR and tail not in _AMBIG_ABBR)):
+                    alt_name, alt_location = " ".join(nw[:-k]).strip(" ,.-:"), " ".join(nw[-k:])
+                    break
     words = norm(name).split()
     if not words or len(words) > 7 or len(norm(name)) < 3:
         return None
