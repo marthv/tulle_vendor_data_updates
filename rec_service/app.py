@@ -1282,14 +1282,15 @@ def delete_note(body: NoteDelete, authorization: str = Header(None)):
 class NoteAdd(BaseModel):
     note: str = ""           # the couple's own words, e.g. "a barn near Austin under $8k"
     source: str = ""         # dead_end:<code> | error:<code> - where in the chat it was typed
+    chat_id: int = 0
 
 
 @app.post("/rec/notes")
 def add_note(body: NoteAdd, authorization: str = Header(None)):
     """Owner 2026-11-01: a dead-end answer asks 'what were you after?'. Couples read that as 'Tulle will keep this
     in mind', not as a thumbs-down, so keep that promise: the line goes into their memory notes (what the agent
-    reads at the start of every chat) as 'Still looking for: ...'. The chat still posts the same text to
-    /rec/answer-feedback so the team sees the miss."""
+    reads at the start of every chat) as 'Still looking for: ...'. The team gets a quiet Slack line
+    (notify.still_looking), not the thumbs-down notice."""
     _, user = _auth(authorization)
     text = " ".join((body.note or "").split()).strip()
     if len(text) < 2:
@@ -1297,6 +1298,8 @@ def add_note(body: NoteAdd, authorization: str = Header(None)):
     note = "Still looking for: " + text[:170]
     xano.add_memory_note(user["id"], note)
     _POOL.submit(xano.mp_track, user["id"], "rec_note_added", {"chars": len(text), "source": body.source or "", "kind": "still_looking"})
+    # Team copy: a quiet Slack line, not the thumbs-down notice (owner 2026-11-01).
+    _POOL.submit(notify.still_looking, user, text, xano.plan_label(user), body.source or "", int(body.chat_id or 0))
     notes, _ctx = _memory(user["id"])
     return {"note": note, "notes": notes}
 

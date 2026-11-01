@@ -80,6 +80,19 @@ def answer_feedback(user, text, question, answer, plan="", chat_id=0, vote="down
     return _post(msg)
 
 
+def still_looking(user, text, plan="", source="", chat_id=0):
+    """A line a couple typed at a dead end or on an error card (owner 2026-11-01: this is 'remember this for next
+    time', NOT a thumbs down - it is saved to their memory notes; this is the team's copy). Never raises."""
+    who = "%s (user %s, %s)" % ((user.get("first_name") or "").strip() or "A member", user.get("id"), plan or "plan unknown")
+    msg = "*Tulle Assistant - still looking for* - %s" % who
+    msg += "\n> " + _clip(text, 300)
+    if source:
+        msg += "\n_after: %s_" % _clip(source, 60)
+    if chat_id:
+        msg += "\n_chat %s_" % chat_id
+    return _post(msg)
+
+
 def venue_request(user, name, location="", question="", plan="", chat_id=0, near=()):
     """A venue a couple asked for by name that table 11 doesn't have (lookup fast path, 2026-10-26) - the data
     team's list of venues to add. Same channel and delivery as the feedback notices. Never raises."""
