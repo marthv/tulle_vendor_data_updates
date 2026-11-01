@@ -65,6 +65,44 @@ def update_profile(token, fields):
         return {}
 
 
+def pdf_rows(token, vendor_id):
+    """The vendor's pricing PDFs: ep93 GET wptp_updated_mappings_pdf_specific?vendor_id= in the search group - the
+    collection the vendor page's "Pricing Submitted by Couples" table reads (2026-11-01, Planner card "Open pricing
+    PDF"). Sent with the couple's own token (Authorization + the Auth_Token header the page sends)."""
+    d = _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_pdf_specific", token, params={"vendor_id": vendor_id},
+             extra_headers={"Auth_Token": token or ""})
+    rows = d if isinstance(d, list) else ((d.get("items") if isinstance(d, dict) else None) or [])
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def primary_pdf(rows):
+    """The row the vendor page lists first (its Table Budget sort): Current_Assignment "Primary" first, then the latest
+    Year_of_Pricing, then the highest id. None when no row has a PDF_Link."""
+    def key(r):
+        prim = 1 if str(r.get("Current_Assignment") or "").strip().lower() == "primary" else 0
+        years = [int(y) for y in re.findall(r"\d{4}", str(r.get("Year_of_Pricing") or ""))]
+        try:
+            rid = int(r.get("id") or 0)
+        except (TypeError, ValueError):
+            rid = 0
+        return (prim, max(years or [0]), rid)
+    rows = [r for r in rows or [] if r.get("PDF_Link")]
+    return max(rows, key=key) if rows else None
+
+
+def record_vendor_view(token, user, vendor_id, vendor_name=""):
+    """PATCH user/update_vendor_views with the couple's token - the request every Discovery vendor card makes on
+    click (total_vendor_views + 1, vendor_id, vendor_name), so a PDF opened from the Planner counts as a vendor page
+    visit too (owner 2026-11-01)."""
+    body = {"id": user.get("id"), "vendor_id": vendor_id, "vendor_name": vendor_name or "",
+            "total_vendor_views": int(user.get("total_vendor_views") or 0) + 1}
+    r = requests.patch(config.API_APP_GROUP + "/user/update_vendor_views", json=body,
+                       headers={"Authorization": "Bearer " + token}, timeout=TIMEOUT)
+    if not r.ok:
+        raise XanoError("update_vendor_views %s %s" % (r.status_code, r.text[:200]))
+    return True
+
+
 def verify_user(token):
     """The user's own Xano auth token -> their user row, or None. This is the ONLY identity check."""
     if not token:

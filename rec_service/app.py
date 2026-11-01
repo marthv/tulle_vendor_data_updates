@@ -1355,6 +1355,78 @@ def update_profile(body: ProfileBody, authorization: str = Header(None)):
     return {"ok": True, "updated": sorted(fields), "profile": xano.profile_of(fresh)}
 
 
+class PdfBody(BaseModel):
+    vendor_id: str = ""
+    vendor_name: str = ""
+    chat_id: int = 0
+
+
+def _pdf_entitled(user):
+    """Can this couple open any PDF without spending a free view: Forever, or an access date on or after today.
+    Dates are compared as dates (the vendor page's string compare fails on the access day itself when the field
+    carries a time - project_pdf_warning_view3)."""
+    if xano.has_forever(user):
+        return True
+    raw = str(user.get("date_until_access") or "")[:10]
+    return bool(raw) and raw >= dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+
+
+def _pdf_accounting(token, user, vendor_id, vendor_name, fields):
+    """After the answer went back: the same two writes the site makes - ep21 user/update_record (total_pdf_views
+    + 1 and the free-view meter, exactly the body the vendor page's View PDF workflow sends) and the Discovery card's
+    user/update_vendor_views. Failures are logged, never shown: the PDF is already open."""
+    try:
+        xano.update_profile(token, fields)
+    except Exception as e:
+        print("pdf view record failed:", repr(e)[:200])
+    try:
+        xano.record_vendor_view(token, user, vendor_id, vendor_name)
+    except Exception as e:
+        print("vendor view record failed:", repr(e)[:200])
+
+
+@app.post("/rec/pdf")
+def open_pdf(body: PdfBody, authorization: str = Header(None)):
+    """The Planner card's "Open pricing PDF" (owner 2026-11-01): open the vendor's PRIMARY pricing PDF directly, and
+    account for it exactly as if the couple had opened the vendor page and tapped that PDF there - the vendor-view
+    PATCH every Discovery card makes, then the vendor page's own View PDF rule: a plan or Forever opens it and counts
+    total_pdf_views; a free couple spends one free view (0 views = no PDF, the upgrade path); Mixpanel gets
+    viewed_vendor_page + viewed_vendor_pdf (or pdf_limit_popup_triggered) with source "planner". Returns {url, mode,
+    views_left, last_free}; 404 no_pdf when the vendor has no PDF link (the card then opens the vendor page)."""
+    token, user = _auth(authorization)
+    vid = (body.vendor_id or "").strip()
+    if not vid:
+        raise HTTPException(400, "vendor_id required")
+    try:
+        rows = xano.pdf_rows(token, vid)
+    except xano.XanoError as e:
+        print("pdf_rows failed:", repr(e)[:200])
+        raise HTTPException(502, {"status": "error"})
+    row = xano.primary_pdf(rows)
+    base = {"vendor_id": vid, "source": "planner", "chat_id": body.chat_id or 0, "plan": xano.plan_label(user)}
+    if not row:
+        _POOL.submit(xano.mp_track, user["id"], "rec_pdf_missing", base)
+        raise HTTPException(404, {"status": "no_pdf"})
+    views = _free_views(user)
+    total = int(user.get("total_pdf_views") or 0)
+    if _pdf_entitled(user):
+        mode, left = "paid", views
+    elif views > 0:
+        mode, left = "free", views - 1
+    else:
+        mode, left = "blocked", 0
+    if mode == "blocked":
+        _POOL.submit(xano.mp_track, user["id"], "pdf_limit_popup_triggered", base)
+        return {"url": None, "mode": mode, "views_left": 0, "last_free": False}
+    fields = {"id": user["id"], "total_pdf_views": total + 1, "free_views_remaining": left}
+    _POOL.submit(_pdf_accounting, token, user, vid, body.vendor_name or "", fields)
+    _POOL.submit(xano.mp_track, user["id"], "viewed_vendor_page", base)
+    _POOL.submit(xano.mp_track, user["id"], "viewed_vendor_pdf", dict(base, mode=mode, views_left=left,
+                                                                       pdf_id=row.get("PDF_ID") or row.get("id")))
+    return {"url": row.get("PDF_Link"), "mode": mode, "views_left": left, "last_free": mode == "free" and views == 1,
+            "year": row.get("Year_of_Pricing") or ""}
+
+
 class AnswerFeedbackBody(BaseModel):
     chat_id: int = 0
     answer_index: int = 0     # 0-based count of real answers in the chat (same key the page uses for thumbs)
