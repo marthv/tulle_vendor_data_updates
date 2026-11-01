@@ -1279,6 +1279,28 @@ def delete_note(body: NoteDelete, authorization: str = Header(None)):
     return {"notes": [n.get("note") for n in notes if n.get("note")]}
 
 
+class NoteAdd(BaseModel):
+    note: str = ""           # the couple's own words, e.g. "a barn near Austin under $8k"
+    source: str = ""         # dead_end:<code> | error:<code> - where in the chat it was typed
+
+
+@app.post("/rec/notes")
+def add_note(body: NoteAdd, authorization: str = Header(None)):
+    """Owner 2026-11-01: a dead-end answer asks 'what were you after?'. Couples read that as 'Tulle will keep this
+    in mind', not as a thumbs-down, so keep that promise: the line goes into their memory notes (what the agent
+    reads at the start of every chat) as 'Still looking for: ...'. The chat still posts the same text to
+    /rec/answer-feedback so the team sees the miss."""
+    _, user = _auth(authorization)
+    text = " ".join((body.note or "").split()).strip()
+    if len(text) < 2:
+        raise HTTPException(status_code=400, detail="note too short")
+    note = "Still looking for: " + text[:170]
+    xano.add_memory_note(user["id"], note)
+    _POOL.submit(xano.mp_track, user["id"], "rec_note_added", {"chars": len(text), "source": body.source or "", "kind": "still_looking"})
+    notes, _ctx = _memory(user["id"])
+    return {"note": note, "notes": notes}
+
+
 class FeedbackBody(BaseModel):
     rating: int = 0          # 1-5, how useful so far
     would_use: str = ""      # yes / maybe / no
