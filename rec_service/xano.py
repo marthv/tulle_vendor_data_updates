@@ -13,6 +13,7 @@ import time
 import requests
 
 import config
+import geo_sanity
 import estimate
 import prefs
 import railway_search
@@ -413,6 +414,10 @@ def venues_near(lat, lng, radius, *, guests=0, max_venue_fee=0, max_food_per_per
     out = []
     for it in rows:
         if str(it.get("Validated_Data")) != "1" or it.get("lat") is None or it.get("lng") is None:
+            continue
+        # 2026-11-02: a row whose coordinates fall far outside its own State is a bad geocode (chat 930: a Maryland
+        # venue "20 miles" from Cape Cod). Left out of radius results until re-geocoded; state searches are unaffected.
+        if not geo_sanity.coords_match_state(it.get("State"), it.get("lat"), it.get("lng")):
             continue
         d = miles(lat, lng, float(it["lat"]), float(it["lng"]))
         cap = it.get("Max_Capacity_Seated") or 0
