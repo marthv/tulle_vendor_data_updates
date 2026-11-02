@@ -1056,6 +1056,37 @@ def name_search(term, token="", per_page=NAME_SEARCH_PAGE):
 _WEDDING_WORDS = re.compile(r"wedding|reception|ceremony|bride|groom|married|our event|rehearsal", re.I)
 
 
+def top_venues_for_warm(per_state=40, max_pages=4):
+    """Vendor ids for the pricing warmer (pricing_warm.py, 2026-11-02): validated venues with pricing, most clicked
+    first, through the METADATA token (ep119 is auth=user, so the warmer has no user token to search with). Takes
+    up to `per_state` per state from the national most-clicked list, so small states keep their top venues. The
+    metadata search sorts server-side when it honours `sort`; when it does not, the rows still are priced venues and
+    the per-state cap still applies. Up to 2,000 rows read, once per warm-up."""
+    rows, page = [], 1
+    while page <= max_pages:
+        d = _meta("POST", "/table/11/content/search",
+                  json={"search": [{"Category": "Venue"}, {"flt_space_count|>": 0}],
+                        "sort": {"Clicks_on_Venue": "desc"}, "page": page, "per_page": 500})
+        rows += (d or {}).get("items", [])
+        if not d or not d.get("nextPage"):
+            break
+        page += 1
+    rows.sort(key=lambda it: -int(it.get("Clicks_on_Venue") or 0))
+    per, out, seen = {}, [], set()
+    for it in rows:
+        vid = it.get("Vendor_ID")
+        if not vid or vid in seen or str(it.get("Validated_Data")) != "1":
+            continue
+        st = it.get("State")
+        st = (st[0] if isinstance(st, list) and st else str(st or "")).split(",")[0].strip() or "?"
+        if per.get(st, 0) >= per_state:
+            continue
+        per[st] = per.get(st, 0) + 1
+        seen.add(vid)
+        out.append(vid)
+    return out
+
+
 def venue_details(vendor_id, with_amounts):
     """Facts we already extracted but the PI panel doesn't show: per-space menu/bar per person, off-peak
     (lowest Saturday) prices, peak months, other fees, preferred vendors, outdoor ceremony space - from

@@ -26,23 +26,22 @@ last = {"at": 0, "states": 0, "venues": 0, "cached": 0, "failed": 0, "ms": 0}
 
 
 def warm(states=None, per_state=None, parallel=None, log=print):
-    """Price the top `per_state` venues (by popularity) of each state through the free-tier cache. Returns the counts.
-    Every search or pricing failure is counted, never raised."""
+    """Price the top `per_state` venues (most clicked) of each state through the free-tier cache. Returns the counts.
+    Every failure is counted, never raised. `states` is kept for the signature only: the list is national, capped
+    per state."""
     per_state = int(per_state or config.PRICING_WARM_PER_STATE)
     parallel = max(1, int(parallel or config.PRICING_WARM_PARALLEL))
     t0 = time.time()
     stats = {"states": 0, "venues": 0, "cached": 0, "failed": 0}
-    ids = []
-    for st in (states or STATES):
-        try:
-            r = xano.search_venues(None, states=[st], page_size=per_state, sort_by="popular_desc")
-            stats["states"] += 1
-            for v in r.get("venues") or []:
-                if v.get("vendor_id") and v["vendor_id"] not in ids:
-                    ids.append(v["vendor_id"])
-        except Exception as e:
-            stats["failed"] += 1
-            log("pricing warm: search failed for %s: %s" % (st, repr(e)[:120]))
+    # ep119 is auth=user (the first warm-up, 2026-11-02 01:22 UTC, failed on all 51 states with no token), so the
+    # venue list comes from table 11 through the metadata token instead: most clicked first, `per_state` per state.
+    try:
+        ids = xano.top_venues_for_warm(per_state=per_state)
+        stats["states"] = len({s for s in states or []}) if states else 1
+    except Exception as e:
+        ids = []
+        stats["failed"] += 1
+        log("pricing warm: venue list failed: %s" % repr(e)[:160])
     stats["venues"] = len(ids)
 
     def one(vid):
