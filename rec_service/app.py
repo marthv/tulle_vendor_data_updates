@@ -572,6 +572,7 @@ def _reused_opening(stored, user, paid, access, rows, feedback_given, tracker):
 # so the free counters, daily caps, beta check-in and the daily brief's refine count are unchanged); model "lookup"
 # and cost 0 mark the row. Mixpanel rec_server_request kind "lookup". Anything unsure -> None -> the model as before.
 LOOKUP_TIMEOUT_S = 6.0
+LOOKUP_AFTER_QUESTION_TIMEOUT_S = 2.5   # a bare reply to our own question (see lookup.detect after_question)
 LOOKUP_SIMILAR = 3
 
 
@@ -660,14 +661,18 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None):
     if tracker and tracker.cancelled():
         _log_stopped(base, "lookup", user, paid, access)
         return _stopped("refine", paid, access, rows, feedback_given)
+    after_q = bool(q.get("after_question"))
     try:
-        res = f_find.result(timeout=LOOKUP_TIMEOUT_S)
+        # A reply to our own question gets a short wait: when it is not a venue name the model must not be delayed.
+        res = f_find.result(timeout=LOOKUP_AFTER_QUESTION_TIMEOUT_S if after_q else LOOKUP_TIMEOUT_S)
     except Exception as e:   # Xano down / slow: never say "we don't have it" because of our own failure
         print("lookup fell back to the model:", repr(e)[:200])
         return None
     status = res["status"]
     if status == "not_found" and not q["cue"] and q["words"] == 1:
         return None          # one bare word we can't place: let the model read it
+    if after_q and status not in ("found", "choices"):
+        return None          # a reply to our question that is not a venue we have: the model reads it as before
     profile = xano.profile_of(user)
     try:
         guests = int(profile.get("Wedding_Guest_Count") or 0)
@@ -922,9 +927,12 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
     history = xano.get_messages(chat["id"])
     pending = _pending_questions(history)
     answered, lines = _save_profile_answers(user, pending, text) if pending else ({}, [])
-    last_a = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "assistant"), "")
+    last_t = next((t for t in reversed(history) if t.get("role") == "assistant"), {}) or {}
+    last_a = last_t.get("text") or ""
+    # A tapped chip ("Keep it all-inclusive") is never a venue name: no lookup round trip for it.
+    is_chip = text.strip().lower() in {str(c).strip().lower() for c in (last_t.get("chips") or []) if c}
     # "oheka castle": no model (2026-10-26). Never for an answer to our own profile question ("Near Dallas").
-    out = None if answered else _lookup_fast(token, user, text, last_a, chat["id"], tracker)
+    out = None if (answered or is_chip) else _lookup_fast(token, user, text, last_a, chat["id"], tracker)
     if out is None:
         msgs, kw = _model_inputs(history, text)
         out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],

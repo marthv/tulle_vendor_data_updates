@@ -262,13 +262,18 @@ def detect(text, last_assistant=""):
         return None
     if REJECT.search(name) or _place(name):
         return None
+    after_question = False
     if not cue:
-        if (last_assistant or "").strip().endswith("?"):
-            return None          # an answer to our own question ("Austin", "Garden weddings")
         if len(words) == 1 and len(words[0]) < 5:
             return None
+        # A bare reply to our own question ("Austin", "Garden weddings") used to be dropped here. Every Planner
+        # answer ends with a question, so "Bear brook nj" typed mid-chat never reached the lookup and the model said
+        # "Bear Brook has no venues listed" (owner, chat 926, 2026-11-01). Now it is flagged: app.py shows the venue
+        # only when the search actually finds one and otherwise hands the text to the model exactly as before.
+        if (last_assistant or "").strip().endswith("?"):
+            after_question = True
     return {"name": name, "location": location, "alt_name": alt_name, "alt_location": alt_location, "cue": cue,
-            "words": len(words)}
+            "words": len(words), "after_question": after_question}
 
 
 # ---------------------------------------------------------------- retrieval + ranking

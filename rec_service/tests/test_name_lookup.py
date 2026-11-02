@@ -59,9 +59,14 @@ def test_searches_chips_and_follow_ups_are_not(text):
     assert lookup.detect(text) is None
 
 
-def test_a_reply_to_our_own_question_is_not_a_lookup():
-    assert lookup.detect("Austin Golf Club", last_assistant="Which city or area of Texas do you want?") is None
-    assert lookup.detect("Austin Golf Club pricing", last_assistant="Which area?")   # an explicit cue still is
+def test_a_reply_to_our_own_question_is_flagged_not_dropped():
+    # 2026-11-01: every Planner answer ends with a question, so "Bear brook nj" typed mid-chat never reached the
+    # lookup. detect() now flags it; app._lookup_fast shows the venue only when the search finds one (else model).
+    q = lookup.detect("Austin Golf Club", last_assistant="Which city or area of Texas do you want?")
+    assert q and q["after_question"] is True
+    q = lookup.detect("Austin Golf Club pricing", last_assistant="Which area?")   # an explicit cue is never flagged
+    assert q and q["after_question"] is False
+    assert lookup.detect("Bear brook nj", last_assistant="Should I narrow the search to the LA area?")["after_question"]
 
 
 def test_the_astoria_at_houston_is_also_read_as_name_plus_place():
