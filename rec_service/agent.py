@@ -885,7 +885,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     deferred = []        # one per search_venues call with candidates still being priced
     # Per-tool timing for rec_server_request (2026-10-17): ms per tool name, plus search vs pricing inside
     # search_venues.
-    timing = {"search_ms": 0, "pricing_ms": 0, "searches": 0, "priced": 0, "tools": {}, "categories": {}}
+    timing = {"search_ms": 0, "pricing_ms": 0, "searches": 0, "priced": 0, "tools": {}, "categories": {}, "calls": []}
 
     batch = {"pricing": 0}   # pricing lookups (one venue each) the current model turn asked for, for the label
 
@@ -907,6 +907,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 cat = "venue"
             if cat:
                 timing["categories"][cat] = timing["categories"].get(cat, 0) + 1
+            timing["calls"].append(f.__name__)
             try:
                 return f(*a, **k)
             finally:
@@ -1975,7 +1976,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     usage["tool_breakdown"] = dict(timing["tools"])   # ms per tool name, whole tool incl. search + pricing
     # Which tools ran (in order, with repeats) and which vendor categories they touched (2026-11-02): the usage log
     # and Mixpanel carry these so "what do paid members use" and "why did this answer take 4 calls" are answerable.
-    usage["tools_used"] = [name for turn in usage.get("turn_tools") or [] for name in turn]
+    usage["tools_used"] = list(timing["calls"])   # every tool that actually ran, in order (pre-search included)
     usage["categories"] = sorted(timing["categories"])
     usage["think_chars"] = sum(int(t.get("think_chars") or 0) for t in usage.get("turns") or [])
     usage["figure_bounced"] = guard["bounced"]
