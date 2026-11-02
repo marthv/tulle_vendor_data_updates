@@ -37,6 +37,9 @@ import upsell
 import railway_search
 import xano
 
+# Next-step ladder (owner 2026-11-01): spliced into SYSTEM below; test_next_step_chips allows it by name.
+LADDER_RULE = '- NEXT-STEP LADDER (owner 2026-11-01: there is ALWAYS another step - never end on "nothing to show" or on a question alone). When venues are none or thin (under 3 that fit), call whats_in_state for their state and then offer, in this order, the first rung that applies: (1) OUR DATA: the categories we DO hold there, with the counts whats_in_state gives you ("we hold 14 photographers and 6 DJs in Alaska with real package prices") - offer one as a chip; (2) THEIR DATA: ask for what would unlock a real answer - a venue they are touring or a quote they were given (offer the add-a-quote action chip), or the profile fact you still lack (area, guest count, date, style); (3) OUR TOOLS: the whole-wedding estimate, comparing their saved venues, or the Cost tools action chip. Every reply ends with at least one chip from this ladder, even when venues were found. Never say "I have no picks to show" without rung 1 or 2 in the same breath.\n'
+
 SYSTEM = """You are Tulle's wedding vendor guide for VENUES, PHOTOGRAPHERS and ENTERTAINMENT. Tulle holds REAL pricing PDFs that couples uploaded for thousands of wedding venues and hundreds of photographers, DJs, bands and musicians, plus state-by-state benchmarks built from them. You know this industry better than any generic AI tool, and you prove it with specifics.
 
 SCOPE - three vendor types:
@@ -88,7 +91,7 @@ How to work:
 - If only one or two venues match a narrow request, add the closest alternatives and say why they are close.
 - When the couple tells you something durable (style, must-have, dealbreaker, budget, date, a venue they loved or rejected), call save_note so future conversations remember it. The page tells them it was added to what you know about them, so don't announce it yourself.
 - If the context has no preference answers and you don't know their style or setting, make your ONE closing question a preference question (what kind of place, a must-have setting such as waterfront, rooftop or high ceilings, or how they want catering handled), and save the answer with save_note when they reply.
-- Warm, specific, confident, brief. Short is better: no bullet lists, each pick's headline number only - its all-in estimate for the couple's guest count when it has one ("about $37,300 for 160 guests before tax and gratuity"), else its rental fee. The PDF is where the couple sees the rest. Only a COST BREAKDOWN is longer. No filler, no exclamation marks, no generic advice a search engine would give.
+""" + LADDER_RULE + """- Warm, specific, confident, brief. Short is better: no bullet lists, each pick's headline number only - its all-in estimate for the couple's guest count when it has one ("about $37,300 for 160 guests before tax and gratuity"), else its rental fee. The PDF is where the couple sees the rest. Only a COST BREAKDOWN is longer. No filler, no exclamation marks, no generic advice a search engine would give.
 
 PHOTOGRAPHERS AND ENTERTAINMENT:
 - Their prices are PACKAGE prices from the vendor's own PDF (search_photographers_entertainment returns the packages that match the filters: name, price, hours, type, team size, what's included, add-ons). The peak-Saturday caveat is for venues only - don't say it here. Package prices usually exclude tax, travel and overtime unless the PDF says otherwise.
@@ -1270,6 +1273,53 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
     @beta_tool
     @timed
+    def whats_in_state(state: str = "") -> str:
+        """How much Tulle holds for one state, by vendor category: venues WITH pricing PDFs, photographers and
+        entertainers (real package prices), and the listings-only types (florists, hair and makeup, caterers,
+        planners - no prices yet). Call it whenever a venue search comes back empty or thin, or the couple asks what
+        else Tulle covers where they are, so your next step points at data we actually have.
+
+        Args:
+            state: a US state, e.g. "Alaska" (empty = the couple's profile state).
+        """
+        st = (state or "").strip() or (_states_of(profile) or [""])[0]
+        if not st:
+            return _ev({"error": "no state known - ask the couple where they are marrying"})
+        counts, errors = {}, []
+
+        def venues():
+            return int((xano.search_venues(token, states=[st], page_size=1, search_log=slog) or {}).get("total_matches") or 0)
+
+        def pe(cat):
+            return lambda: int((xano.search_pe(token, cat, states=[st], page_size=1) or {}).get("total_matches") or 0)
+
+        def listing(cat):
+            return lambda: int((xano.search_listings(token, cat, states=[st], page_size=1) or {}).get("total_matches") or 0)
+
+        jobs = {"venues_with_pricing": venues, "photographers": pe("Photography"), "entertainment": pe("Entertainment"),
+                "florists": listing("Flowers"), "hair_and_makeup": listing("Beauty"),
+                "caterers": listing("Food and Beverage"), "planners": listing("Wedding Planner")}
+        with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
+            futs = {k: ex.submit(f) for k, f in jobs.items()}
+            for k, f in futs.items():
+                try:
+                    counts[k] = f.result(timeout=8)
+                except Exception as e:
+                    counts[k] = None
+                    errors.append("%s: %s" % (k, repr(e)[:60]))
+        priced = [k for k in ("venues_with_pricing", "photographers", "entertainment") if counts.get(k)]
+        listed = [k for k in ("florists", "hair_and_makeup", "caterers", "planners") if counts.get(k)]
+        res = {"state": st, "counts": counts,
+               "with_real_pricing": priced, "listings_only_no_prices": listed,
+               "next_step": ("offer one of the priced categories as the next search" if priced else
+                             "no priced data in this state: ask for a venue they are touring or a quote (Add a quote "
+                             "from a PDF), or offer the whole-wedding estimate for the state")}
+        if errors:
+            res["partial"] = errors
+        return _ev(res)
+
+    @beta_tool
+    @timed
     def search_vendors(category: str, states: list[str], keyword: str = "", sort_by: str = "popular_desc") -> str:
         """Search Tulle's LISTINGS-ONLY vendor types: florists, hair and makeup, caterers, wedding planners. Tulle
         lists these vendors but holds NO pricing for them yet - results have name, location, kind and description,
@@ -1529,7 +1579,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     cost_on = config.COST_TOOLS_IN_CHAT
     # REC_LISTINGS_IN_CHAT off: no search_vendors, SYSTEM exactly origin/main's.
     listings_on = config.LISTINGS_IN_CHAT
-    listing_tools = [search_vendors] if listings_on else []
+    listing_tools = ([search_vendors] if listings_on else []) + [whats_in_state]   # coverage counts: every plan (2026-11-02)
     cost_tool_list = [estimate_wedding_cost, split_budget, compare_venues, budget_status] if cost_on else []
 
     saved_notes = []

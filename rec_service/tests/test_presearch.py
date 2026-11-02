@@ -74,6 +74,9 @@ def world(monkeypatch):
             if len(msgs) > 1:
                 ids = [v["vendor_id"] for v in json.loads(msgs[2]["content"][0]["content"])["venues"]][:3]
             if not ids:   # no pre-search: the model searches itself, as before
+                if st.get("extra_tool"):
+                    name, kw = st["extra_tool"]
+                    st["extra_out"] = json.loads(self.tools[name](**kw))
                 out = json.loads(self.tools["search_venues"](**(st.get("model_call") or {"states": ["New York"], "guests": 120})))
                 st["tool_out"] = out
                 ids = [v["vendor_id"] for v in out["venues"]][:3]
@@ -218,3 +221,24 @@ def test_usage_names_the_tools_and_categories_an_answer_used(world):
     assert usage["tools_used"] == ["search_venues", "present_recommendations"]
     assert usage["categories"] == ["venue"]
     assert usage["think_chars"] == 0
+
+
+def test_whats_in_state_counts_every_category_and_survives_a_failure(world, monkeypatch):
+    """2026-11-01 (owner: 'there should ALWAYS be another step'): an empty venue search points at the categories we
+    do hold in the state, with counts, instead of 'no picks to show'."""
+    monkeypatch.setattr(xano, "search_pe", lambda tok, cat, **kw: {"total_matches": 14 if cat == "Photography" else 6})
+
+    def listings(tok, cat, **kw):
+        if cat == "Beauty":
+            raise RuntimeError("ep down")
+        return {"total_matches": {"Flowers": 3, "Food and Beverage": 0, "Wedding Planner": 2}[cat]}
+    monkeypatch.setattr(xano, "search_listings", listings)
+    world["extra_tool"] = ("whats_in_state", {"state": "Alaska"})
+    agent.run("tok", USER, True, ASK, detail="full", presearch=None)
+    out = world["extra_out"]
+    assert out["state"] == "Alaska"
+    assert out["counts"]["venues_with_pricing"] == 4 and out["counts"]["photographers"] == 14
+    assert out["counts"]["entertainment"] == 6 and out["counts"]["hair_and_makeup"] is None
+    assert out["with_real_pricing"] == ["venues_with_pricing", "photographers", "entertainment"]
+    assert out["listings_only_no_prices"] == ["florists", "planners"] and out["partial"]
+    assert "NEXT-STEP LADDER" in agent.SYSTEM

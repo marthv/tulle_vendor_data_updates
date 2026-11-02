@@ -321,6 +321,9 @@ def test_flag_off_prompt_and_chips_identical_to_origin_main():
     main_system = a["SYSTEM"]
     for old_t, new_t in PROMPT_EDITS_2026_10_31:
         main_system = main_system.replace(old_t, new_t)
+    # 2026-11-02 (owner: 'there should ALWAYS be another step'): the next-step ladder, spliced in by name.
+    main_system = main_system.replace("- Warm, specific, confident, brief.",
+                                      agent.LADDER_RULE + "- Warm, specific, confident, brief.", 1)
     assert agent.SYSTEM == main_system
     assert free_mode.RULES == f["RULES"]
     assert free_mode.STARTER_CHIPS == f["STARTER_CHIPS"] and free_mode.TOPUPS == f["TOPUPS"]
