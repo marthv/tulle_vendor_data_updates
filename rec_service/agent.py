@@ -1053,9 +1053,33 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         else:
             r = xano.search_venues(token, page_size=16, search_log=slog, **q)
             venues = r["venues"]
+        kw = (keyword or "").lower().strip()
+        # A venue the couple NAMED must not be hidden by style filters or caps (2026-11-01 chat 926: 'Bear brook nj'
+        # with the 'Natural Light / Large Windows' vibe and All-Inclusive active -> one Bear Brook Valley row lacks
+        # the tag, the other is semi-inclusive -> "no venues listed"). When the keyword matches no result's name,
+        # search once more with the keyword and the states only; a hit is shown first and never dropped for a
+        # minimum, and the model is told which filters it is outside of.
+        named_ids, relaxed_for_name = set(), []
+        in_name = lambda v: kw and kw in (v.get("name") or "").lower()
+        if kw and not any(in_name(v) for v in venues):
+            relaxed_for_name = [k for k, val in (("venue_types", venue_types), ("vibes", vibes),
+                                                 ("pricing_models", pricing_models), ("outdoor_ceremony", outdoor_ceremony),
+                                                 ("city", city), ("guests", guests), ("max_venue_fee", max_venue_fee),
+                                                 ("max_food_per_person", max_food_per_person)) if val]
+            if relaxed_for_name:
+                try:
+                    r2 = xano.search_venues(token, states=states, page_size=16, search_log=slog, keyword=keyword,
+                                            sort_by=sort_by)
+                    hits = [v for v in r2["venues"] if in_name(v)]
+                except Exception:
+                    hits = []
+                if hits:
+                    named_ids = {v["vendor_id"] for v in hits if v.get("vendor_id")}
+                    venues = hits + [v for v in venues if v.get("vendor_id") not in named_ids]
+                else:
+                    relaxed_for_name = []
         timing["search_ms"] += int((time.time() - t_search) * 1000)
         timing["searches"] += 1
-        kw = (keyword or "").lower().strip()
         keep = lambda v: (v.get("vendor_id") not in hide or (kw and kw in (v.get("name") or "").lower())
                           or named_in(last_user, v.get("name")))
         n_before = len(venues)
@@ -1085,7 +1109,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in wave]))
             i += len(wave)
             for v, p in zip(wave, raws):
-                why = _misfit(p, guests, max_venue_fee, max_food_per_person)
+                why = None if v.get("vendor_id") in named_ids else _misfit(p, guests, max_venue_fee, max_food_per_person)
                 if why:
                     removed[why] += 1
                 else:
@@ -1147,6 +1171,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             else:
                 res["city_note"] = "only venues whose address is in %s, from the top 60 results for %s" % (
                     city, " and ".join(states) or "all states")
+        if relaxed_for_name:
+            res["named_venue_outside_filters"] = {"keyword": keyword, "filters_it_does_not_meet": relaxed_for_name,
+                                                 "note": "shown first because the couple named it; say which of their "
+                                                         "filters it falls outside of"}
         if n_hidden:
             res["already_shown_left_out"] = n_hidden
         if any(removed.values()):

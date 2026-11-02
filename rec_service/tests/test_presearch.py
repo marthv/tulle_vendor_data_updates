@@ -65,6 +65,7 @@ def world(monkeypatch):
     class Runner:
         def __init__(self, tools, messages, **kw):
             self.tools = {(getattr(t, "name", None) or getattr(t, "__name__", None)): t for t in tools}
+            st["tools"] = self.tools
             st["seen"] = {"messages": copy.deepcopy(messages), "calls_before_model": len(st["calls"])}
 
         def __iter__(self):
@@ -73,7 +74,8 @@ def world(monkeypatch):
             if len(msgs) > 1:
                 ids = [v["vendor_id"] for v in json.loads(msgs[2]["content"][0]["content"])["venues"]][:3]
             if not ids:   # no pre-search: the model searches itself, as before
-                out = json.loads(self.tools["search_venues"](states=["New York"], guests=120))
+                out = json.loads(self.tools["search_venues"](**(st.get("model_call") or {"states": ["New York"], "guests": 120})))
+                st["tool_out"] = out
                 ids = [v["vendor_id"] for v in out["venues"]][:3]
             self.tools["present_recommendations"](message="Three picks.", vendor_ids=ids, reasons=["a", "b", "c"],
                                                   chips=["Cheaper options"])
@@ -180,3 +182,31 @@ def test_search_filters_mapping():
                  "vibes": ["Waterfront"], "pricing_models": ["Raw Space", "Semi-Inclusive"], "outdoor_ceremony": True}
     assert prefs.search_filters({}) == {}
     assert prefs.search_filters({"catering": ["All-Inclusive"], "ceremony": ["indoor"]}) == {"pricing_models": ["All-Inclusive"]}
+
+
+def test_a_named_venue_is_found_outside_the_style_filters(world):
+    """2026-11-01 chat 926: 'Bear brook nj' with the Natural Light vibe + All-Inclusive active -> 'no venues listed'.
+    A keyword that matches no result's name is searched again with the states only; the hit is shown first and the
+    model is told which filters it falls outside of."""
+    bear = dict(venue("V277", "23 Players Blvd, Fredon Township, NJ 07860, USA"), name="Bear Brook Valley",
+                state="New Jersey")
+    world["by_filter"] = lambda f: [] if (f.get("vibes") or f.get("pricing_models")) else [bear]
+    world["model_call"] = {"states": ["New Jersey"], "keyword": "Bear Brook", "vibes": ["Natural Light / Large Windows"],
+                           "pricing_models": ["All-Inclusive"]}
+    agent.run("tok", USER, True, ASK, detail="full", presearch=None)
+    out = world["tool_out"]
+    assert [v["name"] for v in out["venues"]] == ["Bear Brook Valley"]
+    assert out["named_venue_outside_filters"]["keyword"] == "Bear Brook"
+    assert set(out["named_venue_outside_filters"]["filters_it_does_not_meet"]) == {"vibes", "pricing_models"}
+    assert len(world["calls"]) == 2
+    retry = world["calls"][-1]
+    assert retry.get("keyword") == "Bear Brook" and not retry.get("vibes") and not retry.get("pricing_models")
+
+
+def test_a_keyword_that_matches_a_result_name_does_not_retry(world):
+    world["venues"] = [dict(venue("V5"), name="Oheka Castle")] + world["venues"][:2]
+    world["model_call"] = {"states": ["New York"], "keyword": "Oheka", "vibes": ["Waterfront"]}
+    agent.run("tok", USER, True, ASK, detail="full", presearch=None)
+    out = world["tool_out"]
+    assert out["venues"][0]["name"] == "Oheka Castle" and "named_venue_outside_filters" not in out
+    assert len(world["calls"]) == 1
