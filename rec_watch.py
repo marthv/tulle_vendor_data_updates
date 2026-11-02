@@ -396,6 +396,145 @@ def weekly_planner(token, now=None):
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- daily Planner block (2026-11-02)
+# Owner 2026-11-01: "measuring and improving speed of Tulle Planner, feedback constantly, pushing people to the right
+# events (free -> PDFs and venues, paid -> more of the tool and every category)". Everything here reads table 79 (the
+# rec_service usage log: tools / categories / think_chars columns since 2026-11-02, 'pdf' rows per open attempt,
+# 'lookup:<status>' on instant lookups), table 43 (messages, for the answers that said we don't have something) and
+# table 81 (the check-in card). Internal accounts are left out. Never raises: each block degrades to a warning line.
+
+MISS_PHRASES = ("couldn't find", "could not find", "don't have", "do not have", "no venues listed", "not in tulle",
+                "still nothing for", "isn't in tulle", "is not in tulle")
+
+
+def _p(vals, q):
+    vals = sorted(v for v in vals if v is not None)
+    return vals[min(len(vals) - 1, int(round(q * (len(vals) - 1))))] if vals else 0
+
+
+def _lat_line(label, rows, prev):
+    cur = [r["latency_ms"] / 1000 for r in rows if r.get("latency_ms")]
+    old = [r["latency_ms"] / 1000 for r in prev if r.get("latency_ms")]
+    if not cur:
+        return "%s: none" % label
+    d = ""
+    if old:
+        d = " (7d p50 %.1fs)" % _p(old, .5)
+    return "%s: %d · p50 %.1fs · p90 %.1fs%s" % (label, len(cur), _p(cur, .5), _p(cur, .9), d)
+
+
+def planner_daily(token, now=None):
+    """The Planner block of the daily brief: speed by request type, accuracy misses with the couple's words, lookup
+    hit rate, the PDF funnel by plan, categories paid members touched, and ratings - last 24 h against the 7 days
+    before it."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    since_ms = (now - dt.timedelta(hours=24)).timestamp() * 1000
+    week_ms = (now - dt.timedelta(days=8)).timestamp() * 1000
+    lines = ["*Tulle Planner - last 24h*"]
+    try:
+        days = [(now - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(0, 9)]
+        rows = [r for d in days for r in _rows_for_day(token, d)]
+        rows = [r for r in rows if int(r.get("user_id") or 0) not in INTERNAL_USER_IDS]
+        day = [r for r in rows if (r.get("created_at") or 0) >= since_ms]
+        prev = [r for r in rows if week_ms <= (r.get("created_at") or 0) < since_ms]
+        ok = [r for r in day if r.get("status") == "ok"]
+        pok = [r for r in prev if r.get("status") == "ok"]
+        is_lookup = lambda r: r.get("model") == "lookup"
+        kinds = [("Opening picks", lambda r: r.get("kind") == "opening"),
+                 ("Typed question (model)", lambda r: r.get("kind") == "refine" and not is_lookup(r)),
+                 ("Venue name (instant)", lambda r: r.get("kind") == "refine" and is_lookup(r))]
+        users = {r.get("user_id") for r in day if r.get("kind") in ("opening", "refine", "more")}
+        # Table 79 has no plan column: a counted_as_free row marks a free member's question; the rest of the people
+        # are paid members or free members who only saw the opening.
+        free_users = {r.get("user_id") for r in day if r.get("counted_as_free") and r.get("kind") != "pdf"}
+        lines.append("• %d people (%d asked a free question) · %d openings · %d questions" % (
+            len(users), len(free_users & users), sum(1 for r in ok if r.get("kind") == "opening"),
+            sum(1 for r in ok if r.get("kind") == "refine")))
+        lines.append("• Speed - " + " | ".join(_lat_line(lbl, [r for r in ok if f(r)], [r for r in pok if f(r)])
+                                                 for lbl, f in kinds))
+        # Instant lookup outcomes (tools = 'lookup:<status>').
+        lk = [str(r.get("tools") or "") for r in ok if is_lookup(r)]
+        if lk:
+            found = sum(1 for t in lk if t in ("lookup:found", "lookup:choices"))
+            lines.append("• Venue lookups: %d · found %d · not in Tulle %d" % (len(lk), found, sum(1 for t in lk if t == "lookup:not_found")))
+        # PDF funnel ('pdf' rows: status paid | free | blocked).
+        pdf = [r for r in day if r.get("kind") == "pdf"]
+        if pdf:
+            by = {}
+            for r in pdf:
+                by[r.get("status") or "?"] = by.get(r.get("status") or "?", 0) + 1
+            openers = {r.get("user_id") for r in pdf if r.get("status") in ("paid", "free")}
+            lines.append("• PDFs from the Planner: %d opens by %d people (%s) · %.0f%% of today's Planner users opened one" % (
+                sum(v for k, v in by.items() if k != "blocked"), len(openers),
+                ", ".join("%s %d" % kv for kv in sorted(by.items())), 100.0 * len(openers & users) / max(1, len(users))))
+        else:
+            lines.append("• PDFs from the Planner: 0 opens")
+        # Categories: what the tools touched (rows since the 2026-11-02 deploy carry them; free questions left out so
+        # the line reads as "what paid members reach for").
+        cats = {}
+        for r in ok:
+            if r.get("counted_as_free") or r.get("kind") == "pdf" or not r.get("categories"):
+                continue
+            for c in str(r.get("categories") or "").split(","):
+                if c:
+                    cats[c] = cats.get(c, 0) + 1
+        if cats:
+            tot = sum(cats.values())
+            lines.append("• Paid members' answers by category: " + ", ".join("%s %d%%" % (k, 100.0 * v / tot) for k, v in sorted(cats.items(), key=lambda kv: -kv[1])))
+        # Tool-call shape: how many answers needed 3+ model turns.
+        tc = [int(r.get("tool_calls") or 0) for r in ok if r.get("kind") == "refine" and not is_lookup(r)]
+        if tc:
+            lines.append("• Questions needing 3+ tool calls: %d of %d (%.0f%%)" % (sum(1 for t in tc if t >= 3), len(tc), 100.0 * sum(1 for t in tc if t >= 3) / len(tc)))
+    except Exception as e:
+        lines.append(":warning: _usage block failed: %s_" % str(e)[:120])
+
+    # Accuracy misses: answers that said we don't have something, with what the couple typed.
+    try:
+        chats = _table_rows(token, CHATS_TABLE, week_ms)
+        owner = {int(c.get("id")): int(c.get("user_id") or 0) for c in chats if c.get("id")}
+        msgs = sorted(_table_rows(token, MESSAGES_TABLE, since_ms), key=lambda m: m.get("id") or 0)
+        misses, last_user = [], {}
+        for m in msgs:
+            cid = int(m.get("chat_id") or 0)
+            uid = owner.get(cid)
+            if uid is None or uid in INTERNAL_USER_IDS:
+                continue
+            txt = str(m.get("content") or "")
+            if m.get("role") == "user":
+                last_user[cid] = txt
+            elif m.get("role") == "assistant" and any(ph in txt.lower() for ph in MISS_PHRASES):
+                misses.append((cid, last_user.get(cid, ""), txt))
+        if misses:
+            lines.append("• Answers that said we don't have it: %d" % len(misses))
+            for cid, q, a in misses[:5]:
+                lines.append("    - chat %d · they typed “%s” · we said “%s”" % (cid, q[:70], a[:90]))
+        else:
+            lines.append("• Answers that said we don't have it: 0")
+    except Exception as e:
+        lines.append(":warning: _misses block failed: %s_" % str(e)[:120])
+
+    # Ratings (table 81).
+    try:
+        fb = [r for r in _table_rows(token, FEEDBACK_TABLE, since_ms) if int(r.get("user_id") or 0) not in INTERNAL_USER_IDS]
+        ratings = [int(r.get("rating") or 0) for r in fb if r.get("rating")]
+        if ratings:
+            lines.append("• Ratings: %d · avg %.1f/5 · low (1-2): %d" % (len(ratings), sum(ratings) / len(ratings), sum(1 for x in ratings if x <= 2)))
+            for q in [str(r.get("text") or "").strip() for r in fb if str(r.get("text") or "").strip()][:3]:
+                lines.append("    - “%s”" % q[:140])
+        else:
+            lines.append("• Ratings: 0")
+    except Exception as e:
+        lines.append(":warning: _ratings block failed: %s_" % str(e)[:120])
+    return "\n".join(lines)
+
+
+if __name__ == "__main__" and "--daily" in sys.argv:
+    tok = os.environ.get("XANO_METADATA_TOKEN")
+    if not tok:
+        sys.exit("XANO_METADATA_TOKEN not set")
+    print(planner_daily(tok))
+
+
 if __name__ == "__main__" and "--weekly" in sys.argv:
     tok = os.environ.get("XANO_METADATA_TOKEN")
     if not tok:

@@ -170,6 +170,13 @@ def compose(token, health_text, now_ms=None):
     except Exception as e:
         sections.append(f":warning: _Tulle Assistant section failed: {e}_")
 
+    # Daily Planner block (2026-11-02, owner: speed, accuracy misses, lookup hit rate, PDF funnel, categories, ratings).
+    try:
+        import rec_watch as _rw
+        sections.append(_rw.planner_daily(token))
+    except Exception as e:
+        sections.append(f":warning: _Planner daily block failed: {e}_")
+
     # Railway search rollout (2026-10-26): its own block under the Tulle Assistant line + one TL;DR bullet.
     # rec_watch.railway_section never raises; the try is belt and braces so the brief always goes out.
     try:
