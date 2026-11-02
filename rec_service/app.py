@@ -668,7 +668,7 @@ def _state1(st):
     return st[0] if isinstance(st, list) and st else st
 
 
-def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None):
+def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, repeat=False):
     """The fast answer for "look up <venue>", or None (not a lookup, or unsure -> the model answers as before)."""
     if not config.NAME_LOOKUP:
         return None
@@ -739,17 +739,29 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None):
         chips = [(c.get("name") if names.count(c.get("name")) == 1 else "%s, %s" % (c.get("name"), _place_label(c)))
                  for c in cards]
     else:
-        similar, where = _similar_near(token, q, user, slog, use_profile=False)
+        loc = q.get("location") or q.get("alt_location") or ""
+        # 2026-11-02 (chat 929, "Rosewood Bermuda" x2 -> "tell me the city" x2 -> the couple left): a destination gets
+        # the honest coverage line, no cards; any other miss shows venues from the area named or, failing that, the
+        # couple's own profile state (use_profile) instead of a question; a repeat of the same name says so.
+        dest = lookup.destination_in("%s %s" % (name, loc))
+        similar, where = ([], "") if dest else _similar_near(token, q, user, slog, use_profile=True)
         cards = []
         for v in similar:
             c = agent._with_rental(dict(v), None, guests, budget)
             cards.append(dict(c if full else agent._light_card(c), reason=""))
-        loc = q.get("location") or q.get("alt_location") or ""
-        text_out = "We don't have %s in Tulle yet - I've passed it to our team to add." % name
+        if dest:
+            text_out = ("We don't have %s - Tulle covers US venues, so there's no real pricing for a %s wedding here. "
+                        "If you're also weighing a US option, tell me the area and I'll show you venues we do have there."
+                        % (name, dest.title()))
+        elif repeat:
+            text_out = "Still nothing for %s - it's already on our list to add." % name
+        else:
+            text_out = "We don't have %s in Tulle yet - I've passed it to our team to add." % name
         if cards:
             text_out += " Here are %d venues we do have %s, each with real pricing from couples." % (len(cards), where)
-        else:
-            text_out += " Tell me the city or area and I'll show you venues we do have there."
+        elif not dest:
+            text_out += (" Tell me a city or area, or a style you're after, and I'll search what we do have."
+                         if repeat else " Tell me the city or area and I'll show you venues we do have there.")
         venue_request = {"name": name, "location": loc}
         chips = (["More venues %s" % where] if where else []) + ["Find a photographer"]
         if cards and cards[0].get("state"):
@@ -765,7 +777,8 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None):
     search = slog.summary()
     _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model="lookup",
                                       input_tokens=0, cache_read_tokens=0, cache_write_tokens=0, output_tokens=0,
-                                      tool_calls=0, cost_usd=0, latency_ms=ms, **_search_cols(search)))
+                                      tool_calls=0, cost_usd=0, latency_ms=ms, tools="lookup:" + status,
+                                      categories="venue", **_search_cols(search)))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": "lookup", "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access,
@@ -952,8 +965,10 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
     last_a = last_t.get("text") or ""
     # A tapped chip ("Keep it all-inclusive") is never a venue name: no lookup round trip for it.
     is_chip = text.strip().lower() in {str(c).strip().lower() for c in (last_t.get("chips") or []) if c}
+    last_u = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "user"), "")
+    repeat = bool(last_u) and last_u.strip().lower() == text.strip().lower()
     # "oheka castle": no model (2026-10-26). Never for an answer to our own profile question ("Near Dallas").
-    out = None if (answered or is_chip) else _lookup_fast(token, user, text, last_a, chat["id"], tracker)
+    out = None if (answered or is_chip) else _lookup_fast(token, user, text, last_a, chat["id"], tracker, repeat=repeat)
     if out is None:
         msgs, kw = _model_inputs(history, text)
         out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
@@ -1502,6 +1517,10 @@ def open_pdf(body: PdfBody, authorization: str = Header(None)):
         mode, left = "free", views - 1
     else:
         mode, left = "blocked", 0
+    # The usage log (table 79) gets a 'pdf' row per open attempt (2026-11-02: the daily brief's PDF funnel reads
+    # Xano, not Mixpanel): status = paid | free | blocked, no cost, chat_id when the card came from a chat.
+    _POOL.submit(xano.log_usage, {"user_id": user["id"], "kind": "pdf", "status": mode, "counted_as_free": mode == "free",
+                                  "model": "", "chat_id": body.chat_id or 0, "tools": "pdf:" + vid, "categories": "venue"})
     if mode == "blocked":
         _POOL.submit(xano.mp_track, user["id"], "pdf_limit_popup_triggered", base)
         return {"url": None, "mode": mode, "views_left": 0, "last_free": False}

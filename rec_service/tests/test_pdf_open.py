@@ -26,6 +26,8 @@ def _setup(monkeypatch, user, rows=ROWS, rows_fail=False):
     monkeypatch.setattr(xano, "update_profile", lambda token, fields: st["patches"].append((token, fields)) or {})
     monkeypatch.setattr(xano, "record_vendor_view", lambda token, u, vid, name="": st["views"].append((token, vid, name)))
     monkeypatch.setattr(xano, "mp_track", lambda uid, ev, props: st["events"].append((uid, ev, props)))
+    st["usage"] = []
+    monkeypatch.setattr(xano, "log_usage", lambda row: st["usage"].append(row))   # table-79 'pdf' row (2026-11-02)
 
     class Now:
         def submit(self, fn, *a, **k):
@@ -92,6 +94,8 @@ def test_no_views_left_opens_nothing_and_writes_nothing(monkeypatch):
     assert r.json() == {"url": None, "mode": "blocked", "views_left": 0, "last_free": False}
     assert st["patches"] == [] and st["views"] == []
     assert [e[1] for e in st["events"]] == ["pdf_limit_popup_triggered"]
+    # The only write is the usage-log row the daily brief counts blocked opens from (2026-11-02).
+    assert [(r["kind"], r["status"], r["tools"]) for r in st["usage"]] == [("pdf", "blocked", "pdf:V1")]
 
 
 def test_access_date_today_counts_as_entitled(monkeypatch):

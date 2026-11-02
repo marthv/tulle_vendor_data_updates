@@ -180,6 +180,27 @@ def _place(s):
     return n in US_STATES or n in STATE_ABBR or n in PLACES or n.replace(" ", "") in {p.replace(" ", "") for p in PLACES}
 
 
+# Destination-wedding places outside Tulle's coverage (2026-11-02, chat 929: "Rosewood Bermuda" got "tell me the city"
+# twice and the couple left). A venue or location naming one of these gets the honest "Tulle covers US venues" line
+# instead of a search of their profile state. Hawaii, Alaska and Puerto Rico are not here on purpose.
+DESTINATIONS = {
+    "bermuda", "bahamas", "jamaica", "mexico", "cabo", "cancun", "tulum", "riviera maya", "punta cana", "dominican",
+    "costa rica", "belize", "aruba", "barbados", "st lucia", "saint lucia", "turks", "caicos", "antigua", "cayman",
+    "italy", "tuscany", "amalfi", "lake como", "france", "paris", "provence", "spain", "portugal", "greece",
+    "santorini", "mykonos", "ireland", "scotland", "england", "london", "iceland", "croatia", "switzerland",
+    "austria", "germany", "bali", "thailand", "japan", "fiji", "tahiti", "bora bora", "maldives", "dubai", "morocco",
+    "south africa", "australia", "new zealand", "canada", "toronto", "vancouver", "montreal", "europe", "caribbean"}
+
+
+def destination_in(text):
+    """The destination word a message names ("Rosewood Bermuda" -> "bermuda"), or ""."""
+    t = " " + norm(text) + " "
+    for d in sorted(DESTINATIONS, key=len, reverse=True):
+        if " " + d + " " in t:
+            return d
+    return ""
+
+
 def state_of(location):
     """'Brooklyn, NY' -> 'New York'; 'texas' -> 'Texas'; 'Lake Como, Italy' -> 'International'; else ''."""
     n = norm(location)

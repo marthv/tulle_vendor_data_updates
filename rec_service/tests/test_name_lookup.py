@@ -333,3 +333,37 @@ def test_free_user_at_the_limit_gets_the_paywall_not_a_lookup(env):
     r = TestClient(app.app).post("/rec/refine", json={"chat_id": 9, "message": "oheka castle"})
     assert r.status_code in (402, 403) and env["model"] == 0 and env["added"] == []
     assert monkeypatch_fb
+
+
+def test_a_destination_venue_gets_the_coverage_line_and_no_profile_cards(env, monkeypatch):
+    """2026-11-02, chat 929: 'Rosewood Bermuda' twice got 'tell me the city' twice and the couple left."""
+    monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Location_Updated": ["Massachusetts"]})
+    j = ask("Rosewood Bermuda")
+    assert env["model"] == 0 and j["lookup"]["status"] == "not_found"
+    assert "Tulle covers US venues" in j["text"] and "Bermuda" in j["text"] and j["cards"] == []
+    assert j["venue_request"] == {"name": "Rosewood Bermuda", "location": ""}
+
+
+def test_a_missing_us_venue_with_no_area_shows_the_profile_state(env, monkeypatch):
+    monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Location_Updated": ["New York"]})
+    j = ask("The Orchards of Molino")
+    assert j["lookup"]["status"] == "not_found"
+    assert j["text"].startswith("We don't have The Orchards of Molino in Tulle yet")
+    assert "venues we do have in New York" in j["text"] and [c["vendor_id"] for c in j["cards"]] == ["V50", "V51"]
+    assert "More venues in New York" in j["chips"]
+
+
+def test_repeating_the_same_missing_name_is_answered_differently(env, monkeypatch):
+    monkeypatch.setattr(xano, "profile_of", lambda u: {})
+    env["history"] = [{"role": "user", "text": "The Orchards of Molino"},
+                      {"role": "assistant", "text": "We don't have The Orchards of Molino in Tulle yet - ..."}]
+    j = ask("the orchards of molino")
+    assert j["text"].startswith("Still nothing for") and "already on our list" in j["text"]
+    assert "style you're after" in j["text"]
+
+
+def test_destination_words():
+    assert lookup.destination_in("Rosewood Bermuda") == "bermuda"
+    assert lookup.destination_in("Il Sereno on Lake Como") == "lake como"
+    assert lookup.destination_in("Bear Brook Valley, NJ") == ""
+    assert lookup.destination_in("Hawaii Polo Club") == ""
