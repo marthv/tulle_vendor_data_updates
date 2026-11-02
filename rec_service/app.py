@@ -64,6 +64,7 @@ import opening_reuse
 import re as _re
 
 import prefs
+import pricing_warm
 import profile_questions
 import progress
 import railway_search
@@ -71,6 +72,12 @@ import upsell
 import xano
 
 app = FastAPI(title="Tulle recommendations")
+
+
+@app.on_event("startup")
+def _start_pricing_warm():
+    """Fill the free-tier pricing cache for the top venues per state in the background (pricing_warm.py, 2026-11-02)."""
+    pricing_warm.start()
 # The live app, plus WeWeb's editor/preview hosts so the page can be tested before publishing.
 # Every request still needs a valid user token; CORS only decides which pages may call us.
 app.add_middleware(CORSMiddleware, allow_origins=config.ALLOWED_ORIGINS,
@@ -1571,4 +1578,7 @@ def status(authorization: str = Header(None)):
 @app.get("/health")
 def health():
     return {"ok": True, "model": config.MODEL, "enabled": not config.KILL_SWITCH,
-            "time": dt.datetime.now(dt.timezone.utc).isoformat()}
+            "time": dt.datetime.now(dt.timezone.utc).isoformat(),
+            # Pricing cache + warmer (2026-11-02): entries now held, and the last warm-up's counts.
+            "pricing_cache": {"entries": len(xano.PRICING_CACHE), "ttl_s": config.PRICING_CACHE_S,
+                              "warm": dict(pricing_warm.last)}}

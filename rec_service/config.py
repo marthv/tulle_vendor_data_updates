@@ -142,8 +142,18 @@ FOREVER_MONTHLY_CAP = int(os.environ.get("REC_FOREVER_MONTHLY_CAP", "300"))
 # In-process cache of venue pricing panels (2026-10-26 speed pass; xano.cached_venue_pricing). Pricing was 3.45 s of
 # the 14.65 s average opening. Keyed ONLY by what ep230/ep231 depend on (vendor + endpoint + ep230 entitlement), so
 # a paid payload never reaches a free or locked user. 0 disables. Prices edited in Xano show up within this long.
-PRICING_CACHE_S = max(0, int(os.environ.get("REC_PRICING_CACHE_S", "3600") or 0))
-PRICING_CACHE_MAX = max(1, int(os.environ.get("REC_PRICING_CACHE_MAX", "5000") or 5000))
+# 2026-11-02: 1 h -> 12 h and 5,000 -> 12,000 entries. Measured: 74% of openings fetched uncached pricing (median
+# 2.7 s of the request); all-cached requests were 3-4 s faster. The process used 0.14 GB of its 8 GB. A corrected
+# price can take up to 12 h to reach the Planner (the venue page itself is always live).
+PRICING_CACHE_S = max(0, int(os.environ.get("REC_PRICING_CACHE_S", str(12 * 3600)) or 0))
+PRICING_CACHE_MAX = max(1, int(os.environ.get("REC_PRICING_CACHE_MAX", "12000") or 12000))
+# Background warmer (pricing_warm.py): the free-tier panel of the top venues per state, at start-up and every
+# PRICING_WARM_EVERY_S. REC_PRICING_WARM=0 turns it off.
+PRICING_WARM = os.environ.get("REC_PRICING_WARM", "1").strip() != "0"
+PRICING_WARM_PER_STATE = int(os.environ.get("REC_PRICING_WARM_PER_STATE", "40") or 40)
+PRICING_WARM_PARALLEL = int(os.environ.get("REC_PRICING_WARM_PARALLEL", "4") or 4)
+PRICING_WARM_EVERY_S = int(os.environ.get("REC_PRICING_WARM_EVERY_S", str(6 * 3600)) or 21600)
+PRICING_WARM_DELAY_S = int(os.environ.get("REC_PRICING_WARM_DELAY_S", "20") or 20)
 # Prefetch caches (2026-10-27, xano.BENCH_CACHE / CARD_CACHE): table 63 state benchmarks (rebuilt by a batch job, not
 # per edit) and table-11 vendor cards for the couple's Saved list. 0 disables either one.
 BENCH_CACHE_S = max(0, int(os.environ.get("REC_BENCH_CACHE_S", str(6 * 3600)) or 0))
