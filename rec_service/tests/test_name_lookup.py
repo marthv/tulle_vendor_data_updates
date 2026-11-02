@@ -367,3 +367,11 @@ def test_destination_words():
     assert lookup.destination_in("Il Sereno on Lake Como") == "lake como"
     assert lookup.destination_in("Bear Brook Valley, NJ") == ""
     assert lookup.destination_in("Hawaii Polo Club") == ""
+
+
+def test_a_destination_typed_after_our_own_question_still_gets_the_coverage_line(env, monkeypatch):
+    monkeypatch.setattr(xano, "profile_of", lambda u: {})
+    env["history"] = [{"role": "user", "text": "cheaper options"},
+                      {"role": "assistant", "text": "Here are three. Want me to keep to New Jersey only?"}]
+    j = ask("Rosewood Bermuda")
+    assert env["model"] == 0 and j["lookup"]["status"] == "not_found" and "Tulle covers US venues" in j["text"]

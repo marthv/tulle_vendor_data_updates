@@ -692,8 +692,10 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     status = res["status"]
     if status == "not_found" and not q["cue"] and q["words"] == 1:
         return None          # one bare word we can't place: let the model read it
-    if after_q and status not in ("found", "choices"):
+    if after_q and status not in ("found", "choices") and not lookup.destination_in(
+            "%s %s" % (q["name"], q.get("location") or q.get("alt_location") or "")):
         return None          # a reply to our question that is not a venue we have: the model reads it as before
+        # (a destination name - "Rosewood Bermuda" - keeps the honest coverage line even mid-chat, 2026-11-02)
     profile = xano.profile_of(user)
     try:
         guests = int(profile.get("Wedding_Guest_Count") or 0)
