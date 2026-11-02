@@ -44,6 +44,7 @@ from typing import Optional
 import datetime as dt
 import time
 import re
+import threading
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -285,11 +286,13 @@ def _prefetch_props(usage):
             "card_cache_hits": int(pc.get("card_hits") or 0), "card_cache_misses": int(pc.get("card_misses") or 0)}
 
 
-def _gate(kind, user, chat_id=0, waive_free=False):
+def _gate(kind, user, chat_id=0, waive_free=False, row_kind=None):
     """The one question check. Raises the blocked response (402/403/429/503) or returns what the caller
     needs to log the use and report the counters. Used by typed questions AND "Show 3 more".
     waive_free (2026-10-26): the message answers one of OUR thin-profile questions, so it must not spend one of a
-    free user's questions (or be refused for having none left). Paid caps, spend caps and the kill switch still apply."""
+    free user's questions (or be refused for having none left). Paid caps, spend caps and the kill switch still apply.
+    row_kind (2026-11-02): the usage-row / Mixpanel kind when it differs from the rule kind - a prewarm is gated as an
+    opening (the same caps and kill switch) but logged as "prewarm" and never counted as a free question."""
     # `paid` = full beta member: Forever, plus every active plan when REC_BETA_AUDIENCE=paid (2026-10-08).
     # `access` (exact prices from ep230) = any active plan.
     paid = xano.beta_member(user)
@@ -308,12 +311,14 @@ def _gate(kind, user, chat_id=0, waive_free=False):
             allowed, status = True, "ok"
         counted_free = False
     # tier is written for the free cap; Xano drops it until table 79 has a `tier` column (see config).
-    base = {"user_id": user["id"], "kind": kind, "chat_id": chat_id, "model": config.MODEL,
+    if row_kind:
+        counted_free = False
+    base = {"user_id": user["id"], "kind": row_kind or kind, "chat_id": chat_id, "model": config.MODEL,
             "tier": "paid" if paid else "free"}
     if not allowed:
         xano.log_usage(dict(base, status=status))
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
-                     {"kind": kind, "status": status, "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
+                     {"kind": row_kind or kind, "status": status, "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
                       "search_arm": railway_search.arm(user.get("id"))})
         code = (402 if status in ("blocked_free_limit", "forever_only") else 403 if status == "feedback_required"
                 else 503 if status in ("killed", "blocked_global_cap", "blocked_free_cap") else 429)
@@ -423,15 +428,23 @@ def _free_views(user):
 
 
 def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_filters=None, tracker=None,
-                 history=(), saved_lines=(), waive_free=False):
+                 history=(), saved_lines=(), waive_free=False, prewarm=False):
     """history: the chat's stored turns (the upgrade prompt shows at most once per chat). saved_lines: memory lines
-    this request already saved from the couple's answer to a thin-profile question (shown as notes_saved)."""
+    this request already saved from the couple's answer to a thin-profile question (shown as notes_saved).
+    prewarm (2026-11-02, POST /rec/prewarm): generate the opening into the reuse store only - gated like an opening,
+    logged as kind "prewarm" (never counted toward any allowance); returns {"status": "ready"|"running"} when an
+    opening for the same inputs is already stored or being generated."""
+    t_req = time.time()
     f_mem = _POOL.submit(_memory_row, user["id"])
-    paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id, waive_free=waive_free)
+    paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id, waive_free=waive_free,
+                                                                   row_kind="prewarm" if prewarm else None)
+    ev_kind = "prewarm" if prewarm else kind
     if tracker and tracker.cancelled():   # Stop before the model started: no model call, nothing spent
         _log_stopped(base, kind, user, paid, access)
         return _stopped(kind, paid, access, rows, feedback_given)
     slog = railway_search.SearchLog(railway_search.arm(user.get("id")))   # Railway search rollout (2026-10-26)
+    inflight = None
+    reuse_miss = ""
     try:
         row = f_mem.result()
         raw = row.get("notes") or []
@@ -451,13 +464,31 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
                    and not upsell.shown_in(history))
         # Reuse today's opening (2026-10-27, opening_reuse.py): only after the full _gate above allowed it, and only
         # when every input below is unchanged. No model call, no rec_usage row, nothing counted.
-        reuse_fp = None
+        # Prewarm (2026-11-02): an opening for the same inputs already being generated (a prewarm, or the page's
+        # double mount) is waited for and served from the store instead of run twice. reuse_miss says why a fresh
+        # opening was needed (opening_reuse.Store.lookup) - logged so the hit rate can be read before widening prewarm.
+        reuse_fp = reuse_parts = None
         if kind == "opening" and config.OPENING_REUSE:
-            reuse_fp = opening_reuse.fingerprint(_opening_fp_parts(
-                user, paid, access, raw, user_context, pref_hint, qs, answers, guests_extra))
-            hit = opening_reuse.STORE.get(user["id"], reuse_fp)
+            reuse_parts = _opening_fp_parts(user, paid, access, raw, user_context, pref_hint, qs, answers, guests_extra)
+            reuse_fp = opening_reuse.fingerprint(reuse_parts)
+            hit, src, reuse_miss = opening_reuse.STORE.lookup(user["id"], reuse_fp, reuse_parts, claim=not prewarm)
+            if hit is None and opening_reuse.INFLIGHT.running(user["id"], reuse_fp):
+                if prewarm:
+                    return {"status": "running"}
+                stop_now = (lambda: tracker.cancelled()) if tracker else (lambda: False)
+                if opening_reuse.INFLIGHT.wait(user["id"], reuse_fp, config.PREWARM_JOIN_S, stop_now):
+                    hit, src, again = opening_reuse.STORE.lookup(user["id"], reuse_fp, reuse_parts, claim=True)
+                    reuse_miss = "" if hit is not None else "joined_" + again
+                else:
+                    reuse_miss = "join_timeout"
             if hit is not None:
-                return _reused_opening(hit, user, paid, access, rows, feedback_given, tracker)
+                if prewarm:
+                    return {"status": "ready"}
+                return _reused_opening(hit, user, paid, access, rows, feedback_given, tracker, src=src, base=base,
+                                       t0=t_req)
+            if not prewarm:
+                print("opening_reuse miss user=%s reason=%s" % (user.get("id"), reuse_miss))
+            inflight = opening_reuse.INFLIGHT.begin(user["id"], reuse_fp)
         # Detail: full members get figures; a non-member with a plan gets fit, not numbers ("light"); no plan at
         # all gets no price of any kind ("free", 2026-10-14).
         result, usage = agent.run(token, user, access, messages, memory_notes=notes, user_context=user_context,
@@ -471,13 +502,15 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
                                   on_note=lambda n: xano.add_memory_note(user["id"], n), search_log=slog,
                                   **({"progress": tracker} if tracker else {}))
     except Exception as e:  # never charge a free refine for our own failure
+        opening_reuse.INFLIGHT.end(user["id"], inflight)
         # The venue searches that ran before the failure (if any) keep the row attributable to an engine.
         xano.log_usage(dict(base, status="error", error=str(e)[:500], **_search_cols(slog.summary())))
         raise HTTPException(502, {"status": "error"})
     # Stopped (2026-10-25) - also when Stop came after the last model call: the page has already given up on this
     # answer, so it is not shown, not counted and not saved (the same as an error).
     if result.get("stopped") or (tracker and tracker.cancelled()):
-        _log_stopped(base, kind, user, paid, access, usage)
+        opening_reuse.INFLIGHT.end(user["id"], inflight)
+        _log_stopped(base, ev_kind, user, paid, access, usage)
         return _stopped(kind, paid, access, rows, feedback_given)
     redactions = None
     if _detail(paid, access) == "free":   # price-free mode: price guard on text, cards and chips (code, not only the prompt)
@@ -493,16 +526,22 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
     if saved_lines:
         result["notes_saved"] = list(saved_lines) + list(result.get("notes_saved") or [])
     if reuse_fp is not None and not (tracker and tracker.cancelled()):
-        opening_reuse.STORE.put(user["id"], reuse_fp, result)   # stores only a normal answer (opening_reuse.reusable)
+        # stores only a normal answer (opening_reuse.reusable); then release anyone waiting on this run
+        opening_reuse.STORE.put(user["id"], reuse_fp, result, parts=reuse_parts, src="prewarm" if prewarm else "opening")
+    opening_reuse.INFLIGHT.end(user["id"], inflight)
     cost = guards.cost_usd(usage["model"], usage)
     _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model=usage["model"],
                         input_tokens=usage["input_tokens"], cache_read_tokens=usage["cache_read_tokens"],
                         cache_write_tokens=usage["cache_write_tokens"], output_tokens=usage["output_tokens"],
                         tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"],
+                        # why this opening was not served from the store (Xano drops the key until table 79 has
+                        # a reuse_miss column; the Railway log line above carries it either way)
+                        **({"reuse_miss": reuse_miss[:120]} if kind == "opening" else {}),
                         **_tool_cols(usage), **_search_cols(usage.get("search"))))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
-        "kind": kind, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
+        "kind": ev_kind, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
+        "reuse_miss": reuse_miss if kind == "opening" else "",
         "cost_usd": cost, "latency_s": round(usage["latency_ms"] / 1000, 1), "tool_calls": usage["tool_calls"],
         "cards": len(result.get("cards") or []), "more_cards": len(result.get("more_cards") or []),
         "notes_saved": len(result.get("notes_saved") or []), "price_locked": not access,
@@ -560,17 +599,27 @@ def _opening_fp_parts(user, paid, access, memory_raw, user_context, pref_hint, q
     }
 
 
-def _reused_opening(stored, user, paid, access, rows, feedback_given, tracker):
-    """Today's stored opening, with fresh counters (nothing was spent: spent=False) - the Mixpanel event says so."""
-    t0 = time.time()
+def _reused_opening(stored, user, paid, access, rows, feedback_given, tracker, src="opening", base=None, t0=None):
+    """Today's stored opening, with fresh counters. A repeat visit (src "opening") spent nothing (spent=False) and
+    writes no usage row. The first visit served from a PREWARM (src "prewarm", 2026-11-02) is this couple's real
+    opening: it writes the "opening" usage row a model-run opening would (model "prewarm", cost 0 - the prewarm row
+    carries the cost; latency = what the couple actually waited) and counts like one, so the daily brief's people,
+    openings and opening speed stay right."""
+    t0 = time.time() if t0 is None else t0
     if tracker and tracker.cancelled():
         return _stopped("opening", paid, access, rows, feedback_given)
+    warm = src == "prewarm"
     out = dict(stored, paid=paid, has_access=access,
-               **_counters("opening", paid, rows, False, feedback_given, access, spent=False))
+               **_counters("opening", paid, rows, False, feedback_given, access, spent=warm))
+    wait_ms = int((time.time() - t0) * 1000)
+    if warm and base:
+        _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=False, model="prewarm", input_tokens=0,
+                                          cache_read_tokens=0, cache_write_tokens=0, output_tokens=0, tool_calls=0,
+                                          cost_usd=0, latency_ms=wait_ms, tools="prewarm"))
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": "opening", "status": "ok", "reused": True, "forever": xano.has_forever(user), "beta_member": paid,
-        "has_access": access, "source": "rec_service", "cost_usd": 0, "model": "reuse",
-        "latency_s": round(time.time() - t0, 2), "tool_calls": 0, "cards": len(out.get("cards") or []),
+        "has_access": access, "source": "rec_service", "cost_usd": 0, "model": "prewarm" if warm else "reuse",
+        "latency_s": round(wait_ms / 1000, 2), "tool_calls": 0, "cards": len(out.get("cards") or []),
         "more_cards": len(out.get("more_cards") or []), "price_locked": not access,
         "profile_questions": [q["id"] for q in out.get("questions") or []],
         "search_arm": railway_search.arm(user.get("id"))})
@@ -927,6 +976,73 @@ def _opening(token, user, background, tracker):
     chat = xano.create_chat(user["id"], _picks_title(out, user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     return _public(out, chat_id=chat["id"])
+
+
+# ---------------------------------------------------------------- prewarm (owner 2026-11-02, time-to-value)
+# The opening is ~4.5 s of model writing (p50, 11-02), and nothing on the critical path can make that much faster. So
+# generate it BEFORE the couple opens the Planner: the page calls POST /rec/prewarm at a moment when the inputs are
+# final and the Planner is likely next (first: right after onboarding saves the profile). The answer goes into the
+# opening reuse store; /rec/opening then serves it with no model run (or waits for it if it is still running -
+# opening_reuse.INFLIGHT). The response is immediate; the work runs on its own small pool so it never delays
+# logging. Cost: a normal opening's model run (~$0.03), logged as kind "prewarm" (never counted toward any
+# allowance); the same gate as an opening (kill switch, spend caps), and at most PREWARM_MAX_PER_DAY runs per couple
+# per ET day. A prewarm nobody opens is the cost of this; the reuse_miss logging says how often that happens.
+_PREWARM_POOL = ThreadPoolExecutor(max_workers=4)
+_PREWARM_RUNS = {}          # (user id, ET day) -> prewarm jobs started today
+_PREWARM_LOCK = threading.Lock()
+
+
+def _prewarm_claim(user_id):
+    """Count one prewarm job for today; False when the couple is at the daily limit."""
+    day = opening_reuse.et_day()
+    key = (str(user_id), day)
+    with _PREWARM_LOCK:
+        for k in [k for k in _PREWARM_RUNS if k[1] != day]:
+            del _PREWARM_RUNS[k]
+        n = _PREWARM_RUNS.get(key, 0)
+        if n >= config.PREWARM_MAX_PER_DAY:
+            return False
+        _PREWARM_RUNS[key] = n + 1
+    return True
+
+
+def _prewarm_release(user_id):
+    """A job that ran no model (already stored / already running) gives its slot back."""
+    key = (str(user_id), opening_reuse.et_day())
+    with _PREWARM_LOCK:
+        if _PREWARM_RUNS.get(key):
+            _PREWARM_RUNS[key] -= 1
+
+
+def _prewarm_job(token, user):
+    uid = user.get("id")
+    try:
+        out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}], prewarm=True)
+        st = out.get("status") if isinstance(out, dict) else None
+        if st in ("ready", "running"):
+            _prewarm_release(uid)
+        else:
+            st = "stored" if opening_reuse.reusable(out) else "not_stored"
+        print("prewarm user=%s -> %s" % (uid, st))
+    except HTTPException as e:   # blocked by the gate (kill switch, spend cap, daily cap): nothing to do
+        d = e.detail if isinstance(e.detail, dict) else {}
+        print("prewarm user=%s -> blocked %s" % (uid, d.get("status") or e.status_code))
+    except Exception as e:
+        print("prewarm user=%s -> failed %s" % (uid, repr(e)[:200]))
+
+
+@app.post("/rec/prewarm")
+def prewarm(authorization: str = Header(None)):
+    """Start generating this couple's opening in the background. Always answers at once:
+    started | limit (PREWARM_MAX_PER_DAY reached) | off (REC_PREWARM=0 or opening reuse off). Fire and forget - the
+    page never waits on it and never shows anything from it."""
+    token, user = _auth(authorization)
+    if not (config.PREWARM and config.OPENING_REUSE):
+        return {"status": "off"}
+    if not _prewarm_claim(user["id"]):
+        return {"status": "limit"}
+    _PREWARM_POOL.submit(_prewarm_job, token, user)
+    return {"status": "started"}
 
 
 def _mark_asked(user_id, ids):

@@ -30,8 +30,10 @@ def _ok(rows):
 
 def _prompts(rows):
     """ok rows that count as a prompt. Quick-action cost tools (kind "tool_<name>", POST /rec/tool, 2026-10-25)
-    make no model call and never count toward any allowance (owner decision)."""
-    return [r for r in _ok(rows) if not str(r.get("kind") or "").startswith("tool_")]
+    make no model call and never count toward any allowance (owner decision). Prewarm rows (kind "prewarm",
+    2026-11-02) are openings generated before the couple asked: never counted either - the opening they are later
+    served from it writes its own "opening" row, counted exactly like a normal opening."""
+    return [r for r in _ok(rows) if not str(r.get("kind") or "").startswith("tool_") and r.get("kind") != "prewarm"]
 
 
 def free_used(usage_rows):

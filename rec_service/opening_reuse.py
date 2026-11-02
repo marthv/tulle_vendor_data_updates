@@ -63,23 +63,43 @@ class Store:
         self._lock = threading.Lock()
 
     def get(self, user_id, fp, now_s=None):
+        return self.lookup(user_id, fp, now_s=now_s)[0]
+
+    def lookup(self, user_id, fp, parts=None, now_s=None, claim=False):
+        """(result or None, src, miss). src: who stored it ("opening" | "prewarm"). miss (2026-11-02, to learn why
+        repeat visits regenerate): "" on a hit, else "none" (nothing stored - first visit today, or a deploy/restart
+        emptied the store) | "day" | "age" | "fp:<keys>" (which _opening_fp_parts keys changed, when parts given).
+        claim=True (the couple is being served it): a prewarmed entry is handed out as "prewarm" ONCE, then becomes
+        a plain stored opening, so only the first visit counts as their opening."""
         now_s = time.time() if now_s is None else now_s
         with self._lock:
             e = self._d.get(str(user_id))
-        if not e or e["fp"] != fp or e["day"] != et_day(now_s):
-            return None
+            src = (e or {}).get("src") or "opening"
+            ok = bool(e) and e["fp"] == fp and e["day"] == et_day(now_s) and now_s - e["at"] <= config.OPENING_REUSE_MAX_AGE_S
+            if ok and claim:
+                e["src"] = "opening"
+        if not e:
+            return None, "", "none"
+        if e["day"] != et_day(now_s):
+            return None, "", "day"
         if now_s - e["at"] > config.OPENING_REUSE_MAX_AGE_S:
-            return None
-        return copy.deepcopy(e["result"])
+            return None, "", "age"
+        if e["fp"] != fp:
+            old = e.get("parts") or {}
+            new = part_fps(parts) if parts else {}
+            keys = sorted(k for k in set(old) | set(new) if old.get(k) != new.get(k)) if old and new else []
+            return None, "", "fp:" + (",".join(keys) or "?")
+        return copy.deepcopy(e["result"]), src, ""
 
-    def put(self, user_id, fp, result, now_s=None):
+    def put(self, user_id, fp, result, now_s=None, parts=None, src="opening"):
         if not reusable(result):
             return False
         now_s = time.time() if now_s is None else now_s
         # notes_saved belongs to the run that saved them: a reuse saves nothing, so it must not say it did.
         stored = copy.deepcopy(dict(result, notes_saved=[]))
         with self._lock:
-            self._d[str(user_id)] = {"day": et_day(now_s), "fp": fp, "at": now_s, "result": stored}
+            self._d[str(user_id)] = {"day": et_day(now_s), "fp": fp, "at": now_s, "result": stored,
+                                     "parts": part_fps(parts) if parts else {}, "src": src}
             if len(self._d) > self.max:     # drop the oldest entries
                 for k in sorted(self._d, key=lambda k: self._d[k]["at"])[:len(self._d) - self.max]:
                     del self._d[k]
@@ -98,3 +118,59 @@ class Store:
 
 
 STORE = Store()
+
+
+def part_fps(parts):
+    """Per-key fingerprints of _opening_fp_parts, so a miss can say WHICH input changed (not the values)."""
+    return {k: fingerprint(v) for k, v in (parts or {}).items()}
+
+
+class Inflight:
+    """Openings being generated right now, per user (2026-11-02). A second opening for the same couple with the same
+    inputs - the Planner page loading while a prewarm runs, or the page's double mount - waits for the first one and
+    is served from STORE instead of paying for (and waiting on) a second model run. In-process, like STORE."""
+
+    def __init__(self):
+        self._d = {}
+        self._lock = threading.Lock()
+
+    def begin(self, user_id, fp):
+        """Register a run; returns its handle (pass it to end). The newest run for a user wins the slot."""
+        h = {"fp": fp, "event": threading.Event(), "at": time.time()}
+        with self._lock:
+            self._d[str(user_id)] = h
+        return h
+
+    def end(self, user_id, h):
+        if not h:
+            return
+        h["event"].set()
+        with self._lock:
+            if self._d.get(str(user_id)) is h:
+                del self._d[str(user_id)]
+
+    def running(self, user_id, fp):
+        with self._lock:
+            h = self._d.get(str(user_id))
+        return h if h and h["fp"] == fp else None
+
+    def wait(self, user_id, fp, timeout_s, cancelled=lambda: False, step_s=0.25):
+        """Wait for a same-inputs run to finish. True = one was running and it ended (the caller looks STORE up
+        again); False = none running, timed out, or the couple tapped Stop."""
+        h = self.running(user_id, fp)
+        if not h:
+            return False
+        deadline = time.time() + max(0.0, timeout_s)
+        while time.time() < deadline:
+            if h["event"].wait(step_s):
+                return True
+            if cancelled():
+                return False
+        return False
+
+    def clear(self):
+        with self._lock:
+            self._d.clear()
+
+
+INFLIGHT = Inflight()

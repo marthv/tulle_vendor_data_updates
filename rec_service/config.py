@@ -168,6 +168,15 @@ OPENING_REUSE = os.environ.get("REC_OPENING_REUSE", "1") == "1"
 # the two-turn opening.
 PRESEARCH = os.environ.get("REC_PRESEARCH", "1") == "1"
 OPENING_REUSE_MAX_AGE_S = max(0, int(os.environ.get("REC_OPENING_REUSE_MAX_AGE_S", str(6 * 3600)) or 0))
+# Prewarm (owner 2026-11-02, "time-to-value needs to decrease a lot"): POST /rec/prewarm generates the couple's
+# opening in the background (e.g. the moment onboarding finishes) into the reuse store, so the Planner page gets it
+# without waiting on the model. Needs OPENING_REUSE. "0" = the endpoint answers {"status": "off"} and does nothing.
+PREWARM = os.environ.get("REC_PREWARM", "1") == "1"
+# At most this many prewarm model runs per couple per ET day (a page that calls it on every load can't run up cost).
+PREWARM_MAX_PER_DAY = max(0, int(os.environ.get("REC_PREWARM_MAX_PER_DAY", "3") or 0))
+# An opening that finds a same-inputs opening already being generated (a prewarm, or the page's double mount) waits
+# this long for it before generating its own (then runs its own: a stuck prewarm costs at most this much extra).
+PREWARM_JOIN_S = max(0.0, float(os.environ.get("REC_PREWARM_JOIN_S", "15") or 0))   # openings p90 7.4 s (11-02); a stuck run gives up the wait
 # Railway search circuit breaker (2026-10-27, owner OK #2): after a timeout / connection error / 5xx the Planner
 # skips the search-api for this many seconds and goes straight to ep119. 0 = no breaker (old behaviour).
 RAILWAY_BREAKER_S = max(0, int(os.environ.get("REC_RAILWAY_BREAKER_S", "60") or 0))
