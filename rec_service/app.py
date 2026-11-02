@@ -595,9 +595,12 @@ def _price_or_none(token, vid, full):
 
 
 def _find_and_price(q, token, full):
-    """lookup.find, then the pricing panel of every match in parallel - all while the question is being gated."""
+    """lookup.find, then the pricing panel of the match in parallel - all while the question is being gated.
+    Only a FOUND venue is priced: a "which one did you mean?" list shows names and places, and its pricing was
+    the whole cost of that answer (measured 2026-11-02: 7.0 s with two matches vs 0.2 s for a miss). The tap on a
+    name comes back as a found lookup and is priced then."""
     res = lookup.find(q, lambda term: xano.name_search(term, token))
-    ids = [m["vendor_id"] for m in res["matches"]] if res["status"] in ("found", "choices") else []
+    ids = [m["vendor_id"] for m in res["matches"]] if res["status"] == "found" else []
     if ids:
         with ThreadPoolExecutor(max_workers=len(ids)) as ex:
             res["pricing"] = dict(zip(ids, ex.map(lambda v: _price_or_none(token, v, full), ids)))
