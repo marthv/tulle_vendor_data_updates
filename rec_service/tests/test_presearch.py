@@ -210,3 +210,11 @@ def test_a_keyword_that_matches_a_result_name_does_not_retry(world):
     out = world["tool_out"]
     assert out["venues"][0]["name"] == "Oheka Castle" and "named_venue_outside_filters" not in out
     assert len(world["calls"]) == 1
+
+
+def test_usage_names_the_tools_and_categories_an_answer_used(world):
+    """2026-11-02: the usage log and Mixpanel say WHICH tools ran and which vendor categories they touched."""
+    _, usage = agent.run("tok", USER, True, ASK, detail="full", presearch=None)
+    assert usage["tools_used"] == ["search_venues", "present_recommendations"]
+    assert usage["categories"] == ["venue"]
+    assert usage["think_chars"] == 0

@@ -602,6 +602,10 @@ def more_cards(searched, seen, cards, prior):
 # couple changed or dropped it.
 
 STICKY = ("guests", "max_venue_fee", "max_food_per_person", "city", "radius_miles")
+# Tools that are about venues (for the per-answer category log); the photographer / entertainment / listings tools
+# carry their category as an argument.
+VENUE_TOOLS = frozenset(("search_venues", "venue_pricing", "venue_details", "estimate_cost", "compare_venues",
+                         "saved_venues"))
 NEAR_MILES = 25         # default radius around a town the couple named
 
 
@@ -881,7 +885,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     deferred = []        # one per search_venues call with candidates still being priced
     # Per-tool timing for rec_server_request (2026-10-17): ms per tool name, plus search vs pricing inside
     # search_venues.
-    timing = {"search_ms": 0, "pricing_ms": 0, "searches": 0, "priced": 0, "tools": {}}
+    timing = {"search_ms": 0, "pricing_ms": 0, "searches": 0, "priced": 0, "tools": {}, "categories": {}}
 
     batch = {"pricing": 0}   # pricing lookups (one venue each) the current model turn asked for, for the label
 
@@ -896,6 +900,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             else:
                 prog.set(progress_mod.TOOL_LABELS.get(f.__name__))
             t = time.time()
+            # Which vendor category this call touched (owner 2026-11-01: 'paid users are supposed to be using all
+            # vendor categories' - measurable only if every answer says what it searched).
+            cat = str(k.get("category") or "").strip().lower() if k.get("category") else ""
+            if not cat and f.__name__ in VENUE_TOOLS:
+                cat = "venue"
+            if cat:
+                timing["categories"][cat] = timing["categories"].get(cat, 0) + 1
             try:
                 return f(*a, **k)
             finally:
@@ -1962,6 +1973,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     usage["pricing_cache"] = pricing_stats.as_dict()   # cross-request pricing cache: hits / misses / bypass
     usage["prefetch_cache"] = prefetch_stats.as_dict()  # benchmark + saved-card caches: hits / misses (2026-10-27)
     usage["tool_breakdown"] = dict(timing["tools"])   # ms per tool name, whole tool incl. search + pricing
+    # Which tools ran (in order, with repeats) and which vendor categories they touched (2026-11-02): the usage log
+    # and Mixpanel carry these so "what do paid members use" and "why did this answer take 4 calls" are answerable.
+    usage["tools_used"] = [name for turn in usage.get("turn_tools") or [] for name in turn]
+    usage["categories"] = sorted(timing["categories"])
+    usage["think_chars"] = sum(int(t.get("think_chars") or 0) for t in usage.get("turns") or [])
     usage["figure_bounced"] = guard["bounced"]
     usage["unsupported_figures"] = guard["unsupported"]
     usage["model"] = model_used

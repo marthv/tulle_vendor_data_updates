@@ -242,6 +242,14 @@ def _search_props(user, summary=None):
             "breaker_state": s.get("breaker_state") or ("open" if railway_search.BREAKER.is_open() else "closed")}
 
 
+def _tool_cols(usage):
+    """rec_usage (table 79) columns added 2026-11-02: the tools an answer ran ('search_venues,present_recommendations'),
+    the vendor categories they touched ('venue' / 'photography' / ...), and thinking characters."""
+    u = usage or {}
+    return {"tools": ",".join(u.get("tools_used") or [])[:500], "categories": ",".join(u.get("categories") or [])[:200],
+            "think_chars": int(u.get("think_chars") or 0)}
+
+
 def _turn_props(usage):
     """rec_server_request props (2026-10-26 speed pass): each model call's wall ms and the tools it asked for, so
     turn 1 (which only picks search_venues args) can be weighed; and the cross-request pricing cache's counts."""
@@ -484,7 +492,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
                         input_tokens=usage["input_tokens"], cache_read_tokens=usage["cache_read_tokens"],
                         cache_write_tokens=usage["cache_write_tokens"], output_tokens=usage["output_tokens"],
                         tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"],
-                        **_search_cols(usage.get("search"))))
+                        **_tool_cols(usage), **_search_cols(usage.get("search"))))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": kind, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access, "source": "rec_service",
@@ -508,6 +516,9 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         "deferred_wait_ms": usage.get("deferred_wait_ms"),
         "tool_breakdown": usage.get("tool_breakdown") or {},
         **{"tool_ms_" + k: v for k, v in (usage.get("tool_breakdown") or {}).items()},
+        # Which tools and vendor categories this answer used (2026-11-02): lists for Mixpanel breakdowns.
+        "tools_used": usage.get("tools_used") or [], "tool_count": len(usage.get("tools_used") or []),
+        "categories": usage.get("categories") or [], "think_chars": usage.get("think_chars") or 0,
         # Per-model-call ms + tools, and pricing cache hit/miss (2026-10-26). model_turns is re-stated, same value.
         **_turn_props(usage),
         # Railway search rollout (2026-10-26): which engine answered the venue searches, and the user's arm.
