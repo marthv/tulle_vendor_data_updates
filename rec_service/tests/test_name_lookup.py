@@ -45,7 +45,18 @@ NOT_LOOKUPS = [
     "Hudson Valley", "Napa", "Split our budget by category", "Open my budget", "Historic Architecture venues",
     "what about something cheaper", "Garden weddings in the fall", "Is Kohl Mansion a good fit for us?",
     "Compare Kohl Mansion with my saved venues", "Find venues within my venue budget",
+    # 2026-11-03 style / needs requests that were read as venue names (chat 1170 and the month's replay)
+    "Only gardens and nature please", "Ceremony only", "Halal food", "Overnight accommodations",
+    "And one with a rooftop?", "Garden venue", "Barn or ranch", "Estate or mansion", "Castles with rooms",
+    "Onsite accommodation for wedding weekend", "floral",
+    "Looking for a venue less than 20k for about 25 people",
 ]
+
+
+@pytest.mark.parametrize("text", ["Ashton gardens", "lbj wildflower center", "Matthaei Botanical Gardens",
+                                  "Lake Katherine Nature Center", "oheka castle"])
+def test_names_with_style_words_are_still_names(text):
+    assert lookup.detect(text) is not None
 
 
 @pytest.mark.parametrize("text", list(LOOKUPS))

@@ -998,6 +998,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             vibes: optional style attributes, EXACT values only (any of = OR): "Scenic / Nature Views",
                 "Natural Light / Large Windows", "Historic Architecture", "Ballroom", "Tall / Vaulted Ceilings",
                 "Waterfront", "Tented", "Rooftop / Skyline Views", "Industrial / Warehouse", "Greenhouse".
+                garden/gardens/botanical -> venue_types "Garden / Botanical Garden"; nature/natural/scenic/woods/
+                forest/mountains/greenery -> "Scenic / Nature Views" (a couple asking for "gardens and nature" gets
+                BOTH, and the answer says those are the filters used);
                 beach/lake/river -> "Waterfront"; city views -> "Rooftop / Skyline Views"; loft -> "Industrial / Warehouse".
                 glasshouse/glass house/conservatory/atrium/glass walls -> "Greenhouse"; lots of windows/light-filled ->
                 "Natural Light / Large Windows"; architectural/historic/grand building -> "Historic Architecture";

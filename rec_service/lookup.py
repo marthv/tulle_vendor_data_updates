@@ -174,6 +174,40 @@ _GUESTS = re.compile(r"\s+for\s+(?:a|an|our|my|the)?\s*[^,]{0,40}?\b(?:wedding|g
 _CUE = re.compile(r"\b(pricing|prices?|costs?|quote|listed|look ?up|find|do you have|have pricing|how much|info|"
                   r"details|tell me about)\b", re.I)
 
+# Words that describe the KIND of place or a need, not WHICH place (2026-11-03, chat 1170: "Only gardens and nature
+# please" was read as a venue name and the couple was told "We don't have Only gardens and nature please in Tulle yet";
+# same for "Ceremony only", "Halal food", "Overnight accommodations", "And one with a rooftop?"). A message made ONLY of
+# these (plus filler) is a style / needs request and goes to the model, which filters on venue types and vibes.
+# Real names keep at least one word outside this set ("Ashton Gardens", "Lake Katherine Nature Center").
+DESCRIPTORS = {
+    "garden", "gardens", "botanical", "botanic", "nature", "natural", "naturey", "scenic", "view", "views",
+    "greenery", "green", "flowers", "floral", "wildflowers", "outdoors", "outside", "open", "air", "fresh",
+    "waterfront", "water", "beach", "beachfront", "beachy", "lake", "lakes", "lakeside", "lakefront", "river",
+    "riverside", "riverfront", "ocean", "oceanfront", "sea", "seaside", "coastal", "bay", "waterside",
+    "mountain", "mountains", "mountainside", "forest", "forests", "woods", "wooded", "woodland", "woodsy", "trees",
+    "park", "parks", "meadow", "field", "fields", "desert", "countryside", "nautical",
+    "barn", "barns", "ranch", "farm", "farms", "rustic", "vineyard", "vineyards", "winery", "wineries", "brewery",
+    "distillery", "historic", "historical", "ballroom", "ballrooms", "rooftop", "rooftops", "roof", "skyline",
+    "urban", "city", "industrial", "warehouse", "loft", "lofts", "greenhouse", "glasshouse", "conservatory",
+    "atrium", "glass", "tent", "tented", "courtyard", "terrace", "lawn", "patio", "chapel", "church", "castle",
+    "castles", "mansion", "mansions", "estate", "estates", "cabin", "cabins", "lodge", "lodges", "tropical",
+    "intimate", "small", "smaller", "large", "larger", "big", "bigger", "romantic", "whimsical", "moody", "dark",
+    "classic", "classy", "chic", "luxury", "luxurious", "upscale", "fancy", "simple", "cozy", "bohemian",
+    "vintage", "unique", "quirky", "minimalist", "glam", "glamorous", "fairytale", "enchanted", "magical",
+    "aesthetic", "pretty", "beautiful", "gorgeous", "stunning", "light", "bright", "airy", "windows", "sunset",
+    "accommodations", "accommodation", "lodging", "overnight", "onsite", "site", "stay", "stays", "rooms", "guest",
+    "food", "halal", "kosher", "vegan", "vegetarian", "gluten", "free", "byob", "inclusive", "ceremony",
+    "ceremonies", "reception", "receptions", "only", "just", "please", "pls", "one", "ones", "with", "without",
+    "plus", "or", "and", "kind", "kinds", "type", "types", "setting", "settings", "feel", "feeling", "theme",
+    "themed", "look", "looking", "for", "private", "accessible", "pet", "dog", "friendly", "parking",
+    "fall", "spring", "summer", "winter", "autumn", "space", "spaces", "setup", "style", "styles"}
+
+
+def _descriptive_only(name):
+    """True when every word of the would-be name says what KIND of place (or a need), none says which one."""
+    ws = tokens(name)
+    return bool(ws) and all(w in DESCRIPTORS for w in ws)
+
 
 def _place(s):
     n = norm(s)
@@ -281,7 +315,7 @@ def detect(text, last_assistant=""):
     words = norm(name).split()
     if not words or len(words) > 7 or len(norm(name)) < 3:
         return None
-    if REJECT.search(name) or _place(name):
+    if REJECT.search(name) or _place(name) or _descriptive_only(name):
         return None
     after_question = False
     if not cue:
