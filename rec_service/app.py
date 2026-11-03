@@ -86,6 +86,32 @@ app.add_middleware(CORSMiddleware, allow_origins=config.ALLOWED_ORIGINS,
                    allow_origin_regex=r"https://([a-z0-9-]+\.)*weweb(-preview)?\.(io|app)",
                    allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
 
+
+
+class _UserAgentToSheetLog:
+    """Puts each request's User-Agent in sheet_log.UA, so Planner sheet rows get Device + Browser (owner 2026-11-03).
+    Plain ASGI (not BaseHTTPMiddleware) so the value is seen by the endpoint and its background tasks."""
+
+    def __init__(self, asgi):
+        self.asgi = asgi
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.asgi(scope, receive, send)
+        ua = ""
+        for k, v in scope.get("headers") or []:
+            if k == b"user-agent":
+                ua = v.decode("latin-1")[:500]
+                break
+        tok = sheet_log.UA.set(ua)
+        try:
+            await self.asgi(scope, receive, send)
+        finally:
+            sheet_log.UA.reset(tok)
+
+
+app.add_middleware(_UserAgentToSheetLog)
+
 OPENING_ASK = ("Recommend 3 venues for us based on our profile, and tell us the single most useful next step "
                "for where we are in planning.")
 HISTORY_TURNS = 8
