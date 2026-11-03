@@ -69,6 +69,7 @@ import pricing_warm
 import profile_questions
 import progress
 import railway_search
+import sheet_log
 import upsell
 import xano
 
@@ -975,6 +976,8 @@ def _opening(token, user, background, tracker):
         background.add_task(_mark_asked, user["id"], [q["id"] for q in out["questions"]])
     chat = xano.create_chat(user["id"], _picks_title(out, user))
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
+    background.add_task(sheet_log.event, user, "Planner's first message", "(opened the Planner)", out.get("text"),
+                        chat["id"], out.get("cards"), out.get("search_filters"), sheet_log.flag_of(out))
     return _public(out, chat_id=chat["id"])
 
 
@@ -1076,6 +1079,7 @@ def _save_profile_answers(user, pending, text):
 
 def _refine_in_chat(token, user, chat, text, background, tracker=None):
     """One typed question inside a stored conversation: server-held history in, both turns saved after."""
+    t0 = time.time()
     history = xano.get_messages(chat["id"])
     pending = _pending_questions(history)
     answered, lines = _save_profile_answers(user, pending, text) if pending else ({}, [])
@@ -1092,7 +1096,10 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
         out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
                            active_filters=kw["active_filters"], tracker=tracker, history=history, saved_lines=lines,
                            waive_free=bool(answered))
+    action = ("Answered a profile question" if answered else
+              "Tapped a suggested reply" if is_chip else "Typed a question")
     if out.get("stopped"):
+        sheet_log.event(user, action, text, "", chat["id"], flag="stopped by the couple")
         return dict(out, chat_id=chat["id"])   # nothing saved: not even the question (as on an error)
     out["chips"] = ensure_chips(dedupe_chips(out.get("chips"), history))
     if out.get("price_locked"):
@@ -1110,6 +1117,8 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
         xano.add_message(chat["id"], "user", text)
         xano.add_message(chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
         xano.touch_chat(chat)
+        sheet_log.event(user, action, text, out.get("text"), chat["id"], out.get("cards"), out.get("search_filters"),
+                        sheet_log.flag_of(out), int((time.time() - t0) * 1000))
     background.add_task(persist)
     return _public(out, chat_id=chat["id"])
 
@@ -1134,7 +1143,13 @@ def _recent_chat(user_id):
 @app.post("/rec/refine")
 def refine(body: RefineBody, background: BackgroundTasks, authorization: str = Header(None)):
     token, user = _auth(authorization)
-    return _tracked(body.request_id, user, lambda tr: _refine(token, user, body, background, tr))
+    try:
+        return _tracked(body.request_id, user, lambda tr: _refine(token, user, body, background, tr))
+    except HTTPException as e:
+        if e.status_code in (402, 429):   # out of free questions / daily limit: the team sees the ask it blocked
+            sheet_log.event(user, "Typed a question", body.message or "", "", body.chat_id or 0,
+                            flag="blocked: %s" % ("out of free questions" if e.status_code == 402 else "daily limit"))
+        raise
 
 
 def _refine(token, user, body, background, tracker):
@@ -1181,6 +1196,8 @@ def _refine(token, user, body, background, tracker):
         xano.add_message(chat["id"], "user", text)
         xano.add_message(chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
         xano.touch_chat(chat)
+        sheet_log.event(user, "Typed a question", text, out.get("text"), chat["id"], out.get("cards"),
+                        out.get("search_filters"), sheet_log.flag_of(out))
     background.add_task(persist)
     return _public(out, chat_id=chat["id"])
 
@@ -1296,6 +1313,7 @@ def _show_more(user, body, background, tracker):
         xano.add_message(chat["id"], "user", "Show 3 more")
         xano.add_message(chat["id"], "assistant", text, [dict(c, via_more=True) for c in picks], chips)
         xano.touch_chat(chat)
+        sheet_log.event(user, "Tapped Show more", "Show 3 more", text, chat["id"], picks)
     background.add_task(persist)
     left = reply["left"]
     return dict(text=text, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
@@ -1356,6 +1374,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         "has_access": access, "source": "rec_service", "cost_usd": 0, "latency_s": round(ms / 1000.0, 1),
         "widget": widget.get("type"), "locked": bool(widget.get("locked")), "chat_id": int(body.chat_id or 0),
         "search_arm": railway_search.arm(user.get("id"))})
+    sheet_log.event(user, "Used a quick action", TOOL_LABELS[name], text, int(body.chat_id or 0))
     if chat:
         def persist():   # same order as a typed question: the quick action, then the answer with its widget
             xano.add_message(chat["id"], "user", TOOL_LABELS[name])
@@ -1462,6 +1481,7 @@ def add_note(body: NoteAdd, authorization: str = Header(None)):
     _POOL.submit(xano.mp_track, user["id"], "rec_note_added", {"chars": len(text), "source": body.source or "", "kind": "still_looking"})
     # Team copy: a quiet Slack line, not the thumbs-down notice (owner 2026-11-01).
     _POOL.submit(notify.still_looking, user, text, xano.plan_label(user), body.source or "", int(body.chat_id or 0))
+    sheet_log.event(user, "Feedback: still looking for", text, "", int(body.chat_id or 0))
     notes, _ctx = _memory(user["id"])
     return {"note": note, "notes": notes}
 
@@ -1498,6 +1518,7 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
         "rating": body.rating, "would_use": would, "chars": len(text), "forever": plan == "Forever",
         "plan": plan, "questions_used": used, "source": "rec_service"})
     _POOL.submit(notify.beta_feedback, user, body.rating, would, text, used, plan)
+    sheet_log.event(user, "Feedback: rated %d/5" % body.rating, text, "", int(body.chat_id or 0))
     access = xano.has_paid_access(user)
     free_left = guards.free_refines_left(paid, rows, True)
     forever_left = guards.forever_left_today(paid, rows, xano.today())
@@ -1639,6 +1660,9 @@ def open_pdf(body: PdfBody, authorization: str = Header(None)):
     # Xano, not Mixpanel): status = paid | free | blocked, no cost, chat_id when the card came from a chat.
     _POOL.submit(xano.log_usage, {"user_id": user["id"], "kind": "pdf", "status": mode, "counted_as_free": mode == "free",
                                   "model": "", "chat_id": body.chat_id or 0, "tools": "pdf:" + vid, "categories": "venue"})
+    sheet_log.event(user, "Opened a pricing PDF", body.vendor_name or vid, "", body.chat_id or 0,
+                    [{"name": body.vendor_name or vid}],
+                    flag="blocked: no free views left" if mode == "blocked" else ("free view" if mode == "free" else ""))
     if mode == "blocked":
         _POOL.submit(xano.mp_track, user["id"], "pdf_limit_popup_triggered", base)
         return {"url": None, "mode": mode, "views_left": 0, "last_free": False}
@@ -1685,6 +1709,30 @@ def answer_feedback(body: AnswerFeedbackBody, authorization: str = Header(None))
         "chat_id": int(body.chat_id or 0), "answer_index": body.answer_index, "chars": len(text), "plan": plan, "vote": vote,
         "found_answer": bool(answer), "source": "rec_service"})
     _POOL.submit(notify.answer_feedback, user, text, question, answer, plan, int(body.chat_id or 0), vote)
+    sheet_log.event(user, "Feedback: thumbs %s" % vote, text or "(no comment)",
+                    ("On: %s\n\n%s" % (question, answer)) if (question or answer) else "", int(body.chat_id or 0))
+    return {"ok": True}
+
+
+class EventBody(BaseModel):
+    kind: str = ""            # vendor_click | save | unsave
+    vendor_id: str = ""
+    vendor_name: str = ""
+    chat_id: int = 0
+
+
+EVENT_ACTIONS = {"vendor_click": "Clicked View vendor", "save": "Saved a vendor", "unsave": "Removed a saved vendor"}
+
+
+@app.post("/rec/event")
+def planner_event(body: EventBody, authorization: str = Header(None)):
+    """Card actions only the page sees (owner 2026-11-03: the team's Planner sheet). Logs a sheet row; counts
+    nothing, never fails the page (an unknown kind is ignored)."""
+    _, user = _auth(authorization)
+    action = EVENT_ACTIONS.get((body.kind or "").strip())
+    if action:
+        name = (body.vendor_name or body.vendor_id or "").strip()[:200]
+        sheet_log.event(user, action, name, "", int(body.chat_id or 0), [{"name": name}] if name else None)
     return {"ok": True}
 
 
