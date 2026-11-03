@@ -29,7 +29,8 @@ BATCH_S = float(os.environ.get("REC_SHEET_BATCH_S", "5"))
 ANSWER_CHARS = 1500
 
 # Internal + test accounts (feedback_exclude_internal_accounts): never in the team's sheet.
-INTERNAL_IDS = {14998, 30614, 32636, 31619, 118, 5622}
+# 31619 (soccerdog333@gmail.com) removed 2026-11-03: owner tests the sheet with it.
+INTERNAL_IDS = {14998, 30614, 32636, 118, 5622}
 
 try:
     from zoneinfo import ZoneInfo
