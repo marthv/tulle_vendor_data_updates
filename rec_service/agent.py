@@ -963,6 +963,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     light = detail in ("light", "free")
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
     seen_again_ok = set()   # already-seen venues a search handed back because nothing new matched (no repeat bounce)
+    flags = {"returning_shortlist": False}   # item 5a: a returning couple's opening may present saved venues
     extra = {}           # vendor_id -> card data for "Show 3 more" ONLY: search results past the 8 the model sees
     searched = []        # vendor_ids search_venues returned in THIS request, in search order
     searches = []        # one per search_venues call: {"filters": effective filters, "ids": its results in order}
@@ -1798,7 +1799,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     "or describe it in words. Then call present_recommendations again." % ", ".join(bad))
         guard["unsupported"] = bad
         # Repeats the couple didn't ask for (named, or pointed back at with "compare", "those", "my saved"...).
-        hidden = set(prior) | (set() if SAVED_ASK.search(last_user) else set(saved_ids))
+        hidden = set(prior) | (set() if (SAVED_ASK.search(last_user) or flags["returning_shortlist"])
+                               else set(saved_ids))
         names = {**{c["vendor_id"]: c.get("name") for c in saved_cards_holder.get("cards") or []},
                  **{k: v.get("name") for k, v in seen.items()}}
         again = [v for v in vendor_ids or [] if v in hidden and v not in seen_again_ok
@@ -1935,6 +1937,31 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # Forever in the Planner (2026-11-07, Kate in #product-development 11-05 + the planner log: 162 of 290 openings
     # said "Forever unlocks..."): never in the FIRST message - the couple hasn't seen any plan yet - and at most once
     # per chat after that unless they ask. The upgrade card on the page is unaffected.
+    # A reason to come back (2026-11-07, item 5; Mixpanel next-day return 4-9%). (a) A returning couple with a
+    # shortlist gets an opening built on it, not 3 fresh strangers. (b) Des's idea (sheet comment 11-05): when a
+    # venue they like is a stretch, check the cheaper-date price before calling it a no.
+    opening_turn = (len(messages) <= 1 and isinstance(messages[0].get("content") if messages else "", str)
+                    and (messages[0].get("content") or "").startswith(OPENING_PREFIX)) if messages else False
+    if opening_turn and config.RETURNING_OPENING and len(saved) >= 2:
+        flags["returning_shortlist"] = True
+        context += ("\nRETURNING COUPLE WITH A SHORTLIST: they have %d saved venues (%s). Call saved_venues first. "
+                    "Build this first message "
+                    "on that shortlist: name the one that fits them best and why, in one or two sentences, then "
+                    "ask whether to compare their saved venues side by side (make \"Yes, compare my saved "
+                    "venues\" the first chip). Present that best saved venue plus at most 2 new picks that fill a "
+                    "gap in the shortlist (a different style or price level) - present_recommendations accepts "
+                    "saved venues here." % (len(saved), ", ".join((c.get("name") or "") for c in saved[:6])))
+    if config.DATE_FLEX:
+        context += ("\nDATE FLEXIBILITY: when a venue the couple asked about or likes is a stretch for their budget, "
+                    "check whether a cheaper date helps before saying it doesn't fit - " +
+                    ("call estimate_cost with off_peak=true and, if the PDF lists cheaper Saturdays, give that "
+                     "total and the months it applies to." if not (light or free) else
+                     "call venue_details and, if it lists cheaper (off-peak) dates or months, say which months "
+                     "are cheaper without any figure.") +
+                    (" Offer it as the closing yes/no question (\"Open to a Saturday in March? It's about $X "
+                     "less.\")." if not (light or free) else
+                     " Offer it as the closing yes/no question (\"Open to a Saturday in March? Its PDF lists "
+                     "cheaper rates then.\").") + " Only when the data has it; never guess.")
     if not paid and (light or free):
         first_user = next((m.get("content") for m in messages if m.get("role") == "user"), "")
         if isinstance(first_user, str) and first_user.startswith(OPENING_PREFIX) and len(messages) <= 1:

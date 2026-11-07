@@ -557,3 +557,26 @@ def test_nothing_new_hands_back_the_best_already_seen_without_a_bounce(world):
     r = _search_result(world["log"])
     assert r["venues"] == [] and [v["vendor_id"] for v in r["already_seen_matches"]] == ["V1", "V2", "V3"]
     assert [c["vendor_id"] for c in res["cards"]] == ["V1", "V2"] and not usage["repeat_bounced"]
+
+
+def test_returning_couple_opening_builds_on_the_shortlist(world, monkeypatch):
+    import config
+    monkeypatch.setattr(config, "RETURNING_OPENING", True)
+    agent, xano = _mods()
+    monkeypatch.setattr(xano, "cached_vendor_card", lambda vid, stats=None: venue(vid))
+    world["saved"] = ["V1", "V2"]
+    world["venues"] = [venue("V%d" % i) for i in range(3, 10)]
+    ask = agent.OPENING_PREFIX + ", and tell us the single most useful next step for where we are in planning."
+    res, usage = world["run"]([("saved_venues", {}), ("search_venues", {"states": ["New York"]}),
+                               present(["V1", "V3"], "Your best saved fit is V1.")], ask=ask)
+    assert [c["vendor_id"] for c in res["cards"]] == ["V1", "V3"] and not usage["repeat_bounced"]
+
+
+def test_saved_venue_still_bounced_outside_a_returning_opening(world, monkeypatch):
+    agent, xano = _mods()
+    monkeypatch.setattr(xano, "cached_vendor_card", lambda vid, stats=None: venue(vid))
+    world["saved"] = ["V1", "V2"]
+    world["venues"] = [venue("V%d" % i) for i in range(3, 10)]
+    res, usage = world["run"]([("search_venues", {"states": ["New York"]}), present(["V1", "V3"]),
+                               present(["V3", "V4"])], ask="cheaper options")
+    assert usage["repeat_bounced"]

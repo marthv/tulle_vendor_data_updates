@@ -67,6 +67,10 @@ FREE_PRICING = os.environ.get("REC_FREE_PRICING", "light").strip().lower()   # l
 # LIGHT is then exactly as before.
 # The Planner's first message never mentions Forever (2026-11-07, Kate 11-05). 0 = off (openings as before).
 OPENING_NO_FOREVER = os.environ.get("REC_OPENING_NO_FOREVER", "1").strip() not in ("0", "false", "no", "")
+# Item 5 (2026-11-07), a reason to come back: a returning couple with 2+ saved venues gets an opening built on that
+# shortlist; DATE_FLEX = check cheaper (off-peak) dates before calling a venue they like a no (Des, 11-05).
+RETURNING_OPENING = os.environ.get("REC_RETURNING_OPENING", "1").strip() not in ("0", "false", "no", "")
+DATE_FLEX = os.environ.get("REC_DATE_FLEX", "1").strip() not in ("0", "false", "no", "")
 LIGHT_PRICE_BANDS = os.environ.get("REC_LIGHT_PRICE_BANDS", "1").strip() not in ("0", "false", "no", "")
 # Whole service: stop spending above this many USD per UTC day.
 GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
