@@ -61,6 +61,13 @@ FREE_DAILY_USD = float(os.environ.get("REC_FREE_DAILY_USD", "15"))
 FREE_DAILY_MODE = os.environ.get("REC_FREE_DAILY_MODE", "1") == "1"
 FREE_DAILY_REFINES = int(os.environ.get("REC_FREE_DAILY_REFINES", "40"))
 FREE_PRICING = os.environ.get("REC_FREE_PRICING", "light").strip().lower()   # light | none (price-free free_mode)
+# LIGHT detail gets one rounded price band per venue (2026-11-07, owner "do all 5", item 3): ~1 in 5 typed Planner
+# questions asked about price and LIGHT could only say "below / typical / above average". The band is the FULL
+# estimate (or the rental) rounded outward to $5K ($1K under $10K) - exact figures stay in the PDF. 0 = off, and
+# LIGHT is then exactly as before.
+# The Planner's first message never mentions Forever (2026-11-07, Kate 11-05). 0 = off (openings as before).
+OPENING_NO_FOREVER = os.environ.get("REC_OPENING_NO_FOREVER", "1").strip() not in ("0", "false", "no", "")
+LIGHT_PRICE_BANDS = os.environ.get("REC_LIGHT_PRICE_BANDS", "1").strip() not in ("0", "false", "no", "")
 # Whole service: stop spending above this many USD per UTC day.
 GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))
 # Cost tools in the CHAT (2026-10-25): "1" = the model gets the 4 cost tools + the COST TOOLS prompt paragraph and

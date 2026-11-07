@@ -94,3 +94,23 @@ def prompt(has_plan=False):
 def shown_in(history):
     """True if an earlier answer in this chat already carried the upgrade prompt."""
     return any(t.get("role") == "assistant" and t.get("upsell_shown") for t in history or ())
+
+
+_SENT = re.compile(r"(?<=[.!?])\s+")
+
+
+def strip_forever(text):
+    """Drop every sentence that names Forever (2026-11-07: the Planner's FIRST message must not sell a plan the couple
+    hasn't seen - Kate, #product-development 11-05; 162 of 290 openings 11-03..06 said "Forever unlocks..."). A clause
+    joined to useful words ("Full prices are in each venue's PDF, and Forever unlocks them here.") keeps the useful
+    part up to the joining comma. Never returns an empty string."""
+    out = []
+    for s in _SENT.split(text or ""):
+        if "Forever" not in s:
+            out.append(s)
+            continue
+        m = re.match(r"^(.*?\S)\s*,?\s*(?:and|but|while|plus|so)\s+Forever\b.*$", s)
+        if m and "Forever" not in m.group(1) and len(m.group(1).split()) >= 4:
+            out.append(m.group(1).rstrip(",;: ") + ".")
+    joined = " ".join(x for x in out if x).strip()
+    return joined or (text or "")

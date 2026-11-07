@@ -1037,6 +1037,10 @@ def _opening(token, user, background, tracker):
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}], tracker=tracker)
     if out.get("stopped"):
         return out           # no chat created, nothing saved
+    if not out.get("paid") and config.OPENING_NO_FOREVER:
+        # The first message never sells a plan the couple hasn't seen (2026-11-07; the prompt says so too - this is
+        # the guarantee, and it also cleans openings already in the reuse store). The upgrade card is unaffected.
+        out["text"] = upsell.strip_forever(out.get("text") or "")
     same = _recent_opening_chat(user["id"], out.get("text") or "")
     if same:
         out["chips"] = _opening_chips(out.get("text") or "", out.get("chips") or [], user,

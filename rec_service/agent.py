@@ -276,9 +276,41 @@ def _with_rental(v, p, guests=0, budget=0):
     return v
 
 
+def _band_edges(n):
+    """Round a figure OUTWARD to a band: $5K steps from $10K, $1K steps below. 31,100 -> (30000, 35000);
+    3,600 -> (3000, 4000); an exact step widens by one ($30,000 -> 30K-35K) so a band is never a single number."""
+    step = 5000 if n >= 10000 else 1000
+    lo = int(n // step) * step
+    hi = lo + step
+    return max(lo, step if n >= step else 0), hi
+
+
+def _band_k(n):
+    return "$%dK" % (n // 1000) if n >= 1000 else "$%d" % n
+
+
+def price_band(v):
+    """{"low", "high", "label"} for a LIGHT card, or None. The all-in estimate for the couple's guest count when
+    there is one, else the rental fee."""
+    tot, g = v.get("estimate_total"), v.get("estimate_guests")
+    if isinstance(tot, (int, float)) and tot > 0:
+        lo, hi = _band_edges(tot)
+        return {"low": lo, "high": hi, "label": "about %s-%s all-in for %s guests, before tax and tip"
+                % (_band_k(lo), _band_k(hi), g) if g else "about %s-%s all-in, before tax and tip" % (_band_k(lo), _band_k(hi))}
+    fee = (v.get("venue_fee_range") or [None])[0]
+    if isinstance(fee, (int, float)) and fee > 0:
+        lo, hi = _band_edges(fee)
+        return {"low": lo, "high": hi, "label": "rental about %s-%s" % (_band_k(lo), _band_k(hi))}
+    return None
+
+
 def _light_card(v):
-    return {k: val for k, val in v.items()
-            if k not in ("venue_fee_range", "food_minimum", "estimate_label", "estimate_total", "estimate_guests")}
+    band = price_band(v) if config.LIGHT_PRICE_BANDS else None
+    out = {k: val for k, val in v.items()
+           if k not in ("venue_fee_range", "food_minimum", "estimate_label", "estimate_total", "estimate_guests")}
+    if band:
+        out["price_band"] = band
+    return out
 
 
 # ---------------------------------------------------------------- photographers + entertainment
@@ -752,6 +784,10 @@ def named_in(text, name):
     return any(re.search(r"\b%s\b" % re.escape(w), low) for w in words)
 
 
+# The opening's user message (app.OPENING_ASK) starts with this - how the agent knows it is writing the first message.
+OPENING_PREFIX = "Recommend 3 venues for us based on our profile"
+
+
 def named_fully(text, name):
     """Stricter than named_in: the couple typed (nearly) the whole name - every distinctive word of a 1-2 word name,
     all but one of a longer one, and always at least 2 when the name has 2+. "venues in Dallas" does not name Tower
@@ -1177,9 +1213,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     searched.append(v["vendor_id"])
             row = {k: v.get(k) for k in ("vendor_id", "name", "state", "address", "venue_type",
                                          "max_capacity_seated", "venue_fee_range", "description",
-                                         "distance_miles") if k in v}
-            if not any(row.get("venue_fee_range") or []):
-                row["venue_fee_range"] = "rental not in this venue's PDF"   # never read a 0 placeholder as "$0"
+                                         "distance_miles", "price_band") if k in v}
+            if not light and not any(row.get("venue_fee_range") or []):
+                # never read a 0 placeholder as "$0". Not for LIGHT (2026-11-07): its cards carry no rental at all,
+                # and every LIGHT venue was being described to the model as "rental not in this venue's PDF".
+                row["venue_fee_range"] = "rental not in this venue's PDF"
             if i < len(prices) and prices[i]:
                 row["pricing"] = prices[i]
             out.append(row)
@@ -1803,12 +1841,33 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     elif light:
         context += ("\nDETAIL: LIGHT. This couple is not on Forever: recommend on fit and comparisons only, "
                     "with no dollar figures (see DETAIL LEVEL). Forever unlocks the full price breakdown here.")
+        if config.LIGHT_PRICE_BANDS:
+            context += ("\nPRICE BANDS (this overrides 'no vendor figures' for bands only): each venue may carry a "
+                        "price_band. You MAY quote a venue's price_band label exactly as written (e.g. \"about "
+                        "$30K-$35K all-in for 125 guests, before tax and tip\") - at most one band per venue, never a "
+                        "narrower or different figure, never a band you made up, never for a venue without one. When "
+                        "they ask what a venue costs, give its band and say the exact line-by-line prices are in its "
+                        "PDF.")
     else:
         context += "\nDETAIL: FULL."
         last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
         if isinstance(last_user, str) and BREAKDOWN_ASK.search(last_user):
             context += ("\nBREAKDOWN REQUESTED: the couple's latest message asks for a cost breakdown - follow "
                         "COST BREAKDOWN (itemized \"• \" lines, about 220 words), whatever the length rules say.")
+    # Forever in the Planner (2026-11-07, Kate in #product-development 11-05 + the planner log: 162 of 290 openings
+    # said "Forever unlocks..."): never in the FIRST message - the couple hasn't seen any plan yet - and at most once
+    # per chat after that unless they ask. The upgrade card on the page is unaffected.
+    if not paid and (light or free):
+        first_user = next((m.get("content") for m in messages if m.get("role") == "user"), "")
+        if isinstance(first_user, str) and first_user.startswith(OPENING_PREFIX) and len(messages) <= 1:
+            context += ("\nFIRST MESSAGE: this is the Planner's first message and the couple hasn't seen Tulle's "
+                        "plans. Do NOT mention Forever, plans, upgrading or unlocking anything. Where you would, "
+                        "point them to the pricing PDF instead (\"its PDF has the full price list\"). This overrides "
+                        "any closing line about Forever above.")
+        elif any("Forever" in (m.get("content") or "") for m in messages
+                 if m.get("role") == "assistant" and isinstance(m.get("content"), str)):
+            context += ("\nYou already mentioned Forever in this chat: don't mention it again unless the couple asks "
+                        "about exact prices, plans or what Forever includes.")
     if light:
         pass
     elif paid:
