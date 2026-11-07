@@ -53,3 +53,11 @@ def _recent_opening_clear():
     app._RECENT_OPENING.clear()
     app._USED_CHATS.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _open_ended_off(monkeypatch):
+    # REC_OPEN_ENDED (2026-11-07) defaults ON in production; the older tests pin the chips/question behaviour, so they
+    # run with it off. tests/test_open_ended.py turns it on.
+    import config
+    monkeypatch.setattr(config, "OPEN_ENDED", False)

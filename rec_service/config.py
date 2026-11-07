@@ -71,6 +71,10 @@ OPENING_NO_FOREVER = os.environ.get("REC_OPENING_NO_FOREVER", "1").strip() not i
 # shortlist; DATE_FLEX = check cheaper (off-peak) dates before calling a venue they like a no (Des, 11-05).
 RETURNING_OPENING = os.environ.get("REC_RETURNING_OPENING", "1").strip() not in ("0", "false", "no", "")
 DATE_FLEX = os.environ.get("REC_DATE_FLEX", "1").strip() not in ("0", "false", "no", "")
+# OPEN-ENDED replies (owner 2026-11-07, closing the open week): answers end on the answer - no trailing question, no
+# suggested-reply chips, no profile questions - so we see which direction couples take on their own. A venue-name
+# lookup with several matches keeps its name chips (that is the answer). 0 = replies exactly as before.
+OPEN_ENDED = os.environ.get("REC_OPEN_ENDED", "1").strip() not in ("0", "false", "no", "")
 LIGHT_PRICE_BANDS = os.environ.get("REC_LIGHT_PRICE_BANDS", "1").strip() not in ("0", "false", "no", "")
 # Whole service: stop spending above this many USD per UTC day.
 GLOBAL_DAILY_USD = float(os.environ.get("REC_GLOBAL_DAILY_USD", "40"))

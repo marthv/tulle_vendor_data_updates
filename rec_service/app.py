@@ -147,6 +147,32 @@ def _more_left(turns):
     return n if n >= agent.MORE_STEP else 0
 
 
+_Q_TAIL = re.compile(r"(?:^|(?<=[.!?])\s+)([^.!?]*\?)\s*$")
+
+
+def strip_trailing_question(text):
+    """Drop the closing question(s) of a reply when real content remains before them (open-ended mode)."""
+    t = (text or "").rstrip()
+    for _ in range(2):
+        m = _Q_TAIL.search(t)
+        if not m or len(t[:m.start(1)].strip()) < 40:
+            break
+        t = t[:m.start(1)].rstrip()
+    return t
+
+
+def _open_ended(out):
+    """OPEN_ENDED (owner 2026-11-07): no chips, no questions, no closing question. A lookup that found several venues
+    keeps its name chips - those are the answer, not a nudge."""
+    if not config.OPEN_ENDED or not isinstance(out, dict):
+        return out
+    if ((out.get("lookup") or {}).get("status")) != "choices":
+        out["chips"] = []
+        out["text"] = strip_trailing_question(out.get("text") or "")
+    out["questions"] = []
+    return out
+
+
 def _public(out, **extra):
     """What the page gets: the hidden extras become a count (they cost a question to reveal); the search
     filters stay server-side (stored with the answer for "Show 3 more" and the next question)."""
@@ -482,7 +508,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         pref_hint = prefs.search_hint(answers)
         # Thin profile (2026-10-26): the opening asks at most 2 questions with tap answers (profile_questions.py).
         qs = (profile_questions.questions(xano.profile_of(user), raw, user_context, active_filters)
-              if kind == "opening" and config.PROFILE_QUESTIONS else [])
+              if kind == "opening" and config.PROFILE_QUESTIONS and not config.OPEN_ENDED else [])
         guests_extra = {"Wedding_Guest_Count": int(answers["guests"][0])} if answers.get("guests") else {}
         # Price question from someone not on Forever (2026-10-26): answer on fit + one Forever line + the
         # upgrade card, at most once per chat. Detected on the couple's own words, not left to the model.
@@ -1047,6 +1073,7 @@ def _opening(token, user, background, tracker):
                                       bool(out.get("price_locked")))
         if out.get("questions"):
             out["chips"] = [o["label"] for o in out["questions"][0]["options"]][:4]
+        _open_ended(out)
         return _public(out, chat_id=same)   # the page's second mount: same chat, nothing stored or logged twice
     out["chips"] = _opening_chips(out.get("text") or "", out.get("chips") or [], user, bool(out.get("price_locked")))
     if out.get("questions"):
@@ -1054,6 +1081,7 @@ def _opening(token, user, background, tracker):
         # sent as the next message and _refine_in_chat saves it (the page may also render `questions` itself).
         out["chips"] = [o["label"] for o in out["questions"][0]["options"]][:4]
         background.add_task(_mark_asked, user["id"], [q["id"] for q in out["questions"]])
+    _open_ended(out)
     chat = xano.create_chat(user["id"], _picks_title(out, user))
     _remember_opening(user["id"], chat["id"], out.get("text") or "")
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
@@ -1192,6 +1220,7 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
         # They answered one of the opening's 2 questions: ask the other one now, its answers as the chips.
         out["questions"] = rest[:1]
         out["chips"] = [o["label"] for o in rest[0]["options"]][:4]
+    _open_ended(out)
     if (chat.get("title") or "").startswith("Venue picks"):
         chat["title"] = _question_title(text)
 
@@ -1269,6 +1298,7 @@ def _refine(token, user, body, background, tracker):
     if out.get("price_locked"):
         out["chips"] = free_mode.chips(out["chips"], planning=config.COST_TOOLS_IN_CHAT)
     out["chips"] = _next_step(out)   # client-held turns carry no chips
+    _open_ended(out)
     chat = xano.create_chat(user["id"], _question_title(text))
     earlier = msgs[:-1]
 
@@ -1356,7 +1386,7 @@ def _more_reply(history, access=True):
         text = free_mode.sanitize_text(text)[0]
     # more_chips carries the last answer's chips forward - an action chip there would show twice in a row.
     chips = place_action_chip(chips, history, topups=CHIP_TOPUPS if access else free_mode.TOPUPS)
-    return {"text": text, "cards": picks, "chips": chips, "left": len(remaining) - len(picks)}
+    return {"text": text, "cards": picks, "chips": [] if config.OPEN_ENDED else chips, "left": len(remaining) - len(picks)}
 
 
 @app.post("/rec/more")
@@ -1465,7 +1495,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
             xano.add_message(chat["id"], "assistant", text, [{"meta": "widget", "widget": widget}], chips)
             xano.touch_chat(chat)
         background.add_task(persist)
-    return {"tool": name, "text": text, "widgets": [widget], "chips": chips, "chat_id": chat["id"] if chat else None,
+    return {"tool": name, "text": text, "widgets": [widget], "chips": [] if config.OPEN_ENDED else chips, "chat_id": chat["id"] if chat else None,
             "price_locked": not access}
 
 

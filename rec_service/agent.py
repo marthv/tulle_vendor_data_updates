@@ -157,7 +157,31 @@ def system_prompt(listings=None):
             if text.count(old) != 1:
                 raise RuntimeError("LISTINGS_PROMPT_EDITS no longer matches SYSTEM: %r" % old[:60])
             text = text.replace(old, new)
+    if config.OPEN_ENDED:
+        text += "\n\n" + OPEN_ENDED_RULES
     return text
+
+
+def _nearby_note(state):
+    """What the model does with nearby_states_with_matches (2026-11-07). Open-ended mode: a statement, no question."""
+    head = "none in %s yet; these bordering states have them (counted with no other filters). " % state
+    if config.OPEN_ENDED:
+        return head + ("Say it as one plain statement naming the top one with its count (e.g. \"We have 40 "
+                       "photographers in Kansas.\") - no question, no chips.")
+    return head + ("End with ONE yes/no question offering the top one by name and count (e.g. \"We have 40 "
+                   "photographers in Kansas - want to see them?\") and make \"Yes, show <state>\" the first chip.")
+
+
+# Appended to SYSTEM when config.OPEN_ENDED (owner 2026-11-07). Last in the prompt so it wins over the question / chip /
+# ladder rules above; app._open_ended also clears chips and trims a trailing question in code.
+OPEN_ENDED_RULES = (
+    "OPEN-ENDED REPLIES (owner 2026-11-07 - this OVERRIDES every instruction above about ending with a question, the "
+    "NEXT-STEP LADDER's chips and the CHIPS rule): we want to see where couples take the conversation on their own. End "
+    "on the answer itself - the picks, the facts, which PDF to open and what to look for in it. Do NOT end with a "
+    "question, do NOT ask what they want next, do NOT offer options to choose between and do NOT suggest follow-up "
+    "questions. If a missing fact would sharpen the picks (guest count, area, date), say so in one plain statement, not "
+    "a question (\"Your guest count would narrow these down.\"). Call present_recommendations with chips: [] (an "
+    "empty list). Ask a question only when you cannot answer at all without it.")
 
 # Appended to SYSTEM only when config.COST_TOOLS_IN_CHAT is on (off = the prompt is exactly origin/main's).
 COST_TOOLS_RULES = """COST TOOLS (2026-10-25: the Cost tools tab moved into this chat). For ANY question about what a whole wedding costs, how to split their budget, where their budget stands, or comparing the venues they saved or quoted, call the matching tool - estimate_wedding_cost, split_budget, budget_status, compare_venues - even if you also search. Each one draws a chart or table for the couple under your message, so let the widget carry the numbers: quote at most the one or two figures that answer the question (from the tool's facts, exactly), never re-list the table. For a what-if ("what if 120 guests?", "without a planner?") call the tool again with the new argument. A per-venue all-in is still estimate_cost; compare_venues is for the couple's saved venues and their own quotes together.
@@ -1398,7 +1422,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     "total_matches"), pool)
             if nb:
                 res["nearby_states_with_matches"] = nb
-                res["nearby_note"] = ("none in %s yet; these bordering states have them (counted with no other filters). End with ONE yes/no question offering the top one by name and count (e.g. \"We have 40 photographers in Kansas - want to see them?\") and make \"Yes, show <state>\" the first chip." % sts[0])
+                res["nearby_note"] = _nearby_note(sts[0])
         if "keyword_matches" in r:
             res["keyword_matches"] = r["keyword_matches"]
         if r.get("matches_by_state"):
@@ -1522,7 +1546,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     "total_matches"), pool)
             if nb:
                 res["nearby_states_with_matches"] = nb
-                res["nearby_note"] = ("none in %s yet; these bordering states have them (counted with no other filters). End with ONE yes/no question offering the top one by name and count (e.g. \"We have 40 photographers in Kansas - want to see them?\") and make \"Yes, show <state>\" the first chip." % sts[0])
+                res["nearby_note"] = _nearby_note(sts[0])
         if priced:
             # Florists with pricing (2026-11-07): this replaces the listings-only note for THIS result.
             where = (" in " + " and ".join(sts)) if sts and "International" not in sts else ""
