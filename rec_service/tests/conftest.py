@@ -43,3 +43,13 @@ def _pricing_cache_off(monkeypatch):
         c.clear()
     opening_reuse.STORE.clear()
     railway_search.BREAKER.reset()
+
+
+@pytest.fixture(autouse=True)
+def _recent_opening_clear():
+    # app._RECENT_OPENING / _USED_CHATS (one chat per opening, 2026-11-07) are module-level: never let one test's
+    # opening be "the same opening" in another.
+    import app
+    app._RECENT_OPENING.clear()
+    app._USED_CHATS.clear()
+    yield

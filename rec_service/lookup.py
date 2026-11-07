@@ -203,6 +203,30 @@ DESCRIPTORS = {
     "fall", "spring", "summer", "winter", "autumn", "space", "spaces", "setup", "style", "styles"}
 
 
+# Hotel / buyout words (2026-11-07, chat 1260: "what about hotel buyout?" -> "We don't have Hotel Buyout in Tulle").
+DESCRIPTORS |= {"hotel", "hotels", "resort", "resorts", "inn", "inns", "buyout", "buyouts", "exclusive",
+                "exclusivity", "venue", "venues", "spot", "spots"}
+
+# A follow-up, a complaint or a correction - never one venue by name (planner log 11-03..11-06: "is that inclusive?",
+# "It's stupid", "Not new york", "nevermind - disregard" were each answered "We don't have <that> in Tulle yet - I've
+# passed it to our team" with three unrelated venues). Real venue names don't open with these words or contain them.
+_CONVERSATIONAL = re.compile(
+    r"^(?:not|no|nope|never ?mind|nvm|disregard|forget|ignore|stop|wait|actually|ugh|um+|uh+|lol|"
+    r"is|are|was|were|does|do|did|can|will|has|have|its|it'?s|this|that|these|those|they|it)\b"
+    r"|\b(?:stupid|dumb|useless|terrible|awful|sucks?|hate|wrong|annoying|broken|worst|confusing|disregard|"
+    r"nevermind|never mind|that|this|those|these|them|it|its|it's)\b", re.I)
+
+
+def conversational(text):
+    """True when the message reads as a follow-up / complaint / correction rather than a venue's name."""
+    return bool(_CONVERSATIONAL.search(" ".join(str(text or "").replace("’", "'").split())))
+
+
+# "South Lake Tahoe", "Northern Virginia", "upper east side": a direction word plus a place is still a place.
+_DIRECTION = re.compile(r"^(?:north|south|east|west|northern|southern|eastern|western|central|upper|lower|"
+                        r"greater|downtown|coastal|northeast|northwest|southeast|southwest)\s+(.+?)(?:\s+area)?$")
+
+
 def _descriptive_only(name):
     """True when every word of the would-be name says what KIND of place (or a need), none says which one."""
     ws = tokens(name)
@@ -211,6 +235,13 @@ def _descriptive_only(name):
 
 def _place(s):
     n = norm(s)
+    n = re.sub(r"\s+area$", "", n)
+    # "Orange County", "Jefferson Parish". Not "valley": Bear Brook Valley is a venue (Kate, 2026-11-01).
+    if re.search(r"\b(?:county|parish|metro)$", n) and len(n.split()) <= 4:
+        return True
+    m = _DIRECTION.match(n)
+    if m and _place(m.group(1)):
+        return True
     return n in US_STATES or n in STATE_ABBR or n in PLACES or n.replace(" ", "") in {p.replace(" ", "") for p in PLACES}
 
 
@@ -260,6 +291,8 @@ def detect(text, last_assistant=""):
     last_assistant: the previous assistant message - a bare reply to its question ("Austin") is never a lookup."""
     raw = " ".join(str(text or "").split())
     if not raw or len(raw) > 200:
+        return None
+    if conversational(raw) and not _CUE.search(raw):
         return None
     # "Is Il Sereno ... listed in Tulle's vendor directory? What is its pricing?" -> the first sentence.
     first = re.split(r"[?!]\s+", raw)[0].strip()
@@ -315,7 +348,7 @@ def detect(text, last_assistant=""):
     words = norm(name).split()
     if not words or len(words) > 7 or len(norm(name)) < 3:
         return None
-    if REJECT.search(name) or _place(name) or _descriptive_only(name):
+    if REJECT.search(name) or _place(name) or _descriptive_only(name) or conversational(name):
         return None
     after_question = False
     if not cue:
@@ -409,6 +442,20 @@ def decide(ranked):
     return "not_found", []
 
 
+def _promote_single(q, status, matches):
+    """ONE close match whose name holds every distinctive word they typed (nearly exactly) is the venue, not a
+    question (planner log 11-05: "Dinolfos" got "The closest match we have is DiNolfo's Banquets of Homer Glen - is
+    that the one you meant?" three times; the couple retyped instead of tapping). The candidate's extra words
+    ("Banquets of Homer Glen") are what kept its score under HIGH."""
+    if status != "choices" or len(matches) != 1:
+        return status, matches
+    m = matches[0]
+    names = [q.get("name") or ""] + ([q["alt_name"]] if q.get("alt_name") else [])
+    if any(strong(n, m.get("name")) or strong(n, m.get("google_name")) for n in names if n):
+        return "found", matches
+    return status, matches
+
+
 def find(q, search, workers=6):
     """q: detect() output. search(term) -> rows (each with vendor_id, name, google_name, address, state); it may
     raise. Returns {"status", "matches", "queries", "scores"}. Stage 2 (typo variants) runs only when stage 1 is not
@@ -446,6 +493,7 @@ def find(q, search, workers=6):
             run(extra)
             ranked = _rank(rows, q)
             status, matches = decide(ranked)
+    status, matches = _promote_single(q, status, matches)
     return {"status": status, "matches": matches, "queries": list(done),
             "scores": [round(s, 3) for s, _ in ranked[:5]],
             "near": [r.get("name") for s, r in ranked[:3] if r.get("name")]}

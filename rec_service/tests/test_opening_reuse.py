@@ -61,6 +61,7 @@ def test_only_normal_answers_are_stored(bad):
 def api(monkeypatch):
     import agent, app, config, xano
     from fastapi.testclient import TestClient
+    app._RECENT_OPENING.clear(); app._USED_CHATS.clear()   # module-level, must not leak between tests
     st = {"runs": 0, "logged": [], "mp": [], "chats": 0, "paid": True, "access": True, "rows": [],
           "memory": {"id": 1, "user_id": 7, "notes": [], "user_context": ""},
           "user": {"id": 7, "Wedding_Location_Updated": ["Texas"], "Wedding_Guest_Count": 120,
@@ -109,7 +110,9 @@ def test_second_visit_reuses_without_model_or_usage_row(api):
     a = opening(api)
     b = opening(api)
     assert api["runs"] == 1 and a["text"] == b["text"] == "Run 1 picks." and b["cards"] == a["cards"]
-    assert b["chat_id"] != a["chat_id"]                        # still a fresh chat on every visit, as the page expects
+    # 2026-11-07: the same opening again within RECENT_OPENING_S, in a chat with no messages yet, is the page's
+    # double mount - same chat, not a second identical conversation (see app._recent_opening_chat).
+    assert b["chat_id"] == a["chat_id"]
     assert [r["status"] for r in api["logged"]] == ["ok"]      # the reuse wrote no rec_usage row
     assert [p.get("reused") for p in api["mp"] if p.get("kind") == "opening"] == [False, True]
     assert api["mp"][-1]["model"] == "reuse" and api["mp"][-1]["cost_usd"] == 0
@@ -169,3 +172,14 @@ def test_free_user_reuse_keeps_free_counters(api):
     a = opening(api)
     b = opening(api)
     assert api["runs"] == 1 and b["free_refines_left"] == a["free_refines_left"] and b["price_locked"] is True
+
+
+def test_reused_opening_gets_a_new_chat_once_the_first_was_used_or_the_window_passed(api, monkeypatch):
+    import app
+    a = opening(api)
+    app._chat_used(a["chat_id"])                    # the couple wrote in it
+    b = opening(api)
+    assert b["chat_id"] != a["chat_id"]
+    app._RECENT_OPENING[api["user"]["id"]] = (b["chat_id"], b["text"], 0)   # long ago
+    c = opening(api)
+    assert c["chat_id"] != b["chat_id"]

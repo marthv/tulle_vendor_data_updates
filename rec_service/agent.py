@@ -82,7 +82,7 @@ How to work:
 - If the context says "LOCATION: STATE ONLY", you know their state but not where in it. Search the state anyway, then make your ONE closing question which city or area they want to be close to (e.g. "Which part of Texas - near Dallas, Austin, Houston?"), unless they already said it in this chat, in the notes from earlier conversations or in what they asked you to keep in mind - then pass that place as city. Ask it only once per chat. It comes before a style or preference question; a missing guest count still comes first. When they answer, save it with save_note (e.g. "Wants to stay near: Flower Mound, Texas") and search with it as city.
 - Don't repeat yourself across a conversation. Earlier replies end with [Vendors shown: ...] and [Chips offered: ...]. search_venues already leaves out venues shown in this chat and their Saved venues (already_shown_left_out says how many), so each new reply brings venues the couple hasn't seen. Show an earlier venue again only if they ask about it by name, ask to compare, or point back at it - then say it's one they've seen. Never call a venue "new" or say they "haven't seen" it unless it is not in any [Vendors shown] list.
 - The couple's stated criteria hold until they change them: a location or city, a guest count, a rental or food cap. search_venues keeps them for you (ACTIVE FILTERS); "more", "other options" or "cheaper" never widen them. When they name a city, town or area, or say where they want to stay close to (NYC, Manhattan, San Diego, Flower Mound), pass it as city - keyword does not filter by location. A town is searched by distance: results come nearest first with distance_miles, so say roughly how far each pick is ("about 9 miles from Flower Mound"). If nothing fits within the radius, search again with a bigger radius_miles before you ever say we have nothing nearby, and then say how far the closest options are. Never say a town has no venues just because none have that town in their address. If too few venues fit the couple's other filters, say so and ask before widening those. Don't repeat what they can open (their plan) after the first reply, and never call it "free" access when they have a plan.
-- Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so. search_venues already leaves out venues whose known guest minimum is above the guests you pass, and venues whose known food and drink minimum is over half the couple's budget (left_out_for_minimums says how many).
+- Respect guest minimums: never recommend a venue whose minimum is above the couple's guest count without saying so. search_venues already leaves out venues whose known guest minimum is above the guests you pass, and venues whose known food and drink minimum is over half the couple's budget (left_out_for_minimums says how many). EXCEPTION: a venue the couple asked about BY NAME is always shown as a card (put it in vendor_ids), even when it is over their budget or its minimum is too high - then say plainly that it's a stretch and why, and offer cheaper alternatives. Never answer a named venue with "I held it back" or "I can't open its card here".
 - If the profile has no guest count, don't assume a big wedding: make picks that work across sizes, say the count changes which venues fit, and make your one question how many guests they expect.
 - Small weddings and elopements (roughly under 30 guests): pass the real count as guests, prefer venues with no or low minimums (restaurants, raw spaces, small hotels), and if nothing in our data fits, say so plainly. Tulle doesn't track elopement packages or ceremony-only pricing yet - say that if asked, and point to the PDF for any small-party option a venue lists.
 - Budget rule of thumb: venue plus food and drink is usually 40-50% of the total wedding budget.
@@ -752,6 +752,19 @@ def named_in(text, name):
     return any(re.search(r"\b%s\b" % re.escape(w), low) for w in words)
 
 
+def named_fully(text, name):
+    """Stricter than named_in: the couple typed (nearly) the whole name - every distinctive word of a 1-2 word name,
+    all but one of a longer one, and always at least 2 when the name has 2+. "venues in Dallas" does not name Tower
+    Club Dallas; "Tell me about Tower Club Dallas" does."""
+    words = [w for w in re.findall(r"[a-z]+", (name or "").lower()) if len(w) > 3 and w not in _NAME_STOP]
+    if not words:
+        return False
+    low = (text or "").lower()
+    hit = sum(1 for w in words if re.search(r"\b%s\b" % re.escape(w), low))
+    need = len(words) if len(words) <= 2 else len(words) - 1
+    return hit >= need
+
+
 PEAK_CAVEAT = re.compile(r"peak[- ]season saturday|peak saturday|peak-saturday|saturday evening", re.I)
 OPEN_PDF = re.compile(r"\bopen\b[^.]{0,80}\bpdf\b", re.I)
 
@@ -863,6 +876,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     free = detail == "free"
     light = detail in ("light", "free")
     seen = {}            # vendor_id -> card data, filled by search_venues in THIS request
+    seen_again_ok = set()   # already-seen venues a search handed back because nothing new matched (no repeat bounce)
     extra = {}           # vendor_id -> card data for "Show 3 more" ONLY: search results past the 8 the model sees
     searched = []        # vendor_ids search_venues returned in THIS request, in search order
     searches = []        # one per search_venues call: {"filters": effective filters, "ids": its results in order}
@@ -1101,12 +1115,19 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         keep = lambda v: (v.get("vendor_id") not in hide or (kw and kw in (v.get("name") or "").lower())
                           or named_in(last_user, v.get("name")))
         n_before = len(venues)
+        hidden_matches = [v for v in venues if not keep(v)]
         venues = [v for v in venues if keep(v)]
         n_hidden = n_before - len(venues)
         removed = {"food_minimum_over_half_budget": 0, "guest_minimum_over_party": 0, "rental_over_cap": 0,
                    "food_per_guest_over_cap": 0}
+        # A venue the couple NAMED is never dropped for a minimum or a cap - it is shown, and the model says it's a
+        # stretch (planner log 11-05: "Tell me about Tower Club Dallas and whether it fits my wedding" -> "I held it
+        # back because its food and drink minimum is more than half of your budget", no card; same for American
+        # Swedish Historical Museum and Cedar Lakes Estate). The couple asked about THAT venue.
+        asked_for = lambda v: (v.get("vendor_id") in named_ids or (kw and kw in (v.get("name") or "").lower())
+                               or named_fully(last_user, v.get("name")))
         if food_cap:
-            kept = [v for v in venues if not (v.get("food_minimum") or 0) > food_cap]
+            kept = [v for v in venues if asked_for(v) or not (v.get("food_minimum") or 0) > food_cap]
             removed["food_minimum_over_half_budget"] = len(venues) - len(kept)
             venues = kept
         # Pricing is one ep230 call per venue (8 in parallel). With a guest count or a price cap every venue has
@@ -1127,7 +1148,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             raws = list(pool.map(raw_pricing_or_none, [v["vendor_id"] for v in wave]))
             i += len(wave)
             for v, p in zip(wave, raws):
-                why = None if v.get("vendor_id") in named_ids else _misfit(p, guests, max_venue_fee, max_food_per_person)
+                why = None if asked_for(v) else _misfit(p, guests, max_venue_fee, max_food_per_person)
                 if why:
                     removed[why] += 1
                 else:
@@ -1195,6 +1216,24 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                                                          "filters it falls outside of"}
         if n_hidden:
             res["already_shown_left_out"] = n_hidden
+        # Nothing new left (2026-11-07): the planner log had 17 answers with ZERO cards, most of them "every barn
+        # near Glendale Heights is one you've already seen" - true, and a dead end. Give the model the best 3 it
+        # already showed back as cards it may present (flagged, never called new); present_recommendations lets
+        # these through without the repeat bounce.
+        if not out and hidden_matches:
+            back = []
+            for v in hidden_matches[:3]:
+                c = card(v, None)
+                c = _light_card(c) if light else c
+                if c.get("vendor_id"):
+                    seen[c["vendor_id"]] = c
+                    seen_again_ok.add(c["vendor_id"])
+                    back.append({"vendor_id": c["vendor_id"], "name": c.get("name"), "state": c.get("state")})
+            if back:
+                res["already_seen_matches"] = back
+                res["already_seen_note"] = ("no NEW venue matches; these are the best matches they've already seen - "
+                                            "show them as cards, say plainly they've seen them, and suggest the one "
+                                            "filter to relax for new options")
         if any(removed.values()):
             res["left_out_for_minimums"] = {k: v for k, v in removed.items() if v}
         if r.get("matches_by_state") and not city:
@@ -1646,7 +1685,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         hidden = set(prior) | (set() if SAVED_ASK.search(last_user) else set(saved_ids))
         names = {**{c["vendor_id"]: c.get("name") for c in saved_cards_holder.get("cards") or []},
                  **{k: v.get("name") for k, v in seen.items()}}
-        again = [v for v in vendor_ids or [] if v in hidden and not named_in(last_user, names.get(v))]
+        again = [v for v in vendor_ids or [] if v in hidden and v not in seen_again_ok
+                 and not named_in(last_user, names.get(v))]
         claims_new = bool(again) and bool(NEW_CLAIM.search(message or ""))
         if again and (claims_new or not asked_back) and not guard.get("repeat_bounced"):
             guard["repeat_bounced"] = True

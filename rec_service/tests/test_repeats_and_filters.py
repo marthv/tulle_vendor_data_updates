@@ -525,3 +525,35 @@ def test_state_only_profile_tells_the_model_to_ask_where(world, monkeypatch):
     assert "LOCATION: STATE ONLY (New York)" in first and "close to - in the message itself" in first
     assert "STATE ONLY" not in _first_message(monkeypatch, {"states": ["New York"], "city": "Albany"})
     assert "LOCATION: STATE ONLY" in _mods()[0].SYSTEM
+
+
+# ---------------------------------------------------------------- dead ends (planner log 11-03..06, 2026-11-07)
+
+def test_a_venue_the_couple_names_survives_the_price_cap(world):
+    # "Tell me about Tower Club Dallas and whether it fits my wedding" -> "I held it back", no card.
+    world["venues"] = [venue("V1", "Tower Club Dallas"), venue("V2")]
+    world["rental"] = {"V1": 30000}
+    res, _ = world["run"]([("search_venues", {"states": ["Texas"]}), present(["V1"], "It's a stretch.")],
+                          ask="Tell me about Tower Club Dallas and whether it fits my wedding",
+                          active={"states": ["Texas"], "max_venue_fee": 5000})
+    r = _search_result(world["log"])
+    assert "V1" in [v["vendor_id"] for v in r["venues"]]
+    assert [c["vendor_id"] for c in res["cards"]] == ["V1"]
+
+
+def test_a_city_word_alone_does_not_lift_the_cap(world):
+    world["venues"] = [venue("V1", "Tower Club Dallas"), venue("V2")]
+    world["rental"] = {"V1": 30000}
+    world["run"]([("search_venues", {"states": ["Texas"]}), present(["V2"])],
+                 ask="venues in Dallas", active={"states": ["Texas"], "max_venue_fee": 5000})
+    assert "V1" not in [v["vendor_id"] for v in _search_result(world["log"])["venues"]]
+
+
+def test_nothing_new_hands_back_the_best_already_seen_without_a_bounce(world):
+    world["venues"] = [venue("V1"), venue("V2"), venue("V3")]
+    res, usage = world["run"]([("search_venues", {"states": ["New York"]}),
+                               present(["V1", "V2"], "These are the ones you've seen.")],
+                              ask="barns only", prior=["V1", "V2", "V3"])
+    r = _search_result(world["log"])
+    assert r["venues"] == [] and [v["vendor_id"] for v in r["already_seen_matches"]] == ["V1", "V2", "V3"]
+    assert [c["vendor_id"] for c in res["cards"]] == ["V1", "V2"] and not usage["repeat_bounced"]

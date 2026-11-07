@@ -710,9 +710,11 @@ def _lookup_card(c, p, full, guests, budget, reason=""):
     return dict(c, reason=reason), p
 
 
-def _similar_near(token, q, user, slog, exclude=(), use_profile=True):
+def _similar_near(token, q, user, slog, exclude=(), use_profile=True, guests=0):
     """Up to LOOKUP_SIMILAR real venues in the area the couple named (or their profile state): one fast search.
-    ([], '') when the area is unknown or the search fails - the honest "we don't have it" still stands."""
+    ([], '') when the area is unknown or the search fails - the honest "we don't have it" still stands.
+    guests (2026-11-07): only venues that seat the couple's guest count - the planner log showed the same three
+    most-clicked names for every miss in a state ("Allied Arts Guild, Alila Marea, Aliso Viejo"), whatever the size."""
     loc = q.get("location") or q.get("alt_location") or ""
     state = lookup.state_of(loc) if loc else ""
     venues, where = [], ""
@@ -727,8 +729,9 @@ def _similar_near(token, q, user, slog, exclude=(), use_profile=True):
             # 2026-10-26, "Il Sereno on Lake Como" got "3 venues we do have in Alabama".
             states = [state] if state else (agent._states_of(xano.profile_of(user))[:1] if use_profile else [])
             if states:
+                kw = {"guests": int(guests)} if guests else {}
                 venues = xano.search_venues(token, states=states, page_size=LOOKUP_SIMILAR + 3,
-                                            search_log=slog)["venues"]
+                                            search_log=slog, **kw)["venues"]
                 where = "in " + ("international destinations" if states == ["International"] else states[0])
     except Exception:
         return [], ""
@@ -822,7 +825,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         # the honest coverage line, no cards; any other miss shows venues from the area named or, failing that, the
         # couple's own profile state (use_profile) instead of a question; a repeat of the same name says so.
         dest = lookup.destination_in("%s %s" % (name, loc))
-        similar, where = ([], "") if dest else _similar_near(token, q, user, slog, use_profile=True)
+        similar, where = ([], "") if dest else _similar_near(token, q, user, slog, use_profile=True, guests=guests)
         cards = []
         for v in similar:
             c = agent._with_rental(dict(v), None, guests, budget)
@@ -988,12 +991,59 @@ def opening(background: BackgroundTasks, body: Optional[OpeningBody] = None, aut
     return _tracked(body.request_id if body else "", user, lambda tr: _opening(token, user, background, tr))
 
 
+# One chat per opening, not two (2026-11-07). The planner log 11-03..11-06 had 290 openings for 122 couples, 47 of them
+# in the same minute as that couple's previous opening: the page mounts the chat element twice (the tab variable
+# flips, the editor double-mounts), the second POST /rec/opening is served the SAME stored opening (opening_reuse),
+# and every call created a new chat - two identical conversations in "Chats", two rows in the team's sheet. Now an
+# identical opening for the same couple within RECENT_OPENING_S, in a chat nobody has written in yet, returns that
+# chat. "New chat" after a real conversation still makes a new one (the old chat is marked used on its first message).
+RECENT_OPENING_S = 120
+_RECENT_OPENING = {}          # user_id -> (chat_id, opening text, time)
+_USED_CHATS = set()           # chat ids that got a message after their opening (bounded below)
+_RECENT_LOCK = threading.Lock()
+
+
+def _chat_used(chat_id):
+    if not chat_id:
+        return
+    with _RECENT_LOCK:
+        _USED_CHATS.add(int(chat_id))
+        if len(_USED_CHATS) > 20000:
+            _USED_CHATS.clear()
+
+
+def _recent_opening_chat(user_id, text, now=None):
+    """The chat id to reuse for this opening, or None."""
+    now = time.time() if now is None else now
+    with _RECENT_LOCK:
+        rec = _RECENT_OPENING.get(user_id)
+        if rec and now - rec[2] <= RECENT_OPENING_S and rec[1] == text and rec[0] not in _USED_CHATS:
+            return rec[0]
+    return None
+
+
+def _remember_opening(user_id, chat_id, text, now=None):
+    with _RECENT_LOCK:
+        _RECENT_OPENING[user_id] = (int(chat_id), text, time.time() if now is None else now)
+        if len(_RECENT_OPENING) > 5000:
+            cutoff = time.time() - RECENT_OPENING_S
+            for k in [k for k, v in _RECENT_OPENING.items() if v[2] < cutoff]:
+                _RECENT_OPENING.pop(k, None)
+
+
 def _opening(token, user, background, tracker):
     # Create the chat only AFTER the guard allowed and the model answered - a blocked (402/429/503) or
     # failed opening must not leave an empty conversation behind. Costs ~0.3s.
     out = _run_guarded("opening", token, user, [{"role": "user", "content": OPENING_ASK}], tracker=tracker)
     if out.get("stopped"):
         return out           # no chat created, nothing saved
+    same = _recent_opening_chat(user["id"], out.get("text") or "")
+    if same:
+        out["chips"] = _opening_chips(out.get("text") or "", out.get("chips") or [], user,
+                                      bool(out.get("price_locked")))
+        if out.get("questions"):
+            out["chips"] = [o["label"] for o in out["questions"][0]["options"]][:4]
+        return _public(out, chat_id=same)   # the page's second mount: same chat, nothing stored or logged twice
     out["chips"] = _opening_chips(out.get("text") or "", out.get("chips") or [], user, bool(out.get("price_locked")))
     if out.get("questions"):
         # The first question's answers are the chips, so the current page already shows them as taps; a tap is
@@ -1001,6 +1051,7 @@ def _opening(token, user, background, tracker):
         out["chips"] = [o["label"] for o in out["questions"][0]["options"]][:4]
         background.add_task(_mark_asked, user["id"], [q["id"] for q in out["questions"]])
     chat = xano.create_chat(user["id"], _picks_title(out, user))
+    _remember_opening(user["id"], chat["id"], out.get("text") or "")
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     background.add_task(sheet_log.event, user, "Planner's first message", "(opened the Planner)", out.get("text"),
                         chat["id"], out.get("cards"), out.get("search_filters"), sheet_log.flag_of(out))
@@ -1105,6 +1156,7 @@ def _save_profile_answers(user, pending, text):
 
 def _refine_in_chat(token, user, chat, text, background, tracker=None):
     """One typed question inside a stored conversation: server-held history in, both turns saved after."""
+    _chat_used(chat.get("id") if isinstance(chat, dict) else chat)
     t0 = time.time()
     history = xano.get_messages(chat["id"])
     pending = _pending_questions(history)
@@ -1313,6 +1365,7 @@ def show_more(body: MoreBody, background: BackgroundTasks, authorization: str = 
 
 
 def _show_more(user, body, background, tracker):
+    _chat_used(body.chat_id)
     chat = xano.get_chat(user["id"], body.chat_id)
     if not chat:
         raise HTTPException(404, "conversation not found")
@@ -1377,6 +1430,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         chat = xano.get_chat(user["id"], body.chat_id)
         if not chat:
             raise HTTPException(404, "conversation not found")
+        _chat_used(body.chat_id)
     access = xano.has_paid_access(user)
     paid = xano.beta_member(user)
     base = {"user_id": user["id"], "kind": "tool_" + name, "chat_id": int(body.chat_id or 0), "model": "none",
