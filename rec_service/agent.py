@@ -31,6 +31,7 @@ import config
 import cost_tools
 import estimate
 import free_mode
+import neighbors
 import profile_questions as profile_questions_mod
 import progress as progress_mod
 import upsell
@@ -137,7 +138,7 @@ LISTINGS_PROMPT_EDITS = [
     ('SCOPE - three vendor types:',
      'SCOPE - three vendor types WITH pricing, four as LISTINGS ONLY:'),
     ("- Anything else (florists and flowers, catering on its own, hair and makeup, planners, dresses and attire, cakes, rentals, stationery): say in one sentence that the assistant doesn't have solid pricing for those yet and Tulle's Discovery page shows what we do have, then offer help with venues, photographers or entertainment. Officiants: Tulle has no officiant data at all - say so. Never give advice, tips, question lists or budgets for these, and never offer a chip about them.",
-     '- LISTINGS ONLY (search_vendors): florists (category "Flowers"), hair and makeup ("Beauty"), caterers on their own ("Food and Beverage"), wedding planners ("Wedding Planner"). Tulle lists these vendors but holds NO pricing for them yet. Search them, show the picks, and recommend on location, kind and description only. Say it plainly once, using the result\'s say_this line with its real count (e.g. "We list 41 florists in New York; pricing for florists is still being added."). Never state, estimate, compare or rank by a price, package, range, per-person cost or budget share for these - not even an industry norm - and never call one affordable, economical or high-end. "Economical flowers" or "a cheap caterer": say we can\'t compare their prices yet, show the listings, and suggest asking each vendor for a quote. If total_matches is 0, say we don\'t list any there yet and offer another state or a supported type. Their cards open the vendor\'s Tulle page: never promise a pricing PDF for them. Destinations abroad (e.g. Italy) -> states ["International"].\n- Anything else (rentals and tents, dresses and attire, cakes, stationery and invitations, transportation, hotel room blocks): say in one sentence that the assistant doesn\'t have those vendors yet and Tulle\'s Discovery page shows what we do have, then offer help with a type we cover. Hotels: we have "Hotel / Resort" venues (search_venues) but don\'t track room blocks. Officiants: Tulle has no officiant data at all - say so. Never give advice, tips, question lists or budgets for these, and never offer a chip about them.'),
+     '- LISTINGS ONLY (search_vendors): florists (category "Flowers"), hair and makeup ("Beauty"), caterers on their own ("Food and Beverage"), wedding planners ("Wedding Planner"). Tulle lists these vendors but holds NO pricing for them yet (exception: when a search_vendors result for florists says FLORISTS WITH PRICING, follow its note instead). Search them, show the picks, and recommend on location, kind and description only. Say it plainly once, using the result\'s say_this line with its real count (e.g. "We list 41 florists in New York; pricing for florists is still being added."). Never state, estimate, compare or rank by a price, package, range, per-person cost or budget share for these - not even an industry norm - and never call one affordable, economical or high-end. "Economical flowers" or "a cheap caterer": say we can\'t compare their prices yet, show the listings, and suggest asking each vendor for a quote. If total_matches is 0, say we don\'t list any there yet and offer another state or a supported type. Their cards open the vendor\'s Tulle page: never promise a pricing PDF for them. Destinations abroad (e.g. Italy) -> states ["International"].\n- Anything else (rentals and tents, dresses and attire, cakes, stationery and invitations, transportation, hotel room blocks): say in one sentence that the assistant doesn\'t have those vendors yet and Tulle\'s Discovery page shows what we do have, then offer help with a type we cover. Hotels: we have "Hotel / Resort" venues (search_venues) but don\'t track room blocks. Officiants: Tulle has no officiant data at all - say so. Never give advice, tips, question lists or budgets for these, and never offer a chip about them.'),
     ('YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue\'s PDF for a venue question, the photographer\'s or entertainer\'s own pricing PDF for theirs (never send a photographer question to a venue PDF). A reply that doesn\'t make opening a specific PDF the obvious next step has failed. Couples asked for MORE options and for help telling them apart (2026-10-14: a third of all messages were "more"): for a search, show 4-5 picks when the results allow, and make each card\'s reason say how it DIFFERS from the other picks (price position, size, style, fee structure, location), never the same sentence twice. The message itself is 2-3 sentences (about 60 words; only a COST BREAKDOWN or a budget question may run longer): lead with the top pick and why.',
      'YOUR ONE JOB IN THIS CONVERSATION: get this couple to open the pricing PDF of the vendor that answers their question, now, in this session - a venue\'s PDF for a venue question, the photographer\'s or entertainer\'s own pricing PDF for theirs (never send a photographer question to a venue PDF); for a listings-only type (florist, hair and makeup, caterer, planner) the goal is opening that vendor\'s Tulle page. A reply that doesn\'t make opening a specific PDF the obvious next step has failed. Couples asked for MORE options and for help telling them apart (2026-10-14: a third of all messages were "more"): for a search, show 4-5 picks when the results allow, and make each card\'s reason say how it DIFFERS from the other picks (price position, size, style, fee structure, location), never the same sentence twice. The message itself is 2-3 sentences (about 60 words; only a COST BREAKDOWN or a budget question may run longer): lead with the top pick and why.'),
     ('- Never name a vendor you did not get from a tool in this conversation (search_venues, search_photographers_entertainment or saved_venues).',
@@ -448,24 +449,73 @@ def resolve_category(text):
 LISTING_CATEGORIES_ALL = ("Venue", "Photography", "Entertainment") + xano.LISTING_CATEGORIES
 
 
-def _listing_card(v):
-    """Card for a listings-only vendor: the venue/P-E card keys that mean the same thing (vendor_id, vendor_idx,
-    name, state, address, category, venue_type = the line under the name, image, description) and no price key
-    of any kind."""
+def _florist_view(fp, level):
+    """Florist pricing for one detail level: FULL every figure; LIGHT the tier + a rounded band of the typical total
+    (+ whether there is a minimum, no amount); free: None."""
+    if not fp or level == "free":
+        return None
+    if level == "full":
+        return fp
+    out = {k: fp[k] for k in ("tier", "tiers", "no_minimum") if k in fp}
+    if fp.get("min_spend"):
+        out["has_minimum_spend"] = True
+    tot = fp.get("typical_total")
+    if tot:
+        lo, hi = _band_edges(tot)
+        out["price_band"] = {"low": lo, "high": hi,
+                             "label": "typical wedding florals about %s-%s" % (_band_k(lo), _band_k(hi))}
+    return out or None
+
+
+def _florist_note(fp, level):
+    """The one price line under a florist card's name (the page shows card.price_note)."""
+    v = _florist_view(fp, level)
+    if not v:
+        return None
+    if level == "full":
+        bits = []
+        if v.get("typical_total"):
+            bits.append("Typical florals about $%s" % format(v["typical_total"], ","))
+        b = (v.get("from") or {}).get("bouquet")
+        if b:
+            bits.append("bouquets from $%s" % format(b, ","))
+        if v.get("min_spend"):
+            bits.append("$%s minimum" % format(v["min_spend"], ","))
+        elif v.get("no_minimum"):
+            bits.append("no minimum")
+        return " · ".join(bits) or None
+    band = (v.get("price_band") or {}).get("label") or ""
+    tier = v.get("tier")
+    parts = []
+    if band:
+        parts.append(band[0].upper() + band[1:])
+    if tier:
+        parts.append("%s tier" % tier)
+    return " · ".join(parts) or None
+
+
+def _listing_card(v, level="free"):
+    """Card for a listings vendor: the venue/P-E card keys that mean the same thing (vendor_id, vendor_idx,
+    name, state, address, category, venue_type = the line under the name, image, description). No price key -
+    except a florist's price_note (2026-11-07, FULL / LIGHT only; free mode's card whitelist drops it anyway)."""
     cat = v.get("category")
     sub = (v.get("subtype") or "").strip()
     card = {"vendor_id": v.get("vendor_id"), "vendor_idx": v.get("vendor_idx"), "name": v.get("name"),
             "state": v.get("state"), "address": v.get("address"), "category": cat,
             "venue_type": LISTING_LABEL.get(cat, cat) + (" - " + sub if sub and cat == "Beauty" else ""),
             "image": v.get("image"), "description": _no_figures(v.get("description"))[:300]}
+    if cat == "Flowers":
+        card["price_note"] = _florist_note(v.get("florist_pricing"), level)
     return {k: val for k, val in card.items() if val not in (None, "")}
 
 
-def _listing_row(v):
-    """What the MODEL sees for one listings-only vendor: fit facts only, never a figure."""
+def _listing_row(v, level="free"):
+    """What the MODEL sees for one listings vendor: fit facts, and for a florist the pricing its level allows."""
     out = {"vendor_id": v.get("vendor_id"), "name": v.get("name"), "state": v.get("state"),
            "address": v.get("address"), "kind": _listing_card(v).get("venue_type"),
            "description": _no_figures(v.get("description"))[:300], "keyword_match": v.get("keyword_match")}
+    if v.get("category") == "Flowers":
+        out["pricing"] = _florist_view(v.get("florist_pricing"), level)
     return {k: val for k, val in out.items() if val not in (None, "", [])}
 
 
@@ -1341,6 +1391,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         searches.append({"filters": {"category": category, "states": sts},
                          "ids": [v.get("vendor_id") for v in r["vendors"] if v.get("vendor_id")]})
         res = {"category": category, "total_matches": r["total_matches"], "vendors": out}
+        if not r["total_matches"] and len(sts) == 1:   # nothing in their state: offer the nearest one (2026-11-07)
+            nb = neighbors.nearby_with_matches(
+                sts[0], lambda st: (xano.search_pe(token, category, states=[st], page_size=1) or {}).get(
+                    "total_matches"), pool)
+            if nb:
+                res["nearby_states_with_matches"] = nb
+                res["nearby_note"] = ("none in %s yet; these bordering states have them (counted with no other filters). End with ONE yes/no question offering the top one by name and count (e.g. \"We have 40 photographers in Kansas - want to see them?\") and make \"Yes, show <state>\" the first chip." % sts[0])
         if "keyword_matches" in r:
             res["keyword_matches"] = r["keyword_matches"]
         if r.get("matches_by_state"):
@@ -1436,14 +1493,16 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         r = xano.search_listings(token, cat, states=sts, keyword=keyword, sort_by=sort_by, page_size=14,
                                  search_log=slog)
         out = []
+        level = "free" if free else ("light" if light else "full")
+        priced = cat == "Flowers" and any(_florist_view(v.get("florist_pricing"), level) for v in r["vendors"])
         for i, v in enumerate(r["vendors"]):
-            card = _listing_card(v)
+            card = _listing_card(v, level)
             vid = card.get("vendor_id")
             if not vid:
                 continue
             if i < 8:                       # the model sees the top 8; the rest only feed "Show 3 more"
                 seen[vid] = card
-                out.append(_listing_row(v))
+                out.append(_listing_row(v, level))
             elif vid not in seen:
                 extra[vid] = card
             if vid not in searched:
@@ -1456,6 +1515,25 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                        "never state, estimate or compare one, and never call a pick affordable or economical. "
                        "Recommend on location, kind and description; the card opens the vendor's Tulle page."
                        % LISTING_NOUN[cat]}
+        if not r["total_matches"] and len(sts) == 1:   # nothing in their state: offer the nearest one (2026-11-07)
+            nb = neighbors.nearby_with_matches(
+                sts[0], lambda st: (xano.search_listings(token, cat, states=[st], page_size=1) or {}).get(
+                    "total_matches"), pool)
+            if nb:
+                res["nearby_states_with_matches"] = nb
+                res["nearby_note"] = ("none in %s yet; these bordering states have them (counted with no other filters). End with ONE yes/no question offering the top one by name and count (e.g. \"We have 40 photographers in Kansas - want to see them?\") and make \"Yes, show <state>\" the first chip." % sts[0])
+        if priced:
+            # Florists with pricing (2026-11-07): this replaces the listings-only note for THIS result.
+            where = (" in " + " and ".join(sts)) if sts and "International" not in sts else ""
+            res.update(pricing_held=True,
+                       say_this="We list %d florists%s, with real pricing from their PDFs for many of them."
+                                % (int(r["total_matches"] or 0), where),
+                       note=("FLORISTS WITH PRICING: each vendor's pricing comes from its own pricing PDF. "
+                             + ("Quote its figures (typical_total = a typical full wedding order; from = starting "
+                                "prices per item; min_spend) and compare picks on them. " if level == "full" else
+                                "Quote only its tier and price_band label exactly as written - no other figure. ")
+                             + "A florist without pricing: recommend on location, kind and description. The card "
+                               "opens the florist's Tulle page, where the PDF is."))
         if "keyword_matches" in r:
             res["keyword_matches"] = r["keyword_matches"]
         if r.get("matches_by_state"):

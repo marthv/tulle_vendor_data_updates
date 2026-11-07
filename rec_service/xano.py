@@ -945,14 +945,37 @@ def _listing_text(it):
                      it.get("Type_of_Beauty") or "", it.get("Address") or ""])
 
 
+def florist_pricing(it):
+    """The florals fields table 11 carries for a florist (flt_fl_*, written 2026-10-27 from the florists' pricing
+    PDFs) -> {tier, tiers, typical_total, min_spend, no_minimum, from: {bouquet, centerpiece, ...}}, or None.
+    flt_fl_min_eff: stated $, 1 = no minimum, 0 = not stated (see the florals filter notes)."""
+    if not any(str(k).startswith("flt_fl_") for k in it):
+        return None
+    pos = lambda x: int(x) if isinstance(x, (int, float)) and x > 1 else None
+    frm = {k: pos(it.get("flt_fl_%s_from" % k)) for k in ("bouquet", "centerpiece", "centerpiece_tall",
+                                                         "bridesmaid", "boutonniere", "arch", "aisle")}
+    frm = {k: v for k, v in frm.items() if v}
+    me = it.get("flt_fl_min_eff")
+    out = {"tier": it.get("flt_fl_tier") or None, "tiers": it.get("flt_fl_tiers") or None,
+           "typical_total": pos(it.get("flt_fl_est")), "min_spend": pos(me),
+           "no_minimum": me == 1 or it.get("flt_fl_no_min") is True, "from": frm or None}
+    out = {k: v for k, v in out.items() if v not in (None, False, [], {})}
+    return out or None
+
+
 def _listing_item(it, category, searched_state, stems):
     g = it.get("flt_glance") if isinstance(it.get("flt_glance"), dict) else {}
-    return {"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"),
-            "state": _pe_state(it.get("State"), searched_state), "category": category,
-            "address": it.get("Address") or "", "subtype": it.get("Type_of_Beauty") or "",
-            "image": it.get("image_1"),
-            "description": (g.get("pdf_description") or it.get("Description") or "")[:400],
-            "keyword_match": _kw_hit(_listing_text(it), stems) if stems else None}
+    out = {"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"),
+           "state": _pe_state(it.get("State"), searched_state), "category": category,
+           "address": it.get("Address") or "", "subtype": it.get("Type_of_Beauty") or "",
+           "image": it.get("image_1"),
+           "description": (g.get("pdf_description") or it.get("Description") or "")[:400],
+           "keyword_match": _kw_hit(_listing_text(it), stems) if stems else None}
+    if category == "Flowers" and config.FLORIST_PRICING:
+        fp = florist_pricing(it)
+        if fp:
+            out["florist_pricing"] = fp
+    return out
 
 
 def _search_listing_one(token, *, states, category, keyword="", sort_by="popular_desc", page_size=8,
@@ -1025,7 +1048,9 @@ def card_from_row(it):
                 "price_range": [lo, hi] if lo else None, "image": img,
                 "description": (it.get("Description") or "")[:300]}
     if it.get("Category") in LISTING_CATEGORIES:   # florist / beauty / caterer / planner shown earlier: no pricing
-        return dict(_listing_item(it, it["Category"], "", []), image=img)
+        c = dict(_listing_item(it, it["Category"], "", []), image=img)
+        c.pop("florist_pricing", None)   # saved/earlier cards stay figure-free for every tier, as before
+        return c
     return {"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"),
             "state": it.get("State"), "address": it.get("Address"), "category": it.get("Category"),
             "venue_type": it.get("flt_venue_types") or it.get("Venue_Type"),

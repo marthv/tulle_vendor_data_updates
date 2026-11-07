@@ -191,3 +191,7 @@ RAILWAY_BREAKER_S = max(0, int(os.environ.get("REC_RAILWAY_BREAKER_S", "60") or 
 # search_vendors (florists, hair and makeup, caterers, planners - no pricing held) + the prompt scope that offers
 # them. Default ON; REC_LISTINGS_IN_CHAT=0 = the tool list and SYSTEM prompt exactly as before.
 LISTINGS_IN_CHAT = os.environ.get("REC_LISTINGS_IN_CHAT", "1") == "1"
+# Florists stop being listings-only (2026-11-07, item 4): table 11's flt_fl_* (tier, typical total, starting prices,
+# minimum spend - from the florists' PDFs, florals work 2026-10-27) go to the Planner. FULL sees figures, LIGHT the
+# tier + a rounded band, free mode nothing. 0 = florists exactly as before (no pricing).
+FLORIST_PRICING = os.environ.get("REC_FLORIST_PRICING", "1").strip() not in ("0", "false", "no", "")
