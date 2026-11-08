@@ -517,6 +517,16 @@ def _st(s):
     return s[0] if isinstance(s, list) and s else (s or "")
 
 
+def _in_place(m, location):
+    """The venue is in the place the couple named: same state, or every word of the place is in its address."""
+    st = state_of(location)
+    if st and st == _st(m.get("state")):
+        return True
+    lt = [t for t in tokens(location) if t not in STATE_ABBR and t not in US_STATES]
+    hay = set(tokens("%s %s" % (m.get("address") or "", _st(m.get("state")))))
+    return bool(lt) and all(_best(t, hay, 0.9) for t in lt)
+
+
 def resolve(q, res, prefer_states=()):
     """find() output -> the same dict with status:
       found    every match is the same venue listed twice ("The Breakers on the Ocean" / "Breakers on the Ocean")
@@ -525,9 +535,24 @@ def resolve(q, res, prefer_states=()):
       unsure   one bare word with several equal matches ("aspen", "North"): the model reads it (often a place)
       choices  several equal matches, as before
     Anything other than "choices" passes through unchanged. Pure."""
-    if res.get("status") != "choices" or len(res.get("matches") or []) < 2:
+    if res.get("status") != "choices" or not res.get("matches"):
         return res
     ms = list(res["matches"])
+    # No real match (2026-11-07): the couple named a place and none of these is there ("The Ritz-Carlton Club, Aspen
+    # Highlands" -> Ritz-Carltons in Boston, Atlanta and California), or none holds every distinctive word they typed.
+    # Then it is a venue we don't have - said honestly, with venues near the place they named (app.py) - not a quiz.
+    loc = q.get("location") or ""
+    if loc:
+        here = [m for m in ms if _in_place(m, loc)]
+        if not here:
+            return dict(res, status="not_found", matches=[])
+        ms = here
+    names = [n for n in (q.get("name"), q.get("alt_name")) if n]
+    if not any(strong(n, m.get("name")) or strong(n, m.get("google_name")) for m in ms for n in names):
+        return dict(res, status="not_found", matches=[])
+    if len(ms) == 1:
+        return dict(res, status="found", matches=ms)
+    res = dict(res, matches=ms)
     if len({key(m.get("name")) for m in ms}) == 1:
         return dict(res, status="found", matches=ms[:1])
     want = {str(s).strip().lower() for s in prefer_states if s}

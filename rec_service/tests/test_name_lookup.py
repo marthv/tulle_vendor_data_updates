@@ -296,10 +296,13 @@ def test_light_member_gets_fit_not_figures(env):
     assert "venue_fee_range" not in c and "estimate_label" not in c and "$" not in j["text"]
 
 
-def test_several_matches_ask_which_one_with_a_chip_each(env):
+def test_several_matches_are_all_shown_not_asked(env):
+    # 2026-11-07 (owner): no "which one did you mean?" - every same-name venue is a priced card with its PDF.
     j = ask("Ashton gardens")
-    assert j["lookup"]["status"] == "choices" and len(j["cards"]) == 3 and "which one" in j["text"]
-    assert all(any(c["name"] in ch for ch in j["chips"]) for c in j["cards"])
+    assert j["lookup"]["status"] == "choices" and len(j["cards"]) == 3
+    assert "which one" not in j["text"] and "?" not in j["text"] and "pricing PDF" in j["text"]
+    assert all(c["name"] in j["text"] for c in j["cards"])
+    assert all(c.get("venue_fee_range") for c in j["cards"])          # FULL member: every card priced
 
 
 def test_missing_venue_is_honest_and_requested(env):

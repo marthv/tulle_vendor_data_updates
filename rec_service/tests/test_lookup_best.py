@@ -20,27 +20,49 @@ Q = {"name": "x", "cue": False, "words": 2}
 def test_same_venue_listed_twice_is_found():
     res = {"status": "choices", "matches": [m("A", "The Breakers on the Ocean", "New Jersey"),
                                             m("B", "Breakers on the Ocean", "New Jersey")], "scores": [1.0, 1.0]}
-    out = lookup.resolve(Q, res)
+    out = lookup.resolve(dict(Q, name="breakers on the ocean"), res)
     assert out["status"] == "found" and [x["vendor_id"] for x in out["matches"]] == ["A"]
 
 
 def test_the_only_match_in_their_state_is_the_guess():
     res = {"status": "choices", "matches": [m("W", "Brooks Lake Lodge", "Wyoming"),
                                             m("T", "The Brooks at Weatherford", "Texas")], "scores": [0.80, 0.79]}
-    out = lookup.resolve(Q, res, ["Texas"])
+    out = lookup.resolve(dict(Q, name="the brooks"), res, ["Texas"])
     assert out["status"] == "best" and [x["vendor_id"] for x in out["matches"]] == ["T", "W"]
 
 
 def test_a_clear_leader_is_the_guess():
     res = {"status": "choices", "matches": [m("C", "Woman's Club of Fort Worth", "Texas"),
                                             m("Z", "Fort Worth Zoo", "Texas")], "scores": [0.853, 0.772]}
-    assert lookup.resolve(Q, res, ["Texas"])["status"] == "best"
+    assert lookup.resolve(dict(Q, name="fort worth club"), res, ["Texas"])["status"] == "best"
 
 
-def test_a_tie_still_asks():
-    res = {"status": "choices", "matches": [m("1", "Ritz A", "Georgia"), m("2", "Ritz B", "California")],
-           "scores": [0.775, 0.773]}
-    assert lookup.resolve(Q, res, ["Colorado"])["status"] == "choices"
+def test_a_true_tie_stays_several_cards():
+    res = {"status": "choices", "matches": [m("1", "Ritz Ballroom", "Georgia"), m("2", "Ritz Ballroom", "California"),
+                                            m("3", "The Ritz", "Ohio")], "scores": [0.775, 0.773, 0.77]}
+    out = lookup.resolve(dict(Q, name="ritz"), res, ["Colorado"])
+    assert out["status"] == "choices" and len(out["matches"]) == 3
+
+
+def test_none_in_the_place_they_named_is_not_found():
+    res = {"status": "choices", "matches": [m("1", "The Ritz-Carlton, Boston", "Massachusetts"),
+                                            m("2", "The Ritz-Carlton Atlanta", "Georgia")], "scores": [0.775, 0.773]}
+    q = dict(Q, name="The Ritz-Carlton Club", location="Aspen Highlands")
+    assert lookup.resolve(q, res)["status"] == "not_found"
+
+
+def test_one_in_the_place_they_named_is_found():
+    res = {"status": "choices", "matches": [dict(m("1", "Rialto Theatre", "Florida"), address="1 Main St, Tampa, FL"),
+                                            dict(m("2", "Rialto Square Theatre", "Illinois"),
+                                                 address="102 N Chicago St, Joliet, IL")], "scores": [0.81, 0.75]}
+    out = lookup.resolve(dict(Q, name="rialto", location="Joliet"), res)
+    assert out["status"] == "found" and out["matches"][0]["vendor_id"] == "2"
+
+
+def test_only_a_generic_word_in_common_is_not_found():
+    res = {"status": "choices", "matches": [m("1", "Grand Ballroom Estate", "Ohio"), m("2", "Grand Hall", "Iowa")],
+           "scores": [0.74, 0.73]}
+    assert lookup.resolve(dict(Q, name="Hollowbrook Grand Ballroom"), res)["status"] == "not_found"
 
 
 def test_one_bare_word_with_a_tie_goes_to_the_model():

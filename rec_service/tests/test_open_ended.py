@@ -23,12 +23,18 @@ def test_open_ended_clears_chips_questions_and_tail(monkeypatch):
     assert out["chips"] == [] and out["questions"] == [] and not out["text"].endswith("?")
 
 
-def test_lookup_choices_keep_their_name_chips(monkeypatch):
+def test_lookup_best_keeps_the_other_names_choices_get_no_chips(monkeypatch):
+    # 2026-11-07: "best" ends "Not the one? We also have X and Y" with their names as chips; "choices" now shows every
+    # match as a card (no question), so it gets no chips like any other answer.
     monkeypatch.setattr(config, "OPEN_ENDED", True)
-    out = {"text": "We have 2 venues that could be “Gather” - which one did you mean? Tap its name below.",
-           "chips": ["Gather Greene", "Gather Venue"], "lookup": {"status": "choices", "query": "Gather"}}
+    out = {"text": "Here's Gather Greene in Hudson, New York. Not the one? We also have Gather Venue (Ohio).",
+           "chips": ["Gather Venue"], "lookup": {"status": "best", "query": "Gather"}}
     app._open_ended(out)
-    assert out["chips"] == ["Gather Greene", "Gather Venue"] and out["text"].startswith("We have 2")
+    assert out["chips"] == ["Gather Venue"]
+    out = {"text": "We have 2 venues that match “Gather”: A (X), B (Y). Each card has its pricing PDF.",
+           "chips": ["Cheaper options"], "lookup": {"status": "choices", "query": "Gather"}}
+    app._open_ended(out)
+    assert out["chips"] == []
 
 
 def test_flag_off_is_a_no_op_and_prompt_unchanged(monkeypatch):

@@ -166,7 +166,7 @@ def _open_ended(out):
     keeps its name chips - those are the answer, not a nudge."""
     if not config.OPEN_ENDED or not isinstance(out, dict):
         return out
-    if ((out.get("lookup") or {}).get("status")) not in ("choices", "best"):
+    if ((out.get("lookup") or {}).get("status")) != "best":    # "best" offers the other names; nothing else keeps chips
         out["chips"] = []
         out["text"] = strip_trailing_question(out.get("text") or "")
     out["questions"] = []
@@ -730,7 +730,8 @@ def _find_and_price(q, token, full, prefer=()):
     name comes back as a found lookup and is priced then."""
     res = lookup.find(q, lambda term: xano.name_search(term, token))
     res = lookup.resolve(q, res, prefer)
-    ids = [m["vendor_id"] for m in res["matches"][:1]] if res["status"] in ("found", "best") else []
+    ids = ([m["vendor_id"] for m in res["matches"][:1]] if res["status"] in ("found", "best") else
+           [m["vendor_id"] for m in res["matches"][:3]] if res["status"] == "choices" and full else [])
     if ids:
         with ThreadPoolExecutor(max_workers=len(ids)) as ex:
             res["pricing"] = dict(zip(ids, ex.map(lambda v: _price_or_none(token, v, full), ids)))
@@ -861,15 +862,12 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     elif status == "choices":
         cards = [_lookup_card(m, (res.get("pricing") or {}).get(m["vendor_id"]), full, guests, budget)[0]
                  for m in res["matches"]]
-        if len(cards) == 1:
-            text_out = ("The closest match we have to “%s” is %s in %s - is that the one you meant?"
-                        % (name, cards[0].get("name"), _place_label(cards[0])))
-        else:
-            text_out = ("We have %d venues that could be “%s” - which one did you mean? Tap its name below."
-                        % (len(cards), name))
-        names = [c.get("name") for c in cards]
-        chips = [(c.get("name") if names.count(c.get("name")) == 1 else "%s, %s" % (c.get("name"), _place_label(c)))
-                 for c in cards]
+        # 2026-11-07 (owner): an answer, not "which one did you mean?" - after that question 0 of 22 couples tapped a
+        # name and 11 left (planner log 11-03..11-06). Every match is a card with its PDF button.
+        where = [_place_label(c) for c in cards]
+        text_out = ("We have %d venues that match “%s”: %s. Each card has its pricing PDF."
+                    % (len(cards), name, ", ".join("%s (%s)" % (c.get("name"), w) for c, w in zip(cards, where))))
+        chips = []
     else:
         loc = q.get("location") or q.get("alt_location") or ""
         # 2026-11-02 (chat 929, "Rosewood Bermuda" x2 -> "tell me the city" x2 -> the couple left): a destination gets
