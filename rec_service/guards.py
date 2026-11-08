@@ -36,8 +36,24 @@ def _prompts(rows):
     return [r for r in _ok(rows) if not str(r.get("kind") or "").startswith("tool_") and r.get("kind") != "prewarm"]
 
 
+# Owner 2026-11-07: a venue lookup that only CLARIFIED - "which one did you mean?" or "we don't have <name>" - costs
+# us nothing and answered nothing, so it does not spend a free question. It still counts as a question for WHEN the
+# rating card is asked (free_asked): "we want to know how people are feeling at each point". The row is logged as
+# before (counted_as_free, model "lookup", tools "lookup:<status>"); only the counting here reads the tools column.
+FREE_CLARIFY_TOOLS = ("lookup:choices", "lookup:not_found")
+
+
+def _clarification(r):
+    return str(r.get("tools") or "") in FREE_CLARIFY_TOOLS
+
+
 def free_used(usage_rows):
-    """Free questions spent so far (lifetime)."""
+    """Free questions spent so far (lifetime). Clarifying lookups are not spent (2026-11-07)."""
+    return sum(1 for r in _ok(usage_rows) if r.get("counted_as_free") and not _clarification(r))
+
+
+def free_asked(usage_rows):
+    """Free questions ASKED so far, clarifying lookups included: what the one-time rating card counts."""
     return sum(1 for r in _ok(usage_rows) if r.get("counted_as_free"))
 
 
@@ -68,7 +84,7 @@ def free_feedback_required(paid, usage_rows, feedback_given):
     if config.FREE_DAILY_MODE:
         return False
     return (not paid and not feedback_given and config.FREE_FEEDBACK_REQUIRED
-            and free_used(usage_rows) >= config.FREE_REFINES)
+            and free_asked(usage_rows) >= config.FREE_REFINES)
 
 
 def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True, free_spend_today=0.0):

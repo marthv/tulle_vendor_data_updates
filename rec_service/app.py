@@ -428,10 +428,12 @@ def _detail(paid, access):
     return "free"
 
 
-def _counters(kind, paid, rows, counted_free, feedback_given, access=True, spent=True):
+def _counters(kind, paid, rows, counted_free, feedback_given, access=True, spent=True, row_tools=""):
     """Allowance left AFTER this request, for the page's counters. spent=False: a stopped request (2026-10-25) -
-    it used nothing, so the counters are the ones before it."""
-    used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free and spent else [])
+    it used nothing, so the counters are the ones before it. row_tools: this request's usage-row tools value
+    ("lookup:choices" / "lookup:not_found" do not spend a free question - guards.FREE_CLARIFY_TOOLS)."""
+    used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True, "tools": row_tools}]
+                   if counted_free and spent else [])
     used_today = rows + ([{"status": "ok", "usage_day": xano.today()}] if spent else [])
     used_fq = rows + ([{"status": "ok", "kind": "refine"}] if paid and kind == "refine" and spent else [])
     c = dict(upsell="forever",
@@ -905,7 +907,8 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
                                       input_tokens=0, cache_read_tokens=0, cache_write_tokens=0, output_tokens=0,
                                       tool_calls=0, cost_usd=0, latency_ms=ms, tools="lookup:" + status,
                                       categories="venue", **_search_cols(search)))
-    used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True}] if counted_free else [])
+    used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True, "tools": "lookup:" + status}]
+                   if counted_free else [])
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": "lookup", "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access,
         "source": "rec_service", "cost_usd": 0, "latency_s": round(ms / 1000, 2), "cards": len(result["cards"]),
@@ -913,7 +916,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         "price_locked": not access, "free_refines_left": guards.free_refines_left(paid, used, feedback_given),
         **_search_props(user, search)})
     return dict(result, paid=paid, has_access=access,
-                **_counters("refine", paid, rows, counted_free, feedback_given, access))
+                **_counters("refine", paid, rows, counted_free, feedback_given, access, row_tools="lookup:" + status))
 
 
 def _venue_request_log(user, name, location, question, chat_id, near):
