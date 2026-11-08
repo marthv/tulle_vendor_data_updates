@@ -1387,7 +1387,12 @@ def _refine(token, user, body, background, tracker):
     if not msgs or msgs[-1]["role"] != "user" or msgs[0]["role"] != "user":
         raise HTTPException(400, "messages must start and end with a user turn")
     text = msgs[-1]["content"].strip()
-    chat = _recent_chat(user["id"])
+    # 2026-11-07 (owner screenshot): since the home screen (no automatic opening), a question typed on a fresh screen
+    # arrives with no chat_id - and was attached to the chat used in the last 30 minutes, so the Planner answered
+    # "the three venues above" with nothing above. The current page always sends its chat_id mid-conversation (also
+    # after a reload, which resumes the chat), so no chat_id + no client-held history = a NEW conversation. Only the
+    # legacy shape (prior turns in `messages`) still continues the recent chat.
+    chat = _recent_chat(user["id"]) if len(body.messages or []) > 1 else None
     if chat:
         return _refine_in_chat(token, user, chat, text, background, tracker)
     # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard

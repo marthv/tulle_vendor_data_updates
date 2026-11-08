@@ -951,6 +951,32 @@
       ],
       "owner": "Vivek",
       "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-planner-my-wedding-plan",
+      "name": "Planner 'My wedding' plan (A/B 50/50)",
+      "status": "planned",
+      "themes": [
+        "planner",
+        "engagement",
+        "retention"
+      ],
+      "goal": "Owner request 2026-11-07: let couples build their wedding inside the Planner - 'Add to my wedding' on every card, a 7-slot plan sheet, and one 'next for your wedding' step once engaged. Free for everyone. Does it make couples use the Planner more, open more pricing PDFs and pay more often?",
+      "primary_metric": "Per couple active in the Planner, by arm: PDF opens (free couples), questions asked, return within 7 days (paid), purchases within 14 days. Arm = rec_server_request.ab_plan / plan.arm(user_id).",
+      "guardrail": "Questions per couple and PDF opens must not fall in the plan arm; answer latency unchanged (the plan read runs in parallel); no prices shown to couples without paid access.",
+      "start_date": null,
+      "end_date": null,
+      "review_date": null,
+      "dates_note": "Built 2026-11-07 (server rec-plan 6aad63d, component ab459e8). Starts when the server is on main AND the owner activates + publishes the planner-chat version. Read at 2 weeks, earlier only for a guardrail breach.",
+      "design": "Server-side split by user id: sha256('plan-2026-11:<id>') % 100 < REC_PLAN_AB_PCT (50) -> 'plan', else 'control'. Stable per couple. Internal accounts forced to 'plan' and excluded from reads. Control sees today's Planner unchanged. Storage: Xano table 90 rec_wedding_plan (removed rows kept).",
+      "baseline": "11-03..11-06 (all couples, pre-test): median 1 question, mean 2.5; 37% of free couples opened a PDF (1.04 opens per free couple).",
+      "results": [],
+      "stat_sig": null,
+      "decision": null,
+      "confounds_noted": "Re-gating (free 2+rating+1, paid 40/day), open-ended replies, home screen and lookup changes all shipped 11-07 - they hit both arms equally, so the A/B comparison holds; before/after comparisons do not.",
+      "risks": "Plan UI clutter on mobile cards; a plan read failure must never block an answer (caught, 3 s cap).",
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
     }
   ],
   "changes": [

@@ -55,16 +55,30 @@ def test_first_question_creates_a_chat_and_saves_both_turns(env):
     assert [a[1:3] for a in env["added"]] == [("user", "New York venues"), ("assistant", "picks")]
 
 
-def test_next_question_continues_the_recent_chat_with_server_history(env):
+def test_legacy_history_continues_the_recent_chat_with_server_history(env):
+    # The legacy shape (prior turns in `messages`) still continues the chat from the last 30 minutes.
     now = int(time.time() * 1000)
     env["chats"] = [{"id": 51, "title": "New York venues", "updated_at": now - 60_000}]
     env["history"][51] = [{"role": "user", "text": "New York venues", "cards": []},
                           {"role": "assistant", "text": "picks", "cards": [{"vendor_id": "V1", "name": "A"}]}]
-    r = TestClient(app.app).post("/rec/refine", json={"messages": [{"role": "user", "content": "cheaper ones"}]})
+    r = TestClient(app.app).post("/rec/refine", json={"messages": [
+        {"role": "user", "content": "New York venues"}, {"role": "assistant", "content": "picks"},
+        {"role": "user", "content": "cheaper ones"}]})
     assert r.status_code == 200 and r.json()["chat_id"] == 51 and env["created"] == []
     sent = env["model_msgs"][-1]
     assert sent[0] == {"role": "user", "content": "New York venues"}      # no OPENING_ASK before a user turn
     assert sent[-1] == {"role": "user", "content": "cheaper ones"}
+
+
+def test_a_fresh_screen_question_starts_a_new_chat_even_with_a_recent_one(env):
+    # 2026-11-07 (owner screenshot): "test" on the home screen was answered with "the three venues above" from the
+    # chat used 1 minute earlier. No chat_id + no history = a new conversation.
+    now = int(time.time() * 1000)
+    env["chats"] = [{"id": 51, "title": "New York venues", "updated_at": now - 60_000}]
+    env["history"][51] = [{"role": "assistant", "text": "picks", "cards": [{"vendor_id": "V1", "name": "A"}]}]
+    r = TestClient(app.app).post("/rec/refine", json={"message": "test"})
+    assert r.status_code == 200 and env["created"] == ["Test"]           # a new chat was created, 51 not continued
+    assert env["model_msgs"][-1] == [{"role": "user", "content": "test"}]
 
 
 def test_stale_chat_is_not_reused(env):
