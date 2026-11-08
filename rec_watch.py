@@ -455,7 +455,7 @@ def planner_daily(token, now=None):
         # Instant lookup outcomes (tools = 'lookup:<status>').
         lk = [str(r.get("tools") or "") for r in ok if is_lookup(r)]
         if lk:
-            found = sum(1 for t in lk if t in ("lookup:found", "lookup:choices"))
+            found = sum(1 for t in lk if t in ("lookup:found", "lookup:best", "lookup:choices"))
             lines.append("• Venue lookups: %d · found %d · not in Tulle %d" % (len(lk), found, sum(1 for t in lk if t == "lookup:not_found")))
         # PDF funnel ('pdf' rows: status paid | free | blocked).
         pdf = [r for r in day if r.get("kind") == "pdf"]

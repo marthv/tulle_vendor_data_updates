@@ -242,6 +242,13 @@ def _place(s):
     m = _DIRECTION.match(n)
     if m and _place(m.group(1)):
         return True
+    # "Houston texas", "austin, tx" (planner log 11-05: "Houston texas" got three venues with Houston in the name and
+    # "which one did you mean?"; the couple's next message was a complaint). A known place plus its state is a place.
+    w = n.split()
+    for k in (2, 1):
+        tail = " ".join(w[-k:])
+        if len(w) > k and (tail in US_STATES or (k == 1 and tail in STATE_ABBR)) and _place(" ".join(w[:-k])):
+            return True
     return n in US_STATES or n in STATE_ABBR or n in PLACES or n.replace(" ", "") in {p.replace(" ", "") for p in PLACES}
 
 
@@ -497,6 +504,43 @@ def find(q, search, workers=6):
     return {"status": status, "matches": matches, "queries": list(done),
             "scores": [round(s, 3) for s, _ in ranked[:5]],
             "near": [r.get("name") for s, r in ranked[:3] if r.get("name")]}
+
+
+# ---------------------------------------------------------------- one answer instead of "which one?" (2026-11-07)
+# Planner log 11-03..11-06: 22 "which one did you mean?" answers - 11 couples left right away, not one tapped a name,
+# 2 opened a PDF. 21 "found" answers - 9 opened a PDF next. So when one match is the likely one, answer with it and
+# offer the others by name underneath.
+LEAD = 0.04        # the top match is the guess when it leads the next by this much (replayed on the log's cases)
+
+
+def _st(s):
+    return s[0] if isinstance(s, list) and s else (s or "")
+
+
+def resolve(q, res, prefer_states=()):
+    """find() output -> the same dict with status:
+      found    every match is the same venue listed twice ("The Breakers on the Ocean" / "Breakers on the Ocean")
+      best     matches[0] is the likely venue - the only one in the couple's wedding state, or clearly ahead on
+               score - and the rest are offered by name
+      unsure   one bare word with several equal matches ("aspen", "North"): the model reads it (often a place)
+      choices  several equal matches, as before
+    Anything other than "choices" passes through unchanged. Pure."""
+    if res.get("status") != "choices" or len(res.get("matches") or []) < 2:
+        return res
+    ms = list(res["matches"])
+    if len({key(m.get("name")) for m in ms}) == 1:
+        return dict(res, status="found", matches=ms[:1])
+    want = {str(s).strip().lower() for s in prefer_states if s}
+    if want:
+        mine = [m for m in ms if str(_st(m.get("state"))).strip().lower() in want]
+        if len(mine) == 1:
+            return dict(res, status="best", matches=mine + [m for m in ms if m is not mine[0]])
+    sc = list(res.get("scores") or [])
+    if len(sc) >= 2 and sc[0] - sc[1] >= LEAD:
+        return dict(res, status="best")
+    if not q.get("cue") and q.get("words", 2) == 1:
+        return dict(res, status="unsure")
+    return res
 
 
 class LookupFailed(Exception):

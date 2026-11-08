@@ -166,7 +166,7 @@ def _open_ended(out):
     keeps its name chips - those are the answer, not a nudge."""
     if not config.OPEN_ENDED or not isinstance(out, dict):
         return out
-    if ((out.get("lookup") or {}).get("status")) != "choices":
+    if ((out.get("lookup") or {}).get("status")) not in ("choices", "best"):
         out["chips"] = []
         out["text"] = strip_trailing_question(out.get("text") or "")
     out["questions"] = []
@@ -694,6 +694,9 @@ def _reused_opening(stored, user, paid, access, rows, feedback_given, tracker, s
 LOOKUP_TIMEOUT_S = 6.0
 LOOKUP_AFTER_QUESTION_TIMEOUT_S = 2.5   # a bare reply to our own question (see lookup.detect after_question)
 LOOKUP_SIMILAR = 3
+# "best" answers (2026-11-07) end with this line + the other matches; a tapped name from it is looked up, not sent to
+# the model as a chip. Keep the wording stable - _refine_in_chat matches it.
+ALSO_HAVE = "Not the one? We also have"
 
 
 def _place_label(c):
@@ -714,13 +717,14 @@ def _price_or_none(token, vid, full):
         return None
 
 
-def _find_and_price(q, token, full):
+def _find_and_price(q, token, full, prefer=()):
     """lookup.find, then the pricing panel of the match in parallel - all while the question is being gated.
     Only a FOUND venue is priced: a "which one did you mean?" list shows names and places, and its pricing was
     the whole cost of that answer (measured 2026-11-02: 7.0 s with two matches vs 0.2 s for a miss). The tap on a
     name comes back as a found lookup and is priced then."""
     res = lookup.find(q, lambda term: xano.name_search(term, token))
-    ids = [m["vendor_id"] for m in res["matches"]] if res["status"] == "found" else []
+    res = lookup.resolve(q, res, prefer)
+    ids = [m["vendor_id"] for m in res["matches"][:1]] if res["status"] in ("found", "best") else []
     if ids:
         with ThreadPoolExecutor(max_workers=len(ids)) as ex:
             res["pricing"] = dict(zip(ids, ex.map(lambda v: _price_or_none(token, v, full), ids)))
@@ -782,7 +786,11 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         return None
     t0 = time.time()
     full = xano.beta_member(user)    # FULL detail = full members, exactly as agent.run's detail="full"
-    f_find = _POOL.submit(_find_and_price, q, token, full)          # runs while the question is gated
+    try:
+        prefer = agent._states_of(xano.profile_of(user))     # their wedding state breaks a "which one?" tie
+    except Exception:
+        prefer = []
+    f_find = _POOL.submit(_find_and_price, q, token, full, prefer)  # runs while the question is gated
     paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat_id)   # raises when blocked
     if tracker and tracker.cancelled():
         _log_stopped(base, "lookup", user, paid, access)
@@ -795,9 +803,11 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         print("lookup fell back to the model:", repr(e)[:200])
         return None
     status = res["status"]
+    if status == "unsure":
+        return None          # "aspen", "North": several equal venues for one bare word - the model reads it
     if status == "not_found" and not q["cue"] and q["words"] == 1:
         return None          # one bare word we can't place: let the model read it
-    if after_q and status not in ("found", "choices") and not lookup.destination_in(
+    if after_q and status not in ("found", "best", "choices") and not lookup.destination_in(
             "%s %s" % (q["name"], q.get("location") or q.get("alt_location") or "")):
         return None          # a reply to our question that is not a venue we have: the model reads it as before
         # (a destination name - "Rosewood Bermuda" - keeps the honest coverage line even mid-chat, 2026-11-02)
@@ -814,7 +824,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     saved = xano.saved_vendor_ids(user)
     name = _display_name(q["name"])
     venue_request, filters = None, {}
-    if status == "found":
+    if status in ("found", "best"):
         m = res["matches"][0]
         p = (res.get("pricing") or {}).get(m["vendor_id"])
         card, p = _lookup_card(m, p, full, guests, budget, "The venue you asked about")
@@ -831,6 +841,15 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
                  ("Cost breakdown for %s" % vn) if full else ("Is %s a good fit for us?" % vn)]
         if saved and card.get("vendor_id") not in saved:
             chips.append("Compare %s with my saved venues" % vn)
+        if status == "best":
+            # The other close matches, by name (a tap looks that one up - see ALSO_HAVE in _refine_in_chat).
+            others = [o for o in res["matches"][1:3] if o.get("name")]
+            if others:
+                text_out += " %s %s." % (ALSO_HAVE, " and ".join(
+                    "%s (%s)" % (o["name"], _place_label(o)) for o in others))
+                labels = [o["name"] for o in others]
+                chips = [o["name"] if labels.count(o["name"]) == 1 and o["name"] != vn
+                         else "%s, %s" % (o["name"], _place_label(o)) for o in others]
         if card.get("state"):
             filters = {"states": [_state1(card["state"])]}
     elif status == "choices":
@@ -1197,6 +1216,8 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
     last_a = last_t.get("text") or ""
     # A tapped chip ("Keep it all-inclusive") is never a venue name: no lookup round trip for it.
     is_chip = text.strip().lower() in {str(c).strip().lower() for c in (last_t.get("chips") or []) if c}
+    if is_chip and (ALSO_HAVE in last_a or "which one did you mean" in last_a or "the one you meant" in last_a):
+        is_chip = False      # a venue name we offered: look it up (0.5 s), not the model (8 s)
     last_u = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "user"), "")
     repeat = bool(last_u) and last_u.strip().lower() == text.strip().lower()
     # "oheka castle": no model (2026-10-26). Never for an answer to our own profile question ("Near Dallas").
