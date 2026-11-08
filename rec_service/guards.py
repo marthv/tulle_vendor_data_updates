@@ -147,4 +147,5 @@ def free_refines_left(paid, usage_rows, feedback_given=False, today=None):
 def cost_usd(model, usage):
     p = config.PRICES.get(model) or config.PRICES["claude-sonnet-5-5"]
     return round((usage["input_tokens"] * p["in"] + usage["cache_write_tokens"] * p["in"] * 1.25
-                  + usage["cache_read_tokens"] * p["cache_read"] + usage["output_tokens"] * p["out"]) / 1e6, 6)
+                  + usage["cache_read_tokens"] * p["cache_read"] + usage["output_tokens"] * p["out"]) / 1e6
+                 + float(usage.get("router_cost_usd") or 0), 6)   # the refine router's own call (agent.ROUTER)

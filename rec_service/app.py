@@ -326,6 +326,9 @@ def _turn_props(usage):
             # Pre-search (2026-11-01): the opening's first search ran before the model; its ms and venue count.
             "presearch": bool(u.get("presearch")), "presearch_ms": u.get("presearch_ms"),
             "presearch_n": u.get("presearch_n"),
+            # Refine router (2026-11-07, REC_REFINE_ROUTER): whether it ran, searched, and its own ms.
+            "routed": bool(u.get("routed")), "router_searched": bool(u.get("router_searched")),
+            "router_ms": u.get("router_ms"),
             # Prefetch split + caches (2026-10-27): which prefetch part costs time, and how often the caches hit.
             **_prefetch_props(u)}
 
@@ -554,6 +557,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
                                   price_question=price_q,
                                   presearch=(prefs.search_filters(answers)
                                              if kind == "opening" and config.PRESEARCH else None),
+                                  route=(kind == "refine"),     # agent: only with config.REFINE_ROUTER (2026-11-07)
                                   on_note=lambda n: xano.add_memory_note(user["id"], n), search_log=slog,
                                   **({"progress": tracker} if tracker else {}))
     except Exception as e:  # never charge a free refine for our own failure

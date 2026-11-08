@@ -127,6 +127,8 @@ PRICES = {
     "claude-sonnet-5-5": {"in": 2.00, "out": 10.00, "cache_read": 0.20},
     "claude-opus-5-5": {"in": 4.00, "out": 20.00, "cache_read": 0.20},
     "claude-haiku-4-5": {"in": 1.00, "out": 5.00, "cache_read": 0.10},
+    # Haiku 5.5 (prompts <= 100K tokens). Cache-read rate not in our reference: charged at the input rate (high side).
+    "claude-haiku-5-5": {"in": 0.10, "out": 0.50, "cache_read": 0.10},
 }
 
 # Server-side Mixpanel event per AI request (rec_server_request). Public project token (Tulle - WeWeb,
@@ -182,6 +184,12 @@ OPENING_REUSE = os.environ.get("REC_OPENING_REUSE", "1") == "1"
 # turn 2 (turn 1 only picked search arguments: median 1.8 s of a 10.3 s opening). REC_PRESEARCH=0 restores
 # the two-turn opening.
 PRESEARCH = os.environ.get("REC_PRESEARCH", "1") == "1"
+# REFINE ROUTER (2026-11-07 speed pass B1): on a follow-up question a small model picks the search_venues arguments
+# from the couple's words + the chat, the server runs that search, and Sonnet gets it as a finished tool call - one
+# Sonnet turn instead of two (turn 1 only picked arguments: median 1.9 s of a 7.7 s answer, 11-01..11-07). The router
+# may decide no search is needed; then Sonnet runs exactly as before. 0 = off (the default until the eval set agrees).
+REFINE_ROUTER = os.environ.get("REC_REFINE_ROUTER", "0") == "1"
+ROUTER_MODEL = os.environ.get("REC_ROUTER_MODEL", "claude-haiku-5-5")
 OPENING_REUSE_MAX_AGE_S = max(0, int(os.environ.get("REC_OPENING_REUSE_MAX_AGE_S", str(6 * 3600)) or 0))
 # Prewarm (owner 2026-11-02, "time-to-value needs to decrease a lot"): POST /rec/prewarm generates the couple's
 # opening in the background (e.g. the moment onboarding finishes) into the reuse store, so the Planner page gets it

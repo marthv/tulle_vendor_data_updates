@@ -952,9 +952,61 @@ def _drain_stream(stream, prog):
     return stream.get_final_message()
 
 
+ROUTER_SYSTEM = (
+    "You route one turn of a wedding venue planner chat. Read the couple's LATEST message in the context of the chat "
+    "and decide whether answering it needs a NEW venue search. If it does - a new place, style, size, price, "
+    "\"more\" / \"cheaper\" / \"different\" venues, a venue they name that is not already in the chat (search "
+    "with keyword = that name), or a first search - call search_venues once with the arguments "
+    "the planner should use (keep the chat's active filters unless the couple changed them; follow the tool's own "
+    "mapping rules). If the message is about venues already shown, a cost or budget question, a photographer or other "
+    "vendor, or anything that is not a venue search, do NOT call a tool: reply with the single word NO_SEARCH.")
+
+
+def _routed_search(tool_list, context, messages):
+    """ROUTER_MODEL picks the first search_venues call for a follow-up (config.REFINE_ROUTER, 2026-11-07). Runs the
+    same tool the model would have (free mode's wrapper for a couple with no plan) with the router's arguments and
+    returns (messages_to_append, venues_found, info). ([], 0, info) = no search: the model works as before."""
+    tool = next((t for t in tool_list if (getattr(t, "name", None) or getattr(t, "__name__", None)) == "search_venues"),
+                None)
+    info = {"searched": False, "ms": 0, "cost_usd": 0.0}
+    if tool is None:
+        return [], 0, info
+    t0 = time.time()
+    rm = [dict(m) for m in messages][-8:]
+    if rm and rm[0]["role"] != "user":
+        rm = rm[1:]
+    rm[0] = {"role": "user", "content": context + "\n\n" + str(rm[0]["content"])}
+    r = anthropic.Anthropic().messages.create(
+        model=config.ROUTER_MODEL, max_tokens=1024, system=ROUTER_SYSTEM, tools=[tool.to_dict()],
+        tool_choice={"type": "auto"}, messages=rm,
+        thinking={"type": "disabled"}, output_config={"effort": "low"})
+    p = config.PRICES.get(config.ROUTER_MODEL) or config.PRICES["claude-haiku-5-5"]
+    info["cost_usd"] = round(((r.usage.input_tokens or 0) * p["in"] + (r.usage.output_tokens or 0) * p["out"]) / 1e6, 6)
+    call = next((b for b in r.content if b.type == "tool_use" and b.name == "search_venues"), None)
+    info["ms"] = int((time.time() - t0) * 1000)
+    if call is None:
+        return [], 0, info
+    fn = getattr(tool, "func", None) or tool
+    args = dict(call.input or {})
+    out = fn(**args)
+    info["searched"] = True
+    info["ms"] = int((time.time() - t0) * 1000)
+    try:
+        n = len(json.loads(out).get("venues") or [])
+    except Exception:
+        n = 0
+    if not n:
+        return [], 0, info
+    return ([{"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_router_1", "name": "search_venues",
+                                                 "input": args}]},
+             {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_router_1", "content": out}]}],
+            n, info)
+
+
 def run(token, user, paid, messages, profile_override=None, memory_notes=None, on_note=None, user_context="",
         detail="full", prior_vendor_ids=(), preferences="", active_filters=None, progress=None, search_log=None,
-        profile_questions=None, known_area="", profile_extra=None, price_question=False, presearch=None):
+        profile_questions=None, known_area="", profile_extra=None, price_question=False, presearch=None,
+        route=False):
     """messages: prior turns as [{"role": "user"|"assistant", "content": str}, ...], last one the user's.
     memory_notes: durable notes saved in earlier conversations (rec_memory).
     on_note(text): called when the model saves a new durable note.
@@ -980,6 +1032,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     presearch: an opening (2026-11-01): run the first search_venues call here, from the profile (+ these extra filters
         from the couple's preference answers, prefs.search_filters), and hand it to the model as a finished tool
         call. None = the model searches itself (every refine, and REC_PRESEARCH=0).
+    route: a follow-up question (2026-11-07): with config.REFINE_ROUTER, ROUTER_MODEL picks the first search_venues
+        call from the couple's words and the chat, it runs here, and the model gets it as a finished tool call.
     Returns (result_dict, usage_dict)."""
     prog = progress or progress_mod.NULL
     slog = search_log if search_log is not None else railway_search.SearchLog(railway_search.arm((user or {}).get("id")))
@@ -2125,6 +2179,23 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             context += ("\nPRE-SEARCH: search_venues has already run for this couple from their profile - its result is "
                         "the tool result below. Pick from those venues and call present_recommendations; search again "
                         "only if fewer than 3 of them fit or they need a different place or filter." + pre_note)
+    router = {}
+    if route and config.REFINE_ROUTER and presearch is None and not presearch_msgs and not prog.cancelled():
+        t_pre = time.time()
+        try:
+            brief = json.dumps({"wedding_states": list(states or []), "guests": guests or None,
+                                "active_filters_of_this_chat": active or {}})
+            presearch_msgs, presearch_n, router = _routed_search(tool_list, "COUPLE: " + brief, messages)
+        except progress_mod.Stopped:
+            presearch_msgs, presearch_n = [], 0
+        except Exception as e:              # never fatal: the model searches itself, as before
+            print("refine router failed:", repr(e)[:200])
+            presearch_msgs, presearch_n = [], 0
+        presearch_ms = int((time.time() - t_pre) * 1000)
+        if presearch_msgs:
+            context += ("\nPRE-SEARCH: search_venues has already run for the couple's latest message - its result is "
+                        "the tool result below. Answer from it and call present_recommendations; search again only "
+                        "if it misread what they asked (wrong place, type or size) or fewer than 3 venues fit.")
     msgs = [dict(m) for m in messages]
     msgs[0] = {"role": msgs[0]["role"], "content": context + "\n\n" + msgs[0]["content"]}
     msgs += presearch_msgs
@@ -2134,7 +2205,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
              "tool_calls": 0, "prefetch_ms": int((t_prefetch_end - t0) * 1000),
              "prefetch_bench_ms": part_ms["bench"], "prefetch_saved_ms": part_ms["saved"],
              "prefetch_saved_n": len(saved_ids),
-             "presearch": bool(presearch_msgs), "presearch_ms": presearch_ms, "presearch_n": presearch_n}
+             "presearch": bool(presearch_msgs), "presearch_ms": presearch_ms, "presearch_n": presearch_n,
+             "routed": bool(route and config.REFINE_ROUTER), "router_searched": bool(router.get("searched")),
+             "router_ms": router.get("ms"), "router_cost_usd": router.get("cost_usd") or 0}
     # Streamed answer text (2026-10-31): only with a tracker to publish to, and never for a couple with no plan (free
     # mode redacts prices on the FINISHED answer; a half-written line could show one). Off = the call is unchanged.
     stream_on = bool(config.STREAM_TEXT and progress is not None and not free)

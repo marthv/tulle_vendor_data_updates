@@ -1,0 +1,327 @@
+{
+ "_note": "Real chats from the planner activity log 2026-11-03..11-06 (internal accounts excluded). Profile fields only, read 2026-11-07. Built by build_nov.py.",
+ "cases": {
+  "n1458": {
+   "chat": 1458,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "I'm engaged and just started wedding planning",
+    "Wedding_Location_Updated": [
+     "Connecticut"
+    ],
+    "Wedding_Guest_Count": 50,
+    "Wedding_Budget": 8000,
+    "Age_Range": "26-29"
+   },
+   "opening": true,
+   "asks": [
+    "No, keep all-inclusive",
+    "Can you show me more venues, they don’t have to be near Hartford just keep them within Connecticut",
+    "Can you show me more inn-style options",
+    "Find a photographer",
+    "Can you show me more affordable photographers. Even if it means I get less time with them, someone who maybe offer 4 hour packages",
+    "Show me more all-inclusive venues, regardless of the type of venue, within Connecticut",
+    "Relax on all inclusive, and show me restaurant style venues, that have space for an on-site ceremony",
+    "Winery venues",
+    "Can you show me banquet hall venues?",
+    "Can you show me reception only venues, near Hartford City hall that fit my guest count",
+    "Can you show me photographers with packages under $2000",
+    "Can you show me caters for my guest count under $2000",
+    "Find a florist",
+    "Hair and makeup artists",
+    "Show me more affordable hair and makeup artist in CT, preferably below $125",
+    "All-inclusive venues",
+    "Semi-inclusive venues in Connecticut",
+    "Yes, compare my saved venues"
+   ]
+  },
+  "n1307": {
+   "chat": 1307,
+   "plan": "Forever",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "Colorado"
+    ],
+    "Wedding_Guest_Count": 75
+   },
+   "opening": true,
+   "asks": [
+    "how much is Garden of the Gods Resort and Club",
+    "is that inclusive?",
+    "Aspen Grove at Sundance Trail cost",
+    "Vail resort?",
+    "show costs for both",
+    "we'll get there. first pull all top colorado wedding destinations with epic views for 50-75 people in vail, aspen, marroonbells, telluride, and also any other epic mountain destinations i suppose closest to airport to be minfdul of guests. ideally outdoors but also a hotel where everyone can book. last, how much is the ritz carlton for a micro wedding elopement?",
+    "theres a rits. in vail",
+    "sorry, i meant aspen ritz",
+    "The Ritz-Carlton Club, Aspen Highlands",
+    "aspen",
+    "show me all"
+   ]
+  },
+  "n1328": {
+   "chat": 1328,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "I'm engaged and just started wedding planning",
+    "Wedding_Location_Updated": [
+     "New York"
+    ],
+    "Wedding_Guest_Count": 250,
+    "Wedding_Budget": 110000,
+    "Age_Range": "26-29"
+   },
+   "opening": true,
+   "asks": [
+    "venue",
+    "how about gustavinos?",
+    "can i see chelsea piers?",
+    "Yes, waterfront venues",
+    "capitale nyc",
+    "yes"
+   ]
+  },
+  "n1193": {
+   "chat": 1193,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "I'm engaged and just started wedding planning",
+    "Wedding_Location_Updated": [
+     "Illinois"
+    ],
+    "Wedding_Guest_Count": 125,
+    "Wedding_Budget": 15000,
+    "Age_Range": "23-25"
+   },
+   "opening": false,
+   "asks": [
+    "Algonquin",
+    "Show 3 more",
+    "No, keep barns only",
+    "In Illinois Glendale heights and Algonquin area",
+    "No just show me",
+    "Show 3 more"
+   ]
+  },
+  "n1363": {
+   "chat": 1363,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "Not engaged... Yet",
+    "Wedding_Location_Updated": [
+     "Texas"
+    ],
+    "Wedding_Guest_Count": 150,
+    "Wedding_Budget": 75000,
+    "Wedding_Date": "2028-04-08",
+    "Age_Range": "23-25"
+   },
+   "opening": true,
+   "asks": [
+    "It needs to be 30 minutes away from Prince of Peace Catholic Church in Plano",
+    "there also needs to be lodging nearby or onsite",
+    "can you find something more elegant? more like the omni pga frisco",
+    "Yes, estates and country clubs"
+   ]
+  },
+  "n1398": {
+   "chat": 1398,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "I'm engaged and just started wedding planning",
+    "Wedding_Location_Updated": [
+     "California",
+     "Texas"
+    ],
+    "Wedding_Guest_Count": 100,
+    "Wedding_Budget": 75000,
+    "Age_Range": "26-29"
+   },
+   "opening": false,
+   "asks": [
+    "Tell me about Montecito Club and whether it fits my wedding",
+    "Does the $75K budget mean total wedding budget? Because I have a smaller budget if we're just talking about the venue...\n\nIt would be preferred to be near LA or Santa Barbara",
+    "I probably prefer more like Santa Barbara area - I love the look of gardens and nature and maybe the ocean"
+   ]
+  },
+  "n1414": {
+   "chat": 1414,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "Not engaged... Yet",
+    "Wedding_Location_Updated": [
+     "Pennsylvania"
+    ],
+    "Wedding_Guest_Count": 50,
+    "Wedding_Budget": 10000,
+    "Age_Range": "26-29"
+   },
+   "opening": true,
+   "asks": [
+    "Show 3 more",
+    "Show 3 more",
+    "All-inclusive venues",
+    "Under 10k",
+    "I want to be within an hour of Philly ideally"
+   ]
+  },
+  "n1310": {
+   "chat": 1310,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "I'm engaged and just started wedding planning",
+    "Wedding_Location_Updated": [
+     "Ohio"
+    ],
+    "Wedding_Guest_Count": 250,
+    "Wedding_Budget": 15000,
+    "Age_Range": "18-22"
+   },
+   "opening": true,
+   "asks": [
+    "I need the wedding to end after midnight with catering and in house coordinator set up and tear down",
+    "Show 3 more",
+    "All-inclusive venues",
+    "Columbus Ohio only",
+    "I need a venue that lasts until 2am",
+    "Yes, hotel venues only",
+    "No, keep all-inclusive"
+   ]
+  },
+  "n1386": {
+   "chat": 1386,
+   "plan": "Forever",
+   "profile": {
+    "Planning_Phase": "Not engaged... yet",
+    "Wedding_Location_Updated": [
+     "New York",
+     "New Jersey"
+    ],
+    "Wedding_Guest_Count": 200,
+    "Wedding_Budget": 45000,
+    "Age_Range": "30-34"
+   },
+   "opening": true,
+   "asks": [
+    "Show 3 more",
+    "No, keep all-inclusive",
+    "These are expensive",
+    "Show 3 more",
+    "Under $200 a head",
+    "Show 3 more",
+    "Show 3 more",
+    "Show long island, nj, nyc and hudson valley options that fit 200 people and come out to under $150 per head",
+    "Show 3 more",
+    "Show 3 more",
+    "Yes, all-inclusive only"
+   ]
+  },
+  "n1475": {
+   "chat": 1475,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "I'm engaged and just started wedding planning",
+    "Wedding_Location_Updated": [
+     "Not Sure"
+    ],
+    "Wedding_Guest_Count": 200,
+    "Wedding_Budget": 70000,
+    "Age_Range": "30-34"
+   },
+   "opening": true,
+   "asks": [
+    "Mountain",
+    "I would like it to have mountain views and some water",
+    "Can tou just narrow my venue search to show me venues with mountain views"
+   ]
+  },
+  "n1497": {
+   "chat": 1497,
+   "plan": "unknown",
+   "profile": {
+    "Wedding_Location_Updated": [
+     "Texas"
+    ],
+    "Wedding_Guest_Count": 400
+   },
+   "opening": true,
+   "asks": [
+    "I need capacity at 350 minimum",
+    "Around dfw",
+    "Show 3 more",
+    "No, keep 50 miles"
+   ]
+  },
+  "n1260": {
+   "chat": 1260,
+   "plan": "Forever",
+   "profile": {
+    "Planning_Phase": "Not engaged... yet",
+    "Wedding_Location_Updated": [
+     "California"
+    ],
+    "Wedding_Guest_Count": 150,
+    "Wedding_Budget": 100000,
+    "Peak_Season": true,
+    "Major_City": true,
+    "Age_Range": "23-25"
+   },
+   "opening": true,
+   "asks": [
+    "Show 3 more",
+    "Show 3 more",
+    "Show 3 more",
+    "would love on site accommodations",
+    "Show 3 more",
+    "what about hotel buyout?"
+   ]
+  },
+  "n1323": {
+   "chat": 1323,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "I'm engaged and just started wedding planning",
+    "Wedding_Location_Updated": [
+     "Pennsylvania",
+     "New Jersey"
+    ],
+    "Wedding_Guest_Count": 150,
+    "Wedding_Budget": 40000,
+    "Age_Range": "30-34"
+   },
+   "opening": false,
+   "asks": [
+    "Tell me about American Swedish Historical Museum and whether it fits my wedding",
+    "online forums show this as much cheaper than what I'm seeing here (per person costs in the $150 range)"
+   ]
+  },
+  "n1447": {
+   "chat": 1447,
+   "plan": "free",
+   "profile": {
+    "Planning_Phase": "Not engaged... Yet",
+    "Wedding_Location_Updated": [
+     "Massachusetts",
+     "Rhode Island",
+     "New York"
+    ],
+    "Wedding_Guest_Count": 125,
+    "Age_Range": "26-29"
+   },
+   "opening": true,
+   "asks": [
+    "I want Nantucket wedding venues only",
+    "Show 3 more",
+    "Bohlin",
+    "Newport harbor hotel",
+    "Belle mer",
+    "New Year’s Eve wedding venues in nyc",
+    "Rooftop / Skyline Views",
+    "Show 3 more",
+    "Show 3 more",
+    "No, include Brooklyn",
+    "Show 3 more"
+   ]
+  }
+ }
+}
