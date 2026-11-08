@@ -42,6 +42,7 @@ about the couple live in rec_memory (80) and are fed into every later conversati
 """
 from typing import Optional
 import datetime as dt
+import json
 import time
 import re
 import threading
@@ -250,6 +251,40 @@ class RefineBody(BaseModel):
     message: str = ""
     messages: list[Turn] = []     # legacy shape: prior turns + the new user message last
     request_id: str = Field("", max_length=progress.MAX_ID_LEN)   # optional: progress + Stop (2026-10-25)
+    quote: Optional[dict] = None  # 11-08: a vendor quote the couple uploaded, parsed by ep157 (Forever only)
+
+
+QUOTE_KEYS = ("vendor_name", "category", "total_cost", "package_name", "document_type", "deposit_or_paid",
+              "included_sum", "notes", "contact_information")
+
+
+def quote_block(q, file_name=""):
+    """The model-only context for 'is this a good deal?' (owner 2026-11-08). Parsed figures are the couple's own
+    quote, not Tulle data; the stored chat keeps only the short question."""
+    if not isinstance(q, dict):
+        return ""
+    d = {k: q.get(k) for k in QUOTE_KEYS if q.get(k) not in (None, "", [], {})}
+    lines = []
+    for li in (q.get("line_items") or [])[:30]:
+        if isinstance(li, dict):
+            lines.append({k: li.get(k) for k in ("description", "item", "name", "amount", "price", "quantity", "included", "optional")
+                          if li.get(k) not in (None, "")})
+    if lines:
+        d["line_items"] = lines
+    sched = [x for x in (q.get("payment_schedule") or [])[:8] if isinstance(x, (dict, str))]
+    if sched:
+        d["payment_schedule"] = sched
+    blob = json.dumps(d, default=str)[:4000]
+    return ("\n\n[QUOTE THE COUPLE UPLOADED%s - parsed from their PDF by Tulle. These figures are THEIR quote, not Tulle "
+            "data.]\n%s\n[HOW TO ANSWER] They want to know if this is a good deal. (1) If the vendor is one Tulle lists, "
+            "look it up by name and compare this quote with Tulle's pricing for it (say which package or line matches). "
+            "(2) Compare with what is typical: market_benchmarks / State benchmarks for their state and guest count for a "
+            "venue, starting_price_vs_state for photographers and entertainment, estimate_cost for an all-in what-if. "
+            "(3) Give a plain verdict - a good deal, about typical, or on the high side - with the one or two numbers that "
+            "show it, anything notable that is included or missing (service charge, tax, minimums, overtime), and one "
+            "specific thing to ask or negotiate. Quote figures only from this quote or from your tools. If Tulle has "
+            "nothing comparable, say so and say what to ask the vendor instead.") % (
+        (' ("%s")' % file_name[:120]) if file_name else "", blob)
 
 
 class OpeningBody(BaseModel):
@@ -1291,7 +1326,7 @@ def _save_profile_answers(user, pending, text):
     return answers, [n["note"] for n in added if n.get("note")]
 
 
-def _refine_in_chat(token, user, chat, text, background, tracker=None):
+def _refine_in_chat(token, user, chat, text, background, tracker=None, quote=None):
     """One typed question inside a stored conversation: server-held history in, both turns saved after."""
     _chat_used(chat.get("id") if isinstance(chat, dict) else chat)
     t0 = time.time()
@@ -1307,9 +1342,11 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None):
     last_u = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "user"), "")
     repeat = bool(last_u) and last_u.strip().lower() == text.strip().lower()
     # "oheka castle": no model (2026-10-26). Never for an answer to our own profile question ("Near Dallas").
-    out = None if (answered or is_chip) else _lookup_fast(token, user, text, last_a, chat["id"], tracker, repeat=repeat)
+    out = None if (answered or is_chip or quote) else _lookup_fast(token, user, text, last_a, chat["id"], tracker, repeat=repeat)
     if out is None:
         msgs, kw = _model_inputs(history, text)
+        if quote and msgs and msgs[-1].get("role") == "user":   # model-only: the stored turn stays the short question
+            msgs = msgs[:-1] + [dict(msgs[-1], content=msgs[-1]["content"] + quote_block(quote, str(quote.get("_file_name") or "")))]
         out = _run_guarded("refine", token, user, msgs, chat["id"], prior_ids=kw["prior_vendor_ids"],
                            active_filters=kw["active_filters"], tracker=tracker, history=history, saved_lines=lines,
                            waive_free=bool(answered))
@@ -1361,6 +1398,8 @@ def _recent_chat(user_id):
 @app.post("/rec/refine")
 def refine(body: RefineBody, background: BackgroundTasks, authorization: str = Header(None)):
     token, user = _auth(authorization)
+    if body.quote is not None and not xano.has_forever(user):
+        raise HTTPException(403, {"status": "quote_forever_only"})   # owner 11-08: quote check is a Forever feature
     try:
         return _tracked(body.request_id, user, lambda tr: _refine(token, user, body, background, tr))
     except HTTPException as e:
@@ -1378,7 +1417,7 @@ def _refine(token, user, body, background, tracker):
         text = (body.message or "").strip()[:2000]
         if not text:
             raise HTTPException(400, "message required")
-        return _refine_in_chat(token, user, chat, text, background, tracker)
+        return _refine_in_chat(token, user, chat, text, background, tracker, quote=body.quote)
     # No chat_id (the page asks before any opening has created a conversation). Until 2026-10-12 this ran
     # statelessly and saved nothing: user 827's 3 rated questions were lost and each one started from scratch,
     # so a state named in one question was forgotten by the next. Now: continue the user's conversation from
@@ -1397,12 +1436,14 @@ def _refine(token, user, body, background, tracker):
     # legacy shape (prior turns in `messages`) still continues the recent chat.
     chat = _recent_chat(user["id"]) if len(body.messages or []) > 1 else None
     if chat:
-        return _refine_in_chat(token, user, chat, text, background, tracker)
+        return _refine_in_chat(token, user, chat, text, background, tracker, quote=body.quote)
     # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard
     # allowed and the model answered, so a blocked or failed question leaves no empty conversation behind.
     last_a = next((m["content"] for m in reversed(msgs[:-1]) if m["role"] == "assistant"), "")
-    out = _lookup_fast(token, user, text, last_a, 0, tracker)            # venue by name: no model (2026-10-26)
+    out = None if body.quote else _lookup_fast(token, user, text, last_a, 0, tracker)   # venue by name: no model (2026-10-26)
     if out is None:
+        if body.quote:
+            msgs = msgs[:-1] + [{"role": "user", "content": text + quote_block(body.quote, str(body.quote.get("_file_name") or ""))}]
         out = _run_guarded("refine", token, user, msgs, tracker=tracker)
     if out.get("stopped"):
         return out           # no chat created, nothing saved
@@ -2152,7 +2193,7 @@ def status(authorization: str = Header(None)):
     beta_left = guards.beta_questions_left(paid, rows, fb)
     free_left = guards.free_refines_left(paid, rows, fb)
     forever_left = guards.forever_left_today(paid, rows, xano.today())
-    return {"paid": paid, "has_access": access, "upsell": "forever",
+    return {"paid": paid, "has_access": access, "upsell": "forever", "forever": xano.has_forever(user),
             "beta_questions_left": beta_left, "beta_feedback_after": config.BETA_FEEDBACK_AFTER,
             "forever_only": config.FOREVER_ONLY, "free_mode": not config.FOREVER_ONLY,
             "forever_left_today": forever_left,
