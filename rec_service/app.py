@@ -60,6 +60,7 @@ import cost_tools
 import free_mode
 import guards
 import lookup
+import plan
 import notify
 import opening_reuse
 import re as _re
@@ -181,7 +182,9 @@ def _public(out, **extra):
     # when we don't have the venue (the page can offer "Request this venue"). Both null on every other answer.
     resp.setdefault("lookup", None)
     resp.setdefault("venue_request", None)
-    resp.setdefault("sources", [])   # 2026-11-07: where the answer's facts came from ([] when none)
+    resp.setdefault("sources", [])
+    resp.setdefault("plan_enabled", False)   # "My wedding" A/B arm (2026-11-07); the page also reads /rec/status
+    resp.setdefault("plan_next", None)   # 2026-11-07: where the answer's facts came from ([] when none)
     n = len(out.get("more_cards") or [])
     # widgets (cost tools, 2026-10-25): always present, [] by default, so the current page is unaffected.
     # questions / upsell_prompt (2026-10-26): always present ([] / null by default), so the page can bind them.
@@ -497,6 +500,8 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
     opening for the same inputs is already stored or being generated."""
     t_req = time.time()
     f_mem = _POOL.submit(_memory_row, user["id"])
+    in_plan = plan.arm(user["id"]) == "plan"
+    f_plan = _POOL.submit(xano.plan_items, user["id"]) if in_plan else None   # "My wedding" (2026-11-07)
     paid, access, rows, feedback_given, counted_free, base = _gate(kind, user, chat_id, waive_free=waive_free,
                                                                    row_kind="prewarm" if prewarm else None)
     ev_kind = "prewarm" if prewarm else kind
@@ -512,6 +517,13 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         # Preference answers go to the model as one structured line (filters + priority), not as loose notes.
         notes = [n.get("note") for n in raw if n.get("note") and n.get("kind") != "pref"]
         user_context = row.get("user_context") or ""
+        plan_rows = []
+        if f_plan is not None:
+            try:
+                plan_rows = f_plan.result(timeout=3)
+            except Exception as e:     # never fail an answer over the plan
+                print("plan read failed:", repr(e)[:200])
+            user_context = (user_context or "") + plan.context_line(plan_rows, show_prices=access)
         answers = prefs.from_notes(raw)
         pref_hint = prefs.search_hint(answers)
         # Thin profile (2026-10-26): the opening asks at most 2 questions with tap answers (profile_questions.py).
@@ -631,6 +643,9 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         **_turn_props(usage),
         # Railway search rollout (2026-10-26): which engine answered the venue searches, and the user's arm.
         **_search_props(user, usage.get("search"))})
+    if in_plan:   # 2026-11-07: the one "next for your wedding" suggestion once the couple is engaged
+        asked = sum(1 for r in rows if r.get("status") == "ok" and r.get("kind") == "refine") + (kind == "refine")
+        result = dict(result, plan_enabled=True, plan_next=plan.next_step(plan_rows, asked))
     return dict(result, paid=paid, has_access=access,
                 **_counters(kind, paid, rows, counted_free, feedback_given, access))
 
@@ -1923,6 +1938,69 @@ def answer_feedback(body: AnswerFeedbackBody, authorization: str = Header(None))
     return {"ok": True}
 
 
+class PlanAddBody(BaseModel):
+    vendor_id: str = ""
+    vendor_name: str = ""
+    category: str = ""        # the card's category (Venue, Photography, ...); "" = Venue
+    est_cost: int = 0
+    chat_id: int = 0
+    source: str = "planner_card"
+    note: str = ""
+
+
+class PlanRemoveBody(BaseModel):
+    item_id: int = 0
+
+
+def _plan_view(user, rows=None):
+    access = xano.has_paid_access(user)
+    rows = xano.plan_items(user["id"]) if rows is None else rows
+    budget = xano.profile_of(user).get("Wedding_Budget") or 0
+    return dict(plan.summary(rows, budget, show_prices=access), enabled=plan.arm(user["id"]) == "plan",
+                ab_plan=plan.arm(user["id"]))
+
+
+@app.get("/rec/plan")
+def plan_get(authorization: str = Header(None)):
+    """The couple's "My wedding" plan (2026-11-07): every slot in booking order, filled or open."""
+    _, user = _auth(authorization)
+    return _plan_view(user)
+
+
+@app.post("/rec/plan/add")
+def plan_add(body: PlanAddBody, authorization: str = Header(None)):
+    """Add a vendor to a slot of the couple's wedding. Free for everyone. Same vendor twice = no second row."""
+    _, user = _auth(authorization)
+    name = (body.vendor_name or "").strip()[:200]
+    vid = (body.vendor_id or "").strip()[:40]
+    if not (vid or name):
+        raise HTTPException(400, {"status": "nothing_to_add"})
+    rows = xano.plan_items(user["id"])
+    if vid and any(r.get("vendor_id") == vid for r in rows):
+        return dict(_plan_view(user, rows), added=False, already=True)
+    slot = plan.slot_of(body.category)
+    row = {"user_id": user["id"], "slot": slot, "vendor_id": vid, "vendor_name": name,
+           "est_cost": max(0, min(int(body.est_cost or 0), 10_000_000)), "note": (body.note or "").strip()[:300],
+           "source": (body.source or "planner_card")[:40], "chat_id": int(body.chat_id or 0), "status": "active"}
+    created = xano.plan_add(row) or row
+    rows = rows + [created]
+    _POOL.submit(xano.mp_track, user["id"], "rec_plan_add", {
+        "slot": slot, "vendor_id": vid, "source": row["source"], "chat_id": row["chat_id"], "items_after": len(rows),
+        "slots_filled_after": plan.summary(rows)["filled"], "has_cost": bool(row["est_cost"])})
+    sheet_log.event(user, "Added to my wedding", "%s (%s)" % (name or vid, slot), "", row["chat_id"],
+                    [{"name": name or vid}])
+    return dict(_plan_view(user, rows), added=True, already=False)
+
+
+@app.post("/rec/plan/remove")
+def plan_remove(body: PlanRemoveBody, authorization: str = Header(None)):
+    _, user = _auth(authorization)
+    ok = xano.plan_remove(user["id"], body.item_id) if body.item_id else False
+    if ok:
+        _POOL.submit(xano.mp_track, user["id"], "rec_plan_remove", {"item_id": body.item_id})
+    return dict(_plan_view(user), removed=bool(ok))
+
+
 class EventBody(BaseModel):
     kind: str = ""            # vendor_click | save | unsave
     vendor_id: str = ""
@@ -1966,6 +2044,8 @@ def status(authorization: str = Header(None)):
             "cost_tools_in_chat": config.COST_TOOLS_IN_CHAT,
             # Railway search rollout (2026-10-26): this user's stable bucket, so the split can be checked live.
             "search_arm": railway_search.arm(user.get("id")), "railway_search_pct": config.RAILWAY_SEARCH_PCT,
+            # "My wedding" A/B (2026-11-07): this couple's arm; the page shows Add + the plan only when enabled.
+            "ab_plan": plan.arm(user.get("id")), "plan_enabled": plan.arm(user.get("id")) == "plan",
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 

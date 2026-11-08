@@ -1220,6 +1220,32 @@ def get_chat(user_id, chat_id):
     return r if r and int(r.get("user_id") or 0) == int(user_id) else None
 
 
+# ---------------------------------------------------------------- "My wedding" plan (table 90, 2026-11-07)
+PLAN_TABLE = 90
+
+
+def plan_items(user_id, include_removed=False):
+    uid = int(user_id)
+    rows = [r for r in _search_all(PLAN_TABLE, [{"user_id": uid}]) if int(r.get("user_id") or 0) == uid]
+    if not include_removed:
+        rows = [r for r in rows if (r.get("status") or "active") == "active"]
+    return sorted(rows, key=lambda r: (r.get("created_at") or 0, r.get("id") or 0))
+
+
+def plan_add(row):
+    return _meta("POST", "/table/%d/content" % PLAN_TABLE, json=row)
+
+
+def plan_remove(user_id, item_id):
+    """Soft delete (kept for the A/B read). False when the item isn't this couple's."""
+    r = _meta("GET", "/table/%d/content/%d" % (PLAN_TABLE, int(item_id)))
+    if not r or int(r.get("user_id") or 0) != int(user_id):
+        return False
+    _put_full(PLAN_TABLE, r, {"status": "removed",
+                              "removed_at": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)})
+    return True
+
+
 def add_message(chat_id, role, content, cards=None, chips=None):
     _meta("POST", "/table/%d/content" % MESSAGES_TABLE,
           json={"chat_id": int(chat_id), "role": role, "content": content or "",
@@ -1353,6 +1379,9 @@ def mp_track(user_id, event, props):
     if not config.MIXPANEL_TOKEN:
         return
     try:
+        if str(event).startswith("rec_"):
+            import plan as _plan     # 2026-11-07: every Planner event carries the plan A/B arm
+            props = dict(props, ab_plan=_plan.arm(user_id))
         body = [{"event": event, "properties": dict(props, token=config.MIXPANEL_TOKEN,
                                                     distinct_id=str(user_id), ip="0",
                                                     time=int(dt.datetime.now(dt.timezone.utc).timestamp()))}]

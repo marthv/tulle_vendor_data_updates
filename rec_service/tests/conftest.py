@@ -71,3 +71,12 @@ def _sourced_answers_off(monkeypatch):
     import config
     monkeypatch.setattr(config, "SOURCED_ANSWERS", False)
     monkeypatch.setattr(config, "WEB_SEARCH", False)
+
+
+@pytest.fixture(autouse=True)
+def _plan_ab_off(monkeypatch):
+    # "My wedding" A/B (2026-11-07): every couple in the control arm unless a test says otherwise (the plan arm reads
+    # Xano table 90). tests/test_plan.py turns it on.
+    import plan
+    monkeypatch.setattr(plan, "PLAN_AB_PCT", 0)
+    monkeypatch.setattr(plan, "ALWAYS_PLAN", set())
