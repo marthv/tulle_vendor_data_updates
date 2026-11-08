@@ -712,7 +712,10 @@ def _place_label(c):
     state = state[0] if isinstance(state, list) and state else state
     if state == "International":
         return ", ".join(parts[-2:]) if len(parts) >= 2 else "outside the US"
-    city = parts[-2] if len(parts) >= 3 else ""
+    # Drop a trailing country and "GA 30518"-style state+ZIP parts (2026-11-07 live: "GA 30518, Georgia").
+    while parts and re.fullmatch(r"(?i)usa|united states(?: of america)?|[A-Z]{2}\s*\d{5}(?:-\d{4})?|\d{5}", parts[-1]):
+        parts = parts[:-1]
+    city = parts[-1] if len(parts) >= 2 else ""
     return ", ".join(x for x in (city, state) if x) or "Tulle"
 
 
@@ -874,7 +877,10 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         # the honest coverage line, no cards; any other miss shows venues from the area named or, failing that, the
         # couple's own profile state (use_profile) instead of a question; a repeat of the same name says so.
         dest = lookup.destination_in("%s %s" % (name, loc))
-        similar, where = ([], "") if dest else _similar_near(token, q, user, slog, use_profile=True, guests=guests)
+        # A place the couple NAMED that we can't locate ("Aspen Highlands") is never swapped for their profile state
+        # (2026-11-07 live: Ritz-Carlton Club, Aspen Highlands -> "3 venues we do have in Texas").
+        similar, where = ([], "") if dest else _similar_near(
+            token, q, user, slog, use_profile=not (q.get("location") or q.get("alt_location")), guests=guests)
         cards = []
         for v in similar:
             c = agent._with_rental(dict(v), None, guests, budget)

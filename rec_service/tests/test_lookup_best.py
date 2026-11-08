@@ -34,7 +34,10 @@ def test_the_only_match_in_their_state_is_the_guess():
 def test_a_clear_leader_is_the_guess():
     res = {"status": "choices", "matches": [m("C", "Woman's Club of Fort Worth", "Texas"),
                                             m("Z", "Fort Worth Zoo", "Texas")], "scores": [0.853, 0.772]}
-    assert lookup.resolve(dict(Q, name="fort worth club"), res, ["Texas"])["status"] == "best"
+    out = lookup.resolve(dict(Q, name="fort worth club"), res, ["Texas"])   # only one has all 3 words
+    assert out["status"] == "found" and out["matches"][0]["vendor_id"] == "C"
+    res2 = dict(res, matches=[m("C", "Fort Worth Club", "Texas"), m("Z", "Fort Worth Club House", "Texas")])
+    assert lookup.resolve(dict(Q, name="fort worth club"), res2, ["Texas"])["status"] == "best"
 
 
 def test_a_true_tie_stays_several_cards():

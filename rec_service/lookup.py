@@ -550,6 +550,12 @@ def resolve(q, res, prefer_states=()):
     names = [n for n in (q.get("name"), q.get("alt_name")) if n]
     if not any(strong(n, m.get("name")) or strong(n, m.get("google_name")) for m in ms for n in names):
         return dict(res, status="not_found", matches=[])
+    # Every word they typed, the venue-type word included ("Ashton GARDENS"): those matches beat ones sharing only the
+    # distinctive word (2026-11-07 live: "Ashton gardens" listed Ashton Farm and Ashton Place as matches).
+    full = [m for m in ms if any(all(_best(t, tokens(m.get(f) or ""), 0.9) for t in tokens(n))
+                                 for n in names for f in ("name", "google_name"))]
+    if full:
+        ms = full
     if len(ms) == 1:
         return dict(res, status="found", matches=ms)
     res = dict(res, matches=ms)
