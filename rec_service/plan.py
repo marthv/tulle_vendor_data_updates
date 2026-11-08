@@ -35,9 +35,11 @@ def arm(user_id):
         uid = int(user_id or 0)
     except (TypeError, ValueError):
         uid = 0
+    if PLAN_AB_PCT <= 0:
+        return "control"          # off means off for everyone, team included (owner rollback 2026-11-07)
     if uid in ALWAYS_PLAN:
         return "plan"
-    if PLAN_AB_PCT <= 0 or not uid:
+    if not uid:
         return "control"
     if PLAN_AB_PCT >= 100:
         return "plan"

@@ -16,7 +16,9 @@ def test_arm_is_stable_and_splits_near_half(monkeypatch):
     monkeypatch.setattr(plan, "PLAN_AB_PCT", 0)
     assert plan.arm(123) == "control"
     monkeypatch.setattr(plan, "ALWAYS_PLAN", {14998})
-    assert plan.arm(14998) == "plan"                                      # internal accounts always see it
+    assert plan.arm(14998) == "control"                                   # off = off for the team too
+    monkeypatch.setattr(plan, "PLAN_AB_PCT", 50)
+    assert plan.arm(14998) == "plan"                                      # in a split, the team always sees it
 
 
 ROWS = [{"id": 1, "slot": "Venue", "vendor_id": "V1675", "vendor_name": "Kohl Mansion", "est_cost": 46018,
