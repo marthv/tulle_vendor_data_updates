@@ -173,6 +173,16 @@ def split_budget(total, focus="normal", excluded_categories=(), *, categories):
                      "amount": js_round(total * share / active) if inc and active > 0 else 0})
     w = {"type": "budget_split", "v": V, "total": int(total), "focus": focus, "categories": cats,
          "included_count": sum(1 for c in cats if c["included"]), "category_count": len(cats)}
+    # 11-08 (owner: the Focus chips froze waiting on a round trip): every focus's split rides along, so the page
+    # switches focus instantly with no request. Same maths as above, one pass per focus column.
+    by_focus = {}
+    for fk in ("normal", "venue", "food", "flowers", "planner", "entertainment"):
+        fld = FOCUS_FIELDS[fk]
+        act = sum(_num(r.get(fld)) for r in rows if not off(r))
+        by_focus[fk] = [{"id": r.get("id"), "name": r.get("Category") or "", "included": not off(r),
+                         "pct": js_round(_num(r.get(fld)) / act * 100) if (not off(r)) and act > 0 else 0,
+                         "amount": js_round(total * _num(r.get(fld)) / act) if (not off(r)) and act > 0 else 0} for r in rows]
+    w["by_focus"] = by_focus
     facts = {"total": int(total), "focus": focus,
              "categories": {c["name"]: {"pct": c["pct"], "amount": c["amount"]} for c in cats if c["included"]},
              "excluded": [c["name"] for c in cats if not c["included"]],
