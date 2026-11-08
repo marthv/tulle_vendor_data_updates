@@ -2015,10 +2015,21 @@ class WeddingBookBody(BaseModel):
     category: str = ""
     price: int = 0
     paid: int = 0
+    notes: str = ""
+    file: Optional[dict] = None     # attachment object from the app's POST /upload/attachment (11-08 v2)
 
 
 class WeddingItemBody(BaseModel):
     item_id: int = 0
+
+
+class WeddingEditBody(BaseModel):
+    item_id: int = 0
+    notes: Optional[str] = None
+    file: Optional[dict] = None
+    clear_file: bool = False
+    price: Optional[int] = None
+    paid: Optional[int] = None
 
 
 def _wedding_view(token, user, packages=None):
@@ -2057,7 +2068,11 @@ def wedding_book(body: WeddingBookBody, authorization: str = Header(None)):
     row = {"user_id": user["id"], "vendor_name": name, "total_cost": price,
            "Balance_Paid": max(0, min(int(body.paid or 0), price)), "Balance_Left": price - max(0, min(int(body.paid or 0), price)),
            "Category": wedding.table_category(body.category), "Selected": True,
-           "Notes": "tulle:" + (vid or "manual"), "Package_Name": "Booked in My wedding"}
+           "Notes": (body.notes or "").strip()[:2000],
+           "Package_Name": "Booked in My wedding · tulle:" + (vid or "manual")}
+    att = wedding.clean_attachment(body.file)
+    if att:
+        row["Files"] = att
     xano.package_add(row)
     _POOL.submit(xano.mp_track, user["id"], "rec_wedding_book", {"category": row["Category"], "has_vendor": bool(vid),
                  "price": price})
@@ -2075,6 +2090,30 @@ def wedding_unbook(body: WeddingItemBody, authorization: str = Header(None)):
     if ok:
         _POOL.submit(xano.mp_track, user["id"], "rec_wedding_unbook", {"item_id": body.item_id})
     return dict(_wedding_view(token, user), undone=bool(ok))
+
+
+@app.post("/rec/wedding/item")
+def wedding_item(body: WeddingEditBody, authorization: str = Header(None)):
+    """Edit one booked item in place (11-08 v2): the couple's notes, the file (contract / pricing PDF), price, paid."""
+    token, user = _auth(authorization)
+    if not wedding.ENABLED:
+        raise HTTPException(503, {"status": "off"})
+    changes = {}
+    if body.notes is not None:
+        changes["Notes"] = body.notes.strip()[:2000]
+    if body.clear_file:
+        changes["Files"] = None
+    elif body.file is not None:
+        att = wedding.clean_attachment(body.file)
+        if not att:
+            raise HTTPException(400, {"status": "bad_file"})
+        changes["Files"] = att
+    ok = xano.package_update(user["id"], body.item_id, changes, body.price, body.paid) if body.item_id else False
+    if not ok:
+        raise HTTPException(404, {"status": "not_found"})
+    _POOL.submit(xano.mp_track, user["id"], "rec_wedding_item_edit", {"notes": body.notes is not None,
+                 "file": bool(body.file) and not body.clear_file, "clear_file": body.clear_file})
+    return _wedding_view(token, user)
 
 
 class EventBody(BaseModel):

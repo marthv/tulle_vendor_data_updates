@@ -11,9 +11,11 @@ Data, no schema change:
 Rollback: REC_WEDDING=0 (endpoints answer enabled:false and the page hides the view). Pure helpers here; xano.py does
 the reads/writes; app.py the endpoints."""
 import os
+import re
 
 ENABLED = os.environ.get("REC_WEDDING", "1") == "1"
 PACKAGES_TABLE = 33
+XANO_FILE_BASE = os.environ.get("XANO_FILE_BASE", "https://xqtb-2ma7-ijfy.n7e.xano.io")
 
 # The categories Tulle covers well (11-07 counts: venues 13k, DJs/bands 3k, photographers 2.4k, florists 734).
 # key = the card category; label = what the couple sees; table = table 33's Category value (table 19 names).
@@ -41,9 +43,48 @@ def _num(v):
         return 0.0
 
 
+_MARK = re.compile(r"tulle:(\S+)")
+
+
 def _vid(p):
-    n = str(p.get("Notes") or "")
-    return n[6:].strip() if n.startswith("tulle:") and n[6:].strip() != "manual" else ""
+    """The vendor a booked row came from. 11-08 v2: the marker lives in Package_Name ("Booked in My wedding ·
+    tulle:V1") so Notes is the couple's own; rows from v1 still carry it in Notes."""
+    for f in ("Package_Name", "Notes"):
+        m = _MARK.search(str(p.get(f) or ""))
+        if m:
+            return "" if m.group(1) == "manual" else m.group(1)
+    return ""
+
+
+def user_notes(p):
+    """The couple's own notes - never the v1 "tulle:..." marker."""
+    n = str(p.get("Notes") or "").strip()
+    return "" if _MARK.fullmatch(n) else n
+
+
+def file_of(p):
+    """Table 33 Files (single attachment) as {name, url}, or None."""
+    f = p.get("Files")
+    if not isinstance(f, dict) or not (f.get("url") or f.get("path")):
+        return None
+    url = f.get("url") or ""
+    if not url and f.get("path"):
+        url = XANO_FILE_BASE + f["path"]
+    return {"name": f.get("name") or "File", "url": url, "mime": f.get("mime") or ""}
+
+
+def clean_attachment(f):
+    """An attachment object from the app's POST /upload/attachment, safe to write to Files: a Xano vault path, our
+    own host. Anything else -> None (never store a client-chosen URL)."""
+    if not isinstance(f, dict):
+        return None
+    path = str(f.get("path") or "")
+    if not path.startswith("/vault/") or ".." in path:
+        return None
+    out = {k: f.get(k) for k in ("access", "path", "name", "type", "size", "mime", "meta") if f.get(k) is not None}
+    out["access"] = "public"
+    out["name"] = str(out.get("name") or "file")[:200]
+    return out
 
 
 def price_hint(card):
@@ -65,12 +106,21 @@ def view(user, packages, saved_cards, show_prices):
     for p in rows:
         c = BY_TABLE.get(str(p.get("Category") or "").strip().lower())
         item = {"id": p.get("id"), "name": p.get("vendor_name") or "", "price": int(_num(p.get("total_cost"))),
-                "paid": int(_num(p.get("Balance_Paid"))), "vendor_id": _vid(p), "category": p.get("Category") or ""}
+                "paid": int(_num(p.get("Balance_Paid"))), "vendor_id": _vid(p), "category": p.get("Category") or "",
+                "notes": user_notes(p)[:2000], "file": file_of(p)}
         if c and c["key"] not in booked_by:
             booked_by[c["key"]] = item
         else:
             extras.append(item)
     booked_total = sum(int(_num(p.get("total_cost"))) for p in rows)
+    # Pie (owner 11-08: "a pie chart rather than a line, so we can see how much is being used up"): booked money by
+    # category, biggest first; the page adds the "left" slice from budget.
+    by_cat = {}
+    for p in rows:
+        c = BY_TABLE.get(str(p.get("Category") or "").strip().lower())
+        lab = c["label"] if c else (str(p.get("Category") or "").strip() or "Other")
+        by_cat[lab] = by_cat.get(lab, 0) + int(_num(p.get("total_cost")))
+    slices = [{"label": k, "amount": v} for k, v in sorted(by_cat.items(), key=lambda kv: -kv[1]) if v > 0]
     cats = []
     saved_other = []
     keys = {c["key"] for c in CATS}
@@ -87,7 +137,8 @@ def view(user, packages, saved_cards, show_prices):
         cats.append({"key": c["key"], "label": c["label"], "icon": c["icon"], "noun": c["noun"],
                      "booked": booked_by.get(c["key"]), "saved": saved})
     return {"enabled": ENABLED, "budget": budget, "booked_total": booked_total,
-            "left": (budget - booked_total) if budget else None, "categories": cats, "extras": extras,
+            "left": (budget - booked_total) if budget else None, "categories": cats, "extras": extras, "slices": slices,
+            "paid_total": sum(int(_num(p.get("Balance_Paid"))) for p in rows),
             "saved_other": saved_other, "show_prices": bool(show_prices)}
 
 

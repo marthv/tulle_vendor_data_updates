@@ -72,7 +72,7 @@ def test_book_then_undo(api):
     c = TestClient(app.app)
     j = c.post("/rec/wedding/book", json={"vendor_id": "P1", "name": "OliviaPhotos", "category": "Photography",
                                           "price": 2000, "paid": 500}).json()
-    assert api["added"][0]["Notes"] == "tulle:P1" and api["added"][0]["Selected"] is True
+    assert api["added"][0]["Package_Name"].endswith("tulle:P1") and api["added"][0]["Notes"] == "" and api["added"][0]["Selected"] is True
     ph = next(x for x in j["categories"] if x["key"] == "Photography")
     assert ph["booked"]["name"] == "OliviaPhotos" and j["left"] == 21495
     u = c.post("/rec/wedding/unbook", json={"item_id": ph["booked"]["id"]}).json()
@@ -89,3 +89,37 @@ def test_add_a_cost_needs_name_and_price(api):
 def test_rollback_flag(api, monkeypatch):
     monkeypatch.setattr(wedding, "ENABLED", False)
     assert TestClient(app.app).get("/rec/wedding").json() == {"enabled": False}
+
+
+def test_v2_notes_file_slices_and_marker():
+    pk = PACK + [{"id": 5, "user_id": 7, "vendor_name": "Bloomery", "total_cost": 3000, "Selected": True,
+                  "Category": "Flowers", "Notes": "Peonies, deposit due Jan", "Package_Name": "Booked in My wedding · tulle:F9",
+                  "Files": {"path": "/vault/abc/contract.pdf", "name": "contract.pdf", "mime": "application/pdf"}}]
+    v = wedding.view(USER, pk, list(CARDS.values()), show_prices=True)
+    cats = {c["key"]: c for c in v["categories"]}
+    fl = cats["Flowers"]["booked"]
+    assert fl["vendor_id"] == "F9" and fl["notes"] == "Peonies, deposit due Jan"
+    assert fl["file"]["url"].endswith("/vault/abc/contract.pdf") and fl["file"]["name"] == "contract.pdf"
+    assert cats["Venue"]["booked"]["vendor_id"] == "V1" and cats["Venue"]["booked"]["notes"] == ""   # v1 marker hidden
+    assert v["slices"][0] == {"label": "Venue", "amount": 12505} and {"label": "Flowers", "amount": 3000} in v["slices"]
+    assert v["paid_total"] == 4000
+
+
+def test_clean_attachment():
+    assert wedding.clean_attachment({"path": "https://evil/x.pdf"}) is None
+    assert wedding.clean_attachment({"path": "/vault/../x"}) is None
+    a = wedding.clean_attachment({"path": "/vault/a/b.pdf", "name": "b.pdf", "size": 9, "mime": "application/pdf", "url": "https://evil"})
+    assert a["path"] == "/vault/a/b.pdf" and "url" not in a and a["access"] == "public"
+
+
+def test_item_edit_endpoint(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", USER))
+    monkeypatch.setattr(app, "_wedding_view", lambda t, u, packages=None: {"enabled": True, "categories": []})
+    monkeypatch.setattr(xano, "package_update", lambda uid, iid, ch, price, paid: calls.update(uid=uid, iid=iid, ch=ch) or iid == 2)
+    monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
+    c = TestClient(app.app)
+    assert c.post("/rec/wedding/item", json={"item_id": 2, "notes": " hi "}).status_code == 200 and calls["ch"] == {"Notes": "hi"}
+    assert c.post("/rec/wedding/item", json={"item_id": 2, "file": {"path": "nope"}}).status_code == 400
+    assert c.post("/rec/wedding/item", json={"item_id": 9, "notes": "x"}).status_code == 404
+    assert c.post("/rec/wedding/item", json={"item_id": 2, "clear_file": True}).status_code == 200 and calls["ch"] == {"Files": None}

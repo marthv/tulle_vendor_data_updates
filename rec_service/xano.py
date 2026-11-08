@@ -1234,6 +1234,22 @@ def package_set_selected(user_id, item_id, selected):
     return True
 
 
+def package_update(user_id, item_id, changes, price=None, paid=None):
+    """Edit one of the couple's budget items (notes / file / price / paid). False when it isn't theirs.
+    Balance_Left is recomputed whenever price or paid moves."""
+    r = _meta("GET", "/table/33/content/%d" % int(item_id))
+    if not r or int(r.get("user_id") or 0) != int(user_id):
+        return False
+    ch = dict(changes or {})
+    if price is not None or paid is not None:
+        tot = max(0, min(int(price if price is not None else (r.get("total_cost") or 0)), 10_000_000))
+        pd = max(0, min(int(paid if paid is not None else (r.get("Balance_Paid") or 0)), tot))
+        ch.update({"total_cost": tot, "Balance_Paid": pd, "Balance_Left": tot - pd})
+    if ch:
+        _put_full(33, r, ch)
+    return True
+
+
 # ---------------------------------------------------------------- "My wedding" plan (table 90, 2026-11-07)
 PLAN_TABLE = 90
 
