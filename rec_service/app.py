@@ -729,13 +729,38 @@ def _price_or_none(token, vid, full):
         return None
 
 
+OTHER_VENDOR_CATS = ("Photography", "Entertainment", "Flowers", "Food and Beverage", "Beauty", "Wedding Planner")
+VENDOR_KIND = {"Photography": "photographer", "Entertainment": "entertainer", "Flowers": "florist",
+               "Food and Beverage": "caterer", "Beauty": "hair and makeup artist", "Wedding Planner": "wedding planner"}
+
+
+def _any_vendor_search(token, cats):
+    """search(term) over several vendor types at once (2026-11-07): each category's name search in parallel."""
+    def search(term):
+        with ThreadPoolExecutor(max_workers=len(cats)) as ex:
+            got = list(ex.map(lambda c: xano.name_search(term, token, category=c), cats))
+        return [r for rows in got for r in rows]
+    return search
+
+
 def _find_and_price(q, token, full, prefer=()):
     """lookup.find, then the pricing panel of the match in parallel - all while the question is being gated.
     Only a FOUND venue is priced: a "which one did you mean?" list shows names and places, and its pricing was
     the whole cost of that answer (measured 2026-11-02: 7.0 s with two matches vs 0.2 s for a miss). The tap on a
     name comes back as a found lookup and is priced then."""
-    res = lookup.find(q, lambda term: xano.name_search(term, token))
-    res = lookup.resolve(q, res, prefer)
+    hint = q.get("category") or ""
+    if hint and hint != "Venue":      # "Bloom florist", "Jane Doe Photography": that type only
+        res = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, (hint,))), prefer)
+    else:
+        res = lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer)
+        if res["status"] == "not_found" and not lookup.destination_in(q["name"]):
+            # Not a venue we have: maybe a photographer, florist, caterer ... by name (one more parallel round).
+            other = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, OTHER_VENDOR_CATS)), prefer)
+            if other["status"] != "not_found":
+                res = other
+    res["vendor_kind"] = (res.get("matches") or [{}])[0].get("category") or "Venue"
+    if res["vendor_kind"] != "Venue":
+        return res                    # listings: no venue pricing panel to fetch
     ids = ([m["vendor_id"] for m in res["matches"][:1]] if res["status"] in ("found", "best") else
            [m["vendor_id"] for m in res["matches"][:3]] if res["status"] == "choices" and full else [])
     if ids:
@@ -780,6 +805,12 @@ def _similar_near(token, q, user, slog, exclude=(), use_profile=True, guests=0):
         return [], ""
     out = [v for v in venues if v.get("vendor_id") and v["vendor_id"] not in set(exclude)][:LOOKUP_SIMILAR]
     return out, (where if out else "")
+
+
+def _vendor_lookup_card(m):
+    """A non-venue vendor found by name (2026-11-07): the listing card, no venue fields, no price."""
+    keep = ("vendor_id", "vendor_idx", "name", "state", "address", "image", "description", "category", "at_a_glance")
+    return dict({k: m.get(k) for k in keep if m.get(k) not in (None, "")}, reason="The vendor you asked about")
 
 
 def _display_name(name):
@@ -837,7 +868,28 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     saved = xano.saved_vendor_ids(user)
     name = _display_name(q["name"])
     venue_request, filters = None, {}
-    if status in ("found", "best"):
+    vkind = res.get("vendor_kind") or "Venue"
+    if vkind != "Venue" and status in ("found", "best", "choices"):
+        cards = [_vendor_lookup_card(m) for m in res["matches"][:3]]
+        kind = VENDOR_KIND.get(vkind, "vendor")
+        if status == "choices" and len(cards) > 1:
+            text_out = ("We have %d %ss that match “%s”: %s. Each card opens its page on Tulle."
+                        % (len(cards), kind, name, ", ".join("%s (%s)" % (c.get("name"), _place_label(c)) for c in cards)))
+            chips = []
+        else:
+            c0 = cards[0]
+            text_out = "Here's %s, a %s in %s. Open its page on the card for what they offer%s." % (
+                c0.get("name"), kind, _place_label(c0),
+                " and their packages" if vkind in ("Photography", "Entertainment") else "")
+            chips = []
+            if status == "best" and len(cards) > 1:
+                text_out += " %s %s." % (ALSO_HAVE, " and ".join("%s (%s)" % (c.get("name"), _place_label(c))
+                                                                 for c in cards[1:]))
+                chips = [c.get("name") for c in cards[1:]]
+            cards = cards[:1] if status == "found" else cards
+        if cards and cards[0].get("state"):
+            filters = {"states": [_state1(cards[0]["state"])]}
+    elif status in ("found", "best"):
         m = res["matches"][0]
         p = (res.get("pricing") or {}).get(m["vendor_id"])
         card, p = _lookup_card(m, p, full, guests, budget, "The venue you asked about")
@@ -882,7 +934,8 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         dest = lookup.destination_in("%s %s" % (name, loc))
         # A place the couple NAMED that we can't locate ("Aspen Highlands") is never swapped for their profile state
         # (2026-11-07 live: Ritz-Carlton Club, Aspen Highlands -> "3 venues we do have in Texas").
-        similar, where = ([], "") if dest else _similar_near(
+        hint_other = (q.get("category") or "Venue") != "Venue"   # "Bloom florist" we don't have: no venue cards
+        similar, where = ([], "") if (dest or hint_other) else _similar_near(
             token, q, user, slog, use_profile=not (q.get("location") or q.get("alt_location")), guests=guests)
         cards = []
         for v in similar:
@@ -917,13 +970,14 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model="lookup",
                                       input_tokens=0, cache_read_tokens=0, cache_write_tokens=0, output_tokens=0,
                                       tool_calls=0, cost_usd=0, latency_ms=ms, tools="lookup:" + status,
-                                      categories="venue", **_search_cols(search)))
+                                      categories=(res.get("vendor_kind") or "Venue").lower(), **_search_cols(search)))
     used = rows + ([{"status": "ok", "kind": "refine", "counted_as_free": True, "tools": "lookup:" + status}]
                    if counted_free else [])
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": "lookup", "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access,
         "source": "rec_service", "cost_usd": 0, "latency_s": round(ms / 1000, 2), "cards": len(result["cards"]),
         "lookup_status": status, "lookup_queries": len(res.get("queries") or []), "lookup_scores": res.get("scores"),
+        "lookup_category": res.get("vendor_kind") or "Venue",
         "price_locked": not access, "free_refines_left": guards.free_refines_left(paid, used, feedback_given),
         **_search_props(user, search)})
     return dict(result, paid=paid, has_access=access,

@@ -234,7 +234,8 @@ def env(monkeypatch):
     monkeypatch.setattr(xano, "mp_track", lambda uid, ev, props: st["mp"].append((ev, props)))
     monkeypatch.setattr(xano, "today", lambda: TODAY)
     monkeypatch.setattr(xano, "plan_label", lambda u: "Forever")
-    monkeypatch.setattr(xano, "name_search", lambda t, token="": st["search"](t))
+    monkeypatch.setattr(xano, "name_search", lambda t, token="", category="Venue", **kw:
+                        st["search"](t) if category == "Venue" else st.get("vendor_search", lambda t, c: [])(t, category))
     monkeypatch.setattr(xano, "venue_pricing", lambda tok, vid, full: dict(PRICING, vendor_id=vid))
     monkeypatch.setattr(xano, "search_venues", lambda tok, **kw: {"total_matches": 2, "venues": [
         {"vendor_id": "V50", "name": "Nearby One", "state": "New York", "venue_fee_range": [5000, 9000]},

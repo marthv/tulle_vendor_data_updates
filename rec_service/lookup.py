@@ -292,6 +292,34 @@ def state_of(location):
     return ""
 
 
+# Vendor-type words (2026-11-07): "Bloom florist", "Jane Doe Photography", "DJ Mike" name ONE vendor of that type.
+# The word is taken off for detection (REJECT would read "florist" as a search) and becomes the category to search.
+VENDOR_WORDS = [
+    ("Photography", r"photographers?|photography|photo|videographers?|videography|video|films?"),
+    ("Entertainment", r"djs?|bands?|entertainment|musicians?|music|strings|quartet"),
+    ("Flowers", r"florists?|floral|flowers?"),
+    ("Food and Beverage", r"caterers?|catering|bakery|cakes?|bar service"),
+    ("Beauty", r"makeup|make up|hair|beauty|mua|salon"),
+    ("Wedding Planner", r"planners?|planning|coordinators?|coordination|events? co"),
+]
+_VW = re.compile(r"^(?:(?P<pre>%s)\s+)?(?P<core>.+?)(?:\s+(?P<post>%s))?$" % (
+    "|".join(p for _, p in VENDOR_WORDS), "|".join(p for _, p in VENDOR_WORDS)), re.I)
+
+
+def vendor_hint(name):
+    """('core name', 'Photography') when the name starts or ends with a vendor-type word, else (name, '')."""
+    m = _VW.match(" ".join(str(name or "").split()))
+    if not m or not (m.group("pre") or m.group("post")):
+        return name, ""
+    word = (m.group("post") or m.group("pre")).lower()
+    cat = next((c for c, p in VENDOR_WORDS if re.fullmatch(p, word, re.I)), "")
+    core = m.group("core").strip(" ,.-:")
+    # "DJs with a photo booth", "photographers for elopements", "florist near me": a search, not a business name.
+    if re.search(r"\b(?:with|for|who|that|which|near|under|over|around)\b", core, re.I):
+        return name, ""
+    return (core, cat) if cat and tokens(core) else (name, "")
+
+
 def detect(text, last_assistant=""):
     """{"name", "location", "alt_name", "alt_location", "cue"} when the message looks like "look up <venue name>",
     else None. Conservative on purpose: anything that reads like a search or a follow-up goes to the model.
@@ -355,8 +383,18 @@ def detect(text, last_assistant=""):
     words = norm(name).split()
     if not words or len(words) > 7 or len(norm(name)) < 3:
         return None
-    if REJECT.search(name) or _place(name) or _descriptive_only(name) or conversational(name):
+    core, category = vendor_hint(name)
+    # Vendor names often hold "Wedding(s)" ("The Post Wedding Photographer", "Expressway Music Wedding DJ NYC"): with
+    # a vendor-type word present it is part of the name, not a search word - as long as another word is left.
+    check = core
+    if category:
+        check = re.sub(r"(?i)\bweddings?\b", " ", core).strip()
+        if not tokens(check):
+            return None          # "wedding photographer" = a search
+    if REJECT.search(check) or _place(core) or _descriptive_only(core) or conversational(core):
         return None
+    if category and len(norm(core).split()) == 1 and len(norm(core)) < 4:
+        return None          # "DJ me", "photo op": too short to be a business name
     after_question = False
     if not cue:
         if len(words) == 1 and len(words[0]) < 5:
@@ -368,7 +406,7 @@ def detect(text, last_assistant=""):
         if (last_assistant or "").strip().endswith("?"):
             after_question = True
     return {"name": name, "location": location, "alt_name": alt_name, "alt_location": alt_location, "cue": cue,
-            "words": len(words), "after_question": after_question}
+            "words": len(words), "after_question": after_question, "category": category}
 
 
 # ---------------------------------------------------------------- retrieval + ranking

@@ -1062,7 +1062,7 @@ def card_from_row(it):
 NAME_SEARCH_PAGE = 20   # venues per name search
 
 
-def name_search(term, token="", per_page=NAME_SEARCH_PAGE):
+def name_search(term, token="", per_page=NAME_SEARCH_PAGE, category="Venue"):
     """Venue lookup by name (lookup.py, 2026-10-26): the Discovery venue search (Search_Input = the name or one of
     its words, all states, most clicked first), from the Railway search-api for EVERY user (milliseconds) with ep119
     as the fallback. The first version read table 11 through the metadata API: a full scan returning ~15 KB rows,
@@ -1073,13 +1073,14 @@ def name_search(term, token="", per_page=NAME_SEARCH_PAGE):
     if len(term) < 2:
         return []
     params = venue_search_params(states=[], keyword=term, sort_by="popular_desc", page_size=int(per_page))
+    params["Category_Input"] = category or "Venue"    # 2026-11-07: photographers, florists, ... by name too
     d, why = railway_search.railway_get(token, params) if token else (None, "no_token")
     if d is None:
         d = _get(config.API_SEARCH_GROUP + "/wptp_updated_mappings_search", token, params)
     out = []
     for v in _venue_result(d or {})["venues"]:
         if v.get("vendor_id"):
-            out.append(dict(v, category="Venue", google_name=""))
+            out.append(dict(v, category=category or "Venue", google_name=""))
     return out
 
 
