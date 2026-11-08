@@ -159,6 +159,8 @@ def system_prompt(listings=None):
             text = text.replace(old, new)
     if config.OPEN_ENDED:
         text += "\n\n" + OPEN_ENDED_RULES
+    if config.SOURCED_ANSWERS:
+        text += "\n\n" + SOURCES_RULES
     return text
 
 
@@ -952,6 +954,67 @@ def _drain_stream(stream, prog):
     return stream.get_final_message()
 
 
+SOURCES_RULES = (
+    "VENUE QUESTIONS BEYOND PRICE + SOURCES (owner 2026-11-07 - overrides anything above that keeps you to pricing): "
+    "couples may ask anything about a venue - vibe, setting, spaces, ceremony options, rain plan, catering or alcohol "
+    "rules, accessibility, parking, lodging, distance. Answer from venue_details first (its PDF facts, about/vibes and "
+    "Google reviews). If any part of what they asked is not in that data and you have the web_search tool, you MUST "
+    "search the web for it before answering (query: the venue name + city + the topic, e.g. \"Kohl Mansion Burlingame "
+    "wedding rain plan\"; prefer the venue's own website; at most 2 searches) - only then may you say a source "
+    "doesn't have it. NEVER state a venue fact you did not get from a tool in this conversation - "
+    "no guessing, no general knowledge about a specific venue. If no source has it, say so in one plain line and that "
+    "the venue can confirm it. Pass every source you used in present_recommendations sources, using the labels "
+    "venue_details gives (\"<venue> pricing PDF on Tulle (year)\", \"Google reviews of <venue>\") and, for a web "
+    "fact, the page title plus the EXACT url web_search returned. Don't paste URLs into the message itself.")
+
+
+def _collect_web(message, found):
+    """url -> title of every web_search result in this model turn (server tool results)."""
+    for b in getattr(message, "content", None) or []:
+        if getattr(b, "type", "") != "web_search_tool_result":
+            continue
+        content = getattr(b, "content", None)
+        if not isinstance(content, list):          # an error object, not results
+            continue
+        for r in content:
+            url = getattr(r, "url", None) or (r.get("url") if isinstance(r, dict) else None)
+            if url:
+                found[_norm_url(url)] = getattr(r, "title", None) or (r.get("title") if isinstance(r, dict) else "") or url
+
+
+def _norm_url(u):
+    u = str(u or "").strip()
+    u = re.sub(r"#.*$", "", u)
+    return u.rstrip("/").lower()
+
+
+def _verified_sources(sources, web_found, usage=None):
+    """Keep sources with a label; a URL must be one web_search returned this request (anti-hallucination, 2026-11-07).
+    An unverified URL drops that source and is counted in usage["dropped_sources"]."""
+    out, dropped = [], []
+    for s in sources or []:
+        if not isinstance(s, dict):
+            continue
+        label = str(s.get("label") or "").strip()[:140]
+        url = str(s.get("url") or "").strip()
+        if url:
+            if _norm_url(url) not in web_found:
+                dropped.append(url[:200])
+                continue
+            out.append({"label": label or web_found[_norm_url(url)][:140], "url": url, "kind": "web"})
+        elif label:
+            out.append({"label": label, "kind": "tulle"})
+    if usage is not None:
+        usage["dropped_sources"] = dropped
+    seen, uniq = set(), []
+    for s in out:
+        k = (s.get("url") or s["label"]).lower()
+        if k not in seen:
+            seen.add(k)
+            uniq.append(s)
+    return uniq[:6]
+
+
 ROUTER_SYSTEM = (
     "You route one turn of a wedding venue planner chat. Read the couple's LATEST message in the context of the chat "
     "and decide whether answering it needs a NEW venue search. If it does - a new place, style, size, price, "
@@ -1055,6 +1118,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     said_peak = bool(PEAK_CAVEAT.search(prior_text))
     said_pdf = bool(OPEN_PDF.search(prior_text))
     final = {}
+    web_found = {}       # url -> title of every web_search result this request (only these may be cited, 2026-11-07)
     saved_cards_holder = {}
     # profile_override: eval runs only - real requests always use the verified user row.
     profile = profile_override if profile_override is not None else xano.profile_of(user)
@@ -1677,8 +1741,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         """Extra facts from a venue's PDF and Google listing that the pricing summary leaves out: menu and
         bar package per guest, off-peak (cheapest Saturday) prices and which months are peak vs. cheapest,
         food-and-drink minimum type, other fees, preferred/required vendors, outdoor ceremony space, and its
-        Google rating with up to 5 review texts. Use it when the couple asks about menus, bar, cheaper
-        dates, reviews or fees for a specific venue.
+        Google rating with up to 5 review texts; plus what the place is like (type, vibes, description) and the
+        source label of each part. Use it when the couple asks about menus, bar, cheaper dates, reviews or fees for a
+        specific venue - and for ANY question about a venue beyond price: vibe, setting, spaces, ceremony options,
+        rain plan, rules, accessibility, parking, lodging.
 
         Args:
             vendor_id: a vendor_id returned by search_venues or saved_venues in this conversation.
@@ -1842,7 +1908,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     @beta_tool
     @timed
     def present_recommendations(message: str, vendor_ids: list[str] = [], reasons: list[str] = [],
-                                chips: list[str] = []) -> str:
+                                chips: list[str] = [], sources: list[dict] = []) -> str:
         """Show your answer to the couple. Call exactly once, last.
 
         Args:
@@ -1857,6 +1923,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             chips: 2-4 short follow-ups that follow the CHIPS rule (each maps to a search filter, a pricing
                 line, a state comparison or the Saved list), e.g. "Cheaper options", "Barn / Ranch venues",
                 "DJs with a photo booth".
+            sources: where the facts in your message came from (SOURCES rule): one {"label": ...} per source,
+                e.g. {"label": "Kohl Mansion pricing PDF on Tulle (2025)"}, {"label": "Google reviews of Kohl
+                Mansion"}, and for a web fact {"label": "<page title>", "url": "<the exact URL web_search returned>"}.
+                Empty only when the message states no venue fact beyond the cards themselves.
         """
         shown = " ".join([message or ""] + [r or "" for r in (reasons or [])])
         allowed = set()
@@ -1896,7 +1966,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     % (", ".join(names.get(v) or v for v in again), "was" if len(again) == 1 else "were",
                        "it" if len(again) == 1 else "them", "it" if len(again) == 1 else "them"))
         guard["repeats_shown"] = [names.get(v) or v for v in again]
-        final.update(message=message, vendor_ids=vendor_ids, reasons=reasons, chips=chips)
+        final.update(message=message, vendor_ids=vendor_ids, reasons=reasons, chips=chips,
+                     sources=_verified_sources(sources, web_found, usage))
         return "shown"
 
     def _finish_deferred():
@@ -2124,6 +2195,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                  + [saved_venues, venue_pricing, venue_details, estimate_cost, market_benchmarks, pe_market_rates,
                     save_note, present_recommendations]
                  + cost_tool_list)
+    # Web search (2026-11-07, full members first - owner decision): a venue fact our data doesn't hold. Server tool:
+    # Anthropic runs it inside the model call; its result URLs are collected below and are the only citable ones.
+    if config.WEB_SEARCH and config.SOURCED_ANSWERS and not light:
+        tool_list = tool_list + [{"type": "web_search_20260209", "name": "web_search",
+                                  "max_uses": config.WEB_SEARCH_MAX_USES}]
 
     def _presearch():
         """The opening's first search, run here instead of by the model (2026-11-01 speed pass). Measured over the
@@ -2254,6 +2330,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 last_text = "\n\n".join(texts)
             u = message.usage
             tools_used = [b.name for b in message.content if b.type == "tool_use"]
+            _collect_web(message, web_found)          # before present_recommendations runs (it checks the URLs)
+            st = getattr(u, "server_tool_use", None)
+            usage["web_searches"] = usage.get("web_searches", 0) + int(getattr(st, "web_search_requests", 0) or 0)
             batch["pricing"] = sum(1 for n in tools_used if n in progress_mod.PRICING_TOOLS)
             stopped = prog.cancelled()     # this turn's tools never run
             # Run this turn's tools NOW (the runner caches the result and reuses it for the next request, so
@@ -2366,7 +2445,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     text = final.get("message") or ""
     if said_peak and not free:
         text = strip_repeat_caveat(text)
-    result = {"text": text, "cards": cards, "chips": final.get("chips") or [],
+    usage["web_urls_found"] = len(web_found)
+    result = {"text": text, "cards": cards, "chips": final.get("chips") or [], "sources": final.get("sources") or [],
               "more_cards": more_cards(pool, {**extra, **seen}, cards, prior),
               # stored with this answer (hidden) - the chat's active filters from now on
               "search_filters": dict(vprimary["filters"]) if vprimary else dict(active),

@@ -1153,6 +1153,18 @@ def venue_details(vendor_id, with_amounts):
         spaces.append(sp)
     out = {"vendor_id": vendor_id, "spaces": spaces,
            "note": "Peak = peak-season Saturday; 'Lowest' = the cheapest Saturday rate in the PDF. 0/blank = not in the PDF."}
+    # What the place is like (2026-11-07, venue questions beyond price): the type, vibes and description our
+    # extraction already holds in table 36 - and where each part of this answer comes from, for the SOURCES rule.
+    first = next(iter(latest.values()), {}) if latest else {}
+    about = {k: first.get(f) for k, f in (("venue_type", "Venue_Type"), ("vibes", "Venue_Attributes"),
+                                          ("offering", "Venue_Offering"), ("description", "Description"),
+                                          ("about", "Vendor_Blurb"), ("name", "VENUE_NAME")) if first.get(f)}
+    if about:
+        out["about"] = about
+    year = next((r.get("Pricing_Year") for r in latest.values() if r.get("Pricing_Year")), "")
+    vname = first.get("VENUE_NAME") or "this venue"
+    out["sources"] = {"spaces_and_about": "%s pricing PDF on Tulle%s" % (vname, " (%s)" % year if year else ""),
+                      "google": "Google reviews of %s" % vname}
     t11 = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
     g = (t11[0].get("google_data_cache") or {}) if t11 else {}
     if g.get("rating"):
@@ -1233,6 +1245,7 @@ def parse_message_row(r):
     widgets = [c["widget"] for c in allc if c.get("meta") == "widget" and isinstance(c.get("widget"), dict)]
     qmeta = next((c for c in allc if c.get("meta") == "questions"), None)   # thin-profile questions (2026-10-26)
     upsold = any(c.get("meta") == "upsell" for c in allc)
+    smeta = next((c for c in allc if c.get("meta") == "sources"), None)   # the answer's sources (2026-11-07)
     allc = [c for c in allc if not c.get("meta")]
     strip = lambda c: {k: v for k, v in c.items() if k not in ("more", "via_more")}
     turn = {"id": r.get("id"), "role": r["role"], "text": r.get("content") or "",
@@ -1244,7 +1257,8 @@ def parse_message_row(r):
             # 2026-10-26: the opening's thin-profile questions (answers to them are saved on the next turn) and
             # whether this answer carried the price-question upgrade prompt (at most once per chat).
             "questions": list(qmeta.get("questions") or []) if qmeta else [],
-            "upsell_shown": upsold}
+            "upsell_shown": upsold,
+            "sources": list(smeta.get("sources") or []) if smeta else []}
     if meta and isinstance(meta.get("filters"), dict):
         turn["filters"] = meta["filters"]
     return turn

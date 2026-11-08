@@ -181,6 +181,7 @@ def _public(out, **extra):
     # when we don't have the venue (the page can offer "Request this venue"). Both null on every other answer.
     resp.setdefault("lookup", None)
     resp.setdefault("venue_request", None)
+    resp.setdefault("sources", [])   # 2026-11-07: where the answer's facts came from ([] when none)
     n = len(out.get("more_cards") or [])
     # widgets (cost tools, 2026-10-25): always present, [] by default, so the current page is unaffected.
     # questions / upsell_prompt (2026-10-26): always present ([] / null by default), so the page can bind them.
@@ -203,6 +204,8 @@ def _stored_cards(out):
         stored.append({"meta": "questions", "questions": out["questions"]})
     if out.get("upsell_prompt"):
         stored.append({"meta": "upsell", "reason": out["upsell_prompt"].get("reason")})
+    if out.get("sources"):     # 2026-11-07: a reopened chat shows the same sources under the answer
+        stored.append({"meta": "sources", "sources": out["sources"]})
     return stored
 
 
@@ -1855,6 +1858,12 @@ def answer_feedback(body: AnswerFeedbackBody, authorization: str = Header(None))
         "chat_id": int(body.chat_id or 0), "answer_index": body.answer_index, "chars": len(text), "plan": plan, "vote": vote,
         "found_answer": bool(answer), "source": "rec_service"})
     _POOL.submit(notify.answer_feedback, user, text, question, answer, plan, int(body.chat_id or 0), vote)
+    if vote == "down" and config.SOURCED_ANSWERS:
+        # 2026-11-07 (owner: "take feedback into account"): the couple's correction becomes a durable note the
+        # Planner reads on every later answer (rec_memory -> "What we learned in earlier conversations").
+        note = "The couple said an answer was wrong or unhelpful: \"%s\"%s. Take it into account; re-check sources." % (
+            text[:300], (" (they had asked: %s)" % question[:160]) if question else "")
+        _POOL.submit(xano.add_memory_note, user["id"], note)
     sheet_log.event(user, "Feedback: thumbs %s" % vote, text or "(no comment)",
                     ("On: %s\n\n%s" % (question, answer)) if (question or answer) else "", int(body.chat_id or 0))
     return {"ok": True}

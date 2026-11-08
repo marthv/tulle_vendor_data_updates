@@ -189,6 +189,15 @@ PRESEARCH = os.environ.get("REC_PRESEARCH", "1") == "1"
 # Sonnet turn instead of two (turn 1 only picked arguments: median 1.9 s of a 7.7 s answer, 11-01..11-07). The router
 # may decide no search is needed; then Sonnet runs exactly as before. 0 = off (the default until the eval set agrees).
 REFINE_ROUTER = os.environ.get("REC_REFINE_ROUTER", "0") == "1"
+# SOURCED ANSWERS (owner 2026-11-07: "I really really don't want to hallucinate, so I want very clear sources"): venue
+# questions beyond price are answered from venue_details (PDF facts, vibes, description, Google reviews) and, for full
+# members, the web; every answer lists its sources and a web source must be a URL the search returned this request.
+SOURCED_ANSWERS = os.environ.get("REC_SOURCED_ANSWERS", "1") == "1"
+WEB_SEARCH = os.environ.get("REC_WEB_SEARCH", "1") == "1"          # full members only (owner decision 2026-11-07)
+WEB_SEARCH_MAX_USES = int(os.environ.get("REC_WEB_SEARCH_MAX_USES", "3"))
+# Per web search, added to the request cost so the spend caps see it. Our reference holds no price for the web search
+# tool: this is an ASSUMED figure, to be replaced by the invoice rate.
+WEB_SEARCH_USD = float(os.environ.get("REC_WEB_SEARCH_USD", "0.01"))
 ROUTER_MODEL = os.environ.get("REC_ROUTER_MODEL", "claude-haiku-5-5")
 OPENING_REUSE_MAX_AGE_S = max(0, int(os.environ.get("REC_OPENING_REUSE_MAX_AGE_S", str(6 * 3600)) or 0))
 # Prewarm (owner 2026-11-02, "time-to-value needs to decrease a lot"): POST /rec/prewarm generates the couple's

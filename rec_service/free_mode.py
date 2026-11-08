@@ -287,6 +287,10 @@ def details_result(raw):
         return raw
     out = {"vendor_id": d.get("vendor_id"),
            "spaces": [{k: s[k] for k in _DETAIL_KEYS if k in s} for s in d.get("spaces") or []]}
+    if d.get("about"):     # type, vibes, description (2026-11-07) - words only, never a price
+        out["about"] = {k: v for k, v in d["about"].items() if not has_price_talk(str(v))}
+    if d.get("sources"):
+        out["sources"] = d["sources"]
     g = d.get("google")
     if g:
         out["google"] = {"rating": g.get("rating"), "review_count": g.get("review_count"), "note": g.get("note"),

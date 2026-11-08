@@ -61,3 +61,13 @@ def _open_ended_off(monkeypatch):
     # run with it off. tests/test_open_ended.py turns it on.
     import config
     monkeypatch.setattr(config, "OPEN_ENDED", False)
+
+
+@pytest.fixture(autouse=True)
+def _sourced_answers_off(monkeypatch):
+    # REC_SOURCED_ANSWERS / REC_WEB_SEARCH (2026-11-07) default ON in production; the older tests pin the prompt and
+    # the tool list (their fake runners read tool.__name__), so they run with both off. tests/test_sources.py turns
+    # them on.
+    import config
+    monkeypatch.setattr(config, "SOURCED_ANSWERS", False)
+    monkeypatch.setattr(config, "WEB_SEARCH", False)
