@@ -193,7 +193,7 @@ REFINE_ROUTER = os.environ.get("REC_REFINE_ROUTER", "0") == "1"
 # questions beyond price are answered from venue_details (PDF facts, vibes, description, Google reviews) and, for full
 # members, the web; every answer lists its sources and a web source must be a URL the search returned this request.
 SOURCED_ANSWERS = os.environ.get("REC_SOURCED_ANSWERS", "1") == "1"
-WEB_SEARCH = os.environ.get("REC_WEB_SEARCH", "1") == "1"          # full members only (owner decision 2026-11-07)
+WEB_SEARCH = os.environ.get("REC_WEB_SEARCH", "0") == "1"   # OFF (owner 2026-11-07: 19 s with a search is too long); full members only when on
 WEB_SEARCH_MAX_USES = int(os.environ.get("REC_WEB_SEARCH_MAX_USES", "3"))
 # Per web search, added to the request cost so the spend caps see it. Our reference holds no price for the web search
 # tool: this is an ASSUMED figure, to be replaced by the invoice rate.
