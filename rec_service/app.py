@@ -316,7 +316,7 @@ def read_attachment(body: AttachmentBody, authorization: str = Header(None)):
     t0 = time.time()
     try:
         r = anthropic.Anthropic().messages.create(
-            model=config.MODEL, max_tokens=1500, thinking={"type": "disabled"}, output_config={"effort": "low"},
+            model=config.MODEL, max_tokens=1500, output_config={"effort": "low"},
             messages=[{"role": "user", "content": [{"type": "image", "source": {"type": "url", "url": url}},
                                                    {"type": "text", "text": ATTACH_PROMPT}]}])
     except Exception as e:
