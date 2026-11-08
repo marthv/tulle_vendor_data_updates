@@ -1,0 +1,227 @@
+{
+ "summary": {
+  "answers": 5,
+  "errors": 0,
+  "latency_p50_s": 5.85,
+  "latency_p90_s": 10.345,
+  "turn1_p50_s": 2.57,
+  "tools_p50_s": 0.85,
+  "model_turns_p50": 1,
+  "no_cards": 1,
+  "ends_with_question": 0,
+  "failure_words": 0,
+  "answers_with_out_of_state_cards": 0,
+  "answers_with_under_capacity_cards": 0,
+  "cost_usd": 0.08
+ },
+ "results": {
+  "n1414": {
+   "answers": [
+    {
+     "ask": "All-inclusive venues",
+     "text": "Elkins Estate in Elkins Park is the clearest all-inclusive match for 50 guests, seating up to 200. Rodin Museum (up to 120) and Pen Ryn Estate (up to 350) are listed as semi-inclusive. Rodin requires its designated caterer. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Elkins Estate",
+      "Rodin Museum",
+      "Pen Ryn Estate"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.88,
+      "latency_ms": 5847,
+      "model_turns": 1,
+      "turn_ms": [
+       3296
+      ],
+      "turn_tools": [
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 182,
+      "pricing_ms": 670,
+      "tools": {
+       "search_venues": 855,
+       "present_recommendations": 0
+      },
+      "tool_calls": 1,
+      "router_searched": true,
+      "router_ms": 2539
+     },
+     "cost_usd": 0.0107
+    },
+    {
+     "ask": "Under 10k",
+     "text": "Thanks for sharing that. Tulle's exact pricing lives in each vendor's PDF and on Forever, so I can't compare venues against a cap here. I can keep shortlisting by fit for 50 guests, like the all-inclusive options you've seen.",
+     "cards": [],
+     "checks": {
+      "has_cards": false,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 3.46,
+      "latency_ms": 3425,
+      "model_turns": 1,
+      "turn_ms": [
+       2413
+      ],
+      "turn_tools": [
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "present_recommendations": 0
+      },
+      "tool_calls": 1,
+      "router_searched": false,
+      "router_ms": 998
+     },
+     "cost_usd": 0.0086
+    },
+    {
+     "ask": "I want to be within an hour of Philly ideally",
+     "text": "Within 50 miles of Philadelphia, Fringe Bar (seats up to 100) is an all-inclusive pick in the city, and City Cruises Philadelphia (up to 100) puts your 50 guests on the Delaware waterfront. Philander Chase Knox Estate in Malvern is the scenic option, set in Valley Forge National Historical Park. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Fringe Bar",
+      "City Cruises Philadelphia",
+      "Philander Chase Knox Estate"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 10.38,
+      "latency_ms": 10345,
+      "model_turns": 1,
+      "turn_ms": [
+       2696
+      ],
+      "turn_tools": [
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 3652,
+      "pricing_ms": 1957,
+      "tools": {
+       "search_venues": 5633,
+       "present_recommendations": 0
+      },
+      "tool_calls": 1,
+      "router_searched": true,
+      "router_ms": 6719
+     },
+     "cost_usd": 0.0125
+    }
+   ],
+   "cost_usd": 0.032
+  },
+  "n1323": {
+   "answers": [
+    {
+     "ask": "Tell me about American Swedish Historical Museum and whether it fits my wedding",
+     "text": "The American Swedish Historical Museum in Philadelphia fits 150 guests, since it seats up to 230. It's all-inclusive, so catering is handled in-house with Jeffrey A. Miller Catering as its preferred vendor, and it has an outdoor ceremony space. Google rates it 4.7 from 101 reviews, covering the whole place. The one wedding review praises the grounds and attentive staff. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "American Swedish Historical Museum"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.23,
+      "latency_ms": 8205,
+      "model_turns": 3,
+      "turn_ms": [
+       1495,
+       1542,
+       2848
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "venue_details"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 494,
+      "pricing_ms": 189,
+      "tools": {
+       "search_venues": 683,
+       "venue_details": 741,
+       "present_recommendations": 0
+      },
+      "tool_calls": 3,
+      "router_searched": false,
+      "router_ms": 879
+     },
+     "cost_usd": 0.0248
+    },
+    {
+     "ask": "online forums show this as much cheaper than what I'm seeing here (per person costs in the $150 range)",
+     "text": "Forum figures can differ from what's in our PDF for a few reasons: the year, the day of the week, the season, or whether service charge and tax were counted. I can't confirm or compare per-person numbers here. Forever unlocks the exact prices in every PDF and here, so you can check the American Swedish Historical Museum against that forum figure. Your date would help narrow it down.",
+     "cards": [
+      "American Swedish Historical Museum"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 6.24,
+      "latency_ms": 5532,
+      "model_turns": 2,
+      "turn_ms": [
+       2572,
+       2004
+      ],
+      "turn_tools": [
+       [
+        "present_recommendations"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "present_recommendations": 1
+      },
+      "tool_calls": 2,
+      "router_searched": false,
+      "router_ms": 940
+     },
+     "cost_usd": 0.0192
+    }
+   ],
+   "cost_usd": 0.044
+  }
+ }
+}

@@ -79,7 +79,8 @@ def clean_attachment(f):
     if not isinstance(f, dict):
         return None
     path = str(f.get("path") or "")
-    if not path.startswith("/vault/") or ".." in path:
+    # Xano vault folder names can END in ".." (e.g. /vault/x/y/bgPB5g../qa.pdf), so only a whole ".." segment is traversal.
+    if not path.startswith("/vault/") or ".." in path.split("/"):
         return None
     out = {k: f.get(k) for k in ("access", "path", "name", "type", "size", "mime", "meta") if f.get(k) is not None}
     out["access"] = "public"

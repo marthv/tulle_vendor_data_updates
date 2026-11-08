@@ -1,0 +1,2704 @@
+{
+ "summary": {
+  "answers": 61,
+  "errors": 0,
+  "latency_p50_s": 7.74,
+  "latency_p90_s": 13.622,
+  "turn1_p50_s": 1.73,
+  "tools_p50_s": 2.49,
+  "model_turns_p50": 2,
+  "no_cards": 4,
+  "ends_with_question": 0,
+  "failure_words": 1,
+  "answers_with_out_of_state_cards": 4,
+  "answers_with_under_capacity_cards": 0,
+  "cost_usd": 1.59
+ },
+ "results": {
+  "n1458": {
+   "answers": [
+    {
+     "ask": "No, keep all-inclusive",
+     "text": "Keeping it all-inclusive, Chamard Vineyards is my top pick for 50 guests: a vineyard that seats up to 75, so it won't feel empty. Port N Starboard brings Long Island Sound beach views, and The Mansion at Bald Hill is an estate setting. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Chamard Vineyards",
+      "Port N Starboard",
+      "The Mansion at Bald Hill"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.15,
+      "latency_ms": 7121,
+      "model_turns": 2,
+      "turn_ms": [
+       2316,
+       2760
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1027,
+      "pricing_ms": 676,
+      "tools": {
+       "search_venues": 1706,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0173
+    },
+    {
+     "ask": "Can you show me more venues, they don’t have to be near Hartford just keep them within Connecticut",
+     "text": "Here are more all-inclusive Connecticut picks, starting with Winvian Farm in Morris, a farm-style estate seating up to 220. Inn at Middletown is a smaller inn setting (up to 120), and New Haven Country Club in Hamden is a classic club (up to 240). I can't share prices here. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Winvian Farm",
+      "Inn at Middletown",
+      "New Haven Country Club"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.08,
+      "latency_ms": 7049,
+      "model_turns": 2,
+      "turn_ms": [
+       1466,
+       2450
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 675,
+      "pricing_ms": 2442,
+      "tools": {
+       "search_venues": 3122,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0185
+    },
+    {
+     "ask": "Can you show me more inn-style options",
+     "text": "Inn-style is a thin category for 50 guests. The only all-inclusive Connecticut inns or hotels that fit are Inn at Middletown, which I showed you before, and Mayflower Inn and Spa. The other five hotel and resort matches have guest minimums above 50. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Mayflower Inn and Spa",
+      "Inn at Middletown"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 6.87,
+      "latency_ms": 6833,
+      "model_turns": 2,
+      "turn_ms": [
+       1639,
+       4721
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 458,
+      "pricing_ms": 1,
+      "tools": {
+       "search_venues": 460,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0215
+    },
+    {
+     "ask": "Find a photographer",
+     "text": "For a 50-guest wedding, I'd start with Jorge Garcia Photography: Collection III is a solo photographer for 6 hours, which suits a smaller guest list. Kala Wilkins has a 7-hour option with an engagement session included. Resonance Vision adds videography and a 4-hour small-wedding package. I can't share prices here. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Jorge Garcia Photography",
+      "Kala Wilkins Photography",
+      "Resonance Vision"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 4.82,
+      "latency_ms": 4788,
+      "model_turns": 2,
+      "turn_ms": [
+       1533,
+       2693
+      ],
+      "turn_tools": [
+       [
+        "search_photographers_entertainment"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "search_photographers_entertainment": 547,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0242
+    },
+    {
+     "ask": "Can you show me more affordable photographers. Even if it means I get less time with them, someone who maybe offer 4 hour packages",
+     "text": "Three Connecticut photographers offer a 4-hour wedding-day package. Mariana Soto's Silver is a solo shooter with full gallery rights. Resonance Vision's Small Wedding Package is also 4 hours. Eddi Cruz's Essential Wedding is the third. I can't compare prices here, so I can't say which is more affordable. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Mariana Soto Photography",
+      "Resonance Vision",
+      "Eddi Cruz Photography"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.17,
+      "latency_ms": 5146,
+      "model_turns": 2,
+      "turn_ms": [
+       1770,
+       2852
+      ],
+      "turn_tools": [
+       [
+        "search_photographers_entertainment"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "search_photographers_entertainment": 510,
+       "present_recommendations": 1
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0242
+    },
+    {
+     "ask": "Show me more all-inclusive venues, regardless of the type of venue, within Connecticut",
+     "text": "Here are three all-inclusive Connecticut venues of any type that work for 50 guests. Candlewood Valley Country Club in New Milford seats exactly 50. Birchwoods Banquet Facility in Woodbridge seats up to 200. Connecticut Science Center in Hartford seats up to 130. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Candlewood Valley Country Club",
+      "Birchwoods Banquet Facility",
+      "Connecticut Science Center"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 6.05,
+      "latency_ms": 6028,
+      "model_turns": 2,
+      "turn_ms": [
+       1549,
+       2762
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 241,
+      "pricing_ms": 1463,
+      "tools": {
+       "search_venues": 1705,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0203
+    },
+    {
+     "ask": "Relax on all inclusive, and show me restaurant style venues, that have space for an on-site ceremony",
+     "text": "Connecticut has four restaurant or bar venues in our data, but all four were held back because their guest minimums are above your 50 guests, so I can't recommend them for this wedding. Nearby alternatives are the all-inclusive venues you've already seen. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [],
+     "checks": {
+      "has_cards": false,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 10.74,
+      "latency_ms": 10716,
+      "model_turns": 5,
+      "turn_ms": [
+       1520,
+       1338,
+       1319,
+       691,
+       1900
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "search_venues"
+       ],
+       [
+        "search_venues"
+       ],
+       [
+        "whats_in_state"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 942,
+      "pricing_ms": 1,
+      "tools": {
+       "search_venues": 944,
+       "whats_in_state": 2921,
+       "present_recommendations": 0
+      },
+      "tool_calls": 5
+     },
+     "cost_usd": 0.0475
+    },
+    {
+     "ask": "Winery venues",
+     "text": "Connecticut has several winery and brewery venues that seat 50. The Lodge at the Hops in Derby is semi-inclusive and seats up to 350. Saltwater Farm Vineyard in Stonington seats up to 250. Jonathan Edwards Winery in North Stonington seats up to 200.",
+     "cards": [
+      "The Lodge at the Hops",
+      "Saltwater Farm Vinyard",
+      "Jonathan Edwards Winery"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 6.71,
+      "latency_ms": 6683,
+      "model_turns": 2,
+      "turn_ms": [
+       2092,
+       2625
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 469,
+      "pricing_ms": 1483,
+      "tools": {
+       "search_venues": 1953,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0208
+    },
+    {
+     "ask": "Can you show me banquet hall venues?",
+     "text": "Two banquet-style venues came up for 50 guests. Aria Wedding & Banquet Facility in Prospect is a new one for you and seats up to 550. Birchwoods Banquet Facility in Woodbridge, which you've already seen, seats up to 200. Which part of Connecticut do you want to be close to? Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Aria Wedding & Banquet Facility",
+      "Birchwoods Banquet Facility"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.09,
+      "latency_ms": 5045,
+      "model_turns": 2,
+      "turn_ms": [
+       1935,
+       2516
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 581,
+      "pricing_ms": 0,
+      "tools": {
+       "search_venues": 581,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0197
+    },
+    {
+     "ask": "Can you show me reception only venues, near Hartford City hall that fit my guest count",
+     "text": "Tulle doesn't tag venues as \"reception only\", so I picked raw-space and semi-inclusive venues near Hartford that seat 50. Keeney Memorial Cultural Center in Wethersfield is closest, about 4 miles away. The Glastonbury Boathouse is about 5 miles out, and Hill-Stead Museum in Farmington about 7.5. Open Keeney's pricing PDF to see exactly what they charge. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Keeney Memorial Cultural Center",
+      "The Glastonbury Boathouse",
+      "Hill-Stead Museum"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.82,
+      "latency_ms": 7790,
+      "model_turns": 2,
+      "turn_ms": [
+       1714,
+       2683
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1714,
+      "pricing_ms": 1661,
+      "tools": {
+       "search_venues": 3380,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.021
+    },
+    {
+     "ask": "Can you show me photographers with packages under $2000",
+     "text": "I can't filter or compare photographer prices here, so I've picked on what's included. Mariana Soto has a 4-hour Silver package that suits a 50-guest day, plus 6-hour options with videography. Open Mariana Soto's pricing PDF to see exactly what they charge. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Mariana Soto Photography",
+      "Natalie + Kate Studio",
+      "Yun Li Photography"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.86,
+      "latency_ms": 7836,
+      "model_turns": 3,
+      "turn_ms": [
+       1699,
+       2744,
+       3155
+      ],
+      "turn_tools": [
+       [
+        "search_photographers_entertainment"
+       ],
+       [
+        "present_recommendations"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "search_photographers_entertainment": 224,
+       "present_recommendations": 2
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0415
+    },
+    {
+     "ask": "Can you show me caters for my guest count under $2000",
+     "text": "We don't list any caterers in Connecticut yet, and we can't compare caterer prices, so I can't filter by that cap. We do list 56 caterers in New York. All-inclusive venues cover the food, and Connecticut Science Center is one you've already seen that matches. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Connecticut Science Center"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.79,
+      "latency_ms": 8757,
+      "model_turns": 4,
+      "turn_ms": [
+       1379,
+       2292,
+       923,
+       2033
+      ],
+      "turn_tools": [
+       [
+        "search_vendors"
+       ],
+       [
+        "present_recommendations"
+       ],
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 848,
+      "pricing_ms": 1,
+      "tools": {
+       "search_vendors": 1260,
+       "present_recommendations": 0,
+       "search_venues": 849
+      },
+      "tool_calls": 4
+     },
+     "cost_usd": 0.0392
+    },
+    {
+     "ask": "Find a florist",
+     "text": "We list 7 florists in Connecticut; pricing for florists is still being added. Bloomery Flower Studio, Fiore Designs and Mimosa - Floral Design Studio are Connecticut-listed picks, so open their Tulle pages to see their details. Ask each for a quote. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Bloomery Flower Studio",
+      "Fiore Designs",
+      "Mimosa - Floral Design Studio"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.0,
+      "latency_ms": 4973,
+      "model_turns": 2,
+      "turn_ms": [
+       1725,
+       2226
+      ],
+      "turn_tools": [
+       [
+        "search_vendors"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "search_vendors": 1012,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0188
+    },
+    {
+     "ask": "Hair and makeup artists",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "Show me more affordable hair and makeup artist in CT, preferably below $125",
+     "text": "We list 6 hair and makeup artists in Connecticut; pricing for them is still being added, so I can't compare prices or filter by your cap. Kay Veda Bridal and JVALLDI STYLING both offer hair and makeup together, which keeps it to one booking. Open their Tulle pages and ask each for a quote.",
+     "cards": [
+      "Kay Veda Bridal",
+      "JVALLDI STYLING",
+      "Beauty Icon NYC"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 4.71,
+      "latency_ms": 4679,
+      "model_turns": 2,
+      "turn_ms": [
+       1402,
+       2527
+      ],
+      "turn_tools": [
+       [
+        "search_vendors"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "search_vendors": 734,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0185
+    },
+    {
+     "ask": "All-inclusive venues",
+     "text": "Near Hartford, the all-inclusive Connecticut venues for 50 guests are ones you've already seen: Connecticut Science Center, Inn at Middletown and Kalmia Garden at Gastler Farm. Widening to 60 miles only adds Massachusetts venues, led by Gedney Farm (about 38 miles away, seats up to 250). Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Connecticut Science Center",
+      "Inn at Middletown",
+      "Gedney Farm"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [
+       "Gedney Farm"
+      ],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 13.67,
+      "latency_ms": 13643,
+      "model_turns": 3,
+      "turn_ms": [
+       1681,
+       1429,
+       3153
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 5315,
+      "pricing_ms": 2047,
+      "tools": {
+       "search_venues": 7366,
+       "present_recommendations": 0
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0303
+    },
+    {
+     "ask": "Semi-inclusive venues in Connecticut",
+     "text": "Witsend Farms in Bethlehem is my top semi-inclusive pick: about 30 miles from Hartford, seats up to 200, and lets you bring your own caterer. Hope Lodge (Moosup, seats 250) and Falls Creek Farm (Moosup, seats 200) are farther out. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Witsend Farms",
+      "Hope Lodge",
+      "Falls Creek Farm"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.34,
+      "latency_ms": 8207,
+      "model_turns": 2,
+      "turn_ms": [
+       1744,
+       2304
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 2516,
+      "pricing_ms": 1627,
+      "tools": {
+       "search_venues": 4146,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0206
+    },
+    {
+     "ask": "Yes, compare my saved venues",
+     "text": "You haven't saved any venues yet, so there's nothing to compare. Tap the heart on Witsend Farms, Hope Lodge or Falls Creek Farm and I'll line them up on capacity, setting and catering. Exact prices in every PDF, and here, unlock with Forever.",
+     "cards": [],
+     "checks": {
+      "has_cards": false,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 3.04,
+      "latency_ms": 3012,
+      "model_turns": 2,
+      "turn_ms": [
+       1338,
+       1661
+      ],
+      "turn_tools": [
+       [
+        "saved_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "saved_venues": 0,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0158
+    }
+   ],
+   "cost_usd": 0.42
+  },
+  "n1307": {
+   "answers": [
+    {
+     "ask": "how much is Garden of the Gods Resort and Club",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "is that inclusive?",
+     "text": "Your question didn't say which venue, so I read it as \"all-inclusive\" and searched Colorado venues for 75 guests. Ashley Ridge in Denver is the leanest: about $14,567 before tax and gratuity (this venue's PDF, with a 22% service charge). Prices are for a peak Saturday, and Fridays or Sundays are often cheaper. We don't track LGBTQ+ inclusion yet.",
+     "cards": [
+      "Ashley Ridge",
+      "Ken Caryl Vista",
+      "Tapestry House"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.49,
+      "latency_ms": 8448,
+      "model_turns": 2,
+      "turn_ms": [
+       2453,
+       3077
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 479,
+      "pricing_ms": 2167,
+      "tools": {
+       "search_venues": 2655,
+       "present_recommendations": 2
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0637
+    },
+    {
+     "ask": "Aspen Grove at Sundance Trail cost",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "Vail resort?",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "show costs for both",
+     "text": "You didn't say which \"both\", so here are the three venues you've already seen, for 75 guests before tax and gratuity (each venue's PDF). Ashley Ridge is about $14,567, Ken Caryl Vista about $15,024 and Tapestry House about $25,242. Open Ashley Ridge's PDF first to check what its $102 a head covers.",
+     "cards": [
+      "Ashley Ridge",
+      "Ken Caryl Vista",
+      "Tapestry House"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 12.47,
+      "latency_ms": 10845,
+      "model_turns": 3,
+      "turn_ms": [
+       3346,
+       3205,
+       2683
+      ],
+      "turn_tools": [
+       [
+        "estimate_cost",
+        "estimate_cost",
+        "estimate_cost"
+       ],
+       [
+        "present_recommendations"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "estimate_cost": 1603,
+       "present_recommendations": 1
+      },
+      "tool_calls": 5
+     },
+     "cost_usd": 0.0382
+    },
+    {
+     "ask": "we'll get there. first pull all top colorado wedding destinations with epic views for 50-75 people in vail, aspen, marroonbells, telluride, and also any other epic mountain destinations i suppose closest to airport to be minfdul of guests. ideally outdoors but also a hotel where everyone can book. last, how much is the ritz carlton for a micro wedding elopement?",
+     "text": "I can't show all the Colorado venues you asked for here, so these are the ones I'd start with. For Aspen and Maroon Bells, Inn At Aspen has the Tiehack Lawn and is about $20,838 for 75 guests before tax and gratuity (this venue's PDF). T-Lazy-7 Ranch on Maroon Creek Rd includes the ceremony. In Telluride, Madeline Hotel is about $26,224. In Vail, Four Seasons is about $28,747. Prices are an estimate for 75 guests. The Ritz-Carlton Denver is the only Ritz we hold, and it has no elopement or micro pricing. Its PDF lists $175 a head for food and a 13.8% service charge, and it doesn't list a rental fee. At 75 guests it's about $23,124, which includes an estimated rental and ceremony fee. Hotel room blocks and flight distances aren't tracked here. Check each venue's PDF for the outdoor space.",
+     "cards": [
+      "T-Lazy-7 Ranch",
+      "Inn At Aspen",
+      "Ritz-Carlton Denver"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 30.52,
+      "latency_ms": 30464,
+      "model_turns": 2,
+      "turn_ms": [
+       5043,
+       5414
+      ],
+      "turn_tools": [
+       [
+        "search_venues",
+        "search_venues",
+        "search_venues",
+        "search_venues"
+       ],
+       []
+      ],
+      "search_ms": 7714,
+      "pricing_ms": 12271,
+      "tools": {
+       "search_venues": 20000
+      },
+      "tool_calls": 4
+     },
+     "cost_usd": 0.061
+    },
+    {
+     "ask": "theres a rits. in vail",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "sorry, i meant aspen ritz",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "The Ritz-Carlton Club, Aspen Highlands",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "aspen",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "show me all",
+     "text": "I can only show three cards at a time, so here are the best hotel picks from Vail and Telluride. Sonnenalp Vail is the leanest at about $19,685 for 75 guests before tax and gratuity (its PDF, a $6,000 food minimum). Four Seasons Vail is about $28,747 and Madeline about $26,224; both include estimated ceremony fees. Our data doesn't say which have outdoor ceremony space or room blocks. Your PDF views are included in your plan.",
+     "cards": [
+      "Sonnenalp Vail",
+      "Four Seasons Resort and Residences Vail",
+      "Madeline Hotel & Residence, Telluride"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 13.0,
+      "latency_ms": 12960,
+      "model_turns": 2,
+      "turn_ms": [
+       3218,
+       3515
+      ],
+      "turn_tools": [
+       [
+        "search_venues",
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1597,
+      "pricing_ms": 4601,
+      "tools": {
+       "search_venues": 6218,
+       "present_recommendations": 2
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0438
+    }
+   ],
+   "cost_usd": 0.207
+  },
+  "n1328": {
+   "answers": [
+    {
+     "ask": "venue",
+     "text": "For 250 guests in New York, I'd start with The Box House Hotel: Brooklyn skyline views, all-inclusive, seats up to 400. Rule of Thirds is a Japanese-inspired Brooklyn space that seats exactly 250. City Winery Hudson Valley has a waterfall and vineyard setting. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "The Box House Hotel",
+      "Rule of Thirds",
+      "City Winery Hudson Valley"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.27,
+      "latency_ms": 5204,
+      "model_turns": 2,
+      "turn_ms": [
+       1497,
+       2763
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 578,
+      "pricing_ms": 331,
+      "tools": {
+       "search_venues": 916,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.018
+    },
+    {
+     "ask": "how about gustavinos?",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "can i see chelsea piers?",
+     "text": "I couldn't find Chelsea Piers in Tulle's venues, so I can't show it. The closest match is City Winery New York City: Hudson River Park views, all-inclusive, and it seats exactly 250. The Sanctuary in Manhattan seats up to 300. Open City Winery's pricing PDF to see exactly what they charge.",
+     "cards": [
+      "City Winery New York City",
+      "The Sanctuary"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": true,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.54,
+      "latency_ms": 8512,
+      "model_turns": 3,
+      "turn_ms": [
+       1568,
+       1677,
+       2426
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 2003,
+      "pricing_ms": 824,
+      "tools": {
+       "search_venues": 2827,
+       "present_recommendations": 0
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0258
+    },
+    {
+     "ask": "Yes, waterfront venues",
+     "text": "Within 15 miles of Manhattan, the only waterfront matches for 250 guests are two you've already seen: City Winery New York City, with Hudson River Park views, and The Sanctuary. For new options, I can widen the search area. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "City Winery New York City",
+      "The Sanctuary"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 4.71,
+      "latency_ms": 4664,
+      "model_turns": 2,
+      "turn_ms": [
+       1987,
+       2391
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 273,
+      "pricing_ms": 0,
+      "tools": {
+       "search_venues": 273,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0179
+    },
+    {
+     "ask": "capitale nyc",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "yes",
+     "text": "Even at 50 miles from Manhattan, no new waterfront venues seat 250. The best matches are still the two you've seen: City Winery New York City, with Hudson River Park views, and The Sanctuary, which seats up to 300. I can drop the waterfront filter to show new options. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "City Winery New York City",
+      "The Sanctuary"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 4.2,
+      "latency_ms": 4176,
+      "model_turns": 2,
+      "turn_ms": [
+       1673,
+       2259
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 232,
+      "pricing_ms": 0,
+      "tools": {
+       "search_venues": 232,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0187
+    }
+   ],
+   "cost_usd": 0.08
+  },
+  "n1193": {
+   "answers": [
+    {
+     "ask": "Algonquin",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "No, keep barns only",
+     "text": "Barns only, noted. For 125 guests, Ashley Farm in Yorkville is my top pick: all-inclusive and seats up to 200. Zachary's Red Barn in Homer Glen is also all-inclusive, with room for 300. The Farmhouse Plainfield is semi-inclusive, so you can bring your own caterer. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Ashley Farm",
+      "Zachary's Red Barn",
+      "The Farmhouse Plainfield"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 6.75,
+      "latency_ms": 6719,
+      "model_turns": 2,
+      "turn_ms": [
+       1439,
+       2837
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 437,
+      "pricing_ms": 1978,
+      "tools": {
+       "search_venues": 2422,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0181
+    },
+    {
+     "ask": "In Illinois Glendale heights and Algonquin area",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "No just show me",
+     "text": "Here are more Illinois barns that seat 125. The Barn at Blackberry Farm in Aurora seats up to 200 and is the closest to Chicago of these. Mora Farm in Waterman is a raw space, so you would bring your own caterer. Sassafras Ridge in Marshall is all-inclusive and seats 400. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "The Barn at Blackberry Farm",
+      "Mora Farm",
+      "Sassafras Ridge"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.05,
+      "latency_ms": 7014,
+      "model_turns": 2,
+      "turn_ms": [
+       1474,
+       3037
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 796,
+      "pricing_ms": 1694,
+      "tools": {
+       "search_venues": 2491,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0189
+    }
+   ],
+   "cost_usd": 0.037
+  },
+  "n1363": {
+   "answers": [
+    {
+     "ask": "It needs to be 30 minutes away from Prince of Peace Catholic Church in Plano",
+     "text": "I searched within 30 miles of Plano for 150 guests, which is how I read your distance request. The Dallas/Plano Marriott at Legacy Town Center is my top pick. It's all-inclusive, seats exactly 150, and is about 8 miles out. River Road Venue in Anna (seats 175) is the bring-your-own-caterer option. 34 Events is right in Plano. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Dallas/Plano Marriott at Legacy Town Center",
+      "River Road Venue",
+      "34 Events"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 9.76,
+      "latency_ms": 9732,
+      "model_turns": 2,
+      "turn_ms": [
+       1545,
+       2937
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 2776,
+      "pricing_ms": 1795,
+      "tools": {
+       "search_venues": 4593,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0184
+    },
+    {
+     "ask": "there also needs to be lodging nearby or onsite",
+     "text": "Tulle lists these as \"Hotel / Resort\" venues within 30 miles of Plano, which is the closest thing we have to onsite lodging. We don't track room counts or nearby hotels. The Grand Hotel and Ballroom in McKinney (about 13 miles, seats exactly 150) is my top pick. Kimpton Pittman's description mentions guest room blocks. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "The Grand Hotel and Ballroom",
+      "The Kimpton Pittman Hotel",
+      "Hotel Crescent Court"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.18,
+      "latency_ms": 7152,
+      "model_turns": 2,
+      "turn_ms": [
+       1792,
+       2752
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1953,
+      "pricing_ms": 638,
+      "tools": {
+       "search_venues": 2592,
+       "present_recommendations": 1
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0199
+    },
+    {
+     "ask": "can you find something more elegant? more like the omni pga frisco",
+     "text": "The Omni PGA Frisco Resort & Spa is in our data, about 16 miles from Plano. It's all-inclusive, with a couple's suite and parent rooms listed, so it covers your lodging need. Omni Dallas Hotel has multiple ballrooms. Stonebriar Country Club in Frisco is a more intimate option. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Omni PGA Frisco Resort & Spa",
+      "Omni Dallas Hotel",
+      "Stonebriar Country Club"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 9.2,
+      "latency_ms": 9140,
+      "model_turns": 2,
+      "turn_ms": [
+       2012,
+       2736
+      ],
+      "turn_tools": [
+       [
+        "search_venues",
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 3312,
+      "pricing_ms": 1063,
+      "tools": {
+       "search_venues": 4378,
+       "present_recommendations": 1
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0217
+    },
+    {
+     "ask": "Yes, estates and country clubs",
+     "text": "April Sound Country Club in Frisco is my top pick: all-inclusive, seats exactly 150, about 10 miles from Plano. Arlington Hall in Dallas is a true estate feel, about 16 miles out. Denton Country Club in Argyle seats 180. We don't track lodging for these, so check rooms with each venue. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "April Sound Country Club",
+      "Arlington Hall",
+      "Denton Country Club"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.51,
+      "latency_ms": 7435,
+      "model_turns": 2,
+      "turn_ms": [
+       1863,
+       2690
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1867,
+      "pricing_ms": 989,
+      "tools": {
+       "search_venues": 2858,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.022
+    }
+   ],
+   "cost_usd": 0.082
+  },
+  "n1398": {
+   "answers": [
+    {
+     "ask": "Tell me about Montecito Club and whether it fits my wedding",
+     "text": "Montecito Club in Santa Barbara looks like a good fit for 100 guests: it seats up to 200, so your count sits comfortably inside its range. It's a semi-inclusive hillside venue with panoramic views and exclusive use for your wedding. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Montecito Club"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 4.73,
+      "latency_ms": 4675,
+      "model_turns": 2,
+      "turn_ms": [
+       1314,
+       2389
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 757,
+      "pricing_ms": 194,
+      "tools": {
+       "search_venues": 951,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0157
+    },
+    {
+     "ask": "Does the $75K budget mean total wedding budget? Because I have a smaller budget if we're just talking about the venue...\n\nIt would be preferred to be near LA or Santa Barbara",
+     "text": "Good question. Whether a budget is meant as the whole wedding or the venue alone is worth settling early, since venue plus food and drink usually takes a big share of a total. I can't give budget math or price comparisons here, because exact pricing lives in each venue's PDF. For Santa Barbara, Santa Barbara Club is a semi-inclusive pick for 100 guests. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Santa Barbara Club",
+      "Simpson House Inn",
+      "Alice Keck Park Memorial Garden"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 11.38,
+      "latency_ms": 11357,
+      "model_turns": 2,
+      "turn_ms": [
+       3276,
+       3130
+      ],
+      "turn_tools": [
+       [
+        "save_note",
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 3241,
+      "pricing_ms": 1436,
+      "tools": {
+       "save_note": 0,
+       "search_venues": 4697,
+       "present_recommendations": 1
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0234
+    },
+    {
+     "ask": "I probably prefer more like Santa Barbara area - I love the look of gardens and nature and maybe the ocean",
+     "text": "For gardens, nature and ocean near Santa Barbara, I'd start with Hilton Santa Barbara Beachfront Resort: it's all-inclusive, seats up to 600, and sits about a mile from downtown on the water. Olive Grove Estate is a garden-style raw space in Carpinteria, and Santa Ynez Ranch gives a countryside setting. I can't see free PDF views on your account. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Hilton Santa Barbara Beachfront Resort",
+      "Olive Grove Estate",
+      "Santa Ynez Ranch"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.89,
+      "latency_ms": 5849,
+      "model_turns": 2,
+      "turn_ms": [
+       2059,
+       3109
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 661,
+      "pricing_ms": 1,
+      "tools": {
+       "search_venues": 664,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0206
+    }
+   ],
+   "cost_usd": 0.06
+  },
+  "n1414": {
+   "answers": [
+    {
+     "ask": "All-inclusive venues",
+     "text": "Pennsylvania has plenty of all-inclusive options for 50 guests. Elkins Estate is the clearest all-inclusive pick, and Rodin Museum and Pen Ryn Estate are semi-inclusive, so you may need their designated caterer or your own. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Elkins Estate",
+      "Rodin Museum",
+      "Pen Ryn Estate"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.36,
+      "latency_ms": 5331,
+      "model_turns": 2,
+      "turn_ms": [
+       1548,
+       2432
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 739,
+      "pricing_ms": 593,
+      "tools": {
+       "search_venues": 1333,
+       "present_recommendations": 1
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0166
+    },
+    {
+     "ask": "Under 10k",
+     "text": "Good question on budget. Exact pricing lives in each venue's PDF and on Tulle plans, so I can't compare or filter by price here. I can keep shortlisting all-inclusive Pennsylvania venues that seat 50, so you can check each PDF against your number.",
+     "cards": [],
+     "checks": {
+      "has_cards": false,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 2.52,
+      "latency_ms": 2488,
+      "model_turns": 1,
+      "turn_ms": [
+       2478
+      ],
+      "turn_tools": [
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "present_recommendations": 0
+      },
+      "tool_calls": 1
+     },
+     "cost_usd": 0.0083
+    },
+    {
+     "ask": "I want to be within an hour of Philly ideally",
+     "text": "Within an hour of Philadelphia, Fringe Bar is my top pick: all-inclusive in the city and seats up to 100, so 50 guests fit comfortably. City Cruises Philadelphia is a waterfront, on-the-boat option, and Philander Chase Knox Estate in Valley Forge is the countryside choice. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Fringe Bar",
+      "City Cruises Philadelphia",
+      "Philander Chase Knox Estate"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 16.16,
+      "latency_ms": 16131,
+      "model_turns": 2,
+      "turn_ms": [
+       2041,
+       2714
+      ],
+      "turn_tools": [
+       [
+        "search_venues",
+        "save_note"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 4894,
+      "pricing_ms": 5433,
+      "tools": {
+       "search_venues": 10349,
+       "save_note": 0,
+       "present_recommendations": 1
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0211
+    }
+   ],
+   "cost_usd": 0.046
+  },
+  "n1310": {
+   "answers": [
+    {
+     "ask": "I need the wedding to end after midnight with catering and in house coordinator set up and tear down",
+     "text": "Since you want catering plus in-house setup and tear down, I focused on all-inclusive Ohio venues that seat 250. Elm Ridge Center and Jefferson Country Club (seats up to 325) both fit your guest count. We don't track end times, curfews or coordinator services, so confirm the after-midnight finish with each venue. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Elm Ridge Center",
+      "Jefferson Country Club",
+      "The Toledo Zoo"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.77,
+      "latency_ms": 7743,
+      "model_turns": 2,
+      "turn_ms": [
+       1749,
+       2898
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1365,
+      "pricing_ms": 1714,
+      "tools": {
+       "search_venues": 3083,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0181
+    },
+    {
+     "ask": "All-inclusive venues",
+     "text": "Here are fresh all-inclusive Ohio venues that seat 250. Hyatt Regency Cleveland At The Arcade is a city hotel that seats 300. Gervasi Vineyard Resort & Spa in Canton is a vineyard resort that seats 300. Pin High Farm is a farm venue that seats exactly 250. We don't track end times or coordinator services, so ask each venue about an after-midnight finish. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Hyatt Regency Cleveland At The Arcade\t",
+      "Gervasi Vineyard Resort & Spa\t",
+      "Pin High Farm"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.72,
+      "latency_ms": 7696,
+      "model_turns": 2,
+      "turn_ms": [
+       1498,
+       2790
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 734,
+      "pricing_ms": 1825,
+      "tools": {
+       "search_venues": 2581,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0199
+    },
+    {
+     "ask": "Columbus Ohio only",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "I need a venue that lasts until 2am",
+     "text": "We don't track venue end times or curfews, so I can't filter for a 2am finish. That has to be confirmed with each venue. These all-inclusive Ohio venues seat 250 or more: The American Croatian Lodge in Eastlake seats up to 815, Cherry Valley Hotel in Newark seats up to 1,200, and Rock and Roll Hall of Fame in Cleveland seats exactly 250. Which part of Ohio do you want to be near? Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "The American Croatian Lodge\t",
+      "Cherry Valley Hotel",
+      "Rock and Roll Hall of Fame\t"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 4.88,
+      "latency_ms": 4835,
+      "model_turns": 2,
+      "turn_ms": [
+       1502,
+       3063
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 243,
+      "pricing_ms": 1,
+      "tools": {
+       "search_venues": 253,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.021
+    },
+    {
+     "ask": "Yes, hotel venues only",
+     "text": "Here are Ohio hotel venues that seat 250 or more. The Westin Cleveland Downtown seats up to 400. Crowne Plaza Cleveland At PlayhouseSquare seats up to 350. Embassy Suites Akron Canton Airport seats 275, and its guest minimum fits your count. We don't track end times, so confirm a 2am finish with each hotel. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "The Westin Cleveland Downtown\t",
+      "Crowne Plaza Cleveland At PlayhouseSquare\t",
+      "Embassy Suites by Hilton Akron Canton Airport\t"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 6.76,
+      "latency_ms": 6726,
+      "model_turns": 2,
+      "turn_ms": [
+       1685,
+       2760
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 862,
+      "pricing_ms": 1402,
+      "tools": {
+       "search_venues": 2265,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0208
+    },
+    {
+     "ask": "No, keep all-inclusive",
+     "text": "Understood, back to all-inclusive without the hotel filter. Champion Mill Conference Center in Hamilton seats up to 450, Brennan's Catering & Banquet Center in Cleveland seats up to 450, and Country Lakes Party Center in Broadview Heights seats 320. All three have guest minimums that fit 250. We don't track end times, so confirm a 2am finish with each. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Champion Mill Conference Center \t",
+      "Brennan's Catering & Banquet Center\t",
+      "Country Lakes Party Center / Country Lakes Event Venue\t"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 4.38,
+      "latency_ms": 4348,
+      "model_turns": 2,
+      "turn_ms": [
+       1249,
+       2823
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 255,
+      "pricing_ms": 3,
+      "tools": {
+       "search_venues": 262,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.022
+    }
+   ],
+   "cost_usd": 0.102
+  },
+  "n1386": {
+   "answers": [
+    {
+     "ask": "No, keep all-inclusive",
+     "text": "Keeping it all-inclusive, the lowest-cost fit I found for 200 guests is Renault Winery and Resort (NJ). Prices are peak-Saturday; Fridays, Sundays or off-season are often cheaper.\n• Rental: $5,000 (this venue's PDF)\n• Ceremony fee: $1,500 (this venue's PDF)\n• Food and drink: $210 a head x 200 = $42,000 (estimate, not in the PDF)\n• Bar: not separately listed\n• Service charge: 24% of $48,500 = $11,640 (this venue's PDF)\n• Estimated total before tax and gratuity: $60,140, about $301 a guest\n• Tax: 6.625% = $3,984 (this venue's PDF); total with tax $64,124\n• Gratuity: not in the PDF, separate from the service charge, not in the total\nThat's above your $45,000 budget. Guest count moves it most, so open the PDF for the real menu price.",
+     "cards": [
+      "Renault Winery and Resort"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 11.77,
+      "latency_ms": 11733,
+      "model_turns": 3,
+      "turn_ms": [
+       2198,
+       2466,
+       3726
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "estimate_cost"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 521,
+      "pricing_ms": 2473,
+      "tools": {
+       "search_venues": 3001,
+       "estimate_cost": 0,
+       "present_recommendations": 3
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0557
+    },
+    {
+     "ask": "These are expensive",
+     "text": "Fair reaction: for 200 guests, New Jersey venues that seat 151-250 typically run about $231 a head all-in (Tulle data, 97 spaces), so $45,000 total is tight. The Venue at Winding Hills is the strongest fit, about $34,770 before tax and gratuity, with a $2,000 rental.",
+     "cards": [
+      "The Venue at Winding Hills",
+      "Lippincott Manor",
+      "Marian House"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 10.27,
+      "latency_ms": 10216,
+      "model_turns": 2,
+      "turn_ms": [
+       2854,
+       3198
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 923,
+      "pricing_ms": 2131,
+      "tools": {
+       "search_venues": 3069,
+       "present_recommendations": 1
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0309
+    },
+    {
+     "ask": "Under $200 a head",
+     "text": "Three all-inclusive picks come in under $200 a head. Mercer Oaks (NJ) is the best fit: about $35,931 for 200 guests before tax and gratuity, roughly $180 a head, with a $250 rental in its PDF. Vacations Bar & Rooftop is lower, but its rental and ceremony are estimated.",
+     "cards": [
+      "Mercer Oaks",
+      "Vacations Bar & Rooftop",
+      "Tomasello Winery"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.23,
+      "latency_ms": 8199,
+      "model_turns": 2,
+      "turn_ms": [
+       1379,
+       3132
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 469,
+      "pricing_ms": 3210,
+      "tools": {
+       "search_venues": 3681,
+       "present_recommendations": 1
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0327
+    },
+    {
+     "ask": "Show long island, nj, nyc and hudson valley options that fit 200 people and come out to under $150 per head",
+     "text": "Only two venues truly come out under $150 a head all-in for 200 guests: Brook Hollow Winery (NJ), about $21,930 before tax and gratuity (~$110 a head, rental and ceremony in its PDF), and Catamount Mountain Resort (Hudson Valley), about $24,000 (~$120), though its ceremony is estimated. Nothing in Long Island or NYC fit; Brooklyn's Fornino is ~$218. Prices are peak Saturday, and Friday or Sunday is often cheaper. Open Brook Hollow's PDF first and check the covered-porch rental and the 18% service charge.",
+     "cards": [
+      "Brook Hollow Winery",
+      "Catamount Mountain Resort",
+      "Parlor Banquets"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 25.51,
+      "latency_ms": 25480,
+      "model_turns": 4,
+      "turn_ms": [
+       1513,
+       3236,
+       1319,
+       3745
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "search_venues",
+        "search_venues"
+       ],
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 11678,
+      "pricing_ms": 3967,
+      "tools": {
+       "search_venues": 15657,
+       "present_recommendations": 1
+      },
+      "tool_calls": 5
+     },
+     "cost_usd": 0.0861
+    },
+    {
+     "ask": "Yes, all-inclusive only",
+     "text": "All-inclusive venues that fit 200 guests are limited. The 20 other matches are venues you've already seen in this chat, so these are the best of those. I used a food cap of $150 a head here, not the earlier $110. Gilbertsville Farmhouse (NY), The Conservatory at the Sussex County Fairgrounds (NJ) and Camptown Catskills (NY) are the three left. All-inclusive means the venue's catering is required, so the PDF's per-head menu tiers and service charge matter most.",
+     "cards": [
+      "Gilbertsville Farmhouse",
+      "The Conservatory at the Sussex County Fairgrounds",
+      "Camptown Catskills"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 9.29,
+      "latency_ms": 9260,
+      "model_turns": 2,
+      "turn_ms": [
+       1839,
+       5616
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 224,
+      "pricing_ms": 1575,
+      "tools": {
+       "search_venues": 1800,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0286
+    }
+   ],
+   "cost_usd": 0.234
+  },
+  "n1475": {
+   "answers": [
+    {
+     "ask": "Mountain",
+     "text": "Mountain settings that seat your 200 guests: The Bear Mountain Inn and Spa in New York is my top pick, with lush landscapes and room for up to 250. Mountain Terrace in California adds cool-evening open-air space, and Early Mountain Vineyard in Virginia is the only semi-inclusive pick. Forever unlocks the exact prices in every PDF and here. Knowing your state would narrow these down.",
+     "cards": [
+      "The Bear Mountain Inn and Spa",
+      "The Mountain Terrace",
+      "Early Mountain Vineyard"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [
+       "The Bear Mountain Inn and Spa",
+       "The Mountain Terrace",
+       "Early Mountain Vineyard"
+      ],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.85,
+      "latency_ms": 7821,
+      "model_turns": 2,
+      "turn_ms": [
+       2466,
+       2871
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1325,
+      "pricing_ms": 1128,
+      "tools": {
+       "search_venues": 2463,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0187
+    },
+    {
+     "ask": "I would like it to have mountain views and some water",
+     "text": "I can't filter specifically for mountain views. These three are tagged both scenic and waterfront, and all seat 200 or more. Crossed Keys Estate in New Jersey is my top pick: it's semi-inclusive, so you can bring your own caterer. I don't know what each one overlooks, so check the venue photos for the mountain view. Picking a state would let me narrow these further.",
+     "cards": [
+      "Crossed Keys Estate",
+      "The Roundhouse",
+      "Wainwright House"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [
+       "Crossed Keys Estate",
+       "The Roundhouse",
+       "Wainwright House"
+      ],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.37,
+      "latency_ms": 8340,
+      "model_turns": 2,
+      "turn_ms": [
+       1595,
+       5541
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 844,
+      "pricing_ms": 316,
+      "tools": {
+       "search_venues": 1170,
+       "present_recommendations": 1
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0227
+    },
+    {
+     "ask": "Can tou just narrow my venue search to show me venues with mountain views",
+     "text": "We have no true mountain-view filter, so I searched venues with \"mountain\" in the name or description. Stallion Mountain in Nevada is the only one whose description mentions mountain views. Mountain Winery in California describes scenic views, but I can't confirm water at any of them. Open Stallion Mountain's pricing PDF first. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Stallion Mountain",
+      "Mountain Winery",
+      "The Farm at Glenwood Mountain"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [
+       "Stallion Mountain",
+       "Mountain Winery",
+       "The Farm at Glenwood Mountain"
+      ],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.37,
+      "latency_ms": 5337,
+      "model_turns": 2,
+      "turn_ms": [
+       1857,
+       2715
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 744,
+      "pricing_ms": 0,
+      "tools": {
+       "search_venues": 748,
+       "present_recommendations": 1
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0201
+    }
+   ],
+   "cost_usd": 0.062
+  },
+  "n1497": {
+   "answers": [
+    {
+     "ask": "I need capacity at 350 minimum",
+     "text": "Your 400 guests (350 minimum) rule out most Texas venues, but 78 seat that many. Omni Dallas Hotel leads: multiple ballrooms, in-house catering, and a required coordinator. George Ranch is a raw space for your own caterer, and High Hill Farm is all-inclusive with on-site bungalows. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Omni Dallas Hotel",
+      "George Ranch Historical Park",
+      "High Hill Farm"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.49,
+      "latency_ms": 7418,
+      "model_turns": 2,
+      "turn_ms": [
+       1738,
+       2888
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 714,
+      "pricing_ms": 2044,
+      "tools": {
+       "search_venues": 2773,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0179
+    },
+    {
+     "ask": "Around dfw",
+     "text": "Around Dallas, 12 venues seat your 400 guests. Venueforty50 in Addison (about 12 miles out, seats 500) is all-inclusive with its own exclusive caterer, so it's the simplest start. Dallas Oasis in Red Oak seats 500 with decor and lighting included and an open vendor policy. The Hamptons Rental seats 400 with a ballroom and ceremony space. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Venueforty50",
+      "Dallas Oasis",
+      "The Hamptons Rental"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 9.4,
+      "latency_ms": 9377,
+      "model_turns": 2,
+      "turn_ms": [
+       1132,
+       2997
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 3816,
+      "pricing_ms": 1418,
+      "tools": {
+       "search_venues": 5237,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0202
+    },
+    {
+     "ask": "No, keep 50 miles",
+     "text": "Keeping it to 50 miles of Dallas, 4 more venues seat your 400 guests. Buena Vista Ranch in Blue Ridge (about 43 miles) is semi-inclusive and seats exactly 400. Cleburne Conference Center is a raw space seating 700, and Dove Ridge Vineyard is all-inclusive. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Buena Vista Ranch",
+      "Cleburne Conference Center",
+      "Dove Ridge Vineyard"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.82,
+      "latency_ms": 7792,
+      "model_turns": 2,
+      "turn_ms": [
+       1736,
+       2522
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 2466,
+      "pricing_ms": 1055,
+      "tools": {
+       "search_venues": 3522,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0191
+    }
+   ],
+   "cost_usd": 0.057
+  },
+  "n1260": {
+   "answers": [
+    {
+     "ask": "would love on site accommodations",
+     "text": "For on-site rooms I filtered to Hotel / Resort venues (we don't track room counts, so confirm how many rooms you can block). Estancia La Jolla is my top pick at about $73,710 for 150 guests before tax and gratuity; these are peak-Saturday prices, and Fridays, Sundays or off-season are often cheaper. Open its PDF for the $45,000 food minimum.",
+     "cards": [
+      "Estancia La Jolla",
+      "Fern River Resort",
+      "Rosewood Sandhill"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.6,
+      "latency_ms": 8554,
+      "model_turns": 2,
+      "turn_ms": [
+       1766,
+       3417
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 572,
+      "pricing_ms": 2412,
+      "tools": {
+       "search_venues": 2994,
+       "present_recommendations": 2
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0271
+    },
+    {
+     "ask": "what about hotel buyout?",
+     "text": "Tulle doesn't track buyouts or room counts, so ask each hotel whether it sells the whole property. Olema House is the best lead: its listing mentions twenty-two guest rooms, about $44,347 for 150 guests before tax and gratuity. Its PDF shows the $15,000 food minimum and the Board Room rental. None of these three were shown before. Your area of California would narrow the list.",
+     "cards": [
+      "Olema House",
+      "Oceano Hotel and Spa",
+      "Lake Merritt Hotel"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 16.91,
+      "latency_ms": 16844,
+      "model_turns": 3,
+      "turn_ms": [
+       7251,
+       1820,
+       3645
+      ],
+      "turn_tools": [
+       [
+        "present_recommendations"
+       ],
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1510,
+      "pricing_ms": 2211,
+      "tools": {
+       "present_recommendations": 2,
+       "search_venues": 3732
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0495
+    }
+   ],
+   "cost_usd": 0.077
+  },
+  "n1323": {
+   "answers": [
+    {
+     "ask": "Tell me about American Swedish Historical Museum and whether it fits my wedding",
+     "text": "The American Swedish Historical Museum in Philadelphia fits your 150 guests: it seats up to 230 and has an outdoor ceremony space. It is all-inclusive, so outside caterers aren't allowed, and its preferred caterer is Jeffrey A. Miller Catering. Google rates it 4.7 from 101 reviews, covering the whole place. The one wedding review praises the grounds and attentive staff. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "American Swedish Historical Museum"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.49,
+      "latency_ms": 7465,
+      "model_turns": 3,
+      "turn_ms": [
+       1638,
+       2013,
+       2737
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "venue_details"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 189,
+      "pricing_ms": 187,
+      "tools": {
+       "search_venues": 377,
+       "venue_details": 684,
+       "present_recommendations": 0
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0246
+    },
+    {
+     "ask": "online forums show this as much cheaper than what I'm seeing here (per person costs in the $150 range)",
+     "text": "Forum figures can differ from the venue's own pricing PDF. Posts are often older, may leave out service charge, tax or required fees, or may be for a different day or season. I can't confirm or compare any per-person number here, because exact prices sit behind Forever, which unlocks every PDF and the figures here.",
+     "cards": [],
+     "checks": {
+      "has_cards": false,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 5.1,
+      "latency_ms": 5070,
+      "model_turns": 2,
+      "turn_ms": [
+       2932,
+       2122
+      ],
+      "turn_tools": [
+       [
+        "present_recommendations"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0194
+    }
+   ],
+   "cost_usd": 0.044
+  },
+  "n1447": {
+   "answers": [
+    {
+     "ask": "I want Nantucket wedding venues only",
+     "text": "Good news: we hold 6 venues on Nantucket itself that seat 125. The Nantucket Dreamland is my top pick, a raw space right in town that seats up to 150, so you bring your own caterer. White Elephant and The Wauwinet are all-inclusive. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "The Nantucket Dreamland",
+      "White Elephant Nantucket",
+      "The Wauwinet"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.84,
+      "latency_ms": 7811,
+      "model_turns": 2,
+      "turn_ms": [
+       1504,
+       2526
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "save_note",
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1248,
+      "pricing_ms": 2515,
+      "tools": {
+       "search_venues": 3764,
+       "save_note": 0,
+       "present_recommendations": 0
+      },
+      "tool_calls": 3
+     },
+     "cost_usd": 0.0179
+    },
+    {
+     "ask": "Bohlin",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "Newport harbor hotel",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "Belle mer",
+     "skipped": "lookup (fast path, no model)"
+    },
+    {
+     "ask": "New Year’s Eve wedding venues in nyc",
+     "text": "Switching to New York City for 125 guests. Gran Morsi is my top pick: a Tribeca restaurant that seats exactly 125, all-inclusive. We don't track New Year's Eve availability or date-specific rules, so ask each venue about that night. Open Gran Morsi's pricing PDF to see exactly what they charge; Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Gran Morsi",
+      "ASPIRE at One World Observatory",
+      "Manhatta"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 15.53,
+      "latency_ms": 15503,
+      "model_turns": 2,
+      "turn_ms": [
+       1734,
+       2273
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 5686,
+      "pricing_ms": 1976,
+      "tools": {
+       "search_venues": 7682,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0188
+    },
+    {
+     "ask": "Rooftop / Skyline Views",
+     "text": "I found 22 rooftop and skyline venues near NYC that fit 125 guests. Manhattan Penthouse is my top pick: all-inclusive in Greenwich Village, seats up to 180, and its guest minimum works for you. Shell's Loft Fort Greene is semi-inclusive, so you get more catering flexibility. We don't track New Year's Eve availability, so ask each venue about that night. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "Manhattan Penthouse",
+      "Shell's Loft Fort Greene",
+      "Fornino - Brooklyn Bridge Park"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 13.65,
+      "latency_ms": 13622,
+      "model_turns": 2,
+      "turn_ms": [
+       1711,
+       2880
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 4586,
+      "pricing_ms": 2973,
+      "tools": {
+       "search_venues": 7567,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0204
+    },
+    {
+     "ask": "No, include Brooklyn",
+     "text": "Got it, here are Brooklyn rooftop and skyline venues that seat 125. The Box House Hotel is my top pick: all-inclusive, with skyline views and room for up to 400. 99 Scott and 53 Scott is semi-inclusive, so you have more say over catering. MyMoon is a restaurant space that seats 160. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "The Box House Hotel",
+      "99 Scott and 53 Scott",
+      "MyMoon"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 8.27,
+      "latency_ms": 8239,
+      "model_turns": 2,
+      "turn_ms": [
+       2038,
+       2764
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 1834,
+      "pricing_ms": 1588,
+      "tools": {
+       "search_venues": 3425,
+       "present_recommendations": 0
+      },
+      "tool_calls": 2
+     },
+     "cost_usd": 0.0207
+    }
+   ],
+   "cost_usd": 0.078
+  }
+ }
+}

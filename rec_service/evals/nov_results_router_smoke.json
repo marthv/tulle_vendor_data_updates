@@ -1,0 +1,110 @@
+{
+ "summary": {
+  "answers": 2,
+  "errors": 0,
+  "latency_p50_s": 8.2,
+  "latency_p90_s": 9.264,
+  "turn1_p50_s": 2.66,
+  "tools_p50_s": 1.37,
+  "model_turns_p50": 2.5,
+  "no_cards": 0,
+  "ends_with_question": 0,
+  "failure_words": 0,
+  "answers_with_out_of_state_cards": 0,
+  "answers_with_under_capacity_cards": 0,
+  "cost_usd": 0.04
+ },
+ "results": {
+  "n1323": {
+   "answers": [
+    {
+     "ask": "Tell me about American Swedish Historical Museum and whether it fits my wedding",
+     "text": "The American Swedish Historical Museum in Philadelphia fits 150 guests: it seats up to 230, is all-inclusive, and has an outdoor ceremony space. Its Google rating is 4.7 from 101 reviews, which cover the whole place, not only weddings. One wedding review praises the grounds and attentive staff. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "American Swedish Historical Museum"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 9.3,
+      "latency_ms": 9264,
+      "model_turns": 3,
+      "turn_ms": [
+       2148,
+       772,
+       2386
+      ],
+      "turn_tools": [
+       [
+        "search_venues"
+       ],
+       [
+        "venue_details"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 935,
+      "pricing_ms": 222,
+      "tools": {
+       "search_venues": 1159,
+       "venue_details": 1579,
+       "present_recommendations": 0
+      },
+      "tool_calls": 3,
+      "router_searched": false,
+      "router_ms": 1203
+     },
+     "cost_usd": 0.0249
+    },
+    {
+     "ask": "online forums show this as much cheaper than what I'm seeing here (per person costs in the $150 range)",
+     "text": "That's the American Swedish Historical Museum you've already seen. Forum figures can differ from its PDF, since date, season, guest count and what's bundled in all change a per-person number. I can't confirm or compare prices here. Forever unlocks the exact prices in every PDF and here.",
+     "cards": [
+      "American Swedish Historical Museum"
+     ],
+     "checks": {
+      "has_cards": true,
+      "ends_with_question": false,
+      "failure_words": false,
+      "out_of_state": [],
+      "under_capacity": []
+     },
+     "timing": {
+      "wall_s": 7.44,
+      "latency_ms": 7128,
+      "model_turns": 2,
+      "turn_ms": [
+       3168,
+       2566
+      ],
+      "turn_tools": [
+       [
+        "present_recommendations"
+       ],
+       [
+        "present_recommendations"
+       ]
+      ],
+      "search_ms": 0,
+      "pricing_ms": 0,
+      "tools": {
+       "present_recommendations": 0
+      },
+      "tool_calls": 2,
+      "router_searched": false,
+      "router_ms": 1381
+     },
+     "cost_usd": 0.0205
+    }
+   ],
+   "cost_usd": 0.045
+  }
+ }
+}

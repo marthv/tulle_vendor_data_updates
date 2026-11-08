@@ -1237,7 +1237,10 @@ def package_set_selected(user_id, item_id, selected):
 def package_update(user_id, item_id, changes, price=None, paid=None):
     """Edit one of the couple's budget items (notes / file / price / paid). False when it isn't theirs.
     Balance_Left is recomputed whenever price or paid moves."""
-    r = _meta("GET", "/table/33/content/%d" % int(item_id))
+    try:
+        r = _meta("GET", "/table/33/content/%d" % int(item_id))
+    except XanoError:
+        return False                     # no such row -> the endpoint answers 404, not 500
     if not r or int(r.get("user_id") or 0) != int(user_id):
         return False
     ch = dict(changes or {})

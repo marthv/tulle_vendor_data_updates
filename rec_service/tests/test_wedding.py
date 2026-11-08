@@ -108,6 +108,7 @@ def test_v2_notes_file_slices_and_marker():
 def test_clean_attachment():
     assert wedding.clean_attachment({"path": "https://evil/x.pdf"}) is None
     assert wedding.clean_attachment({"path": "/vault/../x"}) is None
+    assert wedding.clean_attachment({"path": "/vault/utYSksl9/DS8/bgPB5g../qa.pdf"})["path"].endswith("qa.pdf")   # real Xano path
     a = wedding.clean_attachment({"path": "/vault/a/b.pdf", "name": "b.pdf", "size": 9, "mime": "application/pdf", "url": "https://evil"})
     assert a["path"] == "/vault/a/b.pdf" and "url" not in a and a["access"] == "public"
 
