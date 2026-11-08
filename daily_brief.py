@@ -166,7 +166,7 @@ def compose_compact(token, health_text, now_ms=None):
         ab = ab_report.block(token, now_ms)
     except Exception as e:
         ab = f":warning: _A/B scoreboard failed: {e}_"
-    out = [f"*Tulle daily - {today}*", "• " + " · ".join(head), "", ab]
+    out = [f"*Tulle daily - {today}*", "• " + " · ".join(head)] + (["", ab] if ab else [])
     if alerts:
         out += ["", "*Needs you*"] + [f"• {a}" for a in alerts]
     return "\n".join(out)

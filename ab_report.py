@@ -119,6 +119,9 @@ def format_block(s, day_n):
 
 
 def block(token, now_ms=None, fetch_day=None, fetch_table=None, fetch_payments=None, internal=None):
+    """"" when the plan is off for everyone (REC_PLAN_AB_PCT=0, owner rollback 2026-11-07) - nothing to report."""
+    if int(os.environ.get("REC_PLAN_AB_PCT", "100")) <= 0:
+        return ""
     try:
         now = dt.datetime.utcfromtimestamp((now_ms or dt.datetime.utcnow().timestamp() * 1000) / 1000)
         start = dt.datetime.strptime(START, "%Y-%m-%d")
