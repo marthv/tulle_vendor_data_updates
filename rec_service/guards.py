@@ -78,6 +78,13 @@ def free_limit(feedback_given):
     return config.FREE_REFINES + (config.FREE_FEEDBACK_BONUS if feedback_given else 0)
 
 
+def free_questions_today(usage_rows, today):
+    """Daily free mode (owner 2026-11-07: 1 question a day): questions ("refine" + "Show 3 more") asked on `today`.
+    Openings never count (a home-screen starter must not use up the day's question), nor clarifying lookups."""
+    return sum(1 for r in _ok(usage_rows) if r.get("kind") in ("refine", "more") and r.get("usage_day") == today
+               and not _clarification(r))
+
+
 def free_feedback_required(paid, usage_rows, feedback_given):
     """True when a free user has used the FREE_REFINES questions and still owes the one-time feedback.
     Never in open-planner mode (2026-10-31): feedback is a suggestion there, like the paid check-in."""
@@ -119,7 +126,7 @@ def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True, free
     if config.FREE_DAILY_MODE:
         # Open planner (2026-10-31): the same daily allowance as Forever, counted the same way (openings + questions
         # per UTC day); rows stay counted_as_free so the free spend pool still sees them.
-        if used_today(usage_rows, today) >= config.FREE_DAILY_REFINES:
+        if free_questions_today(usage_rows, today) >= config.FREE_DAILY_REFINES:
             return False, "blocked_user_cap", False
         return True, "ok", True
     if free_feedback_required(paid, usage_rows, feedback_given):
@@ -140,7 +147,7 @@ def free_refines_left(paid, usage_rows, feedback_given=False, today=None):
     if paid:
         return None
     if config.FREE_DAILY_MODE:
-        return max(0, config.FREE_DAILY_REFINES - used_today(usage_rows, today or _today()))
+        return max(0, config.FREE_DAILY_REFINES - free_questions_today(usage_rows, today or _today()))
     return max(0, free_limit(feedback_given) - free_used(usage_rows))
 
 

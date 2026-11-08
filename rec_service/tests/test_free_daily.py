@@ -26,12 +26,12 @@ def _daily(monkeypatch):
 
 
 def test_free_user_gets_forty_prompts_a_day_then_a_cap_not_a_paywall():
-    rows = [ok("opening")]
-    for i in range(39):
+    rows = [ok("opening")]          # 2026-11-07: openings no longer count - only questions do
+    for i in range(40):
         allowed, status, free = guards.decide("refine", False, rows, 0, T, feedback_given=False)
         assert (allowed, status, free) == (True, "ok", True), i
         rows.append(ok("refine", True))
-    assert guards.used_today(rows, T) == 40
+    assert guards.free_questions_today(rows, T) == 40
     assert guards.decide("refine", False, rows, 0, T, feedback_given=False) == (False, "blocked_user_cap", False)
     assert guards.decide("opening", False, rows, 0, T, feedback_given=False) == (True, "ok", False)   # openings never blocked
     assert guards.free_refines_left(False, rows, False, today=T) == 0

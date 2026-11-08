@@ -49,3 +49,16 @@ def test_free_lookup_miss_shows_the_question_still_left(env, gate):
     assert j["free_refines_left"] == 3            # limit 3 after feedback (env: feedback given), nothing spent
     settle(env, "logged")
     assert [r for r in env["logged"] if r["status"] == "ok"][0]["tools"] == "lookup:not_found"
+
+
+def test_daily_mode_counts_questions_not_openings(gate, monkeypatch):
+    # owner 2026-11-07: free couples get 1 question a day; a home-screen starter (an opening) must not use it up.
+    monkeypatch.setattr(config, "FREE_DAILY_MODE", True)
+    monkeypatch.setattr(config, "FREE_DAILY_REFINES", 1)
+    opening = {"status": "ok", "kind": "opening", "counted_as_free": False, "usage_day": "2026-11-07"}
+    assert guards.decide("refine", False, [opening], 0, "2026-11-07")[0] is True
+    asked = [opening, row()]
+    assert guards.decide("refine", False, asked, 0, "2026-11-07")[1] == "blocked_user_cap"
+    assert guards.free_refines_left(False, asked, today="2026-11-07") == 0
+    assert guards.decide("refine", False, asked, 0, "2026-11-08")[0] is True            # tomorrow it's back
+    assert guards.decide("refine", False, [row("lookup:choices")], 0, "2026-11-07")[0] is True   # clarifying = free

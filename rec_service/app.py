@@ -645,7 +645,9 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         **_search_props(user, usage.get("search"))})
     if in_plan:   # 2026-11-07: the one "next for your wedding" suggestion once the couple is engaged
         asked = sum(1 for r in rows if r.get("status") == "ok" and r.get("kind") == "refine") + (kind == "refine")
-        result = dict(result, plan_enabled=True, plan_next=plan.next_step(plan_rows, asked))
+        # plan_next OFF (owner 2026-11-07: "I asked for a photographer, then it says find a photographer again").
+        result = dict(result, plan_enabled=True,
+                      plan_next=plan.next_step(plan_rows, asked) if config.PLAN_NEXT_STEP else None)
     return dict(result, paid=paid, has_access=access,
                 **_counters(kind, paid, rows, counted_free, feedback_given, access))
 

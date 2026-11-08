@@ -189,6 +189,8 @@ PRESEARCH = os.environ.get("REC_PRESEARCH", "1") == "1"
 # Sonnet turn instead of two (turn 1 only picked arguments: median 1.9 s of a 7.7 s answer, 11-01..11-07). The router
 # may decide no search is needed; then Sonnet runs exactly as before. 0 = off (the default until the eval set agrees).
 REFINE_ROUTER = os.environ.get("REC_REFINE_ROUTER", "0") == "1"
+# "Next for your wedding" suggestion under answers (2026-11-07): OFF - it repeated what the couple had just asked for.
+PLAN_NEXT_STEP = os.environ.get("REC_PLAN_NEXT_STEP", "0") == "1"
 # SOURCED ANSWERS (owner 2026-11-07: "I really really don't want to hallucinate, so I want very clear sources"): venue
 # questions beyond price are answered from venue_details (PDF facts, vibes, description, Google reviews) and, for full
 # members, the web; every answer lists its sources and a web source must be a URL the search returned this request.
