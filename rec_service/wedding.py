@@ -99,16 +99,32 @@ def price_hint(card):
     return None
 
 
+def _item(p):
+    return {"id": p.get("id"), "name": p.get("vendor_name") or "", "price": int(_num(p.get("total_cost"))),
+            "paid": int(_num(p.get("Balance_Paid"))), "vendor_id": _vid(p), "category": p.get("Category") or "",
+            "notes": user_notes(p)[:2000], "file": file_of(p), "package": str(p.get("Package_Name") or "").split(" · tulle:")[0]
+            if not str(p.get("Package_Name") or "").startswith("Booked in My wedding") else "",
+            "contact": str(p.get("Contact_Information") or "")[:300]}
+
+
+def considering_rows(packages):
+    """v3 (owner 11-08: "users have already saved packages - we need to use that data"): the Budget tab's packages
+    that aren't Selected are quotes the couple is still weighing (1,391 of 1,599 real rows on 11-08). Shown, never copied."""
+    return [p for p in packages or [] if p.get("Selected") is not True and not is_example(p)]
+
+
 def view(user, packages, saved_cards, show_prices):
     """The whole screen as the page draws it."""
     budget = int(_num(user.get("Wedding_Budget"))) or None
     rows = sorted(booked_rows(packages), key=lambda p: (p.get("created_at") or 0, p.get("id") or 0))
     booked_by, extras = {}, []
+    quotes_by, quotes_other = {}, []
+    for p in sorted(considering_rows(packages), key=lambda p: -(p.get("created_at") or 0)):
+        c = BY_TABLE.get(str(p.get("Category") or "").strip().lower())
+        (quotes_by.setdefault(c["key"], []) if c else quotes_other).append(_item(p))
     for p in rows:
         c = BY_TABLE.get(str(p.get("Category") or "").strip().lower())
-        item = {"id": p.get("id"), "name": p.get("vendor_name") or "", "price": int(_num(p.get("total_cost"))),
-                "paid": int(_num(p.get("Balance_Paid"))), "vendor_id": _vid(p), "category": p.get("Category") or "",
-                "notes": user_notes(p)[:2000], "file": file_of(p)}
+        item = _item(p)
         if c and c["key"] not in booked_by:
             booked_by[c["key"]] = item
         else:
@@ -136,9 +152,9 @@ def view(user, packages, saved_cards, show_prices):
                 saved.append({"vendor_id": card.get("vendor_id"), "name": card.get("name") or "",
                               "sub": _sub(card), "price": price_hint(card) if show_prices else None})
         cats.append({"key": c["key"], "label": c["label"], "icon": c["icon"], "noun": c["noun"],
-                     "booked": booked_by.get(c["key"]), "saved": saved})
+                     "booked": booked_by.get(c["key"]), "saved": saved, "quotes": quotes_by.get(c["key"], [])})
     return {"enabled": ENABLED, "budget": budget, "booked_total": booked_total,
-            "left": (budget - booked_total) if budget else None, "categories": cats, "extras": extras, "slices": slices,
+            "left": (budget - booked_total) if budget else None, "categories": cats, "extras": extras, "slices": slices, "considering": quotes_other,
             "paid_total": sum(int(_num(p.get("Balance_Paid"))) for p in rows),
             "saved_other": saved_other, "show_prices": bool(show_prices)}
 

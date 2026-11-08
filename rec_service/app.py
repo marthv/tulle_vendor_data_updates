@@ -2030,6 +2030,7 @@ class WeddingEditBody(BaseModel):
     clear_file: bool = False
     price: Optional[int] = None
     paid: Optional[int] = None
+    selected: Optional[bool] = None   # v3: Booked on an existing Budget-tab quote = the same row flips to Selected true
 
 
 def _wedding_view(token, user, packages=None):
@@ -2108,11 +2109,14 @@ def wedding_item(body: WeddingEditBody, authorization: str = Header(None)):
         if not att:
             raise HTTPException(400, {"status": "bad_file"})
         changes["Files"] = att
+    if body.selected is not None:
+        changes["Selected"] = bool(body.selected)
     ok = xano.package_update(user["id"], body.item_id, changes, body.price, body.paid) if body.item_id else False
     if not ok:
         raise HTTPException(404, {"status": "not_found"})
     _POOL.submit(xano.mp_track, user["id"], "rec_wedding_item_edit", {"notes": body.notes is not None,
-                 "file": bool(body.file) and not body.clear_file, "clear_file": body.clear_file})
+                 "file": bool(body.file) and not body.clear_file, "clear_file": body.clear_file,
+                 "selected": body.selected})
     return _wedding_view(token, user)
 
 

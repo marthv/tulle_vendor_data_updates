@@ -124,3 +124,26 @@ def test_item_edit_endpoint(monkeypatch):
     assert c.post("/rec/wedding/item", json={"item_id": 2, "file": {"path": "nope"}}).status_code == 400
     assert c.post("/rec/wedding/item", json={"item_id": 9, "notes": "x"}).status_code == 404
     assert c.post("/rec/wedding/item", json={"item_id": 2, "clear_file": True}).status_code == 200 and calls["ch"] == {"Files": None}
+
+
+def test_v3_existing_budget_tab_quotes_show_up():
+    pk = PACK + [{"id": 6, "user_id": 7, "vendor_name": "Lakeside Barn", "total_cost": 18000, "Selected": False,
+                  "Category": "Venue", "Notes": "Saturday rate", "Package_Name": "Gold package"},
+                 {"id": 7, "user_id": 7, "vendor_name": "Glam Squad", "total_cost": 900, "Selected": False, "Category": "Beauty"}]
+    v = wedding.view(USER, pk, list(CARDS.values()), show_prices=True)
+    cats = {c["key"]: c for c in v["categories"]}
+    q = cats["Venue"]["quotes"]
+    assert [x["name"] for x in q] == ["Lakeside Barn"] and q[0]["notes"] == "Saturday rate" and q[0]["package"] == "Gold package"
+    assert [x["name"] for x in cats["Entertainment"]["quotes"]] == ["Old DJ"]            # an un-booked row = still deciding
+    assert [x["name"] for x in v["considering"]] == ["Glam Squad"]
+    assert v["booked_total"] == 21505                                                     # quotes never count as spent
+
+
+def test_item_select_flips_the_same_row(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", USER))
+    monkeypatch.setattr(app, "_wedding_view", lambda t, u, packages=None: {"enabled": True, "categories": []})
+    monkeypatch.setattr(xano, "package_update", lambda uid, iid, ch, price, paid: calls.update(ch=ch) or True)
+    monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
+    c = TestClient(app.app)
+    assert c.post("/rec/wedding/item", json={"item_id": 6, "selected": True}).status_code == 200 and calls["ch"] == {"Selected": True}
