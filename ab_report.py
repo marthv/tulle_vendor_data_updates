@@ -80,8 +80,22 @@ def compute(usage_rows, plan_rows, payments, internal=()):
     return out
 
 
+def adoption_block(p, day_n):
+    """Everyone has the plan (owner 2026-11-07, no A/B): how many couples use it."""
+    pct = lambda a, b: ("%d%%" % round(100 * a / b)) if b else "-"
+    per = lambda a, b: ("%.1f" % (a / b)) if b else "-"
+    return "\n".join([
+        "*My wedding plan* - day %d" % day_n,
+        "• %d couples used the Planner · %d added to their plan (%s) · %d with 2+ slots · %d items added" % (
+            p["n"], p.get("adders", 0), pct(p.get("adders", 0), p["n"]), p.get("two_slots", 0), p.get("adds", 0)),
+        "• %s questions each · %s opened a PDF · %d bought" % (per(p["q"], p["n"]), pct(p["pdf_couples"], p["n"]),
+                                                              p["bought"])])
+
+
 def format_block(s, day_n):
     c, p = s["control"], s["plan"]
+    if not c["n"]:
+        return adoption_block(p, day_n)
     pct = lambda a, b: ("%d%%" % round(100 * a / b)) if b else "-"
     per = lambda a, b: ("%.1f" % (a / b)) if b else "-"
     lines = ["*A/B: My wedding plan* - day %d of %d" % (day_n, MIN_DAYS),
@@ -109,7 +123,7 @@ def block(token, now_ms=None, fetch_day=None, fetch_table=None, fetch_payments=N
         now = dt.datetime.utcfromtimestamp((now_ms or dt.datetime.utcnow().timestamp() * 1000) / 1000)
         start = dt.datetime.strptime(START, "%Y-%m-%d")
         if now < start:
-            return "*A/B: My wedding plan* - starts %s (not live yet)." % START
+            return "*My wedding plan* - starts %s (not live yet)." % START
         import rec_watch
         fetch_day = fetch_day or rec_watch._rows_for_day
         fetch_table = fetch_table or rec_watch._table_rows

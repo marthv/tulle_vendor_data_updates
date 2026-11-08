@@ -115,6 +115,7 @@ def test_search_rows_scans_back_to_the_deploy():
 
 def test_daily_brief_carries_block_and_one_tldr(monkeypatch):
     import daily_brief
+    monkeypatch.setenv("BRIEF_MODE", "full")      # the long brief (compact is the default since 2026-11-07)
     monkeypatch.setattr(daily_brief, "payments", lambda t, n: {"rev24": 400, "n24": 9, "rev7": 380, "forever24": 2})
     monkeypatch.setattr(daily_brief, "signups", lambda t, n: (100, 95))
     monkeypatch.setattr(daily_brief, "nps", lambda t, n: {"n24": 1, "avg7": 4.5, "n7": 6, "comments24": 0})

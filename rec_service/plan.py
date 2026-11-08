@@ -1,12 +1,13 @@
 """'My wedding' plan (owner 2026-11-07): the couple adds vendors from Planner cards into the slots of their wedding,
-and the Planner builds on it. Free for everyone. A/B tested: half of couples get it (arm "plan"), half don't
-("control"), assigned by user id so a couple always sees the same thing. Storage: Xano table 90 rec_wedding_plan.
+and the Planner builds on it. Free for everyone, every couple (owner 2026-11-07: no A/B). arm() stays so a split can
+come back with REC_PLAN_AB_PCT. Storage: Xano table 90 rec_wedding_plan.
 
 Pure helpers here (arm, slots, summary, next step); xano.py does the reads and writes; app.py the endpoints."""
 import hashlib
 import os
 
-PLAN_AB_PCT = int(os.environ.get("REC_PLAN_AB_PCT", "50"))       # % of couples in the "plan" arm; 0 = off, 100 = all
+# 2026-11-07 (owner): everyone gets the plan - no A/B. Kept as a dial: 0 = off for everyone, 1-99 = a split again.
+PLAN_AB_PCT = int(os.environ.get("REC_PLAN_AB_PCT", "100"))
 PLAN_AB_SALT = os.environ.get("REC_PLAN_AB_SALT", "plan-2026-11")  # change to re-randomize a new test
 # Internal accounts always see the plan (so the team can look at it); they are excluded from every read anyway.
 ALWAYS_PLAN = {14998, 30614, 32636, 31619, 118, 5622}

@@ -87,3 +87,18 @@ def test_add_then_remove(api):
 
 def test_add_needs_something(api):
     assert TestClient(app.app).post("/rec/plan/add", json={}).status_code == 400
+
+
+def test_everyone_gets_the_plan_by_default():
+    import importlib, os
+    src = (pathlib.Path(__file__).resolve().parent.parent / "plan.py").read_text(encoding="utf-8")
+    assert 'os.environ.get("REC_PLAN_AB_PCT", "100")' in src
+
+
+def test_compact_brief_shows_adoption_when_everyone_has_the_plan():
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
+    import ab_report
+    s = {"control": {"n": 0, "q": 0, "pdf_couples": 0, "bought": 0},
+         "plan": {"n": 50, "q": 120, "pdf_couples": 20, "bought": 2, "adds": 30, "adders": 15, "two_slots": 6}}
+    out = ab_report.format_block(s, 3)
+    assert "My wedding plan" in out and "15 added to their plan (30%)" in out and "A/B" not in out
