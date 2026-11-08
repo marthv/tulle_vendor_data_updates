@@ -1,0 +1,4 @@
+# Cloudflare Pages project for admin.tulletogether.app (see README.md in this folder).
+name = "tulle-admin"
+pages_build_output_dir = "public"
+compatibility_date = "2026-10-01"

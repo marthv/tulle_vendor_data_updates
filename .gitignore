@@ -7,3 +7,6 @@ extraction_log.json
 logs/
 _*.py
 .xano_cache/
+
+admin_web/.dev.vars
+admin_web/.wrangler/

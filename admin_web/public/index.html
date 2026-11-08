@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tulle Admin</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="/img/tulle.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/app.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="/img/tulle.png" alt=""><span>Tulle Admin</span></div>
+    <nav class="tabs" id="tabs" role="tablist">
+      <a href="#cohorts" data-tab="cohorts">📈 Cohorts</a>
+      <a href="#pricing" data-tab="pricing">💰 Venue Pricing</a>
+      <a href="#google" data-tab="google">🔍 Google Data &amp; Images</a>
+      <a href="#extraction" data-tab="extraction">📄 PDF Extraction</a>
+      <a href="#health" data-tab="health">🩺 Health</a>
+    </nav>
+    <div class="who" id="who"></div>
+  </header>
+  <main id="main">
+    <section id="tab-cohorts" class="tab" hidden></section>
+    <section id="tab-pricing" class="tab" hidden></section>
+    <section id="tab-google" class="tab" hidden></section>
+    <section id="tab-extraction" class="tab" hidden></section>
+    <section id="tab-health" class="tab" hidden></section>
+  </main>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
