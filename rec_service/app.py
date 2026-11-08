@@ -54,6 +54,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import agent
+import anthropic
 from chips import (STARTER_CHIPS, STARTER_CHIPS_COST_TOOLS, CHIP_TOPUPS, dedupe_chips, ensure_chips,
                    guarantee_next_step, more_chips, place_action_chip, tool_chips)
 import config
@@ -254,7 +255,7 @@ class RefineBody(BaseModel):
     quote: Optional[dict] = None  # 11-08: a vendor quote the couple uploaded, parsed by ep157 (Forever only)
 
 
-QUOTE_KEYS = ("vendor_name", "category", "total_cost", "package_name", "document_type", "deposit_or_paid",
+QUOTE_KEYS = ("document_type", "summary", "vendor_name", "category", "total_cost", "package_name", "deposit_or_paid",
               "included_sum", "notes", "contact_information")
 
 
@@ -275,16 +276,65 @@ def quote_block(q, file_name=""):
     if sched:
         d["payment_schedule"] = sched
     blob = json.dumps(d, default=str)[:4000]
-    return ("\n\n[QUOTE THE COUPLE UPLOADED%s - parsed from their PDF by Tulle. These figures are THEIR quote, not Tulle "
-            "data.]\n%s\n[HOW TO ANSWER] They want to know if this is a good deal. (1) If the vendor is one Tulle lists, "
-            "look it up by name and compare this quote with Tulle's pricing for it (say which package or line matches). "
-            "(2) Compare with what is typical: market_benchmarks / State benchmarks for their state and guest count for a "
-            "venue, starting_price_vs_state for photographers and entertainment, estimate_cost for an all-in what-if. "
-            "(3) Give a plain verdict - a good deal, about typical, or on the high side - with the one or two numbers that "
-            "show it, anything notable that is included or missing (service charge, tax, minimums, overtime), and one "
-            "specific thing to ask or negotiate. Quote figures only from this quote or from your tools. If Tulle has "
-            "nothing comparable, say so and say what to ask the vendor instead.") % (
+    return ("\n\n[FILE THE COUPLE ATTACHED%s - a PDF or screenshot, read by Tulle. Its figures are THEIR document, not Tulle "
+            "data.]\n%s\n[HOW TO ANSWER] Answer the question they asked about this file - it may be a quote, a contract, a "
+            "menu, an invoice, a floor plan or a message from a vendor, and they are not always asking whether it is a good "
+            "deal. Use what the file says. ONLY if they ask about price, value or whether to book: compare with Tulle's data - "
+            "look the vendor up by name if Tulle lists it, market_benchmarks / State benchmarks for their state and guest count "
+            "for a venue, starting_price_vs_state for photographers and entertainment, estimate_cost for an all-in what-if - "
+            "and give a plain verdict with the one or two numbers that show it. Point out anything notable (fees, minimums, "
+            "deadlines, what's missing) when it helps answer them. Quote figures only from the file or your tools. If the "
+            "file doesn't contain what they asked, say so.") % (
         (' ("%s")' % file_name[:120]) if file_name else "", blob)
+
+
+class AttachmentBody(BaseModel):
+    file: Optional[dict] = None     # attachment object from the app's POST /upload/attachment
+
+
+ATTACH_PROMPT = ("This image was attached by a couple planning their wedding (a screenshot or photo). Read it and return ONLY "
+                 "a JSON object, no markdown: {\"document_type\": \"quote|contract|invoice|menu|price_list|message|floor_plan|other\", "
+                 "\"summary\": \"2-4 plain sentences on what it shows, with any prices, dates and names exactly as written\", "
+                 "\"vendor_name\": \"business name or empty\", \"category\": \"Venue|Food and Beverage|Photography|Entertainment|"
+                 "Flowers|Wedding Planner|Beauty|Attire|Rentals|Other or empty\", \"total_cost\": 0, \"package_name\": \"\", "
+                 "\"deposit_or_paid\": 0, \"line_items\": [{\"description\": \"\", \"amount\": 0}], \"notes\": \"key terms or "
+                 "deadlines, max 200 chars\"}. Use 0 or empty when a value isn't shown. Never invent a figure.")
+
+
+@app.post("/rec/attachment/read")
+def read_attachment(body: AttachmentBody, authorization: str = Header(None)):
+    """11-08 (owner): Forever couples paste a screenshot (or attach an image) in the Planner; this reads it into the same
+    shape parse-vendor-pdf returns for PDFs, plus a summary. PDFs keep going through ep157. Counts no question."""
+    _, user = _auth(authorization)
+    if not xano.has_forever(user):
+        raise HTTPException(403, {"status": "attachment_forever_only"})
+    att = wedding.clean_attachment(body.file)
+    mime = str((body.file or {}).get("mime") or "").lower()
+    if not att or not mime.startswith("image/"):
+        raise HTTPException(400, {"status": "image_required"})
+    url = wedding.XANO_FILE_BASE + att["path"]
+    t0 = time.time()
+    try:
+        r = anthropic.Anthropic().messages.create(
+            model=config.MODEL, max_tokens=1500, thinking={"type": "disabled"}, output_config={"effort": "low"},
+            messages=[{"role": "user", "content": [{"type": "image", "source": {"type": "url", "url": url}},
+                                                   {"type": "text", "text": ATTACH_PROMPT}]}])
+    except Exception as e:
+        _POOL.submit(xano.mp_track, user["id"], "rec_attachment_read", {"ok": False, "error": str(e)[:120]})
+        raise HTTPException(502, {"status": "read_failed"})
+    txt = next((b.text for b in r.content if getattr(b, "type", "") == "text"), "") or ""
+    m = re.search(r"\{.*\}", txt, re.S)
+    try:
+        out = json.loads(m.group(0)) if m else {}
+    except Exception:
+        out = {}
+    if not isinstance(out, dict) or not out:
+        out = {"document_type": "other", "summary": txt.strip()[:1500]}
+    p = config.PRICES.get(config.MODEL) or config.PRICES["claude-sonnet-5-5"]
+    cost = round(((r.usage.input_tokens or 0) * p["in"] + (r.usage.output_tokens or 0) * p["out"]) / 1e6, 6)
+    _POOL.submit(xano.mp_track, user["id"], "rec_attachment_read", {"ok": True, "type": out.get("document_type"),
+                 "cost_usd": cost, "latency_s": round(time.time() - t0, 1)})
+    return out
 
 
 class OpeningBody(BaseModel):

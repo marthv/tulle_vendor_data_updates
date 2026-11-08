@@ -18,7 +18,7 @@ def test_non_forever_quote_is_refused(monkeypatch):
 def test_quote_block_carries_the_quote_and_the_instructions():
     b = app.quote_block(Q, "barn.pdf")
     assert "Lakeside Barn" in b and "18000" in b and "Saturday rental" in b and "barn.pdf" in b
-    assert "THEIR quote, not Tulle data" in b and "good deal" in b
+    assert "THEIR document, not Tulle data" in b and "Answer the question they asked" in b
     assert app.quote_block(None) == ""
 
 
@@ -37,3 +37,12 @@ def test_forever_quote_reaches_the_model_but_not_the_stored_turn(monkeypatch):
     r = TestClient(app.app).post("/rec/refine", json={"message": "Is this a good deal? (barn.pdf)", "quote": Q})
     assert r.status_code == 200, r.text
     assert "Lakeside Barn" in seen["last"] and seen["last"].startswith("Is this a good deal? (barn.pdf)")
+
+
+def test_attachment_read_is_forever_only_and_images_only(monkeypatch):
+    c = TestClient(app.app)
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7, "forever_access_purchased": False}))
+    assert c.post("/rec/attachment/read", json={"file": {"path": "/vault/a/b.png", "mime": "image/png"}}).status_code == 403
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7, "forever_access_purchased": True}))
+    assert c.post("/rec/attachment/read", json={"file": {"path": "/vault/a/b.pdf", "mime": "application/pdf"}}).status_code == 400
+    assert c.post("/rec/attachment/read", json={"file": {"path": "https://evil/x.png", "mime": "image/png"}}).status_code == 400
