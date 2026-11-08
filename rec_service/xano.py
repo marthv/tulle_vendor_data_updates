@@ -1220,6 +1220,20 @@ def get_chat(user_id, chat_id):
     return r if r and int(r.get("user_id") or 0) == int(user_id) else None
 
 
+# ---------------------------------------------------------------- "My wedding" budget items (table 33, 2026-11-08)
+def package_add(row):
+    return _meta("POST", "/table/33/content", json=row)
+
+
+def package_set_selected(user_id, item_id, selected):
+    """Soft remove / restore one of the couple's budget items. False when it isn't theirs."""
+    r = _meta("GET", "/table/33/content/%d" % int(item_id))
+    if not r or int(r.get("user_id") or 0) != int(user_id):
+        return False
+    _put_full(33, r, {"Selected": bool(selected)})
+    return True
+
+
 # ---------------------------------------------------------------- "My wedding" plan (table 90, 2026-11-07)
 PLAN_TABLE = 90
 

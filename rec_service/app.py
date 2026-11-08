@@ -61,6 +61,7 @@ import free_mode
 import guards
 import lookup
 import plan
+import wedding
 import notify
 import opening_reuse
 import re as _re
@@ -2006,6 +2007,74 @@ def plan_remove(body: PlanRemoveBody, authorization: str = Header(None)):
     if ok:
         _POOL.submit(xano.mp_track, user["id"], "rec_plan_remove", {"item_id": body.item_id})
     return dict(_plan_view(user), removed=bool(ok))
+
+
+class WeddingBookBody(BaseModel):
+    vendor_id: str = ""
+    name: str = ""
+    category: str = ""
+    price: int = 0
+    paid: int = 0
+
+
+class WeddingItemBody(BaseModel):
+    item_id: int = 0
+
+
+def _wedding_view(token, user, packages=None):
+    if not wedding.ENABLED:
+        return {"enabled": False}
+    access = xano.has_paid_access(user)
+    pk = xano.user_packages(token, user["id"]) if packages is None else packages
+    ids = xano.saved_vendor_ids(user)
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        cards = [c for c in ex.map(xano.cached_vendor_card, ids) if c]
+    return wedding.view(user, pk, cards, show_prices=access)
+
+
+@app.get("/rec/wedding")
+def wedding_get(authorization: str = Header(None)):
+    """'My wedding' (2026-11-08): budget left, the four covered categories with saved + booked vendors, other costs."""
+    token, user = _auth(authorization)
+    v = _wedding_view(token, user)
+    _POOL.submit(xano.mp_track, user["id"], "rec_wedding_view", {"enabled": v.get("enabled"),
+                 "booked": sum(1 for c in v.get("categories") or [] if c.get("booked")),
+                 "saved": sum(len(c.get("saved") or []) for c in v.get("categories") or [])})
+    return v
+
+
+@app.post("/rec/wedding/book")
+def wedding_book(body: WeddingBookBody, authorization: str = Header(None)):
+    """Mark booked / + Add a cost: a new budget item (table 33, Selected true). Free for everyone."""
+    token, user = _auth(authorization)
+    if not wedding.ENABLED:
+        raise HTTPException(503, {"status": "off"})
+    name = (body.name or "").strip()[:200]
+    price = max(0, min(int(body.price or 0), 10_000_000))
+    if not name or not price:
+        raise HTTPException(400, {"status": "name_and_price_required"})
+    vid = (body.vendor_id or "").strip()[:40]
+    row = {"user_id": user["id"], "vendor_name": name, "total_cost": price,
+           "Balance_Paid": max(0, min(int(body.paid or 0), price)), "Balance_Left": price - max(0, min(int(body.paid or 0), price)),
+           "Category": wedding.table_category(body.category), "Selected": True,
+           "Notes": "tulle:" + (vid or "manual"), "Package_Name": "Booked in My wedding"}
+    xano.package_add(row)
+    _POOL.submit(xano.mp_track, user["id"], "rec_wedding_book", {"category": row["Category"], "has_vendor": bool(vid),
+                 "price": price})
+    sheet_log.event(user, "Marked booked", "%s (%s) $%s" % (name, row["Category"], price), "", 0, [{"name": name}])
+    return _wedding_view(token, user)
+
+
+@app.post("/rec/wedding/unbook")
+def wedding_unbook(body: WeddingItemBody, authorization: str = Header(None)):
+    """Undo: the item stops counting (Selected false). Never deleted."""
+    token, user = _auth(authorization)
+    if not wedding.ENABLED:
+        raise HTTPException(503, {"status": "off"})
+    ok = xano.package_set_selected(user["id"], body.item_id, False) if body.item_id else False
+    if ok:
+        _POOL.submit(xano.mp_track, user["id"], "rec_wedding_unbook", {"item_id": body.item_id})
+    return dict(_wedding_view(token, user), undone=bool(ok))
 
 
 class EventBody(BaseModel):
