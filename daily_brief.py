@@ -121,6 +121,58 @@ def _trim_pricing(text):
 
 
 def compose(token, health_text, now_ms=None):
+    """BRIEF_MODE=compact (default since 2026-11-07, owner: "cut it down a bit, and use this a/b test as one of the
+    only things it sends me"): revenue + sign-ups, the A/B scoreboard, and alerts only when something needs action.
+    BRIEF_MODE=full = the previous long brief (compose_full)."""
+    if os.environ.get("BRIEF_MODE", "compact").strip().lower() == "full":
+        return compose_full(token, health_text, now_ms)
+    return compose_compact(token, health_text, now_ms)
+
+
+def compose_compact(token, health_text, now_ms=None):
+    now_ms = now_ms or int(dt.datetime.utcnow().timestamp() * 1000)
+    today = dt.datetime.utcfromtimestamp(now_ms / 1000).strftime("%a %b %d")
+    head, alerts = [], []
+    try:
+        p = payments(token, now_ms)
+        head.append(f"${p['rev24']:,.0f} from {p['n24']} purchases{_fmt_delta(p['rev24'], p['rev7'])}")
+        if p["rev7"] and p["rev24"] < 0.4 * p["rev7"] and p["rev7"] > 100:
+            alerts.append(f"Revenue ${p['rev24']:,.0f} vs ${p['rev7']:,.0f}/day average - check checkout and the Stripe webhook.")
+    except Exception as e:
+        head.append(f"revenue unavailable ({str(e)[:60]})")
+    try:
+        s24, s7 = signups(token, now_ms)
+        head.append(f"{s24} sign-ups{_fmt_delta(s24, s7)}")
+        if s7 and s24 < 0.5 * s7:
+            alerts.append(f"Sign-ups fell to {s24} vs {s7:.0f}/day - check the sign-up page and Google sign-in.")
+    except Exception as e:
+        head.append(f"sign-ups unavailable ({str(e)[:60]})")
+    if ":red_circle:" in (health_text or ""):
+        alerts.append("Endpoint health has a red line - Tulle Admin -> Health tab.")
+    try:
+        _, rec_alerts = rec_line(token)
+        alerts += rec_alerts
+    except Exception:
+        pass
+    try:
+        import rec_watch
+        _, _, light = rec_watch.railway_section(token)
+        if light == ":red_circle:":
+            alerts.append("Railway search: fallbacks or errors over the hold line - consider REC_RAILWAY_SEARCH_PCT=0.")
+    except Exception:
+        pass
+    try:
+        import ab_report
+        ab = ab_report.block(token, now_ms)
+    except Exception as e:
+        ab = f":warning: _A/B scoreboard failed: {e}_"
+    out = [f"*Tulle daily - {today}*", "• " + " · ".join(head), "", ab]
+    if alerts:
+        out += ["", "*Needs you*"] + [f"• {a}" for a in alerts]
+    return "\n".join(out)
+
+
+def compose_full(token, health_text, now_ms=None):
     health_text = _trim_health(health_text)
     now_ms = now_ms or int(dt.datetime.utcnow().timestamp() * 1000)
     today = dt.datetime.utcfromtimestamp(now_ms / 1000).strftime("%a %b %d")
