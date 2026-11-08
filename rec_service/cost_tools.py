@@ -291,6 +291,8 @@ def summary_text(widget):
         if widget.get("missing"):
             need = {"state": "your wedding state", "guests": "your guest count"}
             asks = [need[m] for m in widget["missing"] if m in need]
+            if widget["missing"] == ["guests"]:   # the card asks for it inline (owner 11-08: make it really easy)
+                return "How many guests are you expecting? Type it below and I'll estimate your wedding cost."
             return ("Add %s in Edit details and I can estimate your wedding cost." % " and ".join(asks) if asks else
                     "I couldn't calculate an estimate right now - please try again.")
         tiers = {x["label"]: x["amount"] for x in widget["tiers"]}
@@ -305,7 +307,7 @@ def summary_text(widget):
         return s
     if t == "budget_split":
         if not widget.get("total"):
-            return "Add your total budget in Edit details and I can split it across categories."
+            return "What's your total wedding budget? Type it below and I'll split it across categories."   # owner 11-08: just ask
         top = [c for c in widget["categories"] if c["included"]][:2]
         return "Here's how %s splits across %d categories%s." % (
             _money(widget["total"]), widget["included_count"],
