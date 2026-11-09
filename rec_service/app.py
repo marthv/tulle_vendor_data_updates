@@ -1946,6 +1946,41 @@ def _pdf_accounting(token, user, vendor_id, vendor_name, fields):
         print("vendor view record failed:", repr(e)[:200])
 
 
+# 2026-11-09 PDF GATE (owner: "I was able to open a LOT of pdfs right off the bat"). Table 79 showed one free account
+# opening 6 PDFs, 5 of them inside 15 s, every one "free", while FreeViewsRemaining only went 2 -> 1: each request read
+# the count from auth/me BEFORE the previous request's background write had landed, so they all spent "the same" view.
+# Now, per couple: one PDF decision at a time (lock), the free-view write happens BEFORE the URL is returned, and the
+# last count we wrote is remembered for 30 min so a stale auth/me can never hand out a view that is already spent.
+_PDF_LOCKS = {}
+_PDF_LOCKS_GUARD = threading.Lock()
+_PDF_LEFT = {}            # user_id -> (free views left after our last write, unix time)
+PDF_LEFT_TTL = 1800
+
+
+def _pdf_lock(uid):
+    with _PDF_LOCKS_GUARD:
+        lk = _PDF_LOCKS.get(uid)
+        if lk is None:
+            lk = _PDF_LOCKS[uid] = threading.Lock()
+        return lk
+
+
+def _pdf_views_now(user):
+    """FreeViewsRemaining from auth/me, never more than what our own last write left (auth/me can lag behind it)."""
+    views = _free_views(user)
+    seen = _PDF_LEFT.get(user["id"])
+    if seen and time.time() - seen[1] < PDF_LEFT_TTL:
+        views = min(views, seen[0])
+    return views
+
+
+def _pdf_vendor_view(token, user, vendor_id, vendor_name):
+    try:
+        xano.record_vendor_view(token, user, vendor_id, vendor_name)
+    except Exception as e:
+        print("vendor view record failed:", repr(e)[:200])
+
+
 @app.post("/rec/pdf")
 def open_pdf(body: PdfBody, authorization: str = Header(None)):
     """The Planner card's "Open pricing PDF" (owner 2026-11-01): open the vendor's PRIMARY pricing PDF directly, and
@@ -1968,14 +2003,24 @@ def open_pdf(body: PdfBody, authorization: str = Header(None)):
     if not row:
         _POOL.submit(xano.mp_track, user["id"], "rec_pdf_missing", base)
         raise HTTPException(404, {"status": "no_pdf"})
-    views = _free_views(user)
+    entitled = _pdf_entitled(user)
     total = int(user.get("total_pdf_views") or 0)
-    if _pdf_entitled(user):
-        mode, left = "paid", views
-    elif views > 0:
-        mode, left = "free", views - 1
-    else:
-        mode, left = "blocked", 0
+    lock = _pdf_lock(user["id"])
+    with lock:
+        views = _free_views(user) if entitled else _pdf_views_now(user)
+        if entitled:
+            mode, left = "paid", views
+        elif views > 0:
+            mode, left = "free", views - 1
+        else:
+            mode, left = "blocked", 0
+        if mode == "free":
+            # Spend the view NOW (before the URL goes back), and remember it, so the next tap can't reuse it.
+            _PDF_LEFT[user["id"]] = (left, time.time())
+            try:
+                xano.update_profile(token, {"id": user["id"], "total_pdf_views": total + 1, "free_views_remaining": left})
+            except Exception as e:
+                print("pdf free-view write failed:", repr(e)[:200])   # the in-memory count still holds the line
     # The usage log (table 79) gets a 'pdf' row per open attempt (2026-11-02: the daily brief's PDF funnel reads
     # Xano, not Mixpanel): status = paid | free | blocked, no cost, chat_id when the card came from a chat.
     _POOL.submit(xano.log_usage, {"user_id": user["id"], "kind": "pdf", "status": mode, "counted_as_free": mode == "free",
@@ -1986,8 +2031,11 @@ def open_pdf(body: PdfBody, authorization: str = Header(None)):
     if mode == "blocked":
         _POOL.submit(xano.mp_track, user["id"], "pdf_limit_popup_triggered", base)
         return {"url": None, "mode": mode, "views_left": 0, "last_free": False}
-    fields = {"id": user["id"], "total_pdf_views": total + 1, "free_views_remaining": left}
-    _POOL.submit(_pdf_accounting, token, user, vid, body.vendor_name or "", fields)
+    if mode == "free":
+        _POOL.submit(_pdf_vendor_view, token, user, vid, body.vendor_name or "")   # the view count was written above
+    else:
+        fields = {"id": user["id"], "total_pdf_views": total + 1, "free_views_remaining": left}
+        _POOL.submit(_pdf_accounting, token, user, vid, body.vendor_name or "", fields)
     _POOL.submit(xano.mp_track, user["id"], "viewed_vendor_page", base)
     _POOL.submit(xano.mp_track, user["id"], "viewed_vendor_pdf", dict(base, mode=mode, views_left=left,
                                                                        pdf_id=row.get("PDF_ID") or row.get("id")))

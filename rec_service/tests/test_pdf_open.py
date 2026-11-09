@@ -33,6 +33,7 @@ def _setup(monkeypatch, user, rows=ROWS, rows_fail=False):
         def submit(self, fn, *a, **k):
             return fn(*a, **k)
     monkeypatch.setattr(appmod, "_POOL", Now())
+    appmod._PDF_LEFT.clear()      # the remembered free-view counts are per process
     return st
 
 
