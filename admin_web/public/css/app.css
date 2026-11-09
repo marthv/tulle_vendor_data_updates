@@ -139,3 +139,17 @@ label.field.inline { flex-direction: row; align-items: center; gap: 6px; }
 .md code { font-size: 12px; background: var(--g50); padding: 0 4px; border-radius: 4px; }
 :root[data-theme="dark"] .md code { background: #16301F; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .md code { background: #16301F; } }
+
+/* Experiments timeline (2026-11-09) */
+.seg { display: inline-flex; gap: 4px; }
+.tl { position: relative; font-size: 12px; }
+.tl-axis { position: relative; height: 18px; margin-left: 34%; border-bottom: 1px solid var(--line); }
+.tl-tick { position: absolute; top: 0; transform: translateX(-50%); color: var(--muted); white-space: nowrap; }
+.tl-row { display: flex; align-items: center; height: 26px; }
+.tl-label { width: 34%; padding-right: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-track { position: relative; flex: 1; height: 100%; }
+.tl-bar { position: absolute; top: 6px; height: 14px; border-radius: 3px; min-width: 3px; }
+.tl-change { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--muted); opacity: .6; }
+.tl-key { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; }
+.tl-key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+@media (max-width: 640px) { .tl-label { width: 42%; } .tl-axis { margin-left: 42%; } }

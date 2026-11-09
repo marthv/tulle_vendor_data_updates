@@ -12,6 +12,7 @@ Run locally:  uvicorn admin_api.app:app --reload --port 8790   (from the repo ro
 import gzip
 import hmac
 import json
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -125,3 +126,17 @@ def health_history(days: int = 30):
         return health_data.history(max(1, min(90, days)))
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)}, status_code=503)
+
+
+# ── 🧪 Experiments: the registry file in this repo (experiments/experiment_log.json). Read per request -
+# it's tiny, and a push to main redeploys this service, so the page always shows the committed log.
+_EXP_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "experiments", "experiment_log.json")
+
+
+@app.get("/api/experiments")
+def experiments():
+    try:
+        with open(_EXP_LOG, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError) as e:
+        return JSONResponse({"error": f"Could not read experiments/experiment_log.json: {e}"}, status_code=500)

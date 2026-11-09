@@ -39,6 +39,7 @@ export const lastJob = (kind) => api(`/jobs/${kind}`);
 
 const MODULES = {
   cohorts: () => import("./cohorts.js"),
+  experiments: () => import("./experiments.js"),
   pricing: () => import("./pricing.js"),
   google: () => import("./google.js"),
   extraction: () => import("./extraction.js"),
