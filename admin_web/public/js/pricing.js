@@ -167,7 +167,7 @@ export async function mount(root) {
     }
     rows = decode(snap); meta = snap.meta; pdfs = snap.pdfs || {};
     head.replaceChildren(
-      h("div", { class: "caption" }, `Snapshot ${snap.as_of.slice(0, 16).replace("T", " ")} UTC (${ago(snap.as_of)}) · refreshes every 30 min in the background`),
+      h("div", { class: "caption" }, `Snapshot ${snap.as_of.slice(0, 16).replace("T", " ")} UTC (${ago(snap.as_of)}) · refreshes every 6h in the background (or press Refresh)`),
       h("div", { class: "spacer" }), h("button", { onclick: () => load(true) }, "🔄 Refresh data"));
     buildFilters(); compute();
   }

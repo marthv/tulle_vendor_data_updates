@@ -27,7 +27,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 SNAPSHOTS = {
     "cohorts": Snapshot("cohorts", build_cohorts, config.COHORTS_TTL),
-    # ep199 pull is ~75 s cold; refreshed in the background every 30 min (Streamlit cached 10 min per visitor).
+    # ep199 pull is ~75 s cold and heavy on Xano; refreshed every 6h (Refresh button for fresher data).
     "pricing": Snapshot("pricing", pricing_data.build_snapshot, config.PRICING_TTL),
 }
 

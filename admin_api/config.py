@@ -16,4 +16,4 @@ ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 
 # How often the cached snapshots refresh in the background (seconds).
 COHORTS_TTL = int(os.environ.get("ADMIN_COHORTS_TTL", str(6 * 3600)))
-PRICING_TTL = int(os.environ.get("ADMIN_PRICING_TTL", str(30 * 60)))
+PRICING_TTL = int(os.environ.get("ADMIN_PRICING_TTL", str(6 * 3600)))  # 2026-11-09: was 30 min = ~48 full ep199 pulls a day
