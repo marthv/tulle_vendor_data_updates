@@ -126,3 +126,16 @@ pre.log { background: var(--ink8); color: var(--ink2); padding: 10px; border-rad
   .tabs { order: 3; flex-basis: 100%; overflow-x: auto; flex-wrap: nowrap; }
   main { padding: 16px 16px 60px; }
 }
+
+/* Health tab (2026-11-09) */
+.notice.ok { background: var(--g50); color: var(--g900); border-left: 3px solid var(--g500); }
+:root[data-theme="dark"] .notice.ok { background: #16301F; color: var(--text); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .notice.ok { background: #16301F; color: var(--text); } }
+.notice ul { margin: 6px 0 0 18px; padding: 0; }
+label.field.inline { flex-direction: row; align-items: center; gap: 6px; }
+.md { font-size: 13px; line-height: 1.55; }
+.md p { margin: 6px 0; }
+.md ul { margin: 2px 0 6px 18px; padding: 0; }
+.md code { font-size: 12px; background: var(--g50); padding: 0 4px; border-radius: 4px; }
+:root[data-theme="dark"] .md code { background: #16301F; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .md code { background: #16301F; } }

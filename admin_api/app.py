@@ -17,7 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from . import config
+from . import config, health_data, jobs
 from .cache import Snapshot
 from .cohorts_data import build_snapshot as build_cohorts
 
@@ -86,3 +86,42 @@ def _snapshot_response(name, refresh=0):
 @app.get("/api/cohorts")
 def cohorts(refresh: int = 0):
     return _snapshot_response("cohorts", refresh)
+
+
+# ── On-demand jobs (Health tab; PDF Extraction later) ─────────────────────────────────────
+# POST starts (or returns the one already running), GET polls. Body = the job's arguments.
+JOB_KINDS = {
+    "endpoint_health": (health_data.endpoint_checks, set()),
+    "health_report": (health_data.daily_report, set()),
+    "perf_digest": (health_data.perf, {"hours"}),
+}
+
+
+@app.post("/api/jobs/{kind}")
+async def job_start(kind: str, request: Request):
+    if kind not in JOB_KINDS:
+        return JSONResponse({"error": f"unknown job {kind}"}, status_code=404)
+    fn, allowed = JOB_KINDS[kind]
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 - empty body is fine
+        body = {}
+    args = {k: v for k, v in (body or {}).items() if k in allowed}
+    if "hours" in args:
+        args["hours"] = max(1, min(72, int(args["hours"])))
+    return jobs.start(kind, fn, args, by=_user(request))
+
+
+@app.get("/api/jobs/{kind}")
+def job_get(kind: str):
+    if kind not in JOB_KINDS:
+        return JSONResponse({"error": f"unknown job {kind}"}, status_code=404)
+    return jobs.get(kind)
+
+
+@app.get("/api/health/history")
+def health_history(days: int = 30):
+    try:
+        return health_data.history(max(1, min(90, days)))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e)}, status_code=503)

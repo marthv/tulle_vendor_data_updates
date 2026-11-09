@@ -21,6 +21,22 @@ export async function api(path, opts = {}) {
   return data;
 }
 
+// On-demand job: POST starts it (or joins the one already running), then poll until done.
+// onTick(job) gets every poll so the page can show elapsed time. Resolves with the result.
+export async function runJob(kind, args = {}, onTick = () => {}) {
+  let job = await api(`/jobs/${kind}`, { method: "POST", body: args });
+  onTick(job);
+  while (job.status === "running") {
+    await new Promise((r) => setTimeout(r, 2000));
+    job = await api(`/jobs/${kind}`);
+    onTick(job);
+  }
+  if (job.status === "error") throw new Error(job.error || "job failed");
+  return job.result;
+}
+// Last finished run of a job (status idle/running/done/error), without starting one.
+export const lastJob = (kind) => api(`/jobs/${kind}`);
+
 const MODULES = {
   cohorts: () => import("./cohorts.js"),
   pricing: () => import("./pricing.js"),

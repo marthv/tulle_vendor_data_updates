@@ -29,9 +29,10 @@ listed but never called.
 import concurrent.futures
 import os
 
-import pandas as pd
 import requests
-import streamlit as st
+
+# pandas / streamlit are imported inside the functions that need them (2026-11-09) so the
+# Cloudflare admin API (admin_api/health_data.py) can reuse CHECKS + run_check_rows without them.
 
 # (label, base_key, path, params, tab, note)
 #   base_key: "xano"  -> group 10, WeWeb Transparency Project (api:GynP5T1B)
@@ -105,8 +106,8 @@ def _probe(base, path, params, timeout=90):   # coverage (ep191) legitimately ta
     return "UNEXPECTED", f"{r.status_code}: {r.text[:100]}"
 
 
-def run_checks(xano_base, secret):
-    """Probe every read dependency in parallel. Returns a DataFrame."""
+def run_check_rows(xano_base, secret):
+    """Probe every read dependency in parallel. Returns a list of dicts."""
     bases = {"xano": xano_base}
 
     def one(chk):
@@ -117,12 +118,19 @@ def run_checks(xano_base, secret):
                 "Used by": tab, "Note": note}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-        rows = list(ex.map(one, CHECKS))
-    return pd.DataFrame(rows)
+        return list(ex.map(one, CHECKS))
+
+
+def run_checks(xano_base, secret):
+    """Probe every read dependency in parallel. Returns a DataFrame (Streamlit tab)."""
+    import pandas as pd
+    return pd.DataFrame(run_check_rows(xano_base, secret))
 
 
 def render_endpoint_health(xano_base, secret):
     """Collapsed panel. Cheap when closed — nothing runs until the button is pressed."""
+    import pandas as pd
+    import streamlit as st
     with st.expander("🔐 Endpoint health — check every Xano dependency", expanded=False):
         st.caption(
             "Xano endpoints default to **open**, so the surface drifts insecure; but this app "
