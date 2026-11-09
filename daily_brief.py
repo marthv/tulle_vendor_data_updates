@@ -137,6 +137,45 @@ def pdf_gate(token, now_ms):
     return {"checked": len(active), "stuck": stuck, "planner_over": planner_over}
 
 
+# 2026-11-09 owner: watch purchases recover after the PDF-gate fix. Baseline = the payment log, Oct 14-27 (before the leak):
+# 5.5 purchases/day, $394/day. During the leak (Oct 28 - Nov 8): 3.5/day, $306/day. Other changes shipped in the same window
+# (Planner rollout, pricing tests, tours), so a recovery is evidence, not proof. Shown until 2026-11-23.
+RECOVERY_BASE_N, RECOVERY_BASE_REV = 5.5, 394.0
+RECOVERY_LEAK_N, RECOVERY_LEAK_REV = 3.5, 306.0
+RECOVERY_UNTIL_MS = 1795392000000            # 2026-11-23 00:00 UTC
+
+
+def recovery_section(token, now_ms):
+    """(line, alerts) - last 7 days of purchases vs the pre-leak baseline."""
+    import bnpl_watch
+    since = now_ms - 7 * DAY
+    rows = [r for r in bnpl_watch.fetch_payments(token, since) if (r.get("Time_of_Payment") or 0) >= since]
+    n7 = len(rows) / 7
+    rev7 = sum(float(r.get("Amount") or 0) for r in rows) / 7
+    # Days of the window that fall after the fix (the first week mixes leak days in).
+    after = max(0.0, min(7.0, (now_ms - PDF_FIX_MS) / DAY))
+    pct = lambda x, base: f"{(x / base - 1) * 100:+.0f}%"
+    if after < 7:
+        light = ":white_circle:"          # window still includes leak days - no verdict yet
+    elif n7 >= RECOVERY_BASE_N * 0.9:
+        light = ":large_green_circle:"
+    elif n7 > RECOVERY_LEAK_N * 1.1:
+        light = ":large_yellow_circle:"
+    else:
+        light = ":red_circle:"
+    line = (f"{light} *Purchases since the PDF fix* - last 7 days {n7:.1f}/day, ${rev7:,.0f}/day "
+            f"vs {RECOVERY_BASE_N}/day, ${RECOVERY_BASE_REV:,.0f}/day before the leak "
+            f"({pct(n7, RECOVERY_BASE_N)} purchases, {pct(rev7, RECOVERY_BASE_REV)} revenue) "
+            f"· leak period was {RECOVERY_LEAK_N}/day, ${RECOVERY_LEAK_REV:,.0f}/day")
+    if after < 7:
+        line += f" · _window is {after:.1f} of 7 days post-fix_"
+    alerts = []
+    if after >= 7 and n7 <= RECOVERY_LEAK_N * 1.1:
+        alerts.append(f"Purchases have NOT recovered a full week after the PDF fix ({n7:.1f}/day vs {RECOVERY_BASE_N} before the "
+                      "leak) - something else in the Oct 28 window is also hurting conversion; worth a look.")
+    return line, alerts
+
+
 def pdf_gate_section(token, now_ms):
     """(line, alerts)"""
     g = pdf_gate(token, now_ms)
@@ -298,6 +337,13 @@ def compose_full(token, health_text, now_ms=None):
         decisions += alerts
     except Exception as e:
         sections.append(f":warning: _PDF gate section failed: {e}_")
+    if now_ms < RECOVERY_UNTIL_MS:
+        try:
+            line, alerts = recovery_section(token, now_ms)
+            sections.append(line)
+            decisions += alerts
+        except Exception as e:
+            sections.append(f":warning: _Purchase recovery line failed: {e}_")
 
     rec_tl = None
     try:
