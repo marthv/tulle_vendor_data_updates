@@ -1004,7 +1004,7 @@
       "decision": "",
       "confounds_noted": [
         "Free-PDF-view leak (ep21 0==null) ran 2026-10-28..11-09 04:35 UTC and depressed purchases (3.5/day $306/day); the purchases window is only clean from 2026-11-16",
-        "Same publish window: tours cut to Discovery / first vendor (PDFs->Ask->Save) / My wedding; locked venue PI now shows state median + middle-50% bar (blurred 'This venue'); Ask-Tulle-from-vendor fix (ww-planner-chat 4586d2b) - all pending owner publish 2026-11-09",
+        "Same publish window: auto tours cut to Discovery + vendor page (PDFs step only); locked venue PI now shows state median + middle-50% bar (blurred 'This venue'); Ask-Tulle-from-vendor fix (ww-planner-chat 4586d2b) - all pending owner publish 2026-11-09",
         "Reverses the 2026-08-17 decision on one Aug pre/post read (signup -> PDF 72% -> 57%), itself confounded"
       ],
       "risks": [
@@ -1104,7 +1104,7 @@
     {
       "date": "2026-11-09",
       "end_date": null,
-      "what": "PI first-vendor-free LIVE 14:12 UTC (ep230; see EXP-2026-11-pi-first-vendor-free). Editor, pending publish: auto tours = Discovery after onboarding, first vendor page (PDFs -> Ask Tulle -> Save), My wedding first visit (Planner chat intro auto OFF); locked venue PI block 'PI Locked State Averages' (state median, middle-50% bar, blurred This venue; component averages stay paid-only); ww-planner-chat 4586d2b (Ask Tulle question survives the Planner mounting the chat twice) - owner activates."
+      "what": "PI first-vendor-free LIVE 14:12 UTC (ep230; see EXP-2026-11-pi-first-vendor-free). Editor, pending publish: auto tours = ONLY Discovery after onboarding + vendor page tour (one step on the pricing PDFs, venue and other-vendor pages); Planner + My wedding intros auto OFF (picker only) - final owner call 2026-11-09 ~15:10 UTC; locked venue PI block 'PI Locked State Averages' (state median, middle-50% bar, blurred This venue; component averages stay paid-only); ww-planner-chat 4586d2b (Ask Tulle question survives the Planner mounting the chat twice) - owner activates."
     }
   ]
 }
