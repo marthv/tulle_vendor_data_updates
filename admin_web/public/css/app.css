@@ -153,3 +153,15 @@ label.field.inline { flex-direction: row; align-items: center; gap: 6px; }
 .tl-key { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; }
 .tl-key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 @media (max-width: 640px) { .tl-label { width: 42%; } .tl-axis { margin-left: 42%; } }
+.tbl tr.click { cursor: pointer; }
+.tbl tr.click:hover td { background: var(--g50); }
+.tbl tr.sel td { background: var(--g100) !important; }
+:root[data-theme="dark"] .tbl tr.click:hover td, :root[data-theme="dark"] .tbl tr.sel td { background: #16301F !important; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tbl tr.click:hover td, :root:not([data-theme="light"]) .tbl tr.sel td { background: #16301F !important; } }
+
+/* Venue Pricing grid (2026-11-09) */
+.pgrid th.click, .pgrid td.click { cursor: pointer; }
+.pgrid th.click:hover { color: var(--brand); text-decoration: underline; }
+.pgrid td.click:hover { outline: 2px solid var(--g500); outline-offset: -2px; }
+.pgrid .on { outline: 2px solid var(--g800); outline-offset: -2px; font-weight: 600; }
+.pgrid tbody th { text-align: left; white-space: nowrap; position: sticky; left: 0; background: var(--card); }

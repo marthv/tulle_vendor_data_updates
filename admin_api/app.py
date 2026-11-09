@@ -18,7 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from . import config, health_data, jobs
+from . import config, health_data, jobs, pricing_data
 from .cache import Snapshot
 from .cohorts_data import build_snapshot as build_cohorts
 
@@ -27,6 +27,8 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 SNAPSHOTS = {
     "cohorts": Snapshot("cohorts", build_cohorts, config.COHORTS_TTL),
+    # ep199 pull is ~75 s cold; refreshed in the background every 30 min (Streamlit cached 10 min per visitor).
+    "pricing": Snapshot("pricing", pricing_data.build_snapshot, config.PRICING_TTL),
 }
 
 
@@ -95,6 +97,7 @@ JOB_KINDS = {
     "endpoint_health": (health_data.endpoint_checks, set()),
     "health_report": (health_data.daily_report, set()),
     "perf_digest": (health_data.perf, {"hours"}),
+    "pricing_insight": (pricing_data.insight, {"s"}),
 }
 
 
@@ -140,3 +143,8 @@ def experiments():
             return json.load(f)
     except (OSError, ValueError) as e:
         return JSONResponse({"error": f"Could not read experiments/experiment_log.json: {e}"}, status_code=500)
+
+
+@app.get("/api/pricing")
+def pricing(refresh: int = 0):
+    return _snapshot_response("pricing", refresh)

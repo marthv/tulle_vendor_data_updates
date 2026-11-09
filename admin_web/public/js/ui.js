@@ -69,7 +69,7 @@ export function multiSelect(title, options, onChange, label = (v) => v) {
 
 // Sortable table. cols: [{key, label, num, fmt, heat}] ; heat=true shades the column green
 // by value (same transparent->green heatmap the Streamlit tab used).
-export function table(rows, cols, { maxHeight } = {}) {
+export function table(rows, cols, { maxHeight, onRow } = {}) {
   let sortKey = null, dir = -1;
   const wrap = h("div", { class: "tbl-wrap", style: maxHeight ? { maxHeight } : null });
   const render = () => {
@@ -87,7 +87,7 @@ export function table(rows, cols, { maxHeight } = {}) {
     const thead = h("tr", {}, cols.map((c) => h("th", {
       class: c.num ? "num" : "", onclick: () => { dir = sortKey === c.key ? -dir : -1; sortKey = c.key; render(); },
     }, c.label ?? c.key, sortKey === c.key ? (dir > 0 ? " ▲" : " ▼") : "")));
-    const body = data.map((r) => h("tr", {}, cols.map((c) => {
+    const body = data.map((r) => h("tr", onRow ? { class: "click", onclick: (ev) => { wrap.querySelectorAll("tr.sel").forEach((x) => x.classList.remove("sel")); ev.currentTarget.classList.add("sel"); onRow(r); } } : {}, cols.map((c) => {
       const v = r[c.key];
       let style = null;
       if (c.heat && ranges[c.key]) {
