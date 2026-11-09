@@ -126,7 +126,7 @@ def decide(kind, paid, usage_rows, spend_today, today, feedback_given=True, free
     if config.FREE_DAILY_MODE:
         # Open planner (2026-10-31): the same daily allowance as Forever, counted the same way (openings + questions
         # per UTC day); rows stay counted_as_free so the free spend pool still sees them.
-        if free_questions_today(usage_rows, today) >= config.FREE_DAILY_REFINES:
+        if free_refines_left(False, usage_rows, today=today) <= 0:
             return False, "blocked_user_cap", False
         return True, "ok", True
     if free_feedback_required(paid, usage_rows, feedback_given):
@@ -143,11 +143,25 @@ def forever_left_today(paid, usage_rows, today):
     return max(0, config.PAID_DAILY_REFINES - sum(1 for r in _prompts(usage_rows) if r.get("usage_day") == today))
 
 
+def free_phase(usage_rows):
+    """Owner rule 2026-11-08. 'initial' while the first FREE_INITIAL_REFINES lifetime free questions are not all used,
+    then 'daily'. None outside daily (open-planner) mode."""
+    if not config.FREE_DAILY_MODE:
+        return None
+    return "initial" if free_used(usage_rows) < config.FREE_INITIAL_REFINES else "daily"
+
+
 def free_refines_left(paid, usage_rows, feedback_given=False, today=None):
+    """Free questions the couple can still ask right now. Initial phase: what is left of the first 3 (any day). Daily
+    phase: FREE_DAILY_AFTER_INITIAL minus today's questions - a question asked today (including the 3rd starter one)
+    uses today's, and a day skipped is simply a day skipped: nothing accumulates."""
     if paid:
         return None
     if config.FREE_DAILY_MODE:
-        return max(0, config.FREE_DAILY_REFINES - free_questions_today(usage_rows, today or _today()))
+        used = free_used(usage_rows)
+        if used < config.FREE_INITIAL_REFINES:
+            return config.FREE_INITIAL_REFINES - used
+        return max(0, config.FREE_DAILY_AFTER_INITIAL - free_questions_today(usage_rows, today or _today()))
     return max(0, free_limit(feedback_given) - free_used(usage_rows))
 
 

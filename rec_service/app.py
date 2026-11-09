@@ -484,11 +484,11 @@ def _gate(kind, user, chat_id=0, waive_free=False, row_kind=None):
                                    "free_refines_left": free_left,
                                    **_tier_fields(paid, access, feedback_given, beta_left,
                                                   guards.forever_left_today(paid, rows, xano.today()), free_left,
-                                                  guards.free_feedback_required(paid, rows, feedback_given))})
+                                                  guards.free_feedback_required(paid, rows, feedback_given), rows)})
     return paid, access, rows, feedback_given, counted_free, base
 
 
-def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_left, free_fb):
+def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_left, free_fb, rows=None):
     """Page-state keys (free mode, 2026-10-14) - the same on /rec/status, every answer and every blocked
     response, so the page renders from whichever it has last:
       tier             "paid" (full member) | "free"
@@ -509,7 +509,10 @@ def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_lef
             # Open planner (2026-10-31): a free user who used today's allowance is capped (429), not paywalled.
             "paywall": (not paid) and (config.FOREVER_ONLY or (not config.FREE_DAILY_MODE and not fb_req and not left)),
             "free_daily_mode": config.FREE_DAILY_MODE,
-            "free_daily_limit": config.FREE_DAILY_REFINES if config.FREE_DAILY_MODE else None,
+            "free_daily_limit": config.FREE_DAILY_AFTER_INITIAL if config.FREE_DAILY_MODE else None,
+            # 11-08 owner rule: "initial" = the first 3 free questions (page: "n free questions left"); "daily" = 1 a day after
+            "free_phase": (guards.free_phase(rows) if (rows is not None and not paid) else None),
+            "free_initial_limit": config.FREE_INITIAL_REFINES if config.FREE_DAILY_MODE else None,
             "free_feedback_required": bool(free_fb), "free_feedback_bonus": config.FREE_FEEDBACK_BONUS}
 
 
@@ -538,7 +541,7 @@ def _counters(kind, paid, rows, counted_free, feedback_given, access=True, spent
              forever_left_today=guards.forever_left_today(paid, used_today, xano.today()),
              forever_daily_limit=config.PAID_DAILY_REFINES, free_limit=config.FREE_REFINES)
     c.update(_tier_fields(paid, access, feedback_given, c["beta_questions_left"], c["forever_left_today"],
-                          c["free_refines_left"], guards.free_feedback_required(paid, used, feedback_given)))
+                          c["free_refines_left"], guards.free_feedback_required(paid, used, feedback_given), used))
     return c
 
 
@@ -1841,7 +1844,7 @@ def beta_feedback(body: FeedbackBody, authorization: str = Header(None)):
     forever_left = guards.forever_left_today(paid, rows, xano.today())
     return {"ok": True, "beta_questions_left": None, "free_refines_left": free_left,
             "forever_left_today": forever_left,
-            **_tier_fields(paid, access, True, None, forever_left, free_left, False)}
+            **_tier_fields(paid, access, True, None, forever_left, free_left, False, rows)}
 
 
 class ProfileBody(BaseModel):
@@ -2162,6 +2165,8 @@ def wedding_book(body: WeddingBookBody, authorization: str = Header(None)):
            "Category": wedding.table_category(body.category), "Selected": True,
            "Notes": (body.notes or "").strip()[:2000],
            "Package_Name": "Booked in My wedding · tulle:" + (vid or "manual")}
+    if vid:
+        row["vendor_id"] = vid                        # 11-08 column: links the card to the vendor's Tulle page
     att = wedding.clean_attachment(body.file)
     if att:
         row["Files"] = att
@@ -2249,7 +2254,7 @@ def status(authorization: str = Header(None)):
             "forever_left_today": forever_left,
             "forever_daily_limit": config.PAID_DAILY_REFINES, "free_limit": config.FREE_REFINES, "free_refines_left": free_left,
             **_tier_fields(paid, access, fb, beta_left, forever_left, free_left,
-                           guards.free_feedback_required(paid, rows, fb)),
+                           guards.free_feedback_required(paid, rows, fb), rows),
             "enabled": not config.KILL_SWITCH, "memory_notes": _memory_notes(user["id"]),
             "cost_tools_in_chat": config.COST_TOOLS_IN_CHAT,
             # Railway search rollout (2026-10-26): this user's stable bucket, so the split can be checked live.

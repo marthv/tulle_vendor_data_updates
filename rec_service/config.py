@@ -59,7 +59,11 @@ FREE_DAILY_USD = float(os.environ.get("REC_FREE_DAILY_USD", "15"))
 # PDF. Full figures stay a plan feature. "0" restores the 10-14 lifetime rules above. Pools: REC_FREE_DAILY_USD 30,
 # REC_GLOBAL_DAILY_USD 60 (owner 2026-10-31).
 FREE_DAILY_MODE = os.environ.get("REC_FREE_DAILY_MODE", "1") == "1"
-FREE_DAILY_REFINES = int(os.environ.get("REC_FREE_DAILY_REFINES", "40"))
+FREE_DAILY_REFINES = int(os.environ.get("REC_FREE_DAILY_REFINES", "40"))   # legacy pin; free couples no longer read it (see below)
+# OWNER RULE 2026-11-08: a free couple gets FREE_INITIAL_REFINES questions for life (3); only once those are all used
+# do they get FREE_DAILY_AFTER_INITIAL (1) per UTC day. Unused days never accumulate (the daily count is per day).
+FREE_INITIAL_REFINES = int(os.environ.get("REC_FREE_INITIAL_REFINES", "3"))
+FREE_DAILY_AFTER_INITIAL = int(os.environ.get("REC_FREE_DAILY_AFTER_INITIAL", "1"))
 FREE_PRICING = os.environ.get("REC_FREE_PRICING", "light").strip().lower()   # light | none (price-free free_mode)
 # LIGHT detail gets one rounded price band per venue (2026-11-07, owner "do all 5", item 3): ~1 in 5 typed Planner
 # questions asked about price and LIGHT could only say "below / typical / above average". The band is the FULL

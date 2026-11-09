@@ -49,6 +49,9 @@ _MARK = re.compile(r"tulle:(\S+)")
 def _vid(p):
     """The vendor a booked row came from. 11-08 v2: the marker lives in Package_Name ("Booked in My wedding ·
     tulle:V1") so Notes is the couple's own; rows from v1 still carry it in Notes."""
+    col = str(p.get("vendor_id") or "").strip()      # 11-08: the table-33 column (backfilled 750 rows); the marker is the fallback
+    if col:
+        return col
     for f in ("Package_Name", "Notes"):
         m = _MARK.search(str(p.get(f) or ""))
         if m:

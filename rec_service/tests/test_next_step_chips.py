@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import chips as ch  # noqa: E402
 import free_mode  # noqa: E402
 
-OPEN_COST, OPEN_BUDGET, ADD_PDF = "Open Cost tools", "Open my budget", "Add a quote from a PDF"
+OPEN_COST, OPEN_BUDGET, ADD_PDF = "Open Cost tools", "Open my wedding", "Add a quote from a PDF"
 
 
 def _asst(*chips):
@@ -45,9 +45,9 @@ def test_action_chips_are_exactly_three():
 
 def test_action_label_ignores_case_punctuation_and_an_arrow():
     assert ch.action_label("open my budget") == OPEN_BUDGET
-    assert ch.action_label("Open my budget →") == OPEN_BUDGET and ch.action_label("Open Cost tools ->") == OPEN_COST
+    assert ch.action_label("Open my budget →") == OPEN_BUDGET and ch.action_label("Open my wedding →") == OPEN_BUDGET and ch.action_label("Open Cost tools ->") == OPEN_COST
     assert ch.action_label("Add a quote from a PDF") == ADD_PDF
-    assert ch.action_label("Open my budget tab") is None
+    assert ch.action_label("Open my wedding tab") is None
 
 
 def test_action_chips_pass_dedupe_even_when_offered_before():

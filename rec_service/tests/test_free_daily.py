@@ -21,6 +21,9 @@ def ok(kind, free=False, day=T):
 def _daily(monkeypatch):
     monkeypatch.setattr(config, "FREE_DAILY_MODE", True)
     monkeypatch.setattr(config, "FREE_DAILY_REFINES", 40)
+    # these tests pin the DAILY mechanism itself; the 11-08 "3 starter questions first" phase is covered in test_free_question_rule.py
+    monkeypatch.setattr(config, "FREE_INITIAL_REFINES", 0)
+    monkeypatch.setattr(config, "FREE_DAILY_AFTER_INITIAL", 40)
     monkeypatch.setattr(config, "FREE_PRICING", "light")
     monkeypatch.setattr(config, "FOREVER_ONLY", False)
 

@@ -55,6 +55,8 @@ def test_daily_mode_counts_questions_not_openings(gate, monkeypatch):
     # owner 2026-11-07: free couples get 1 question a day; a home-screen starter (an opening) must not use it up.
     monkeypatch.setattr(config, "FREE_DAILY_MODE", True)
     monkeypatch.setattr(config, "FREE_DAILY_REFINES", 1)
+    monkeypatch.setattr(config, "FREE_INITIAL_REFINES", 0)       # the starter-3 phase is tested in test_free_question_rule.py
+    monkeypatch.setattr(config, "FREE_DAILY_AFTER_INITIAL", 1)
     opening = {"status": "ok", "kind": "opening", "counted_as_free": False, "usage_day": "2026-11-07"}
     assert guards.decide("refine", False, [opening], 0, "2026-11-07")[0] is True
     asked = [opening, row()]

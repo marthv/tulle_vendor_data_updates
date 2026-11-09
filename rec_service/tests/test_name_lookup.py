@@ -42,7 +42,7 @@ NOT_LOOKUPS = [
     "Compare my saved venues", "Similar venues near Kohl Mansion", "Cost breakdown for Kohl Mansion", "thanks",
     "Brooklyn", "Texas", "yes please", "Waterfront venues", "All-inclusive venues", "Change my guest count",
     "Find a photographer", "DJs with a photo booth", "something rustic in vermont", "we have 120 guests",
-    "Hudson Valley", "Napa", "Split our budget by category", "Open my budget", "Historic Architecture venues",
+    "Hudson Valley", "Napa", "Split our budget by category", "Open my wedding", "Historic Architecture venues",
     "what about something cheaper", "Garden weddings in the fall", "Is Kohl Mansion a good fit for us?",
     "Compare Kohl Mansion with my saved venues", "Find venues within my venue budget",
     # 2026-11-03 style / needs requests that were read as venue names (chat 1170 and the month's replay)

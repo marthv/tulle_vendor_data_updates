@@ -105,6 +105,15 @@ def test_v2_notes_file_slices_and_marker():
     assert v["paid_total"] == 4000
 
 
+def test_vendor_id_column_wins_over_the_marker():
+    pk = [{"id": 8, "user_id": 7, "vendor_name": "The Houston Club", "total_cost": 100, "Selected": True, "Category": "Venue",
+           "vendor_id": "V77", "Package_Name": "Booked in My wedding · tulle:V1"},
+          {"id": 9, "user_id": 7, "vendor_name": "Lakeside", "total_cost": 50, "Selected": False, "Category": "Venue", "vendor_id": "V9"}]
+    v = wedding.view(USER, pk, [], show_prices=True)
+    ven = next(c for c in v["categories"] if c["key"] == "Venue")
+    assert ven["booked"]["vendor_id"] == "V77" and ven["quotes"][0]["vendor_id"] == "V9"
+
+
 def test_clean_attachment():
     assert wedding.clean_attachment({"path": "https://evil/x.pdf"}) is None
     assert wedding.clean_attachment({"path": "/vault/../x"}) is None
