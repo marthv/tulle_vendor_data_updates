@@ -83,6 +83,84 @@ def nps(token, now_ms):
     return {"n24": len(last), "n7": len(wk), "avg7": avg, "comments24": len(comments), "total": len(rows)}
 
 
+# 2026-11-09 PDF GATE (owner: "seems like there was certainly a leak -- report on that in the tulle-ops update daily").
+# Incident: from 2026-10-28 ep21 (user/update_record) treated free_views_remaining = 0 as "not sent" (0 == null is TRUE in
+# XanoScript), so the website's countdown to 0 never landed and free couples kept opening PDFs at "1 left". Fixed
+# 2026-11-09 04:34 UTC. This section shows the incident note for a week, then keeps watching for the same failure.
+PDF_INCIDENT_UNTIL_MS = 1794787200000          # 2026-11-16 00:00 UTC
+FREE_VIEWS_AT_SIGNUP = 3
+PDF_FIX_MS = 1794198841000                     # 2026-11-09 04:34:01 UTC, ep21 fix live
+INTERNAL_IDS = {14998, 30614, 32636, 31619, 118, 5622}
+
+
+def _internal(u):
+    e = str(u.get("email") or "").lower()
+    return u.get("id") in INTERNAL_IDS or e.startswith("vivek.marthi") or e.endswith("@tulletogether.com")
+
+
+def _has_access(u, today):
+    if u.get("forever_access_purchased"):
+        return True
+    d = str(u.get("date_until_access") or "")[:10]
+    return bool(d) and d >= today
+
+
+def pdf_gate(token, now_ms):
+    """Free couples (no paid/submission access, no bonus views) signed up in the last ~2 weeks, active in the last
+    24h, who have opened more PDFs than they were ever given yet still show free views left = the leak signature.
+    Also: Planner PDF opens counted 'free' for one couple in 24h beyond the signup allowance (table 79).
+    Scans the last 10 pages of table 1 (ascending ids, ~2,000 newest accounts) - older accounts are not checked."""
+    today = dt.datetime.utcfromtimestamp(now_ms / 1000).strftime("%Y-%m-%d")
+    first = _get(token, f"/table/{USER_TABLE}/content", page=1, per_page=200)
+    last = int(first.get("pageTotal") or 1)
+    users = []
+    for page in range(max(1, last - 9), last + 1):
+        users += _get(token, f"/table/{USER_TABLE}/content", page=page, per_page=200).get("items", [])
+    free = [u for u in users if not _internal(u) and not _has_access(u, today)
+            and not (u.get("total_pdf_submissions") or 0) and not u.get("bonus_views_at")]
+    since = max(now_ms - DAY, PDF_FIX_MS)   # couples who leaked BEFORE the fix keep '1 left' until their next open
+    active = [u for u in free if max(u.get("last_active_at") or 0, u.get("last_viewed_at") or 0) >= since]
+    stuck = [u for u in active if (u.get("total_pdf_views") or 0) > FREE_VIEWS_AT_SIGNUP
+             and (u.get("FreeViewsRemaining") or 0) > 0]
+    planner_over = 0
+    try:
+        import rec_watch
+        days = {dt.datetime.utcfromtimestamp((now_ms - i * DAY) / 1000).strftime("%Y-%m-%d") for i in (0, 1)}
+        rows = [r for d in days for r in rec_watch._rows_for_day(token, d)
+                if r.get("kind") == "pdf" and r.get("status") == "free" and (r.get("created_at") or 0) >= now_ms - DAY]
+        per = {}
+        for r in rows:
+            per[r.get("user_id")] = per.get(r.get("user_id"), 0) + 1
+        planner_over = sum(1 for n in per.values() if n > FREE_VIEWS_AT_SIGNUP)
+    except Exception:
+        planner_over = None
+    return {"checked": len(active), "stuck": stuck, "planner_over": planner_over}
+
+
+def pdf_gate_section(token, now_ms):
+    """(line, alerts)"""
+    g = pdf_gate(token, now_ms)
+    n = len(g["stuck"])
+    # Planner opens are counted exactly (table 79) -> red. The website check is a signature (no per-open log), and a
+    # couple who leaked before the fix still shows '1 left' until their next open -> amber.
+    bad = n > 0 or (g["planner_over"] or 0) > 0
+    light = ":red_circle:" if (g["planner_over"] or 0) > 0 else (":large_yellow_circle:" if n else ":large_green_circle:")
+    po = "n/a" if g["planner_over"] is None else g["planner_over"]
+    line = (f"{light} *PDF gate* - website: {n} free couple(s) active since the fix past {FREE_VIEWS_AT_SIGNUP} PDFs"
+            f" with views still left (should trend to 0; {g['checked']} checked) · Planner: {po} over-limit")
+    if n:
+        line += " · e.g. ids " + ", ".join(str(u.get("id")) for u in g["stuck"][:5])
+    if now_ms < PDF_INCIDENT_UNTIL_MS:
+        line += ("\n    _Incident 10-28 -> 11-09: the website's free-view countdown to 0 was ignored (ep21: 0 == null in "
+                 "XanoScript), so free couples kept opening PDFs at '1 left' (84 ignored writes / 19 couples in 5 h on "
+                 "11-09; one opened 12). Fixed 11-09 04:34 UTC; zero-writes confirmed sticking._")
+    alerts = []
+    if (g["planner_over"] or 0) > 0 or n >= 5:
+        alerts.append("PDF gate: free couples are opening PDFs past their limit again - check ep21 (free_views_remaining "
+                      "writes) and the Planner /rec/pdf gate.")
+    return line, alerts
+
+
 def rec_line(token):
     """One line from rec_watch + alerts. rec_watch.build returns 2 lines; keep the first."""
     import rec_watch
@@ -212,6 +290,14 @@ def compose_full(token, health_text, now_ms=None):
         decisions += getattr(bnpl_watch.build, "alerts", [])
     except Exception as e:
         sections.append(f":warning: _Pricing test section failed: {e}_")
+
+    # PDF gate (2026-11-09): leak watch + the 10-28 -> 11-09 incident note for a week.
+    try:
+        line, alerts = pdf_gate_section(token, now_ms)
+        sections.append(line)
+        decisions += alerts
+    except Exception as e:
+        sections.append(f":warning: _PDF gate section failed: {e}_")
 
     rec_tl = None
     try:
