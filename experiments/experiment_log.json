@@ -1125,23 +1125,27 @@
     {
       "id": "EXP-2026-11-ask-tulle-bubble",
       "name": "'Ask Tulle' floating Planner chat on Discovery (Map | Ask Tulle phone dock), Membership and My wedding; empty-results banner",
-      "status": "planned",
+      "status": "live",
       "themes": [
         "planner",
         "activation"
       ],
-      "goal": "More couples ask the Planner a question without leaving the page: Planner question-askers/day up vs the 7 days before; free-couple PDF opens and purchases hold",
+      "goal": "Bar: couples asking a Planner question per day up >= 15% vs the 7 days before launch, with purchases/day and free-couple PDF opens not down. Adoption read: couples using the bubble per day.",
       "primary_metric": "table 79 'surface' (added 2026-11-11): couples with bubble:* rows per day; questions/day (all surfaces) since the first bubble row vs the 7 days before; Planner sheet Flag 'via Ask Tulle (<page>)'. Daily in the brief (experiments_brief.bubble_line).",
       "guardrail": "purchases/day; free daily $ pool",
-      "start_date": null,
+      "start_date": "2026-11-11",
       "end_date": null,
-      "review_date": null,
+      "review_date": "2026-11-25",
       "dates_note": "Component marthv/ww-planner-chat 9116a38 (bubble) + e76b855 (rainbow beacon, 80% phone sheet). Live after owner activates, places the instance in the Navigation Bar Section and publishes; then hide Rec Entry on Discovery, set start_date and review_date = start + 14 days.",
       "design": "pre/post",
       "results": [
         {
           "date": "2026-11-11",
           "note": "Tracking shipped: rec-engine beb1cf1 (surface on usage rows + sheet Flag), component 648794a sends ?surface=. Allowlist pages: Discovery, Membership, My wedding. Still planned until activate + publish."
+        },
+        {
+          "date": "2026-11-11",
+          "note": "LIVE: owner published ~07:25 UTC (verified in live /data: empty-state banner, dock toggle ids, tour retarget, suppress allowlist Discovery + My wedding). Bubble chat buttons (card/PDF/upgrade/track/profile/heart) wired in the editor after this publish - need component 5ccd08c + another publish; until then those buttons do nothing inside the bubble."
         }
       ],
       "stat_sig": "",
@@ -1244,6 +1248,15 @@
       "date": "2026-11-09",
       "end_date": null,
       "what": "PI first-vendor-free LIVE 14:12 UTC (ep230; see EXP-2026-11-pi-first-vendor-free). Editor, pending publish: auto tours = ONLY Discovery after onboarding + vendor page tour (one step on the pricing PDFs, venue and other-vendor pages); Planner + My wedding intros auto OFF (picker only) - final owner call 2026-11-09 ~15:10 UTC; locked venue PI block 'PI Locked State Averages' (state median, middle-50% bar, blurred This venue; component averages stay paid-only); ww-planner-chat 4586d2b (Ask Tulle question survives the Planner mounting the chat twice) - owner activates."
+    },
+    {
+      "date": "2026-11-11",
+      "name": "Discovery publish: Ask Tulle bubble + Map|Ask Tulle phone dock, empty-results Ask Tulle banner (filtered_total == 0), vendor names wrap on phones, tour step 1 points at Ask Tulle",
+      "affects": [
+        "EXP-2026-11-ask-tulle-bubble",
+        "EXP-2026-11-free-daily-question",
+        "EXP-2026-11-save-offer-60-forever"
+      ]
     }
   ]
 }
