@@ -1124,21 +1124,26 @@
     },
     {
       "id": "EXP-2026-11-ask-tulle-bubble",
-      "name": "'Ask Tulle' floating Planner chat on every non-Planner page; Discovery 'Ask Tulle Planner anything' block removed",
+      "name": "'Ask Tulle' floating Planner chat on Discovery (Map | Ask Tulle phone dock), Membership and My wedding; empty-results banner",
       "status": "planned",
       "themes": [
         "planner",
         "activation"
       ],
       "goal": "More couples ask the Planner a question without leaving the page: Planner question-askers/day up vs the 7 days before; free-couple PDF opens and purchases hold",
-      "primary_metric": "planner_bubble_opened (Mixpanel) + couples asking >=1 Planner question/day (table 79)",
+      "primary_metric": "table 79 'surface' (added 2026-11-11): couples with bubble:* rows per day; questions/day (all surfaces) since the first bubble row vs the 7 days before; Planner sheet Flag 'via Ask Tulle (<page>)'. Daily in the brief (experiments_brief.bubble_line).",
       "guardrail": "purchases/day; free daily $ pool",
       "start_date": null,
       "end_date": null,
       "review_date": null,
       "dates_note": "Component marthv/ww-planner-chat 9116a38 (bubble) + e76b855 (rainbow beacon, 80% phone sheet). Live after owner activates, places the instance in the Navigation Bar Section and publishes; then hide Rec Entry on Discovery, set start_date and review_date = start + 14 days.",
       "design": "pre/post",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-11",
+          "note": "Tracking shipped: rec-engine beb1cf1 (surface on usage rows + sheet Flag), component 648794a sends ?surface=. Allowlist pages: Discovery, Membership, My wedding. Still planned until activate + publish."
+        }
+      ],
       "stat_sig": "",
       "decision": "",
       "confounds_noted": [

@@ -192,6 +192,45 @@ def engagement_line(e):
                         per(e["p_q"], e["p_couples"]), e["p_couples"]))
 
 
+# ---------------------------------------------------------------- 5. Ask Tulle bubble (table 79 'surface', 2026-11-11)
+# The planner-chat component tags every rec-engine call ?surface=planner | bubble:<path>; rec-engine writes it on each
+# usage row. Adoption = couples with a bubble row; 'more messages?' = questions per day (all surfaces) since the first
+# bubble row vs the 7 days before it. Pre/post, other launches in the same week.
+def bubble(rows, now_ms):
+    real = [r for r in rows if int(r.get("user_id") or 0) not in INTERNAL_IDS]
+    bub = [r for r in real if str(r.get("surface") or "").startswith("bubble")]
+    if not bub:
+        return None
+    first_day = min(r.get("usage_day") or _day(r.get("created_at") or 0) for r in bub)
+    yday = _day(now_ms - DAY)
+    yb = [r for r in bub if r.get("usage_day") == yday]
+    q = lambda rr: sum(1 for r in rr if r.get("kind") == "refine" and r.get("status") == "ok")
+    yp = [r for r in real if r.get("usage_day") == yday and str(r.get("surface") or "") == "planner"]
+    fd = dt.datetime.strptime(first_day, "%Y-%m-%d")
+    pre_days = {(fd - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(1, 8)}
+    today = _day(now_ms)
+    post_days = sorted({r.get("usage_day") for r in real if first_day <= (r.get("usage_day") or "") < today})
+    pre_q = q([r for r in real if r.get("usage_day") in pre_days]) / 7.0
+    post_q = (q([r for r in real if r.get("usage_day") in set(post_days)]) / len(post_days)) if post_days else None
+    pages = {}
+    for r in bub:
+        pg = str(r.get("surface")).split(":", 1)[1] if ":" in str(r.get("surface")) else "?"
+        pages[pg] = pages.get(pg, 0) + 1
+    return {"first": first_day, "y_couples": len({r.get("user_id") for r in yb}), "y_q_bubble": q(yb), "y_q_planner": q(yp),
+            "all_couples": len({r.get("user_id") for r in bub}), "pre_q": pre_q, "post_q": post_q, "post_days": len(post_days),
+            "top_page": max(pages.items(), key=lambda kv: kv[1])[0] if pages else ""}
+
+
+def bubble_line(b):
+    if not b:
+        return "• *Ask Tulle bubble* - no requests tagged from the bubble yet (live after the component is activated + published)"
+    trend = ("questions/day since launch %.0f vs %.0f the week before (%d day%s in)" % (b["post_q"], b["pre_q"], b["post_days"], "" if b["post_days"] == 1 else "s")
+             if b["post_q"] is not None else "first full day not done yet")
+    return ("• *Ask Tulle bubble* (since %s) - yesterday %d couples used it, %d questions from the bubble vs %d on the Planner page · "
+            "%d couples so far, most from %s · %s" % (b["first"][5:], b["y_couples"], b["y_q_bubble"], b["y_q_planner"], b["all_couples"],
+                                                       b["top_page"] or "-", trend))
+
+
 # ---------------------------------------------------------------- calls to make (registry)
 # Owner 2026-11-11: "experiment registry is getting stale ... suggest that we make a call on them when they go live."
 # Reads experiments/experiment_log.json (deployed with this service - it is in the cron's watch patterns).
@@ -286,6 +325,7 @@ def block(token, now_ms=None):
         n_days = (dt.datetime.utcfromtimestamp(now_ms / 1000) - start).days + 1
         usage = [r for i in range(n_days) for r in rec_watch._rows_for_day(token, (start + dt.timedelta(days=i)).strftime("%Y-%m-%d"))]
         lines.append(free_daily_line(free_daily(usage, now_ms)))
+        lines.append(bubble_line(bubble(usage, now_ms)))
     except Exception as e:
         lines.append(":warning: _free-question line failed: %s_" % str(e)[:120])
     try:
