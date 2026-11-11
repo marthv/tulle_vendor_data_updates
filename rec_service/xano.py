@@ -234,7 +234,7 @@ SURFACE = contextvars.ContextVar("rec_surface", default="")
 
 
 def log_usage(row):
-    row = dict(row, usage_day=today(), surface=SURFACE.get())
+    row = dict(row, usage_day=today(), surface=row.get("surface") or SURFACE.get())
     _meta("POST", "/table/%d/content" % config.USAGE_TABLE_ID, json=row)
 
 

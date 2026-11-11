@@ -128,7 +128,13 @@ app.add_middleware(_UserAgentToSheetLog)
 OPENING_ASK = ("Recommend 3 venues for us based on our profile, and tell us the single most useful next step "
                "for where we are in planning.")
 HISTORY_TURNS = 8
-_POOL = ThreadPoolExecutor(max_workers=8)
+_POOL = ThreadPoolExecutor(max_workers=8)
+
+def _submit_usage(row):
+    """Queue a usage-row write on the pool. The request's surface (?surface=, 2026-11-11) is read HERE, on the request
+    side: pool threads don't inherit contextvars, so reading it inside log_usage gave '' (verified live 11-11)."""
+    return _POOL.submit(xano.log_usage, dict(row, surface=row.get("surface") or xano.SURFACE.get()))
+
 
 
 def _turn_for_model(t):
@@ -569,7 +575,7 @@ def _log_stopped(base, kind, user, paid, access, usage=None):
     u = usage or {}
     cost = guards.cost_usd(u["model"], u) if u.get("model") else 0
     search = u.get("search")
-    _POOL.submit(xano.log_usage, dict(base, status="stopped", counted_as_free=False, model=u.get("model") or "none",
+    _submit_usage(dict(base, status="stopped", counted_as_free=False, model=u.get("model") or "none",
                                       input_tokens=u.get("input_tokens", 0),
                                       cache_read_tokens=u.get("cache_read_tokens", 0),
                                       cache_write_tokens=u.get("cache_write_tokens", 0),
@@ -702,7 +708,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         opening_reuse.STORE.put(user["id"], reuse_fp, result, parts=reuse_parts, src="prewarm" if prewarm else "opening")
     opening_reuse.INFLIGHT.end(user["id"], inflight)
     cost = guards.cost_usd(usage["model"], usage)
-    _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model=usage["model"],
+    _submit_usage(dict(base, status="ok", counted_as_free=counted_free, model=usage["model"],
                         input_tokens=usage["input_tokens"], cache_read_tokens=usage["cache_read_tokens"],
                         cache_write_tokens=usage["cache_write_tokens"], output_tokens=usage["output_tokens"],
                         tool_calls=usage["tool_calls"], cost_usd=cost, latency_ms=usage["latency_ms"],
@@ -790,7 +796,7 @@ def _reused_opening(stored, user, paid, access, rows, feedback_given, tracker, s
                **_counters("opening", paid, rows, False, feedback_given, access, spent=warm))
     wait_ms = int((time.time() - t0) * 1000)
     if warm and base:
-        _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=False, model="prewarm", input_tokens=0,
+        _submit_usage(dict(base, status="ok", counted_as_free=False, model="prewarm", input_tokens=0,
                                           cache_read_tokens=0, cache_write_tokens=0, output_tokens=0, tool_calls=0,
                                           cost_usd=0, latency_ms=wait_ms, tools="prewarm"))
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
@@ -1082,7 +1088,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         result.pop("price_redactions", None)
     ms = int((time.time() - t0) * 1000)
     search = slog.summary()
-    _POOL.submit(xano.log_usage, dict(base, status="ok", counted_as_free=counted_free, model="lookup",
+    _submit_usage(dict(base, status="ok", counted_as_free=counted_free, model="lookup",
                                       input_tokens=0, cache_read_tokens=0, cache_write_tokens=0, output_tokens=0,
                                       tool_calls=0, cost_usd=0, latency_ms=ms, tools="lookup:" + status,
                                       categories=(res.get("vendor_kind") or "Venue").lower(), **_search_cols(search)))
@@ -1689,7 +1695,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     try:
         out = cost_tools.run_tool(name, body.args or {}, token, user, access=access, xano=xano)
     except Exception as e:
-        _POOL.submit(xano.log_usage, dict(base, status="error", error=str(e)[:500]))
+        _submit_usage(dict(base, status="error", error=str(e)[:500]))
         raise HTTPException(502, {"status": "error"})
     widget = out["widget"] if access else free_mode.widget(out["widget"])
     text = cost_tools.summary_text(widget)
@@ -1697,7 +1703,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     # No chat history is read here (one more Xano call per tap); the next typed reply's de-dupe sees these chips.
     chips = tool_chips(name, free=not access, widget=widget)
     ms = int((dt.datetime.now(dt.timezone.utc) - t0).total_seconds() * 1000)
-    _POOL.submit(xano.log_usage, dict(base, status="ok", latency_ms=ms))
+    _submit_usage(dict(base, status="ok", latency_ms=ms))
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
         "kind": "tool_" + name, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid,
         "has_access": access, "source": "rec_service", "cost_usd": 0, "latency_s": round(ms / 1000.0, 1),
@@ -2032,7 +2038,7 @@ def open_pdf(body: PdfBody, authorization: str = Header(None)):
                 print("pdf free-view write failed:", repr(e)[:200])   # the in-memory count still holds the line
     # The usage log (table 79) gets a 'pdf' row per open attempt (2026-11-02: the daily brief's PDF funnel reads
     # Xano, not Mixpanel): status = paid | free | blocked, no cost, chat_id when the card came from a chat.
-    _POOL.submit(xano.log_usage, {"user_id": user["id"], "kind": "pdf", "status": mode, "counted_as_free": mode == "free",
+    _submit_usage({"user_id": user["id"], "kind": "pdf", "status": mode, "counted_as_free": mode == "free",
                                   "model": "", "chat_id": body.chat_id or 0, "tools": "pdf:" + vid, "categories": "venue"})
     sheet_log.event(user, "Opened a pricing PDF", body.vendor_name or vid, "", body.chat_id or 0,
                     [{"name": body.vendor_name or vid}],
