@@ -192,6 +192,49 @@ def engagement_line(e):
                         per(e["p_q"], e["p_couples"]), e["p_couples"]))
 
 
+# ---------------------------------------------------------------- calls to make (registry)
+# Owner 2026-11-11: "experiment registry is getting stale ... suggest that we make a call on them when they go live."
+# Reads experiments/experiment_log.json (deployed with this service - it is in the cron's watch patterns).
+REGISTRY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "experiments", "experiment_log.json")
+NO_DATE_AFTER_DAYS = 14
+MAX_CALLS = 6
+
+
+def calls(registry, today):
+    """registry = parsed experiment_log.json, today = 'YYYY-MM-DD'. Returns (lines, total)."""
+    t = dt.datetime.strptime(today, "%Y-%m-%d")
+    days = lambda d: (t - dt.datetime.strptime(d[:10], "%Y-%m-%d")).days
+    out = []          # (priority, sort key, text)
+    for e in registry.get("experiments", []):
+        st, name = (e.get("status") or "").lower(), (e.get("name") or e.get("id") or "?")[:70]
+        start, review, bar = e.get("start_date") or "", e.get("review_date") or "", (e.get("goal") or "").strip()
+        bar_txt = ("bar: " + bar[:90]) if bar else "*no success bar set*"
+        if st in ("live", "running"):
+            if review and review[:10] <= today:
+                out.append((0, -days(review), "Call overdue %dd - %s (%s)" % (days(review), name, bar_txt)))
+            elif start and 0 <= days(start) <= 2:
+                out.append((1, days(start), "Went live %s - %s: call on %s (%s)" % (
+                    start[5:10], name, review[5:10] if review else "*set a date*", bar_txt)))
+            elif not review and start and days(start) > NO_DATE_AFTER_DAYS:
+                out.append((2, -days(start), "Live %dd with no call date - %s: keep, kill or set a date" % (days(start), name)))
+        elif st == "planned" and start and start[:10] <= today:
+            out.append((3, 0, "Marked planned but start date %s has passed - %s: is it live?" % (start[5:10], name)))
+    out.sort(key=lambda x: (x[0], x[1]))
+    return [x[2] for x in out[:MAX_CALLS]], len(out)
+
+
+def calls_lines(now_ms):
+    import json
+    with open(REGISTRY, encoding="utf-8") as f:
+        reg = json.load(f)
+    lines, total = calls(reg, _day(now_ms))
+    if not lines:
+        return []
+    head = "*Calls to make* (%d)" % total
+    more = ["• _+%d more in the 🧪 Experiments tab_" % (total - len(lines))] if total > len(lines) else []
+    return [head] + ["• " + l for l in lines] + more
+
+
 # ---------------------------------------------------------------- fetchers + block
 def _get(token, path, **params):
     r = requests.get(META + path, headers={"Authorization": "Bearer " + token}, params=params, timeout=60)
@@ -274,4 +317,10 @@ def block(token, now_ms=None):
     except Exception as e:
         lines.append(":warning: _PDF/questions line failed: %s_" % str(e)[:120])
     lines.append("_Pre/post reads with other launches in the same windows - evidence, not proof._")
+    try:
+        c = calls_lines(now_ms)
+        if c:
+            lines += [""] + c
+    except Exception as e:
+        lines.append(":warning: _calls list failed: %s_" % str(e)[:120])
     return "\n".join(lines)

@@ -376,7 +376,7 @@
     {
       "id": "EXP-2026-10-free-assistant",
       "name": "Tulle Assistant free questions for free users",
-      "status": "live",
+      "status": "concluded",
       "themes": [
         "assistant",
         "activation"
@@ -385,13 +385,13 @@
       "primary_metric": "free-assistant users: PDF opens + conversion",
       "guardrail": "",
       "start_date": "2026-10-14",
-      "end_date": null,
+      "end_date": "2026-11-09",
       "review_date": null,
       "dates_note": "2026-10-14 (free mode, 1 question); 2026-10-24 18:16 -> 2 questions (REC_FREE_REFINES=2)",
       "design": "pre/post",
       "results": [],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Superseded: free-question rules changed 10-31 (open Planner daily allowance) and 11-09 (3 for life, then 1/day) - see EXP-2026-11-free-daily-question. No read was recorded.",
       "confounds_noted": [
         "assistant OUTAGE 2026-10-22 06:22 -> 10-24 15:13 UTC (Anthropic key revoked, 40 users) - exclude from any read",
         "10-14 bundle"
@@ -511,7 +511,7 @@
     {
       "id": "EXP-2026-10-tours-v2",
       "name": "Assistant tours reset to v2 keys + Cost tools step",
-      "status": "live",
+      "status": "concluded",
       "themes": [
         "activation",
         "assistant"
@@ -520,7 +520,7 @@
       "primary_metric": "tour completion; Budget/Cost tools tab opens",
       "guardrail": "",
       "start_date": "2026-10-26",
-      "end_date": null,
+      "end_date": "2026-11-09",
       "review_date": null,
       "dates_note": "Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data).",
       "design": "pre/post",
@@ -531,7 +531,7 @@
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Superseded 2026-11-09: tours cut to 2 auto tours (Discovery + vendor page PDFs step), the rest picker-only. No read was recorded.",
       "confounds_noted": [
         "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
       ],
@@ -959,7 +959,7 @@
     {
       "id": "EXP-2026-11-planner-my-wedding-plan",
       "name": "Planner 'My wedding' plan (launch to everyone, no holdout)",
-      "status": "planned",
+      "status": "live",
       "themes": [
         "planner",
         "engagement",
@@ -968,13 +968,18 @@
       "goal": "Owner request 2026-11-07: let couples build their wedding inside the Planner - 'Add to my wedding' on every card, a 7-slot plan sheet, and one 'next for your wedding' step once engaged. Free for everyone. Does it make couples use the Planner more, open more pricing PDFs and pay more often?",
       "primary_metric": "Share of Planner couples who add to their plan, couples with 2+ slots, questions per couple, share of free couples opening a PDF, purchases - daily in the compact brief (ab_report.adoption_block).",
       "guardrail": "Questions per couple and PDF opens must not fall in the plan arm; answer latency unchanged (the plan read runs in parallel); no prices shown to couples without paid access.",
-      "start_date": null,
+      "start_date": "2026-11-08",
       "end_date": null,
-      "review_date": null,
+      "review_date": "2026-11-22",
       "dates_note": "Built 2026-11-07 (server rec-plan 6aad63d, component ab459e8). Starts when the server is on main AND the owner activates + publishes the planner-chat version. Read at 2 weeks, earlier only for a guardrail breach.",
       "design": "Owner 2026-11-07: everyone gets it - no A/B. REC_PLAN_AB_PCT=100 (0 = off for all; 1-99 would bring a split back). Read as adoption + before/after vs the 11-03..11-06 baseline, which is confounded by the other 11-07 launches. Storage: Xano table 90 rec_wedding_plan (removed rows kept).",
       "baseline": "11-03..11-06 (all couples, pre-test): median 1 question, mean 2.5; 37% of free couples opened a PDF (1.04 opens per free couple).",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-11",
+          "note": "Registry fix: launched 2026-11-08 (My wedding v3 server live; REC_PLAN_AB_PCT=100, adoption shown daily by ab_report since 11-08). Call date set to 2 weeks per the plan."
+        }
+      ],
       "stat_sig": null,
       "decision": null,
       "confounds_noted": "No control group: re-gating, open-ended replies, home screen, lookup and sourced answers all shipped 11-07, so any before/after change cannot be credited to the plan alone.",
