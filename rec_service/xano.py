@@ -7,6 +7,7 @@ import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
 import math
 import re
+import contextvars
 import threading
 import time
 
@@ -226,8 +227,14 @@ def spend_today():
     return total, free
 
 
+# 2026-11-11 (owner): which surface sent the request - 'planner' (the Planner page) or 'bubble:<path>' (the floating Ask
+# Tulle chat). Set per request by app.py's middleware from the component's ?surface= param; '' for older component
+# versions. Written on every usage row (table 79 'surface') and shown in the Planner sheet's Flag column.
+SURFACE = contextvars.ContextVar("rec_surface", default="")
+
+
 def log_usage(row):
-    row = dict(row, usage_day=today())
+    row = dict(row, usage_day=today(), surface=SURFACE.get())
     _meta("POST", "/table/%d/content" % config.USAGE_TABLE_ID, json=row)
 
 

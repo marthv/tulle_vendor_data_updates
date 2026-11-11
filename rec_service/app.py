@@ -107,11 +107,20 @@ class _UserAgentToSheetLog:
             if k == b"user-agent":
                 ua = v.decode("latin-1")[:500]
                 break
+        surface = ""
+        try:
+            from urllib.parse import parse_qs
+            q = parse_qs((scope.get("query_string") or b"").decode("latin-1"))
+            surface = str((q.get("surface") or [""])[0])[:80]
+        except Exception:
+            surface = ""
         tok = sheet_log.UA.set(ua)
+        stok = xano.SURFACE.set(surface)
         try:
             await self.asgi(scope, receive, send)
         finally:
             sheet_log.UA.reset(tok)
+            xano.SURFACE.reset(stok)
 
 
 app.add_middleware(_UserAgentToSheetLog)

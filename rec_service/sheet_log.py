@@ -101,7 +101,7 @@ def event(user, action, did="", answer="", chat_id=0, cards=None, filters=None, 
         _Q.put_nowait({"at": time.time(), "user": dict(user), "action": action, "did": str(did or "")[:2000],
                        "answer": str(answer or "")[:ANSWER_CHARS], "chat_id": int(chat_id or 0),
                        "vendors": _vendors(cards), "filters": _filters(filters), "flag": flag,
-                       "ua": UA.get()})
+                       "ua": UA.get(), "surface": xano.SURFACE.get()})
         _ensure_worker()
     except Exception as e:
         print("sheet_log.event skipped:", repr(e)[:200])
@@ -194,7 +194,19 @@ def _row(e):
     u = e["user"]
     who = str(u.get("email") or "").strip() or str(u.get("name") or "")
     return [_when(e["at"]), who, u.get("id"), _plan(u), e["chat_id"] or "", e["action"], e["did"], e["answer"],
-            e["vendors"], e["filters"], e["flag"], device_of(e.get("ua", "")), browser_of(e.get("ua", ""))]
+            e["vendors"], e["filters"], _flag_with_surface(e), device_of(e.get("ua", "")), browser_of(e.get("ua", ""))]
+
+
+def _flag_with_surface(e):
+    """2026-11-11 (owner): rows from the floating Ask Tulle chat say so in Flag ('via Ask Tulle (/discovery)'), so the team
+    can filter them without a new sheet column (the Apps Script would need re-pasting for one)."""
+    flag = e.get("flag") or ""
+    surf = str(e.get("surface") or "")
+    if surf.startswith("bubble"):
+        where = surf.split(":", 1)[1] if ":" in surf else ""
+        tag = "via Ask Tulle" + (" (%s)" % where if where else "")
+        flag = (flag + "; " if flag else "") + tag
+    return flag
 
 
 def _post(rows):
