@@ -1121,6 +1121,33 @@
       "risks": [],
       "owner": "Vivek",
       "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-ask-tulle-bubble",
+      "name": "'Ask Tulle' floating Planner chat on every non-Planner page; Discovery 'Ask Tulle Planner anything' block removed",
+      "status": "planned",
+      "themes": [
+        "planner",
+        "activation"
+      ],
+      "goal": "More couples ask the Planner a question without leaving the page: Planner question-askers/day up vs the 7 days before; free-couple PDF opens and purchases hold",
+      "primary_metric": "planner_bubble_opened (Mixpanel) + couples asking >=1 Planner question/day (table 79)",
+      "guardrail": "purchases/day; free daily $ pool",
+      "start_date": null,
+      "end_date": null,
+      "review_date": null,
+      "dates_note": "Component marthv/ww-planner-chat 9116a38 (bubble) + e76b855 (rainbow beacon, 80% phone sheet). Live after owner activates, places the instance in the Navigation Bar Section and publishes; then hide Rec Entry on Discovery, set start_date and review_date = start + 14 days.",
+      "design": "pre/post",
+      "results": [],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [
+        "60% Forever save offer 11-11",
+        "NPS comment change (same publish likely)"
+      ],
+      "risks": [],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
     }
   ],
   "changes": [
