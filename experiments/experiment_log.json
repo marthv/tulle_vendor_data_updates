@@ -1090,6 +1090,37 @@
       ],
       "owner": "Vivek",
       "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-nps-optional-comment-high-stars",
+      "name": "NPS return card: comment optional on 4-5 stars (1-3 stars still required)",
+      "status": "planned",
+      "themes": [
+        "feedback",
+        "reviews"
+      ],
+      "goal": "Junk comments on 4-5 stars ~0 (was 4 of ~38 comments) while ratings stay >= 1/day; watch Trustpilot clicks (0 of 57 asks so far)",
+      "primary_metric": "table 77: share of 4-5 star comments that are keyboard mash; ratings/day; review_prompt_state clicked",
+      "guardrail": "ratings per day (>= 1/day) and 1-3 star comment rate",
+      "start_date": null,
+      "end_date": null,
+      "review_date": "2026-11-25",
+      "dates_note": "Built 2026-11-11: tulletogether 3d77a79 = marthv/ww-nps-survey 5349071. Live only after the owner activates the new nps-survey version in WeWeb and publishes - set start_date then.",
+      "design": "pre/post",
+      "results": [
+        {
+          "date": "2026-11-11",
+          "note": "Baseline (table 77, internal excluded): 71 ratings all time; 5 junk comments, 4 on 5 stars; last 7 days 15 ratings avg 3.8/5."
+        }
+      ],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [
+        "TrustBox thank-you step (nps-survey f992e72 / 7d86032) may go live in the same publish"
+      ],
+      "risks": [],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
     }
   ],
   "changes": [
