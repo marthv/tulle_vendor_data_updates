@@ -284,6 +284,13 @@ def compose_compact(token, health_text, now_ms=None):
     except Exception as e:
         ab = f":warning: _A/B scoreboard failed: {e}_"
     out = [f"*Tulle daily - {today}*", "• " + " · ".join(head)] + (["", ab] if ab else [])
+    # 2026-11-11 owner: the running experiments (free daily question, save offer, NPS + Trustpilot, PDF opens +
+    # questions) ride in the daily update. experiments_brief.block never raises.
+    try:
+        import experiments_brief
+        out += ["", experiments_brief.block(token, now_ms)]
+    except Exception as e:
+        out += ["", f":warning: _Experiments block failed: {str(e)[:120]}_"]
     if alerts:
         out += ["", "*Needs you*"] + [f"• {a}" for a in alerts]
     return "\n".join(out)

@@ -490,6 +490,10 @@
         {
           "date": "2026-10-26",
           "note": "Confirmed in the live bundle: reviewMinScore defaults to 5 and the instance does not override it, so only 5-star raters see the ask."
+        },
+        {
+          "date": "2026-11-11",
+          "note": "Table 77, all time (internal excluded): the Trustpilot prompt was shown (offered/declined) to 57 of 71 raters and recorded 0 clicked / 0 completed. Last 7 days: 15 ratings, avg 3.8/5 (prior 7 days 15, 4.5/5); 9 five-star raters shown the ask, 0 clicked. TrustBox iframe clicks (nps-survey f992e72) are not recorded. Daily line in the brief from 11-11."
         }
       ],
       "stat_sig": "",
@@ -1011,6 +1015,73 @@
         "A non-venue first vendor (no PI panel) spends the free view",
         "Returning to the first vendor after any other vendor shows it locked",
         "Delete + re-sign-up gives a fresh free vendor (total_vendor_views resets)"
+      ],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-free-daily-question",
+      "name": "Planner: free couples get 3 questions for life, then 1 free question a day (no accumulation)",
+      "status": "live",
+      "themes": [
+        "planner",
+        "retention"
+      ],
+      "goal": "Retention mechanism (owner): a daily free question brings free couples back on later days",
+      "primary_metric": "share of NEW free Planner couples who come back on a later day within 3 days (post cohort vs first-used Oct 31 - Nov 5)",
+      "guardrail": "free daily $ pool; purchases",
+      "start_date": "2026-11-09",
+      "end_date": null,
+      "review_date": "2026-11-23",
+      "dates_note": "rec e29f61a committed 2026-11-08 20:11 ET (2026-11-09 01:11 UTC), auto-deployed with rec-engine. Daily read in the brief (experiments_brief.py) from 2026-11-11.",
+      "design": "pre/post",
+      "results": [
+        {
+          "date": "2026-11-11",
+          "note": "Started reporting in the daily brief. First post cohort (first use 11-10) completes its 3-day window on 11-14."
+        }
+      ],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [
+        "PDF gate fix 11-09 04:34 UTC",
+        "PI first vendor free 11-09 14:12 UTC",
+        "tours cut to 2 on 11-09",
+        "My wedding launch 11-08"
+      ],
+      "risks": [],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-save-offer-60-forever",
+      "name": "'Too expensive' save offer: 60% off Forever, 12 h, server-enforced code + email (replaces 20% / 30 min)",
+      "status": "live",
+      "themes": [
+        "paywall",
+        "pricing"
+      ],
+      "goal": ">= 3 buyers in ~25 offers (old 20% offer: 1 of 33)",
+      "primary_metric": "buyers among TT60 code holders (table 1 paywall_offer_code + payment log)",
+      "guardrail": "'too expensive' share of what_stopped_you stays < 55% (~47% before); full-price Forever purchases/week don't drop",
+      "start_date": "2026-11-11",
+      "end_date": null,
+      "review_date": "2026-12-02",
+      "dates_note": "ep313 v3 live 2026-11-11 05:14:44 UTC; WeWeb card copy/countdown edited in editor 11-11, live after owner publish. Rollback: tulletogether/.claude/xano_backups/api313_ep313_save_offer_LIVE_pre_60forever_2026-11-11.xs",
+      "design": "pre/post",
+      "results": [
+        {
+          "date": "2026-11-11",
+          "note": "Smoke test: test account 35757 got TT60-UC36AL, 12.0 h, $135 -> $54, Brevo accepted, reuse OK. Internal account refused. Checkout price + email delivery not yet verified."
+        }
+      ],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [
+        "PDF gate fix 11-09 restored the paywall (more wall hits)"
+      ],
+      "risks": [
+        "people may pick 'too expensive' to get the discount"
       ],
       "owner": "Vivek",
       "launched_by": "Claude Code"
