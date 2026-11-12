@@ -16,7 +16,8 @@ Four lines, all from Xano (the cron has no Mixpanel query secret), internal acco
   4. PDF opens + questions: share of new members who have opened a pricing PDF (table 1 total_pdf_views, cohorts
      by sign-up week) and Planner questions per couple (table 79), last 7 days vs the 7 before.
 
-All four are pre/post reads with other launches in the same windows - evidence, not proof. block() never raises.
+Plus 5. Ask Tulle bubble and 6. Gates -> paid (new members paid within 1 day; PDF limit and Planner limit
+hitters; owner 2026-11-12). All are pre/post reads with other launches in the same windows - evidence, not proof. block() never raises.
 """
 import datetime as dt
 import os
@@ -192,6 +193,50 @@ def engagement_line(e):
                         per(e["p_q"], e["p_couples"]), e["p_couples"]))
 
 
+# ---------------------------------------------------------------- 6. Gates -> paid (owner 2026-11-12: "#1 metric")
+# Owner: "check the rate of users hitting gates ... and then seeing the payment rates from that to make sure that's
+# increasing". Xano-only proxies (the cron has no Mixpanel secret; the full weekly view is the Mixpanel board
+# GATES_BOARD). Cohort = new accounts created 8..1 days ago vs 15..8 days ago. Paid = a payment-log row for the
+# account within 1 day of sign-up (71% of 60-day buyers buy by then, so cohorts are comparable after 1 day).
+# Gates visible in Xano: PDF limit = used all free views (total_pdf_views >= 3); Planner limit = any non-ok
+# rec_usage row (paywall/limit hit). The PI / filters gates live only in Mixpanel.
+GATES_BOARD = "https://mixpanel.com/project/3963130/app/boards#id=11645547"
+PDF_FREE_VIEWS = 3
+
+
+def gates(users, usage_rows, payments, now_ms):
+    paid_at = {}
+    for p in payments:
+        try:
+            uid = int(str(p.get("Client_Reference_ID") or "").strip() or 0)
+        except ValueError:
+            continue
+        t = p.get("Time_of_Payment") or 0
+        if uid and t and (uid not in paid_at or t < paid_at[uid]):
+            paid_at[uid] = t
+    limited = {int(r.get("user_id") or 0) for r in usage_rows if r.get("status") not in (None, "", "ok")}
+
+    def cohort(lo, hi):
+        c = [u for u in users if lo <= (u.get("created_at") or 0) < hi and not internal(u.get("id"), u.get("email"))]
+        paid = lambda u: int(u["id"]) in paid_at and paid_at[int(u["id"])] - (u.get("created_at") or 0) <= DAY
+        pdf = [u for u in c if int(u.get("total_pdf_views") or 0) >= PDF_FREE_VIEWS]
+        chat = [u for u in c if int(u["id"]) in limited]
+        return {"n": len(c), "paid": sum(1 for u in c if paid(u)),
+                "pdf": len(pdf), "pdf_paid": sum(1 for u in pdf if paid(u)),
+                "chat": len(chat), "chat_paid": sum(1 for u in chat if paid(u))}
+    return {"a": cohort(now_ms - 8 * DAY, now_ms - DAY), "b": cohort(now_ms - 15 * DAY, now_ms - 8 * DAY)}
+
+
+def gates_line(g):
+    a, b = g["a"], g["b"]
+    return ("• *Gates -> paid* (new members, paid within 1 day) - %s of %d signed up last week vs %s of %d the week "
+            "before · hit the PDF limit: %s of members (%d), %s of them paid vs %s · hit the Planner limit: %d, %d paid "
+            "vs %d, %d paid · PI/filters gates: <%s|Mixpanel board>" % (
+                _pct(a["paid"], a["n"]), a["n"], _pct(b["paid"], b["n"]), b["n"],
+                _pct(a["pdf"], a["n"]), a["pdf"], _pct(a["pdf_paid"], a["pdf"]), _pct(b["pdf_paid"], b["pdf"]),
+                a["chat"], a["chat_paid"], b["chat"], b["chat_paid"], GATES_BOARD))
+
+
 # ---------------------------------------------------------------- 5. Ask Tulle bubble (table 79 'surface', 2026-11-11)
 # The planner-chat component tags every rec-engine call ?surface=planner | bubble:<path>; rec-engine writes it on each
 # usage row. Adoption = couples with a bubble row; 'more messages?' = questions per day (all surfaces) since the first
@@ -356,6 +401,14 @@ def block(token, now_ms=None):
         lines.append(engagement_line(engagement(users, usage, now_ms)))
     except Exception as e:
         lines.append(":warning: _PDF/questions line failed: %s_" % str(e)[:120])
+    try:
+        if users is None or usage is None:
+            raise RuntimeError("inputs unavailable")
+        import bnpl_watch
+        gpays = bnpl_watch.fetch_payments(token, now_ms - 16 * DAY)
+        lines.append(gates_line(gates(users, usage, gpays, now_ms)))
+    except Exception as e:
+        lines.append(":warning: _gates line failed: %s_" % str(e)[:120])
     lines.append("_Pre/post reads with other launches in the same windows - evidence, not proof._")
     try:
         c = calls_lines(now_ms)

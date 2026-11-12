@@ -424,13 +424,18 @@
         {
           "date": "2026-10-26",
           "note": "Day 1 (partial ET day): device-matched 70/84 sign-up page visitors created an account (83%) vs 67-79% per day 10-15..10-25 (funnel). Google share of sign-ups 31% vs ~21% before - the old checkbox also disabled the Google button (the 10-26 '~1-2% lift' estimate missed this). One day, n=84: promising, not a result. Re-read like-for-like (same funnel) after 2 weeks."
+        },
+        {
+          "date": "2026-11-12",
+          "note": "BUG FOUND + FIXED 04:14 UTC: ep7 (Google sign-in) kept the TERMS_REQUIRED check after the checkbox was removed, so NEW users pressing Google on Sign In ('/') were refused and bounced to Sign Up (18 of 93 Google calls failed in the 24h to 11-12 03:38 UTC, all agreed_terms=false; ~half never retried). Sign-up rate since 10-26 is understated for Google; read the 2-week result from 11-12 on, or note the gap."
         }
       ],
       "stat_sig": "",
       "decision": "",
       "confounds_noted": [
         "same publish: sign-in/up layout fix, tour reset, PDF popup copy, cost tools consolidation, 5-star Trustpilot ask",
-        "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
+        "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix",
+        "2026-11-12 ep7 TERMS_REQUIRED removal (Google new-user bounce fixed)"
       ],
       "risks": [],
       "owner": "Vivek",
@@ -1130,7 +1135,7 @@
         "planner",
         "activation"
       ],
-      "goal": "Bar: couples asking a Planner question per day up >= 15% vs the 7 days before launch, with purchases/day and free-couple PDF opens not down. Adoption read: couples using the bubble per day.",
+      "goal": "Bar: couples asking a Planner question per day up >= 15% vs the 7 days before launch, with purchases/day and free-couple PDF opens not down. Adoption read: couples using the bubble per day. | OWNER 2026-11-12: judge on purchases + gate hits (click-through and paying), NOT Planner usage; Planner = value for paid couples.",
       "primary_metric": "table 79 'surface' (added 2026-11-11): couples with bubble:* rows per day; questions/day (all surfaces) since the first bubble row vs the 7 days before; Planner sheet Flag 'via Ask Tulle (<page>)'. Daily in the brief (experiments_brief.bubble_line).",
       "guardrail": "purchases/day; free daily $ pool",
       "start_date": "2026-11-11",
@@ -1146,6 +1151,14 @@
         {
           "date": "2026-11-11",
           "note": "LIVE: owner published ~07:25 UTC (verified in live /data: empty-state banner, dock toggle ids, tour retarget, suppress allowlist Discovery + My wedding). Bubble chat buttons (card/PDF/upgrade/track/profile/heart) wired in the editor after this publish - need component 5ccd08c + another publish; until then those buttons do nothing inside the bubble."
+        },
+        {
+          "date": "2026-11-12",
+          "note": "Day-1 read (table 79, internal excluded): full UTC day 11-11 questions 18 vs 103-106 on 11-09/11-10, chat opens 42 vs 98-101, limit hits 0 vs 32-47; sign-ups flat. Bubble = 4 questions / 4 couples. Mixpanel rec_entry_clicked (Discovery block, 20-43 users/day) -> 0. Purchases 11-11 = 6 (normal 1-7). Owner: hold, decide on purchases."
+        },
+        {
+          "date": "2026-11-12",
+          "note": "Coral restyle pushed: ww-planner-chat b5ab256 (#CC4A36 solid pill desktop; phone dock Ask half coral). Live after owner activates + publishes - restyle changes the treatment mid-test."
         }
       ],
       "stat_sig": "",
@@ -1257,6 +1270,34 @@
         "EXP-2026-11-free-daily-question",
         "EXP-2026-11-save-offer-60-forever"
       ]
+    },
+    {
+      "date": "2026-11-12",
+      "name": "ep7 Google sign-in: leftover TERMS_REQUIRED check removed (new Google users on Sign In were bounced since 10-24)",
+      "affects": [
+        "EXP-2026-10-signup-checkbox",
+        "EXP-2026-11-ask-tulle-bubble",
+        "EXP-2026-11-save-offer-60-forever"
+      ]
+    },
+    {
+      "date": "2026-11-12",
+      "name": "Ask Tulle bubble coral restyle (ww-planner-chat b5ab256; live after activate + publish)",
+      "affects": [
+        "EXP-2026-11-ask-tulle-bubble"
+      ]
+    },
+    {
+      "date": "2026-11-12",
+      "name": "/purchase-complete auto-sends confirmed buyers to the Planner after 2.5s (WeWeb editor; live after publish)",
+      "affects": [
+        "EXP-2026-11-ask-tulle-bubble"
+      ]
+    },
+    {
+      "date": "2026-11-12",
+      "name": "Daily brief: 'Gates -> paid' line (new members paid within 1 day; PDF + Planner limit hitters)",
+      "affects": []
     }
   ]
 }
