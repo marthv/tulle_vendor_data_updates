@@ -1159,6 +1159,10 @@
         {
           "date": "2026-11-12",
           "note": "Coral restyle pushed: ww-planner-chat b5ab256 (#CC4A36 solid pill desktop; phone dock Ask half coral). Live after owner activates + publishes - restyle changes the treatment mid-test."
+        },
+        {
+          "date": "2026-11-12",
+          "note": "Coral restyle REVERTED before activation (owner disliked coral, green and lavender mocks): ww-planner-chat d554ee8 = identical to 6a6194c (white pill, rainbow border). No treatment change."
         }
       ],
       "stat_sig": "",
@@ -1282,7 +1286,7 @@
     },
     {
       "date": "2026-11-12",
-      "name": "Ask Tulle bubble coral restyle (ww-planner-chat b5ab256; live after activate + publish)",
+      "name": "Ask Tulle bubble coral restyle (ww-planner-chat b5ab256; live after activate + publish) - REVERTED same day (d554ee8), never activated",
       "affects": [
         "EXP-2026-11-ask-tulle-bubble"
       ]
