@@ -1077,12 +1077,16 @@
       "start_date": "2026-11-11",
       "end_date": null,
       "review_date": "2026-12-02",
-      "dates_note": "ep313 v3 live 2026-11-11 05:14:44 UTC; WeWeb card copy/countdown edited in editor 11-11, live after owner publish. Rollback: tulletogether/.claude/xano_backups/api313_ep313_save_offer_LIVE_pre_60forever_2026-11-11.xs",
+      "dates_note": "ep313 v3 live 2026-11-11 05:14:44 UTC; WeWeb card copy/countdown edited in editor 11-11, live after owner publish. Rollback: tulletogether/.claude/xano_backups/api313_ep313_save_offer_LIVE_pre_60forever_2026-11-11.xs | v4 two-plan from 2026-11-12 06:40 UTC.",
       "design": "pre/post",
       "results": [
         {
           "date": "2026-11-11",
           "note": "Smoke test: test account 35757 got TT60-UC36AL, 12.0 h, $135 -> $54, Brevo accepted, reuse OK. Internal account refused. Checkout price + email delivery not yet verified."
+        },
+        {
+          "date": "2026-11-12",
+          "note": "06:40:04 UTC ep313 v4 LIVE: the 'too expensive' offer now shows TWO stacked options, prices as anchors - 4 weeks at 20% off ($60->$48; CA/Intl $69->$55.20, code TT20-, coupon tulle_save20_4week, min $59) above Forever at 60% off ($135->$54; $149->$59.60, code TT60-, unchanged). Straight switch, no A/B (owner). Read = pre/post: buyers per offer and Forever share of buyers, v3 period (11-11 05:14 -> 11-12 06:40: 4 offers, 1 Forever buyer) vs v4. WeWeb popup copy (title 'A one-time deal, just for you', fine print, 'Best value' badge, editor sample) in the editor - live after the owner publishes; until then the live popup renders the two plans with the old 60%-title. UNVERIFIED: a real checkout applying a TT20 code to a 4-week link; all four payment links share one Stripe product and have allow_promotion_codes true (checked 06:31 UTC)."
         }
       ],
       "stat_sig": "",
@@ -1302,6 +1306,14 @@
       "date": "2026-11-12",
       "name": "Daily brief: 'Gates -> paid' line (new members paid within 1 day; PDF + Planner limit hitters)",
       "affects": []
+    },
+    {
+      "date": "2026-11-12",
+      "name": "Save offer v4: two-plan 'too expensive' offer (4 weeks 20% + Forever 60%, stacked, prices as anchors) live 06:40 UTC; popup copy change awaits WeWeb publish",
+      "affects": [
+        "EXP-2026-11-save-offer-60-forever",
+        "EXP-2026-11-ask-tulle-bubble"
+      ]
     }
   ]
 }

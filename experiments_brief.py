@@ -10,6 +10,9 @@ Four lines, all from Xano (the cron has no Mixpanel query secret), internal acco
      whose 3-day follow-up ends before the change). Plus yesterday's daily-question use and limit hits.
   2. "What stopped you" save offer (EXP-2026-11-save-offer-60-forever). Since 2026-11-11 05:14 UTC, "too expensive"
      -> 60% off Forever for 12 h + email (ep313 v3, codes TT60-). Offers, buyers, revenue. Old 20% offer: 1 of 33.
+     2026-11-12 06:40 UTC v4: a 4-week 20%-off code (TT20-, column paywall_offer_code_4w) is minted alongside the
+     TT60 Forever code. Counting is unchanged and still correct: holders = TT60- in paywall_offer_code (every v4
+     offer has one), buyers = any payment by that user after the offer, so a 4-week TT20 buyer is counted too.
   3. NPS + Trustpilot (table 77): ratings and average stars, 7 days vs the 7 before, low scores, and the Trustpilot
      prompt (5-star raters: offered / clicked / completed). The TrustBox widget's own clicks happen inside
      Trustpilot's iframe and are NOT recorded here.
