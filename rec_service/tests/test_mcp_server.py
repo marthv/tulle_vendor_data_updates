@@ -31,19 +31,27 @@ PANEL = {"vendor_id": "V1", "headline": "Saturday rental $12,345", "guest_minimu
          "lines": [{"line": "Venue rental", "detail": "Saturday", "amount": 12345, "pct": None, "source": "pdf",
                     "vs_market": "Below market"}],
          "cost_inputs": None, "access_reason": "forever"}
+PHOTOG = {"vendor_id": "P1", "vendor_idx": 9, "name": "OliviaPhotos", "state": "Texas", "category": "Photography",
+          "address": "Austin, TX", "description": "Documentary style. Packages from $2,222.", "price_range": [2222, 4444]}
+TWINS = [{"vendor_id": "A1", "name": "Ashton Gardens North", "state": "Georgia", "category": "Venue",
+          "address": "1 Peach Rd, Atlanta, GA 30301", "venue_fee_range": [7100, 9300]},
+         {"vendor_id": "A2", "name": "Ashton Gardens West", "state": "Ohio", "category": "Venue",
+          "address": "2 Elm St, Columbus, OH 43004", "venue_fee_range": [8200, 9900]}]
 PACK = [{"id": 2, "user_id": 7, "vendor_name": "Kohl Mansion", "total_cost": 12505, "Balance_Paid": 4000,
          "Selected": True, "Category": "Venue", "Notes": "tulle:V1"}]
 STATE_ROWS = [{"State": "Texas", "Cost_of_Average_Wedding": 24063}]
-PRICE_NUMBERS = ("12345", "12,345", "15000", "2222", "4444", "24063", "22764", "24,063", "22,764")
+PRICE_NUMBERS = ("12345", "12,345", "15000", "2222", "2,222", "4444", "24063", "22764", "24,063", "22,764",
+                 "7100", "9300", "8200", "9900")
 
 
 @pytest.fixture
 def env(monkeypatch):
     """An allowlisted FOREVER couple (id 7) by default; st["user"] / the tier lambdas are swapped per test."""
-    st = {"user": dict(USER, forever_access_purchased=True), "logged": [], "priced": [], "writes": []}
+    st = {"user": dict(USER, forever_access_purchased=True), "logged": [], "priced": [], "writes": [], "auth": []}
     submit = appmod._submit_usage
 
     def auth(authorization):
+        st["auth"].append(authorization)
         if authorization != "Bearer good":
             raise HTTPException(401, "sign in required")
         return "tok", st["user"]
@@ -62,8 +70,13 @@ def env(monkeypatch):
     monkeypatch.setattr(xano, "vendor_card", lambda vid: dict(CARDS[vid]) if vid in CARDS else None)
     monkeypatch.setattr(xano, "cached_vendor_card", lambda vid, stats=None: dict(CARDS[vid]) if vid in CARDS else None)
     monkeypatch.setattr(xano, "user_packages", lambda tok, uid: list(PACK))
-    monkeypatch.setattr(xano, "name_search", lambda term, token="", **k: (
-        [dict(CARDS["V1"], google_name="")] if k.get("category", "Venue") == "Venue" and "kohl" in term else []))
+    def name_search(term, token="", **k):
+        cat = k.get("category", "Venue")
+        if cat == "Venue":
+            return ([dict(CARDS["V1"], google_name="")] if "kohl" in term else
+                    [dict(v, google_name="") for v in TWINS] if "ashton" in term else [])
+        return [dict(PHOTOG, google_name="")] if cat == "Photography" and "olivia" in term else []
+    monkeypatch.setattr(xano, "name_search", name_search)
     monkeypatch.setattr(xano, "venue_pricing", venue_pricing)
     monkeypatch.setattr(xano, "state_average_rows", lambda tok: STATE_ROWS)
     monkeypatch.setattr(xano, "guest_modifier", lambda tok, n: {120: 0.86}.get(n))
@@ -73,6 +86,12 @@ def env(monkeypatch):
 
 def _free(st):
     st["user"] = dict(USER, forever_access_purchased=False, date_until_access=None)
+
+
+def _light(st):
+    """An active plan that is not FULL (REC_BETA_AUDIENCE=forever: a 1-week / 4-week buyer)."""
+    st["user"] = dict(USER, forever_access_purchased=False, date_until_access="2099-01-01")
+    assert xano.has_paid_access(st["user"]) and not xano.beta_member(st["user"])
 
 
 def _drain(st):
@@ -122,21 +141,49 @@ def test_flag_off_import_works_even_when_the_sdk_cannot_be_imported():
     assert r.returncode == 0 and "OK" in r.stdout, r.stderr[-2000:]
 
 
-def test_flag_on_mounts_mcp_on_the_real_app():
+STUB = ("import sys, types\n"
+        "sys.modules.setdefault('anthropic', types.ModuleType('anthropic')).beta_tool = lambda f: f\n"
+        "import pricing_warm\n"
+        "starts = []\n"
+        "pricing_warm.start = lambda: starts.append(1)      # the real startup handler, minus its network warm-up\n")
+
+
+def test_flag_on_mounts_mcp_on_the_real_app_and_startup_runs_exactly_once():
     pytest.importorskip("mcp")
-    code = ("import sys, types\n"
-            "sys.modules.setdefault('anthropic', types.ModuleType('anthropic')).beta_tool = lambda f: f\n"
-            "import app, config\n"
-            "assert config.MCP_ENABLED and config.MCP_USER_IDS == frozenset({7, 42})\n"
-            "assert [r.path for r in app.app.routes if getattr(r, 'path', '').startswith('/mcp')] == ['/mcp']\n"
-            "print('OK')")
-    r = _fresh(code, REC_MCP="1", REC_MCP_USER_IDS="7, 42,abc,")
+    code = STUB + (
+        "import app, config\n"
+        "from fastapi.testclient import TestClient\n"
+        "assert config.MCP_ENABLED and config.MCP_USER_IDS == frozenset({7, 42})\n"
+        "assert [r.path for r in app.app.routes if getattr(r, 'path', '').startswith('/mcp')] == ['/mcp']\n"
+        "with TestClient(app.app, base_url='http://tulle.test') as c:\n"
+        "    assert starts == [1], starts\n"
+        "    assert c.get('/health').status_code == 200\n"
+        "    assert c.get('/mcp').status_code == 405\n"
+        "    assert c.post('/mcp', json={}).status_code == 401\n"
+        "assert starts == [1], starts\n"
+        "print('OK')")
+    r = _fresh(code, REC_MCP="1", REC_MCP_USER_IDS="7, 42,abc,", REC_MCP_ALLOWED_HOSTS="tulle.test")
     assert r.returncode == 0 and "OK" in r.stdout, r.stderr[-2000:]
+
+
+def test_flag_on_without_allowed_hosts_does_not_mount_and_says_why():
+    code = STUB + (
+        "import app, config\n"
+        "from fastapi.testclient import TestClient\n"
+        "assert config.MCP_ENABLED and config.MCP_ALLOWED_HOSTS == []\n"
+        "assert not [r for r in app.app.routes if getattr(r, 'path', '').startswith('/mcp')]\n"
+        "assert 'mcp' not in sys.modules\n"
+        "with TestClient(app.app) as c:\n"
+        "    assert c.post('/mcp', json={}).status_code == 404 and starts == [1]\n"
+        "print('OK')")
+    r = _fresh(code, REC_MCP="1", REC_MCP_USER_IDS="7")
+    assert r.returncode == 0 and "OK" in r.stdout, r.stderr[-2000:]
+    assert r.stdout.count("REC_MCP_ALLOWED_HOSTS is empty - /mcp is NOT mounted") == 1
 
 
 # ---------------------------------------------------------------- (b) (c) (f) refusals: an error, no data, no Xano read
 
-@pytest.mark.parametrize("header", [None, "", "Bearer bad", "good"])
+@pytest.mark.parametrize("header", [None, "", "Bearer bad", "good", "bearer good", "Bearer ", "Basic good", 7])
 def test_no_or_invalid_token_is_refused(env, monkeypatch, header):
     monkeypatch.setattr(xano, "profile_of", lambda u: (_ for _ in ()).throw(AssertionError("no data read")))
     for fn in (mcp_server.get_my_wedding, mcp_server.get_my_profile, mcp_server.list_saved_venues,
@@ -154,6 +201,27 @@ def test_auth_is_the_apps_own_check(monkeypatch):
     with pytest.raises(mcp_server.MCPDenied, match="Not signed in"):
         mcp_server.get_my_profile("Bearer abc")
     assert seen == ["abc"]
+
+
+def test_the_literal_bearer_prefix_is_required_on_the_mcp_path_only(env):
+    for header in ("good", "bearer good", "Token good"):
+        with pytest.raises(mcp_server.MCPDenied):
+            mcp_server.get_my_profile(header)
+    assert env["auth"] == []                                  # refused before the sign-in check is even asked
+    assert appmod._auth.__name__ == "auth"                    # (the /rec routes' own check is untouched: no prefix rule)
+
+
+def test_a_failed_sign_in_check_is_generic_and_the_detail_stays_in_the_server_log(env, monkeypatch, capsys):
+    import requests
+    secret = "HTTPSConnectionPool(host='xqtb-2ma7-ijfy.n7e.xano.io', port=443): Read timed out. /api:v1keLQ2a/auth/me"
+    monkeypatch.setattr(appmod, "_auth", lambda a: (_ for _ in ()).throw(requests.exceptions.ReadTimeout(secret)))
+    for name in mcp_server.TOOLS:
+        with pytest.raises(mcp_server.MCPDenied) as e:
+            getattr(mcp_server, name)("Bearer good", *(["Kohl Mansion"] if name == "lookup_venue" else []))
+        assert str(e.value) == "Tulle could not verify the sign-in right now. Try again in a moment."
+        assert e.value.status == 503 and "xano" not in str(e.value).lower()
+    assert "mcp sign-in check failed" in capsys.readouterr().out      # server side only
+    assert env["logged"] == [] and env["priced"] == []
 
 
 @pytest.mark.parametrize("allow", [frozenset(), frozenset({8, 70})])
@@ -288,56 +356,178 @@ def test_free_stays_price_free_even_in_the_open_planner_light_mode(env, monkeypa
     _assert_no_prices(mcp_server.list_saved_venues("Bearer good"))
 
 
-def test_a_plan_that_is_not_full_gets_the_chats_light_card(env, monkeypatch):
-    env["user"] = dict(USER, forever_access_purchased=False, date_until_access="2099-01-01")
+def test_a_plan_that_is_not_full_gets_no_figures_from_tulles_pricing_data(env, monkeypatch):
+    """Only FULL gets figures. A 1-week / 4-week plan used to get agent._light_card, which left price_range and the
+    description's "$" sentences in (and the wedding screen's "about $X" hints)."""
+    _light(env)
     monkeypatch.setattr(config, "LIGHT_PRICE_BANDS", True)
+    s = mcp_server.list_saved_venues("Bearer good")
+    assert [c["name"] for c in s["venues"]] == ["Kohl Mansion", "OliviaPhotos"] and s["price_locked"] is True
+    assert all(not {"price_range", "venue_fee_range", "price_band"} & set(c) and c["price_locked"] for c in s["venues"])
+    assert s["venues"][0]["description"] == "A historic estate with gardens."
+    _assert_no_prices(s)
     lk = mcp_server.lookup_venue("Bearer good", "Kohl Mansion")
+    assert lk["plan"] == "light" and lk["price_locked"] is True and not {"pricing", "verdict"} & set(lk)
+    assert not {"venue_fee_range", "price_band", "estimate_label"} & set(lk["matches"][0])
+    assert env["priced"] == [("V1", False)]
+    _assert_no_prices(lk)
+    _assert_no_prices(mcp_server.lookup_venue("Bearer good", "OliviaPhotos"))
+    _assert_no_prices(mcp_server.lookup_venue("Bearer good", "Ashton Gardens"))
+    e = mcp_server.estimate_cost("Bearer good")
+    assert e["price_locked"] is True and "estimate" not in e
+    _assert_no_prices(e)
+
+
+def test_wedding_screen_keeps_the_couples_own_numbers_and_drops_tulles_price_hints(env):
+    _light(env)
+    assert appmod._wedding_view("tok", env["user"])["categories"][0]["saved"][0]["price"] == 12345   # what the app shows
+    w = mcp_server.get_my_wedding("Bearer good")
+    assert w["show_prices"] is False and all(v["price"] is None for c in w["categories"] for v in c["saved"])
+    venue = next(c for c in w["categories"] if c["key"] == "Venue")
+    assert w["budget"] == 60000 and venue["booked"]["price"] == 12505 and venue["booked"]["paid"] == 4000   # theirs
+    assert "12345" not in json.dumps(w)
+
+
+# ---------------------------------------------------------------- lookups that are not one venue
+
+def test_lookup_of_a_non_venue_vendor(env):
+    lk = mcp_server.lookup_venue("Bearer good", "OliviaPhotos")
+    assert lk["status"] == "found" and "pricing" not in lk and env["priced"] == []     # a listing: no venue panel
     card = lk["matches"][0]
-    assert lk["plan"] == "light" and "pricing" not in lk and "venue_fee_range" not in card
-    assert card["price_band"]["low"] == 10000 and "verdict" not in lk       # the verdict quotes a figure: left out
-    assert "12345" not in json.dumps(lk) and env["priced"] == [("V1", False)]
+    assert (card["vendor_id"], card["category"]) == ("P1", "Photography") and "image" not in card
+    _free(env)
+    locked = mcp_server.lookup_venue("Bearer good", "OliviaPhotos")
+    assert locked["matches"][0]["name"] == "OliviaPhotos" and locked["matches"][0]["description"] == "Documentary style."
+    _assert_no_prices(locked)
+
+
+def test_lookup_with_several_matches_returns_them_all(env):
+    lk = mcp_server.lookup_venue("Bearer good", "Ashton Gardens")
+    assert lk["status"] == "choices" and "pricing" not in lk
+    assert sorted(c["vendor_id"] for c in lk["matches"]) == ["A1", "A2"]
+    assert lk["matches"][0]["venue_fee_range"][0] and sorted(env["priced"]) == [("A1", True), ("A2", True)]
+    one = mcp_server.lookup_venue("Bearer good", "Ashton Gardens", "Ohio")              # the location picks one
+    assert one["status"] == "found" and [c["vendor_id"] for c in one["matches"]] == ["A2"]
+    _free(env)
+    env["priced"].clear()
+    locked = mcp_server.lookup_venue("Bearer good", "Ashton Gardens")
+    assert sorted(c["name"] for c in locked["matches"]) == ["Ashton Gardens North", "Ashton Gardens West"]
+    assert env["priced"] == []                                   # several matches, not full: nothing is priced
+    _assert_no_prices(locked)
 
 
 # ---------------------------------------------------------------- end to end through the mounted ASGI app
 
 HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+INIT = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}}}
+LIST = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
 
 
-def _rpc(client, method, params=None, token=None, rid=1):
+@pytest.fixture
+def client(env, monkeypatch):
+    """A fresh FastAPI host with /mcp mounted (the real app's startup would start the pricing warmer)."""
+    pytest.importorskip("mcp")
+    monkeypatch.setattr(config, "MCP_ALLOWED_HOSTS", ["testserver"])
+    host = FastAPI()
+
+    @host.get("/health")
+    def health():
+        return {"ok": True}
+    assert mcp_server.mount(host) is not None
+    with TestClient(host) as c:                                  # the context manager runs the lifespan
+        yield c
+
+
+def _rpc(client, method, params=None, token="good", rid=1):
     h = dict(HEADERS, **({"Authorization": "Bearer " + token} if token else {}))
     r = client.post("/mcp", json={"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}}, headers=h)
     assert r.status_code == 200, r.text
     return r.json()
 
 
-def test_end_to_end_over_streamable_http(env):
-    pytest.importorskip("mcp")
-    host = FastAPI()
+def test_end_to_end_over_streamable_http(env, client):
+    assert client.get("/health").json() == {"ok": True}          # the host's own routes still answer
+    assert _rpc(client, "initialize", INIT["params"])["result"]["serverInfo"]["name"] == "tulle"
+    tools = _rpc(client, "tools/list")["result"]["tools"]
+    assert sorted(t["name"] for t in tools) == sorted(mcp_server.TOOLS)
+    assert all(t["annotations"]["readOnlyHint"] is True for t in tools)
+    lookup_schema = next(t for t in tools if t["name"] == "lookup_venue")["inputSchema"]
+    assert lookup_schema["required"] == ["name"] and "ctx" not in lookup_schema["properties"]
 
-    @host.get("/health")
-    def health():
-        return {"ok": True}
-    mcp_server.mount(host)
-    with TestClient(host) as c:                                  # the context manager runs the lifespan
-        assert c.get("/health").json() == {"ok": True}           # the host's own routes still answer
-        init = _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
-                                      "clientInfo": {"name": "test", "version": "0"}})
-        assert init["result"]["serverInfo"]["name"] == "tulle"
-        tools = _rpc(c, "tools/list")["result"]["tools"]
-        assert sorted(t["name"] for t in tools) == sorted(mcp_server.TOOLS)
-        assert all(t["annotations"]["readOnlyHint"] is True for t in tools)
-        lookup_schema = next(t for t in tools if t["name"] == "lookup_venue")["inputSchema"]
-        assert lookup_schema["required"] == ["name"] and "ctx" not in lookup_schema["properties"]
+    env["auth"].clear()
+    ok = _rpc(client, "tools/call", {"name": "lookup_venue", "arguments": {"name": "Kohl Mansion"}})
+    assert not ok["result"].get("isError")
+    assert ok["result"]["structuredContent"]["matches"][0]["vendor_id"] == "V1"
+    assert ok["result"]["structuredContent"]["pricing"]["lines"][0]["amount"] == 12345
+    assert env["auth"] == ["Bearer good"]                        # auth/me is read ONCE per request (gate -> tool)
 
-        ok = _rpc(c, "tools/call", {"name": "lookup_venue", "arguments": {"name": "Kohl Mansion"}}, token="good")
-        assert not ok["result"].get("isError")
-        assert ok["result"]["structuredContent"]["matches"][0]["vendor_id"] == "V1"
-        assert ok["result"]["structuredContent"]["pricing"]["lines"][0]["amount"] == 12345
-
-        for token in (None, "bad"):                              # the header of THIS request decides
-            denied = _rpc(c, "tools/call", {"name": "get_my_profile", "arguments": {}}, token=token)
-            assert denied["result"]["isError"] is True and "structuredContent" not in denied["result"]
-            text = json.dumps(denied["result"])
-            assert "Not signed in" in text and "Ana" not in text
+    bad = _rpc(client, "tools/call", {"name": "lookup_venue", "arguments": {"name": "a"}})     # a tool's own refusal
+    assert bad["result"]["isError"] is True and "at least 3 letters" in json.dumps(bad["result"])
     _drain(env)
-    assert [r["kind"] for r in env["logged"]] == ["mcp_lookup_venue"]
+    assert [(r["kind"], r["status"]) for r in env["logged"]] == [("mcp_lookup_venue", "ok"), ("mcp_lookup_venue", "error")]
+
+
+@pytest.mark.parametrize("method", ["get", "delete", "put", "patch"])
+@pytest.mark.parametrize("token", [None, "good"])
+def test_only_post_reaches_the_sdk_so_no_stream_is_ever_opened(env, client, method, token):
+    """GET with Accept: text/event-stream used to be answered by the SDK with an open-ended event stream, token or not.
+    (If it still did, this request would never return.)"""
+    h = {"Accept": "text/event-stream", **({"Authorization": "Bearer " + token} if token else {})}
+    r = getattr(client, method)("/mcp", headers=h)
+    assert r.status_code == 405 and r.headers["allow"] == "POST"
+    assert r.headers["content-type"] == "application/json" and "POST only" in r.json()["error"]
+    assert env["auth"] == []                                     # refused before anything else is looked at
+
+
+@pytest.mark.parametrize("body", [INIT, LIST, {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                                               "params": {"name": "get_my_profile", "arguments": {}}}])
+@pytest.mark.parametrize("auth", [None, "Bearer bad", "good", "bearer good"])
+def test_every_mcp_request_needs_a_valid_token_before_the_sdk_sees_it(env, client, body, auth):
+    r = client.post("/mcp", json=body, headers=dict(HEADERS, **({"Authorization": auth} if auth else {})))
+    assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
+    assert "Not signed in" in r.json()["error"] and "tools" not in r.text and "Ana" not in r.text
+    assert env["logged"] == []
+
+
+def test_gate_allowlist_kill_switch_and_sign_in_failure(env, client, monkeypatch):
+    post = lambda: client.post("/mcp", json=LIST, headers=dict(HEADERS, Authorization="Bearer good"))   # noqa: E731
+    assert post().status_code == 200
+    monkeypatch.setattr(config, "MCP_USER_IDS", frozenset({8}))
+    r = post()
+    assert r.status_code == 403 and "not enabled for this account" in r.json()["error"] and "tools" not in r.text
+    monkeypatch.setattr(config, "MCP_USER_IDS", frozenset({7}))
+    monkeypatch.setattr(config, "KILL_SWITCH", True)
+    assert post().status_code == 503
+    monkeypatch.setattr(config, "KILL_SWITCH", False)
+    monkeypatch.setattr(appmod, "_auth", lambda a: (_ for _ in ()).throw(OSError("https://xqtb.xano.io/auth/me timed out")))
+    r = post()
+    assert r.status_code == 503 and "xano" not in r.text.lower() and "could not verify" in r.json()["error"]
+
+
+def test_host_allowlist(env, client):
+    post = lambda host: client.post("/mcp", json=LIST, headers=dict(HEADERS, Authorization="Bearer good", Host=host))   # noqa: E731
+    assert post("testserver").status_code == 200 and post("testserver:8443").status_code == 200
+    env["auth"].clear()
+    for host in ("evil.example", "testserver.evil.example", "eviltestserver", "localhost", "127.0.0.1:8000"):
+        r = post(host)
+        assert r.status_code == 421 and "tools" not in r.text, host
+    assert env["auth"] == []                                     # a wrong host is refused before the token is read
+
+
+def test_mount_without_allowed_hosts_adds_nothing(env, monkeypatch, capsys):
+    monkeypatch.setattr(config, "MCP_ALLOWED_HOSTS", [])
+    host = FastAPI()
+    before = host.router.lifespan_context
+    assert mcp_server.mount(host) is None
+    assert not [r for r in host.routes if getattr(r, "path", "") == "/mcp"] and host.router.lifespan_context is before
+    assert capsys.readouterr().out.count("REC_MCP_ALLOWED_HOSTS is empty - /mcp is NOT mounted") == 1
+    assert TestClient(host).post("/mcp", json=LIST).status_code == 404
+
+
+@pytest.mark.parametrize("origin", ["https://editor.weweb.io", "https://tulletogether.app", "http://testserver", "null"])
+def test_any_request_with_an_origin_header_is_refused(env, client, origin):
+    """Browser pages (the app's CORS allows *.weweb.io and the live site) may not call /mcp, token or not."""
+    r = client.post("/mcp", json=LIST, headers=dict(HEADERS, Authorization="Bearer good", Origin=origin))
+    assert r.status_code == 403 and "web pages" in r.json()["error"] and "tools" not in r.text
+    assert env["auth"] == []

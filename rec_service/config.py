@@ -117,10 +117,9 @@ RAILWAY_SEARCH_FORCE_IDS = {x.strip() for x in os.environ.get("REC_RAILWAY_SEARC
 # "1" = off. One env var flip on Railway, no deploy.
 KILL_SWITCH = os.environ.get("REC_KILL_SWITCH", "0") == "1"
 # Read-only MCP server at /mcp (mcp_server.py, 2026-11-15): a PRIVATE PROTOTYPE, off by default - with "0" the route is
-# not mounted and the `mcp` package is never imported. REC_MCP_USER_IDS = the only user ids that may call its tools
-# (comma-separated ints; empty = nobody). REC_MCP_ALLOWED_HOSTS = Host headers the MCP transport answers to
-# (comma-separated, e.g. the Railway domain); empty = no Host check (the proxy routes by Host and every tool call needs
-# a valid user token, so there is no ambient credential for a DNS-rebinding page to ride on).
+# not mounted and the `mcp` package is never imported. REC_MCP_USER_IDS = the only user ids that may use it
+# (comma-separated ints; empty = nobody). REC_MCP_ALLOWED_HOSTS = the Host headers /mcp answers to (comma-separated,
+# e.g. the Railway domain) - REQUIRED: with REC_MCP=1 and no hosts, /mcp is not mounted and the log says why.
 MCP_ENABLED = os.environ.get("REC_MCP", "0").strip() == "1"
 
 
