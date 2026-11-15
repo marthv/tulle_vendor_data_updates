@@ -1178,6 +1178,158 @@
       "risks": [],
       "owner": "Vivek",
       "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-pricing-page-copy",
+      "name": "Pricing page copy: headline 'See what wedding vendors really charge.', outcome subtitles per plan, plain feature lines ('AI wedding planner', 'Unlimited real pricing PDFs', 'No Pricing Intelligence', 'No advanced filters')",
+      "status": "live",
+      "themes": [
+        "pricing",
+        "conversion"
+      ],
+      "goal": "Owner goal: increase conversion on the pricing page. Read: share of pricing-page visitors who buy, and plan mix (1 Week vs 4 Weeks vs Forever), 14 days after vs 14 days before. No size of lift was predicted.",
+      "primary_metric": "Mixpanel pricing_page_viewed (distinct users) -> purchases in the payment log (table 16), by plan; 2026-11-15..11-28 vs 2026-11-01..11-14",
+      "guardrail": "purchases/day and revenue/day not down",
+      "start_date": "2026-11-15",
+      "end_date": null,
+      "review_date": "2026-11-29",
+      "dates_note": "Owner edited and published 2026-11-15 ~04:40 UTC (evening of 11-14 ET). Old lines backed up in tulletogether/.claude/xano_backups/weweb_pricing_cards_pre_copy_2026-11-14.json. Plan contents unchanged.",
+      "design": "pre/post",
+      "results": [
+        {
+          "date": "2026-11-15",
+          "note": "LIVE, verified in the live page data (cacheVersion 1397): new headline, 1 Week + 4 Weeks subtitles, Forever subtitle 'Tools for your whole planning journey, from first tour to final payment.', 13 feature lines. Baseline not pulled yet."
+        }
+      ],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [
+        "Went live in the same WeWeb publish (2026-11-15 ~04:40 UTC) as: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone, stage starters on the home card",
+        "Not a split test; two-plan save offer (11-12) and Ask Tulle bubble (11-11) are still inside the 'before' window"
+      ],
+      "risks": [],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-planner-pdf-count-link",
+      "name": "Planner venue cards: centered 'N Pricing PDFs' link under the button",
+      "status": "live",
+      "themes": [
+        "planner",
+        "pdf-opens"
+      ],
+      "goal": "More free couples open a pricing PDF from a Planner card (PDF opens = money metric). No size of lift was predicted.",
+      "primary_metric": "Mixpanel rec_card_clicked target='all_pdfs' and rec_pdf_opened per couple shown a card; free couples separately",
+      "guardrail": "rec_card_clicked target='pdf' (main button) not down",
+      "start_date": "2026-11-15",
+      "end_date": null,
+      "review_date": "2026-11-29",
+      "dates_note": "Server rec-engine 53d9a72 (/rec/pdf-counts) live earlier; component marthv/ww-planner-chat 23d878c live with the 2026-11-15 ~04:40 UTC publish.",
+      "design": "pre/post",
+      "results": [
+        {
+          "date": "2026-11-15",
+          "note": "LIVE, verified: 'tpc-vall' link code present in the live site script."
+        }
+      ],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [
+        "Went live in the same WeWeb publish (2026-11-15 ~04:40 UTC) as: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone, stage starters on the home card"
+      ],
+      "risks": [],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-free-question-limit-note",
+      "name": "Planner: clear 'free question used' note for free couples (pay for more, or come back tomorrow for one more)",
+      "status": "live",
+      "themes": [
+        "planner",
+        "free",
+        "conversion"
+      ],
+      "goal": "Free couples who use their daily question understand the two choices; read upgrade clicks and next-day returns after the note. No size of lift was predicted.",
+      "primary_metric": "Mixpanel rec_free_limit_note_shown -> upgrade click or purchase within 1 day; rec_free_limit_tomorrow clicks; next-day return of couples shown the note",
+      "guardrail": "free daily question 3-day return (EXP-2026-11-free-daily-question) not down",
+      "start_date": "2026-11-15",
+      "end_date": null,
+      "review_date": "2026-11-29",
+      "dates_note": "Component marthv/ww-planner-chat 23d878c live with the 2026-11-15 ~04:40 UTC publish.",
+      "design": "pre/post",
+      "results": [
+        {
+          "date": "2026-11-15",
+          "note": "LIVE, verified: rec_free_limit_note_shown code present in the live site script."
+        }
+      ],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [
+        "Went live in the same WeWeb publish (2026-11-15 ~04:40 UTC) as: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone, stage starters on the home card",
+        "Overlaps EXP-2026-11-free-daily-question (same couples, same moment)"
+      ],
+      "risks": [],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-quote-check-everyone",
+      "name": "Planner quote check open to every signed-in couple (was Forever only); 'Got a quote?' home card, one-tap check, 'Save this quote to My wedding'",
+      "status": "live",
+      "themes": [
+        "planner",
+        "activation",
+        "my-wedding"
+      ],
+      "goal": "Adoption (owner: open to everyone now, may move to Forever only later). Read: couples who upload a quote per week, and how many save it to My wedding. Free couples' quote questions spend their daily free question.",
+      "primary_metric": "Mixpanel rec_home_quote_clicked, rec_attach_read (auto true/false), rec_quote_save_clicked, rec_quote_saved; distinct couples per week, free vs paid",
+      "guardrail": "free daily $ pool (quote reads cost more than a text question); purchases/day",
+      "start_date": "2026-11-15",
+      "end_date": null,
+      "review_date": "2026-11-29",
+      "dates_note": "Server rec-engine cfc56b3 (REC_QUOTE_AUDIENCE default 'all'; set 'forever' to restore) live; component 23d878c live with the 2026-11-15 ~04:40 UTC publish.",
+      "design": "pre/post",
+      "results": [
+        {
+          "date": "2026-11-15",
+          "note": "LIVE, verified: /rec/status returns attach_open true (checked with a paid test account only); 'Got a quote' + 'Save this quote to My wedding' code present in the live site script. NOT yet verified end to end for a free couple."
+        }
+      ],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [
+        "Went live in the same WeWeb publish (2026-11-15 ~04:40 UTC) as: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone, stage starters on the home card"
+      ],
+      "risks": [],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-planner-context-first",
+      "name": "Planner context-first 50/50 test: starter chips + preference questions first, 'Does X fit our N guests?' chip after venue lookups",
+      "status": "planned",
+      "themes": [
+        "planner",
+        "activation"
+      ],
+      "goal": "Context arm couples ask a 2nd question and open a PDF more often than control. No size of lift was predicted.",
+      "primary_metric": "Mixpanel events carry ctxArm ('context' = even user id, 'control' = odd): 2nd-question rate, rec_pdf_opened per couple, purchases",
+      "guardrail": "purchases/day; thumbs-down rate",
+      "start_date": null,
+      "end_date": null,
+      "review_date": null,
+      "dates_note": "Built: server 53d9a72 + component 23d878c (both live). The test is OFF until the owner switches 'Context-first test (50/50)' ON on the Ask Tulle bar and the Planner page and publishes - set start_date and review_date = start + 14 days then.",
+      "design": "pre/post",
+      "results": [],
+      "stat_sig": "",
+      "decision": "",
+      "confounds_noted": [],
+      "risks": [],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
     }
   ],
   "changes": [
@@ -1313,6 +1465,16 @@
       "affects": [
         "EXP-2026-11-save-offer-60-forever",
         "EXP-2026-11-ask-tulle-bubble"
+      ]
+    },
+    {
+      "date": "2026-11-15",
+      "name": "WeWeb publish ~04:40 UTC: pricing page copy + Planner component 23d878c (PDF-count link, free-question note, quote check for everyone, stage starters) + editor cleanup (18 hidden elements, 20 unused library components removed)",
+      "affects": [
+        "EXP-2026-11-ask-tulle-bubble",
+        "EXP-2026-11-free-daily-question",
+        "EXP-2026-11-save-offer-60-forever",
+        "EXP-2026-11-planner-my-wedding-plan"
       ]
     }
   ]
