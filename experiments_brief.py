@@ -58,13 +58,18 @@ def _pct(a, b):
 
 
 # ---------------------------------------------------------------- 1. free daily question (table 79)
+def _mcp(r):
+    """An MCP tool call (kind "mcp_<tool>", rec_service/mcp_server.py, 2026-11-15): not Planner usage, never counted."""
+    return str(r.get("kind") or "").startswith("mcp_")
+
+
 def free_daily(rows, now_ms):
     """rows = table-79 rows from SCAN_FROM_DAY to today (any order). Returns a dict of counts."""
     by_user = {}
     free = set()
     for r in rows:
         uid = int(r.get("user_id") or 0)
-        if not uid or uid in INTERNAL_IDS:
+        if not uid or uid in INTERNAL_IDS or _mcp(r):
             continue
         day = r.get("usage_day") or _day(r.get("created_at") or 0)
         if r.get("counted_as_free") or r.get("status") == "blocked_free_limit":
@@ -177,7 +182,7 @@ def engagement(users, usage_rows, now_ms):
 
     def qs(lo, hi):
         rr = [r for r in usage_rows if lo <= (r.get("created_at") or 0) < hi and int(r.get("user_id") or 0) not in INTERNAL_IDS
-              and r.get("status") == "ok"]
+              and r.get("status") == "ok" and not _mcp(r)]
         couples = {int(r["user_id"]) for r in rr}
         q = sum(1 for r in rr if r.get("kind") == "refine")
         return len(couples), q

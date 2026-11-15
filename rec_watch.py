@@ -38,11 +38,17 @@ def _rows_for_day(token, day):
     return rows
 
 
+def _not_mcp(rows):
+    """Usage rows minus MCP tool calls (kind "mcp_<tool>", rec_service/mcp_server.py, 2026-11-15): a private prototype
+    whose calls are not Planner usage - they must not count as users, latency, errors or return visits."""
+    return [r for r in rows if not str(r.get("kind") or "").startswith("mcp_")]
+
+
 def build(token, now=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     since_ms = (now - dt.timedelta(hours=24)).timestamp() * 1000
     days = {(now - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in (0, 1)}
-    rows = [r for d in days for r in _rows_for_day(token, d) if (r.get("created_at") or 0) >= since_ms]
+    rows = _not_mcp(r for d in days for r in _rows_for_day(token, d) if (r.get("created_at") or 0) >= since_ms)
     head = "*Recommendation engine* (last 24h)"
     if not rows:
         return head + " - no usage yet."
@@ -322,7 +328,7 @@ def weekly_planner(token, now=None):
     try:
         days = [(now - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(0, 14)]
         rows = [r for d in days for r in _rows_for_day(token, d)]
-        rows = [r for r in rows if int(r.get("user_id") or 0) not in INTERNAL_USER_IDS]
+        rows = _not_mcp(r for r in rows if int(r.get("user_id") or 0) not in INTERNAL_USER_IDS)
         week = [r for r in rows if (r.get("created_at") or 0) >= since_ms]
         prev = [r for r in rows if prev_ms <= (r.get("created_at") or 0) < since_ms]
         ok = [r for r in week if r.get("status") == "ok"]
