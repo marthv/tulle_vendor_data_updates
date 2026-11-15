@@ -116,6 +116,26 @@ except ValueError:
 RAILWAY_SEARCH_FORCE_IDS = {x.strip() for x in os.environ.get("REC_RAILWAY_SEARCH_FORCE_USER_IDS", "").split(",") if x.strip()}
 # "1" = off. One env var flip on Railway, no deploy.
 KILL_SWITCH = os.environ.get("REC_KILL_SWITCH", "0") == "1"
+# Read-only MCP server at /mcp (mcp_server.py, 2026-11-15): a PRIVATE PROTOTYPE, off by default - with "0" the route is
+# not mounted and the `mcp` package is never imported. REC_MCP_USER_IDS = the only user ids that may call its tools
+# (comma-separated ints; empty = nobody). REC_MCP_ALLOWED_HOSTS = Host headers the MCP transport answers to
+# (comma-separated, e.g. the Railway domain); empty = no Host check (the proxy routes by Host and every tool call needs
+# a valid user token, so there is no ambient credential for a DNS-rebinding page to ride on).
+MCP_ENABLED = os.environ.get("REC_MCP", "0").strip() == "1"
+
+
+def _int_set(raw):
+    out = set()
+    for x in str(raw or "").split(","):
+        try:
+            out.add(int(x.strip()))
+        except ValueError:
+            pass
+    return frozenset(out)
+
+
+MCP_USER_IDS = _int_set(os.environ.get("REC_MCP_USER_IDS", ""))
+MCP_ALLOWED_HOSTS = [h.strip() for h in os.environ.get("REC_MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
 # Streamed answer text (owner 2026-10-31, Claude-style Planner chat): the final model turn is streamed and the answer
 # text written so far is published on GET /rec/progress/{request_id} as `text`, so the page shows it while the model is
 # still writing. Never for a couple with no plan (free mode redacts prices only on the finished answer). "0" = off: the

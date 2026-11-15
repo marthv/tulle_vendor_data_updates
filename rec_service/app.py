@@ -2396,3 +2396,10 @@ def health():
             # Pricing cache + warmer (2026-11-02): entries now held, and the last warm-up's counts.
             "pricing_cache": {"entries": len(xano.PRICING_CACHE), "ttl_s": config.PRICING_CACHE_S,
                               "warm": dict(pricing_warm.last)}}
+
+
+# Read-only MCP prototype (mcp_server.py, 2026-11-15). OFF unless REC_MCP=1: with the flag off nothing here runs, the
+# /mcp route does not exist and the `mcp` package is not imported (it need not even be installed).
+if config.MCP_ENABLED:
+    import mcp_server
+    mcp_server.mount(app)

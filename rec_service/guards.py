@@ -33,7 +33,9 @@ def _prompts(rows):
     make no model call and never count toward any allowance (owner decision). Prewarm rows (kind "prewarm",
     2026-11-02) are openings generated before the couple asked: never counted either - the opening they are later
     served from it writes its own "opening" row, counted exactly like a normal opening."""
-    return [r for r in _ok(rows) if not str(r.get("kind") or "").startswith("tool_") and r.get("kind") != "prewarm"]
+    # MCP tool calls (kind "mcp_<tool>", mcp_server.py, 2026-11-15) are the same: no model call, never counted.
+    return [r for r in _ok(rows) if not str(r.get("kind") or "").startswith(("tool_", "mcp_"))
+            and r.get("kind") != "prewarm"]
 
 
 # Owner 2026-11-07: a venue lookup that only CLARIFIED - "which one did you mean?" or "we don't have <name>" - costs
