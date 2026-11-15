@@ -85,8 +85,8 @@ CONSENT_PATHS = ("/oauth/request", "/oauth/approve")
 # What the consent page lists (it is what the five tools return - keep in step with mcp_server.TOOLS).
 SHARES = ["Your wedding profile: location, guest count, date, budget and style",
           "Your wedding plan and budget as you entered them: what you booked or are considering, costs you typed in, notes",
-          "The vendors you saved on Tulle (name, place and type)",
-          "Vendors you ask about by name (name, place and type)"]
+          "The vendors you saved on Tulle (name, state and type)",
+          "Vendors you ask about by name (name, state and type)"]
 NOT_SHARED = "Vendor prices and pricing documents are never shared."
 RATE = {"authorize": (30, 60.0), "approve": (30, 60.0), "token": (120, 60.0)}     # (requests, per seconds)
 

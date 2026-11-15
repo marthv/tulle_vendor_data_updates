@@ -25,12 +25,23 @@ T = "2026-11-15"
 USER = {"id": 7, "first_name": "Ana", "Wedding_Location_Updated": ["Texas"], "Wedding_Guest_Count": 120,
         "Wedding_Budget": 60000, "favorited_vendors": ["V101", "V202", "V303"], "email": "ana@example.com"}
 PACK = [{"id": 1, "user_id": 7, "vendor_name": "Example 1: Venue", "total_cost": 30000, "Selected": True, "Category": "Venue"},
+        # booked from a Tulle card, but the couple typed their own agreed price (not the pre-filled 12345)
         {"id": 2, "user_id": 7, "vendor_name": "Kohl Mansion", "total_cost": 12505, "Balance_Paid": 4000,
-         "Selected": True, "Category": "Venue", "Notes": "tulle:V101", "Contact_Information": "ask for Dana",
+         "Selected": True, "Category": "Venue", "vendor_id": "V101", "Notes": "LEAK note on a Tulle-linked row",
+         "Contact_Information": "LEAK contact", "Package_Name": "LEAK Saturday package · tulle:V101",
          "Files": {"name": "contract.pdf", "url": "https://files.example/vault/SECRETFILE/contract.pdf"}},
+        # a cost the couple added themselves ("+ Add a cost")
         {"id": 3, "user_id": 7, "vendor_name": "Catering Co", "total_cost": 9000, "Selected": True,
-         "Category": "Food and Beverage", "Notes": "deposit due in May"},
-        {"id": 4, "user_id": 7, "vendor_name": "Old DJ", "total_cost": 900, "Selected": False, "Category": "Entertainment"}]
+         "Category": "Food and Beverage", "Notes": "deposit due in May", "Contact_Information": "ask for Dana",
+         "Package_Name": "Booked in My wedding · tulle:manual"},
+        {"id": 4, "user_id": 7, "vendor_name": "Old DJ", "total_cost": 900, "Selected": False, "Category": "Entertainment",
+         "Package_Name": "Gold package"},
+        # Mark booked with the PRE-FILLED "Agreed price": the stored amount is Tulle's hint for V202 (2222)
+        {"id": 5, "user_id": 7, "vendor_name": "OliviaPhotos", "total_cost": 2222, "Balance_Paid": 500,
+         "Selected": True, "Category": "Photography", "Package_Name": "Booked in My wedding · tulle:V202"},
+        # still considering, linked through the v1 Notes marker, amount = Tulle's hint for V101 (12345)
+        {"id": 6, "user_id": 7, "vendor_name": "Kohl Mansion", "total_cost": 12345, "Selected": False,
+         "Category": "Venue", "Notes": "tulle:V101"}]
 
 
 def tulle_row(vid, name, category="Venue", state="Texas", city="Austin", **extra):
@@ -52,18 +63,25 @@ def tulle_row(vid, name, category="Venue", state="Texas", city="Austin", **extra
         "florist_pricing": {"typical_total": 7373}, "reason": "LEAK reason"}, **extra)
 
 
-CARDS = {"V101": tulle_row("V101", "Kohl Mansion"),
-         "V202": tulle_row("V202", "OliviaPhotos", category="Photography"),
+CARDS = {"V101": tulle_row("V101", "Kohl Mansion", price_range=None),      # app's price hint: 12345 (rental low end)
+         "V202": tulle_row("V202", "OliviaPhotos", category="Photography"),  # app's price hint: 2222 (package low end)
          "V303": tulle_row("V303", "Bloomery", category="Beauty", city="Dallas")}
 TWINS = [tulle_row("V40%d" % i, "Ashton Gardens %s" % n, state=st, city=c)
          for i, (n, st, c) in enumerate([("North", "Georgia", "Atlanta"), ("West", "Ohio", "Columbus"),
                                          ("East", "Ohio", "Dayton"), ("South", "Utah", "Provo")], 1)]
+# Names a generic word would browse to if find_vendor were a search (V3).
+BROWSE = [tulle_row("V50%d" % i, n, state=st, city=c)
+          for i, (n, st, c) in enumerate([("Brooklyn Winery", "New York", "Brooklyn"), ("The Brooklyn Barn", "New York", "Brooklyn"),
+                                          ("Hotel Emma", "Texas", "Dallas"), ("The Barn at Forest Hill", "Texas", "Waco"),
+                                          ("Garden Hotel", "Texas", "Dallas")], 1)]
 FORBIDDEN_NUMBERS = ("12345", "12,345", "15678", "2222", "2,222", "4444", "31313", "5151", "5,151", "6161", "41414",
                      "41,414", "7373", "987651", "287", "233", "311", "4321", "78701", "555-0199", "30.26", "97.74")
 CARD_KEYS = {"name", "city", "state", "category", "venue_type", "tulle_url"}   # the public card: nothing else, ever
 PAGE = re.compile(r"https://www\.tulletogether\.app/vendors/V\d{1,9}")           # the one place an id may show
 CARD_PLACES = {"matches": CARD_KEYS, "vendors": CARD_KEYS, "saved": CARD_KEYS, "saved_other": CARD_KEYS,
-               "candidates": {"name", "city", "state"}, "also": {"name", "city", "state"}}
+               "candidates": {"name", "state"}, "also": {"name", "state"}}
+ROW_KEYS = {"name", "category", "price", "paid", "amount_hidden", "notes", "contact", "package", "file"}   # a plan row
+ROW_PLACES = ("quotes", "extras", "considering")
 PRICING_FUNCTIONS = ("venue_pricing", "cached_venue_pricing", "market_benchmarks", "cached_market_benchmarks",
                      "pe_benchmarks", "florist_pricing", "venue_details", "pdf_rows", "state_average_rows",
                      "guest_modifier", "budget_categories", "venue_quotes", "search_venues", "search_pe",
@@ -93,6 +111,10 @@ def walk(obj):
                     assert isinstance(v, list), (path, k)
                     for c in v:
                         card(c, CARD_PLACES[k], path + "." + k)
+                elif k in ROW_PLACES or k == "booked":
+                    for row in (v if isinstance(v, list) else [v] if v else []):
+                        assert set(row) <= ROW_KEYS and "id" not in row and "vendor_id" not in row, (path, k, sorted(row))
+                        assert not (row.get("amount_hidden") and ("price" in row or "paid" in row)), (path, k, row)
                 else:
                     go(v, path + "." + k)
         elif isinstance(o, list):
@@ -119,7 +141,8 @@ def env(monkeypatch):
         cat = k.get("category", "Venue")
         st["searched"].append((term, cat))
         if cat == "Venue":
-            return ([dict(CARDS["V101"])] if "kohl" in term else [dict(v) for v in TWINS] if "ashton" in term else [])
+            return ([dict(CARDS["V101"])] if "kohl" in term else [dict(v) for v in TWINS] if "ashton" in term else
+                    [dict(v) for v in BROWSE if any(w in v["name"].lower() for w in term.split())])
         return [dict(CARDS["V202"])] if cat == "Photography" and "olivia" in term else []
 
     def forbidden(fname):
@@ -147,7 +170,9 @@ def env(monkeypatch):
     monkeypatch.setattr(xano, "user_packages", lambda tok, uid: [dict(p) for p in PACK])
     monkeypatch.setattr(xano, "name_search", name_search)
     monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
-    return st
+    mcp_server._LOOKUPS.clear()
+    yield st
+    mcp_server._LOOKUPS.clear()
 
 
 def _full(st):
@@ -369,7 +394,6 @@ def test_instructions_and_tool_texts_only_describe_what_is_returned():
     assert set(mcp_server.TOOL_TEXT) == set(mcp_server.TOOLS)
     for name, text in texts.items():
         assert not ORDERS.search(text), (name, ORDERS.search(text).group(0))
-    assert "Does not include prices; pricing lives on tulletogether.app." in mcp_server.INSTRUCTIONS
     for n in ("get_my_wedding", "list_saved_vendors", "find_vendor"):
         assert "pricing lives on tulletogether.app" in mcp_server.TOOL_TEXT[n][1]
     assert all(mcp_server.TOOL_TEXT[n][1].startswith("Returns ") and len(n) <= 64 and mcp_server.TOOL_TEXT[n][0]
@@ -387,12 +411,13 @@ def test_no_pricing_and_only_public_cards_in_any_tool_for_any_tier(env, tier):
     json.dumps(out)
     for name, args in (("OliviaPhotos", []), ("Ashton Gardens", []), ("Ashton Gardens", ["Ohio"]), ("Zzyzx Ballroom", [])):
         walk(mcp_server.find_vendor("Bearer good", name, *args))
-    assert out["find_vendor"]["matches"] == [{"name": "Kohl Mansion", "city": "Austin", "state": "Texas",
-                                              "category": "Venue", "venue_type": ["Estate / Mansion"],
+    assert out["find_vendor"]["matches"] == [{"name": "Kohl Mansion", "state": "Texas", "category": "Venue",
+                                              "venue_type": ["Estate / Mansion"],
                                               "tulle_url": "https://www.tulletogether.app/vendors/V101"}]
-    assert out["list_saved_vendors"]["vendors"][1] == {"name": "OliviaPhotos", "city": "Austin", "state": "Texas",
+    assert out["list_saved_vendors"]["vendors"][1] == {"name": "OliviaPhotos", "state": "Texas",
                                                        "category": "Photography", "venue_type": ["Documentary"],
                                                        "tulle_url": "https://www.tulletogether.app/vendors/V202"}
+    assert "Austin" not in json.dumps(out) and "Dallas" not in json.dumps(out)      # nothing is read out of an address
     assert out["get_my_profile"]["plan"] == tier
 
 
@@ -407,13 +432,18 @@ def test_every_tier_gets_the_same_vendor_data(env):
 
 
 def test_the_walker_itself_catches_what_it_should():
-    ok = {"matches": [{"name": "Kohl Mansion", "city": "Austin", "state": "Texas", "category": "Venue"}]}
+    ok = {"matches": [{"name": "Kohl Mansion", "city": "Austin", "state": "Texas", "category": "Venue"}],
+          "extras": [{"name": "Catering Co", "category": "Food and Beverage", "price": 9000, "paid": 0, "notes": "ours"}]}
     walk(ok)
     for bad in ({"matches": [dict(ok["matches"][0], max_capacity_seated=200)]},
                 {"matches": [dict(ok["matches"][0], description="Lovely")]},
                 {"vendors": [dict(ok["matches"][0], venue_type=["From $9 a head"])]},
                 {"saved": [dict(ok["matches"][0], city="12 Main St")]},
-                {"candidates": [dict(ok["matches"][0])]},                      # a candidate is name + place only
+                {"candidates": [dict(ok["matches"][0])]},                      # a candidate is name + state only
+                {"also": [{"name": "A", "city": "Austin"}]},
+                {"extras": [dict(ok["extras"][0], id=3)]}, {"quotes": [dict(ok["extras"][0], vendor_id="V1")]},
+                {"considering": [dict(ok["extras"][0], amount_hidden=True)]},   # hidden AND still carrying the amount
+                {"categories": [{"booked": dict(ok["extras"][0], estimate=1)}]},
                 {"x": {"y": [{"also": [{"name": "A", "vendor_id": "V1"}]}]}},
                 {"also": [{"name": "A", "tulle_url": "https://www.tulletogether.app/vendors/V1"}]},   # candidates: no link
                 {"matches": [dict(ok["matches"][0], tulle_url="https://www.tulletogether.app/vendors/V1?ref=9")]},
@@ -423,17 +453,39 @@ def test_the_walker_itself_catches_what_it_should():
             walk(bad)
 
 
-def test_public_card_copies_nothing_but_its_six_fields():
+def test_public_card_copies_nothing_but_its_fields():
     c = mcp_server.public_card(CARDS["V101"])
-    assert c == {"name": "Kohl Mansion", "city": "Austin", "state": "Texas", "category": "Venue",
+    assert c == {"name": "Kohl Mansion", "state": "Texas", "category": "Venue",
                  "venue_type": ["Estate / Mansion"], "tulle_url": "https://www.tulletogether.app/vendors/V101"}
-    assert set(c) <= set(mcp_server.CARD_FIELDS) and "tulle_url" not in mcp_server._candidate(CARDS["V101"])
+    assert set(c) <= set(mcp_server.CARD_FIELDS) and mcp_server._candidate(CARDS["V101"]) == {"name": "Kohl Mansion", "state": "Texas"}
     for odd_id in ("", None, "P1", "V", "V12/../x", "V1?x=1", "v101", 101, "V1234567890"):   # only a real V-id links
         assert "tulle_url" not in mcp_server.public_card(dict(CARDS["V101"], vendor_id=odd_id)), odd_id
     odd = mcp_server.public_card({"name": "Barn 9", "state": ["Ohio"], "address": "77 Elm Rd",
                                   "venue_type": ["Barn / Ranch", "From $5,000", 7, "Seats 200"], "category": "Venue"})
     assert odd == {"name": "Barn 9", "state": "Ohio", "category": "Venue", "venue_type": ["Barn / Ranch"]}
-    assert mcp_server.public_card({"name": "X", "address": "12 Main St, Suite 4"}) == {"name": "X", "category": "Venue"}
+
+
+@pytest.mark.parametrize("address", ["Austin, Private Lane", "TX", "Private Lane, Austin", "12 Main St, Suite 4",
+                                     "The Old Mill, Austin, TX 78701", "Austin", ""])
+def test_city_is_never_parsed_out_of_an_address(address):
+    """V4: 'Austin, Private Lane' used to come back as city 'Private Lane', and a bare 'TX' as the city."""
+    c = mcp_server.public_card({"name": "X Hall", "state": "Texas", "address": address})
+    assert c == {"name": "X Hall", "state": "Texas", "category": "Venue"}
+    assert mcp_server._candidate({"name": "X Hall", "state": "Texas", "address": address}) == {"name": "X Hall", "state": "Texas"}
+
+
+def test_city_comes_only_from_a_structured_field():
+    assert mcp_server.public_card({"name": "X Hall", "state": "Texas", "city": "Austin"})["city"] == "Austin"
+    for bad in ("12 Main St", "From $5", ["Austin"], 7, None):
+        assert "city" not in mcp_server.public_card({"name": "X Hall", "state": "Texas", "city": bad}), bad
+
+
+@pytest.mark.parametrize("name", ["Barn from $4,500", "The $99 Chapel", "Venue (USD 5000)", "Hall - 3000 dollars", "€2000 Loft"])
+def test_a_vendor_name_carrying_a_currency_amount_is_dropped(env, monkeypatch, name):
+    assert "name" not in mcp_server.public_card({"name": name, "state": "Texas", "vendor_id": "V9"})
+    assert mcp_server.public_card({"name": "Studio 54", "state": "Texas"})["name"] == "Studio 54"      # a number is not a price
+    monkeypatch.setattr(xano, "vendor_card", lambda vid: {"name": name, "state": "Texas", "vendor_id": "V9"})
+    assert "name" not in mcp_server.list_saved_vendors("Bearer good")["vendors"][0]
 
 
 # ---------------------------------------------------------------- the couple's own numbers ARE returned
@@ -442,31 +494,78 @@ def test_public_card_copies_nothing_but_its_six_fields():
 def test_get_my_wedding_returns_what_the_couple_entered(env, tier):
     TIERS[tier](env)
     w = walk(mcp_server.get_my_wedding("Bearer good"))
-    assert (w["budget"], w["booked_total"], w["left"], w["paid_total"]) == (60000, 21505, 38495, 4000)
     cats = {c["key"]: c for c in w["categories"]}
-    booked = cats["Venue"]["booked"]
-    assert (booked["name"], booked["price"], booked["paid"], booked["contact"]) == ("Kohl Mansion", 12505, 4000, "ask for Dana")
-    assert booked["file"] == {"name": "contract.pdf"} and "vendor_id" not in booked     # their file's name, not its link
+    # their own numbers: the budget, a booked vendor at the price THEY agreed, a cost they added, a quote
+    assert w["budget"] == 60000
+    assert cats["Venue"]["booked"] == {"name": "Kohl Mansion", "category": "Venue", "price": 12505, "paid": 4000,
+                                       "file": {"name": "contract.pdf"}}       # their file's name, never its link
+    assert w["extras"] == [{"name": "Catering Co", "category": "Food and Beverage", "price": 9000, "paid": 0,
+                            "notes": "deposit due in May", "contact": "ask for Dana"}]      # a row they created: all theirs
+    assert cats["Entertainment"]["quotes"] == [{"name": "Old DJ", "category": "Entertainment", "price": 900, "paid": 0,
+                                                "package": "Gold package"}]
     assert "SECRETFILE" not in json.dumps(w)
-    assert [(e["name"], e["price"], e["notes"]) for e in w["extras"]] == [("Catering Co", 9000, "deposit due in May")]
-    assert [(q["name"], q["price"]) for q in cats["Entertainment"]["quotes"]] == [("Old DJ", 900)]
-    assert w["slices"] == [{"label": "Venue", "amount": 12505}, {"label": "Food and Beverage", "amount": 9000}]
-    # Tulle's vendors in it: public cards only, no price hint (the app's screen shows "about $12,345" to plan holders)
+    # Tulle's vendors in it: public cards only
     assert cats["Venue"]["saved"] == [mcp_server.public_card(CARDS["V101"])]
     assert cats["Photography"]["saved"][0]["name"] == "OliviaPhotos"
-    assert [c["name"] for c in w["saved_other"]] == ["Bloomery"]
-    assert "price" not in json.dumps(cats["Venue"]["saved"]) and "show_prices" not in w
+    assert [c["name"] for c in w["saved_other"]] == ["Bloomery"] and "show_prices" not in w
 
 
 @pytest.mark.parametrize("tier", list(TIERS))
-def test_budget_status_is_the_couples_own_arithmetic(env, tier):
+def test_an_amount_that_equals_tulles_prefilled_hint_is_hidden_and_out_of_every_total(env, tier):
+    """V1: Mark booked pre-fills "Agreed price" with Tulle's price hint; at 221fb7d that figure came back as the
+    couple's own (booked 2222, and 2222 inside booked_total / slices / budget_status)."""
     TIERS[tier](env)
+    w = walk(mcp_server.get_my_wedding("Bearer good"))
+    cats = {c["key"]: c for c in w["categories"]}
+    assert cats["Photography"]["booked"] == {"name": "OliviaPhotos", "category": "Photography", "amount_hidden": True}
+    assert cats["Venue"]["quotes"] == [{"name": "Kohl Mansion", "category": "Venue", "amount_hidden": True}]
+    assert w["amounts_hidden"] == 2 and w["note"] == "Some booked amounts are shown only in the Tulle app."
+    # no total, remainder or slice can give the figure back
+    assert (w["booked_total"], w["left"], w["paid_total"]) == (21505, 38495, 4000)
+    assert w["slices"] == [{"label": "Venue", "amount": 12505}, {"label": "Food and Beverage", "amount": 9000}]
     b = walk(mcp_server.budget_status("Bearer good"))
     assert b["status"] == {"budget": 60000, "added": 21505, "paid": 4000, "owed": 17505, "remaining": 38495,
                            "pct_of_budget": 36, "item_count": 2,
                            "by_category": [{"category": "Venue", "added": 12505, "paid": 4000, "owed": 8505},
                                            {"category": "Food and Beverage", "added": 9000, "paid": 0, "owed": 9000}]}
-    assert "$21,505" in b["text"]
+    assert b["amounts_hidden"] == 1 and b["note"] == w["note"] and "$21,505" in b["text"]
+    for out in (w, b):                                 # 2222 / 12345 = the hints; 23727 and 4500 = totals with them in
+        dump = json.dumps(out)
+        assert not any(n in dump for n in ("2222", "12345", "23727", "4500", "36273")), dump
+
+
+def test_which_amounts_count_as_tulle_derived():
+    cards = {"V101": CARDS["V101"], "V202": CARDS["V202"], "V9": {"vendor_id": "V9", "name": "No Hint Hall"}}
+    row = lambda **k: dict({"id": 1, "vendor_name": "x", "Selected": True}, **k)      # noqa: E731
+    hidden = lambda p: bool(mcp_server.hidden_amounts([p], cards))                   # noqa: E731
+    assert hidden(row(vendor_id="V101", total_cost=12345)) and hidden(row(vendor_id="V202", total_cost=2222))
+    assert hidden(row(vendor_id="V101", total_cost="12345")) and hidden(row(vendor_id="V101", total_cost=12345.0))
+    assert hidden(row(Package_Name="Booked in My wedding · tulle:V101", total_cost=12345))
+    assert hidden(row(Notes="tulle:V202", total_cost=2222))
+    assert not hidden(row(vendor_id="V101", total_cost=12346))             # the couple typed their own price
+    assert not hidden(row(vendor_id="V101", total_cost=15678))             # not the pre-filled figure (the low end is)
+    assert not hidden(row(total_cost=12345))                               # "+ Add a cost": not linked to a vendor
+    assert not hidden(row(Package_Name="Booked in My wedding · tulle:manual", total_cost=2222))
+    assert not hidden(row(vendor_id="V9", total_cost=5000))                # the vendor has no hint: nothing to pre-fill
+    assert not hidden(row(vendor_id="V404", total_cost=5000))              # vendor card not found
+    assert not hidden(row(vendor_id="V101", total_cost=0))
+
+
+def test_the_hint_is_read_for_booked_vendors_that_are_no_longer_saved(env):
+    env["user"] = dict(env["user"], favorited_vendors=[])                  # un-saved after booking
+    w = walk(mcp_server.get_my_wedding("Bearer good"))
+    assert w["amounts_hidden"] == 2 and w["booked_total"] == 21505
+    assert all(not c["saved"] for c in w["categories"])
+
+
+@pytest.mark.parametrize("tier", list(TIERS))
+def test_budget_status_is_the_couples_own_arithmetic(env, tier, monkeypatch):
+    TIERS[tier](env)
+    monkeypatch.setattr(xano, "user_packages", lambda tok, uid: [dict(p) for p in PACK if p["id"] in (1, 2, 3, 4)])
+    b = walk(mcp_server.budget_status("Bearer good"))
+    assert b["status"]["added"] == 21505 and b["status"]["item_count"] == 2 and b["amounts_hidden"] == 0 and "note" not in b
+    w = mcp_server.get_my_wedding("Bearer good")
+    assert w["amounts_hidden"] == 0 and "note" not in w
 
 
 def test_profile_is_the_couples_own_answers(env):
@@ -474,31 +573,85 @@ def test_profile_is_the_couples_own_answers(env):
     assert p == {"profile": xano.profile_of(env["user"]), "plan": "full"} and p["profile"]["Wedding_Budget"] == 60000
 
 
-# ---------------------------------------------------------------- find_vendor: by name only, 3 candidates, daily cap
+# ---------------------------------------------------------------- find_vendor: a strong NAME match only (V3)
 
-def test_find_vendor_one_match_a_non_venue_and_a_miss(env):
-    one = mcp_server.find_vendor("Bearer good", "Kohl Mansion", "Austin")
-    assert one["status"] == "found" and len(one["matches"]) == 1 and "Prices are not included" in one["note"]
+def test_find_vendor_exact_name_a_non_venue_and_a_miss(env):
+    one = walk(mcp_server.find_vendor("Bearer good", "Kohl Mansion", "Texas"))
+    assert one["status"] == "found" and [c["name"] for c in one["matches"]] == ["Kohl Mansion"]
+    assert one["note"] == "Prices are not included." and env["searched"] == [("kohl mansion", "Venue")]     # one search
+    assert mcp_server.find_vendor("Bearer good", "the kohl mansion")["status"] == "found"
+    assert mcp_server.find_vendor("Bearer good", "Kohl Mansion", "Ohio")["status"] == "not_found"          # not in that place
     ph = mcp_server.find_vendor("Bearer good", "OliviaPhotos")
     assert ph["status"] == "found" and ph["matches"][0]["category"] == "Photography"
+    env["searched"].clear()
     miss = mcp_server.find_vendor("Bearer good", "Zzyzx Ballroom")
     assert miss["status"] == "not_found" and miss["matches"] == [] and "candidates" not in miss
-    with pytest.raises(mcp_server.MCPDenied, match="name"):
-        mcp_server.find_vendor("Bearer good", " a ")
-    assert env["searched"]
+    assert miss["note"] == "No vendor with that name was found. The lookup matches a vendor's full name."
+    assert len(env["searched"]) == 6 == mcp_server.MAX_SEARCHES                 # was 91 upstream searches for one miss
+    assert len({c for _, c in env["searched"]}) == 6 and {t for t, _ in env["searched"]} == {"zzyzx ballroom"}
 
 
-def test_several_matches_give_at_most_three_name_only_candidates(env):
+@pytest.mark.parametrize("query,location", [
+    ("Brooklyn", ""), ("hotel", ""), ("barn", ""), ("hotel", "Texas"), ("barn texas", ""), ("the hotel", ""),
+    ("garden", ""), ("Brooklyn NY", ""), ("New York", ""), ("winery", "Brooklyn"), ("wedding venue", ""), ("venues", "Texas"),
+    ("Emma Garden", ""), ("Hill Barn", ""), ("Forest", ""), ("Winery Brooklyn", "")])
+def test_generic_or_partial_words_do_not_browse(env, query, location):
+    """V3: 'Brooklyn' returned 3 names and 'hotel' + a state 2. The mocked search returns every vendor containing any
+    word of the query - a real browse surface - and nothing may come back."""
+    env["searched"].clear()
+    r = walk(mcp_server.find_vendor("Bearer good", query, location))
+    assert r["status"] == "not_found" and r["matches"] == [] and "candidates" not in r and "also" not in r
+    assert "Brooklyn Winery" not in json.dumps(r) and "Hotel Emma" not in json.dumps(r)
+    assert len(env["searched"]) <= mcp_server.MAX_SEARCHES
+
+
+@pytest.mark.parametrize("query,name", [
+    ("The Barn at Forest Hill", "The Barn at Forest Hill"),      # the full exact name
+    ("barn at forest hill", "The Barn at Forest Hill"),
+    ("Forest Hill", "The Barn at Forest Hill"),                  # two words of a three-word name
+    ("Hotel Emma", "Hotel Emma"), ("Emma", "Hotel Emma"),        # half of a two-word name
+    ("Brooklyn Winery", "Brooklyn Winery"),                      # only place / type words, but it IS the exact name
+    ("The Brooklyn Barn", "The Brooklyn Barn"), ("Garden Hotel", "Garden Hotel")])
+def test_a_full_or_nearly_full_name_matches(env, query, name):
+    r = walk(mcp_server.find_vendor("Bearer good", query))
+    assert r["status"] == "found" and [c["name"] for c in r["matches"]] == [name], r
+    assert len(r.get("also") or []) <= 2
+
+
+def test_minimum_four_letters(env):
+    for short in ("", " a ", "abc", "a b c", "---", "k.m."):
+        with pytest.raises(mcp_server.MCPDenied, match="at least 4 letters"):
+            mcp_server.find_vendor("Bearer good", short)
+    assert env["searched"] == [] and mcp_server._LOOKUPS == {}                 # refused before the cap and any search
+
+
+def test_several_matches_give_at_most_three_names_with_state_only(env):
     r = walk(mcp_server.find_vendor("Bearer good", "Ashton Gardens"))            # 4 venues share the name
-    assert r["status"] == "choices" and r["matches"] == [] and "more specific name" in r["note"]
-    assert not ORDERS.search(r["note"])
-    assert len(r["candidates"]) == 3
-    assert all(set(c) == {"name", "city", "state"} and c["name"].startswith("Ashton Gardens") for c in r["candidates"])
+    assert r["status"] == "choices" and r["matches"] == [] and r["note"] == "Several vendors match that name."
+    assert len(r["candidates"]) == 3 and not ORDERS.search(r["note"])
+    assert all(set(c) == {"name", "state"} and c["name"].startswith("Ashton Gardens") for c in r["candidates"])
     one = mcp_server.find_vendor("Bearer good", "Ashton Gardens", "Utah")        # the place picks one
     assert one["status"] == "found" and [c["name"] for c in one["matches"]] == ["Ashton Gardens South"]
-    two = mcp_server.find_vendor("Bearer good", "Ashton Gardens", "Ohio")
-    assert len(two.get("matches") or []) + len(two.get("candidates") or []) + len(two.get("also") or []) <= 3
+    exact = walk(mcp_server.find_vendor("Bearer good", "Ashton Gardens North"))  # the exact name: one card + 2 others at most
+    assert exact["status"] == "found" and [c["name"] for c in exact["matches"]] == ["Ashton Gardens North"]
+    assert "also" not in exact                                                   # the others do not contain "north"
+    assert mcp_server.find_vendor("Bearer good", "Ashton")["status"] == "not_found"      # one word of three: not a name
 
+
+def test_never_more_than_six_upstream_searches(env, monkeypatch):
+    calls = []
+    monkeypatch.setattr(xano, "name_search", lambda term, token="", **k: calls.append(k.get("category")) or [])
+    for q in ("Zzyzx Ballroom", "Jane Doe Photography", "Some Very Long Vendor Name With Many Words", "Qwfp Planning"):
+        calls.clear()
+        assert mcp_server.find_vendor("Bearer good", q)["status"] == "not_found"
+        assert 1 <= len(calls) <= 6 and len(set(calls)) == len(calls), (q, calls)
+    assert calls[0] == "Wedding Planner"                         # the type the name points at is searched first
+    monkeypatch.setattr(xano, "name_search", lambda *a, **k: (_ for _ in ()).throw(xano.XanoError("down")))
+    with pytest.raises(mcp_server.MCPDenied, match="could not run find_vendor"):   # a failed search is not "not found"
+        mcp_server.find_vendor("Bearer good", "Zzyzx Ballroom")
+
+
+# ---------------------------------------------------------------- the daily cap (V2: atomic, in process + persisted)
 
 def _row(kind="mcp_find_vendor", day=T, status="ok", uid=7):
     return {"user_id": uid, "kind": kind, "usage_day": day, "status": status}
@@ -511,31 +664,65 @@ def test_daily_lookup_cap_under_at_and_over(env, monkeypatch):
              _row("refine"), _row("tool_estimate_cost")] * 5
     env["usage"] = noise + [_row()] * 2                                           # under: 2 of 3
     assert mcp_server.find_vendor("Bearer good", "Kohl Mansion")["status"] == "found"
-    env["usage"] = noise + [_row()] * 3                                           # at the cap
     env["searched"].clear()
-    for name in ("Kohl Mansion", "Zzyzx Ballroom"):
-        with pytest.raises(mcp_server.MCPDenied, match="limit of 3 vendor lookups.*tulletogether.app"):
-            mcp_server.find_vendor("Bearer good", name)
-    env["usage"] = noise + [_row()] * 40                                          # over
-    with pytest.raises(mcp_server.MCPDenied, match="limit of 3"):
-        mcp_server.find_vendor("Bearer good", "Kohl Mansion")
+    for usage in (noise + [_row()] * 3, noise + [_row()] * 40, noise):           # at, over, and rows not written yet
+        env["usage"] = usage
+        for name in ("Kohl Mansion", "Zzyzx Ballroom"):
+            with pytest.raises(mcp_server.MCPDenied) as e:
+                mcp_server.find_vendor("Bearer good", name)
+            assert str(e.value) == "Daily lookup limit reached." and e.value.status == 429
     assert env["searched"] == []                                                  # refused before any search
     assert mcp_server.list_saved_vendors("Bearer good")["saved_count"] == 3       # the other tools still answer
     assert mcp_server.get_my_wedding("Bearer good")["budget"] == 60000
 
 
-def test_not_found_lookups_count_toward_the_cap(env, monkeypatch):
-    """End to end over the real logging: each call's own usage row is what the next call counts."""
+@pytest.mark.parametrize("used,cap", [(24, 25), (0, 5), (3, 10), (25, 25), (40, 25)])
+def test_fifty_parallel_lookups_cannot_pass_the_cap(env, monkeypatch, used, cap):
+    """V2: the cap only counted usage rows, which are written after a call - 50 parallel calls at 24 used all ran."""
+    from concurrent.futures import ThreadPoolExecutor
+    monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", cap)
+    env["usage"] = [_row()] * used                    # the rows on record; none of the new calls' rows arrive in time
+
+    def one(i):
+        try:
+            return mcp_server.find_vendor("Bearer good", "Kohl Mansion")["status"]
+        except mcp_server.MCPDenied as e:
+            return str(e)
+    with ThreadPoolExecutor(max_workers=50) as ex:
+        got = list(ex.map(one, range(50)))
+    assert got.count("found") == max(0, cap - used) and got.count("Daily lookup limit reached.") == 50 - max(0, cap - used)
+    assert len([1 for t, c in env["searched"] if c == "Venue"]) == max(0, cap - used)
+
+
+def test_cap_holds_when_the_usage_rows_are_never_written(env, monkeypatch):
+    monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 2)
+    monkeypatch.setattr(xano, "log_usage", lambda row: (_ for _ in ()).throw(xano.XanoError("table 79 is down")))
+    assert mcp_server.find_vendor("Bearer good", "Zzyzx Ballroom")["status"] == "not_found"      # a miss counts
+    assert mcp_server.find_vendor("Bearer good", "Kohl Mansion")["status"] == "found"
+    with pytest.raises(mcp_server.MCPDenied, match="Daily lookup limit reached"):
+        mcp_server.find_vendor("Bearer good", "Kohl Mansion")
+    assert env["usage"] == []
+
+
+def test_cap_is_per_account_and_per_utc_day(env, monkeypatch):
+    monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 1)
+    assert mcp_server.claim_lookup(7) is True and mcp_server.claim_lookup(7) is False
+    assert mcp_server.claim_lookup(8) is True                                    # another account
+    monkeypatch.setattr(xano, "today", lambda: "2026-11-16")
+    assert mcp_server.claim_lookup(7) is True and list(mcp_server._LOOKUPS) == [(7, "2026-11-16")]   # yesterday is dropped
+
+
+def test_persisted_rows_count_after_a_restart(env, monkeypatch):
+    """The in-memory count is lost on a restart; the usage rows are not."""
     monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 2)
     monkeypatch.setattr(xano, "log_usage", lambda row: env["usage"].append(dict(row, usage_day=T)))
     assert mcp_server.find_vendor("Bearer good", "Zzyzx Ballroom")["status"] == "not_found"
-    _drain(env)
     assert mcp_server.find_vendor("Bearer good", "Qwfp Manor")["status"] == "not_found"
     _drain(env)
-    with pytest.raises(mcp_server.MCPDenied, match="limit of 2"):
+    assert [(r["kind"], r["status"]) for r in env["usage"]] == [("mcp_find_vendor", "ok")] * 2
+    mcp_server._LOOKUPS.clear()                                                   # the process restarts
+    with pytest.raises(mcp_server.MCPDenied, match="Daily lookup limit reached"):
         mcp_server.find_vendor("Bearer good", "Kohl Mansion")
-    _drain(env)
-    assert [(r["kind"], r["status"]) for r in env["usage"]] == [("mcp_find_vendor", "ok")] * 2 + [("mcp_find_vendor", "error")]
 
 
 def test_cap_fails_closed_when_usage_cannot_be_read_and_zero_means_none(env, monkeypatch):
@@ -544,9 +731,21 @@ def test_cap_fails_closed_when_usage_cannot_be_read_and_zero_means_none(env, mon
         mcp_server.find_vendor("Bearer good", "Kohl Mansion")
     monkeypatch.setattr(xano, "user_usage", lambda uid: [])
     monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 0)
-    with pytest.raises(mcp_server.MCPDenied, match="limit of 0"):
+    with pytest.raises(mcp_server.MCPDenied, match="Daily lookup limit reached"):
         mcp_server.find_vendor("Bearer good", "Kohl Mansion")
     assert env["searched"] == []
+
+
+def test_result_notes_and_refusals_are_neutral():
+    """V5: no pointing at the site, no orders to the model, in anything a tool returns."""
+    for text in (mcp_server.PRICE_NOTE, mcp_server.HIDDEN_NOTE, "Daily lookup limit reached.", "Several vendors match that name.",
+                 "No vendor with that name was found. The lookup matches a vendor's full name.",
+                 "A vendor name of at least 4 letters is needed."):
+        assert not ORDERS.search(text) and "tulletogether.app" not in text, text
+    assert "Prices are not included." in mcp_server.INSTRUCTIONS and "tulletogether.app)" in mcp_server.INSTRUCTIONS
+    assert "names only" not in json.dumps(mcp_server.TOOL_TEXT)
+    for n in ("get_my_wedding", "list_saved_vendors", "find_vendor"):            # descriptions say what a card holds
+        assert "name, state, category, type and Tulle page link" in mcp_server.TOOL_TEXT[n][1]
 
 
 # ---------------------------------------------------------------- logging
@@ -640,7 +839,7 @@ def test_end_to_end_over_streamable_http(env, client):
         walk(r["result"]["structuredContent"])
 
     bad = _rpc(client, "tools/call", {"name": "find_vendor", "arguments": {"name": "a"}})     # a tool's own refusal
-    assert bad["result"]["isError"] is True and "at least 3 letters" in json.dumps(bad["result"])
+    assert bad["result"]["isError"] is True and "at least 4 letters" in json.dumps(bad["result"])
     gone = _rpc(client, "tools/call", {"name": "estimate_cost", "arguments": {}})
     assert gone.get("error") or gone["result"].get("isError")
     _drain(env)
