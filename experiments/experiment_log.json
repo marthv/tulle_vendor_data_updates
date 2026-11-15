@@ -1049,6 +1049,10 @@
         {
           "date": "2026-11-11",
           "note": "Started reporting in the daily brief. First post cohort (first use 11-10) completes its 3-day window on 11-14."
+        },
+        {
+          "date": "2026-11-15",
+          "note": "Table 79 read (internal excluded). New free couples who typed a question again within 3 days: 2 of 83 after launch (first free question 11-09..11-11) vs 9 of 216 before (10-21..11-05) - about 2% vs 4%, both tiny. Free couples asking on 2+ different days: 1 of 110 (11-09..11-15) vs 8 of 271 (10-25..11-08). 21 couples used all 3 lifetime questions after launch; at most 1 came back for a daily one. Confounds: Planner questions fell ~80% from 11-11 (Ask Tulle bubble replaced the Planner entry), and the 'come back tomorrow' note only went live 11-15. No sign yet that the daily question brings couples back; owner: too early to call - re-read after the note has run a week."
         }
       ],
       "stat_sig": "",
@@ -1087,6 +1091,10 @@
         {
           "date": "2026-11-12",
           "note": "06:40:04 UTC ep313 v4 LIVE: the 'too expensive' offer now shows TWO stacked options, prices as anchors - 4 weeks at 20% off ($60->$48; CA/Intl $69->$55.20, code TT20-, coupon tulle_save20_4week, min $59) above Forever at 60% off ($135->$54; $149->$59.60, code TT60-, unchanged). Straight switch, no A/B (owner). Read = pre/post: buyers per offer and Forever share of buyers, v3 period (11-11 05:14 -> 11-12 06:40: 4 offers, 1 Forever buyer) vs v4. WeWeb popup copy (title 'A one-time deal, just for you', fine print, 'Best value' badge, editor sample) in the editor - live after the owner publishes; until then the live popup renders the two plans with the old 60%-title. UNVERIFIED: a real checkout applying a TT20 code to a 4-week link; all four payment links share one Stripe product and have allow_promotion_codes true (checked 06:31 UTC)."
+        },
+        {
+          "date": "2026-11-15",
+          "note": "Table 1 read: 10 real couples got a TT60 code since 11-11; 2 bought Forever (20%), and the owner confirms both used the code. Old 20% offer: 1 of 32 code holders paid. Bar is >= 3 buyers in ~25 offers - ahead of pace, not called yet (owner: 'this might be a win')."
         }
       ],
       "stat_sig": "",
