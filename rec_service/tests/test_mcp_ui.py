@@ -184,6 +184,7 @@ def test_vendor_links_open_only_tulle_pages_through_the_host():
     src = _panel("vendors.html")
     assert 'var TULLE = "https://www.tulletogether.app/";' in src and "u.indexOf(TULLE) !== 0" in src
     assert 'p.hostname === "www.tulletogether.app"' in src and 'p.protocol === "https:"' in src
+    assert 'p.pathname.indexOf("/vendors/") === 0' in src and "!p.port" in src      # a vendor page, nothing else on the host
     assert 'request("ui/open-link", { url: safe })' in src and "<a " not in src and "target=" not in src
     assert "ui/open-link" not in _panel("my-wedding.html")                      # the plan panel opens nothing
 
@@ -235,11 +236,40 @@ def test_my_wedding_panel_shows_hidden_amounts_in_words():
     assert "i + 1));   // numbered: not colour alone" in src
 
 
+def test_a_hidden_row_renders_no_number_at_all():
+    """G3: the panel printed `paid` on a row whose amount is hidden, had the server ever sent one."""
+    src = _panel("my-wedding.html")
+    assert "var paid = c.booked.amount_hidden === true ? null : num(c.booked.paid);" in src
+    assert src.count("num(c.booked.paid)") == 1 and "item.paid" not in src and "x.paid" not in src   # the only per-row paid
+    row = src[src.index("function itemRow(item)"):src.index("function chips(")]
+    assert "amountCell(item)" in row and "paid" not in row and "price" not in row
+    pre = _panel("preview.html")
+    assert "amount_hidden: true, price: 888888, paid: 999999" in pre             # the fixture that shows it
+
+
+def test_a_hidden_row_never_carries_paid_or_price_from_the_server(c, monkeypatch):
+    rows = [{"id": 5, "user_id": 7, "vendor_name": "Kohl Mansion", "total_cost": 12345, "Balance_Paid": 500, "Balance_Left": 11845,
+             "Selected": True, "Category": "Venue", "vendor_id": "V101"},
+            {"id": 6, "user_id": 7, "vendor_name": "Kohl Mansion", "total_cost": 12345, "Balance_Paid": 700, "Selected": False,
+             "Category": "Venue", "Notes": "tulle:V101"}]
+    monkeypatch.setattr(xano, "user_packages", lambda tok, uid: [dict(r) for r in rows])
+    w = mcp_server.get_my_wedding("Bearer xano-good")
+    venue = next(x for x in w["categories"] if x["key"] == "Venue")
+    assert venue["booked"] == {"name": "Kohl Mansion", "category": "Venue", "amount_hidden": True}
+    assert venue["quotes"] == [{"name": "Kohl Mansion", "category": "Venue", "amount_hidden": True}]
+    assert (w["booked_total"], w["paid_total"], w["amounts_hidden"]) == (0, 0, 2)
+    dump = json.dumps(w)
+    assert not any(n in dump for n in ("12345", "500", "700", "11845"))
+    over_mcp = rpc(c, "tools/call", {"name": "get_my_wedding", "arguments": {}})["result"]
+    assert over_mcp["structuredContent"] == w and not any(n in json.dumps(over_mcp) for n in ("12345", "500", "700", "11845"))
+
+
 def test_preview_is_a_stub_host_with_every_fixture_in_both_themes():
     src = _panel("preview.html")
     for needed in ("my-wedding.html", "vendors.html", '"ui/initialize"', "ui/notifications/tool-result", "ui/notifications/size-changed",
                    "ui/notifications/host-context-changed", "ui/open-link", 'sandbox", "allow-scripts"', '["light", "dark"]',
                    "full plan", "hidden amounts", "empty plan", "saved list", "single match", "candidates", "not found"):
         assert needed in src, needed
-    assert all(u.startswith(("https://www.tulletogether.app/vendors/", "https://www.tulletogether.app.evil.example/"))
+    assert all(u.startswith(("https://www.tulletogether.app/vendors/", "https://www.tulletogether.app.evil.example/",
+                             "https://www.tulletogether.app/pricing", "https://www.tulletogether.app:8443/vendors/"))
                for u in re.findall(r"https?://[^\s\"'<>)]*", src))               # the preview loads nothing remote either

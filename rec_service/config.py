@@ -168,6 +168,18 @@ MCP_CLIENT_HOSTS = [h.strip().lower() for h in os.environ.get("REC_MCP_CLIENT_HO
 MCP_CLIENT_IDS = [u.strip() for u in os.environ.get(
     "REC_MCP_CLIENT_IDS", "https://claude.ai/oauth/mcp-oauth-client-metadata,"
                           "https://claude.ai/oauth/claude-code-client-metadata").split(",") if u.strip()]
+# REC_MCP_REFRESH_GRACE_S = for this long after a refresh token's FIRST use, the same token is answered again with a
+#   fresh pair (a retry after a lost response, or two tabs refreshing at once, must not sign the couple out). 0 = strict.
+# REC_MCP_GLOBAL_RPM = requests a minute each OAuth endpoint takes from everyone together (the per-address limits stay).
+def _int_env(name, default):
+    try:
+        return max(0, int(os.environ.get(name, str(default))))
+    except ValueError:
+        return default
+
+
+MCP_REFRESH_GRACE_S = _int_env("REC_MCP_REFRESH_GRACE_S", 60)
+MCP_GLOBAL_RPM = _int_env("REC_MCP_GLOBAL_RPM", 600)
 try:
     MCP_TRUSTED_PROXY_HOPS = max(0, int(os.environ.get("REC_MCP_TRUSTED_PROXY_HOPS", "1")))
 except ValueError:

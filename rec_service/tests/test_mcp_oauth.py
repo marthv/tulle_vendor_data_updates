@@ -70,7 +70,8 @@ def env(monkeypatch):
         return st["docs"][url]
     for name, value in (("MCP_PUBLIC_URL", BASE), ("MCP_TOKEN_KEY", KEY), ("MCP_CONSENT_URL", CONSENT),
                         ("MCP_CLIENT_HOSTS", ["claude.ai"]), ("MCP_CLIENT_IDS", [HOSTED, CODE_CLI]), ("MCP_TOKEN_KEY_OLD", ""),
-                        ("MCP_TRUSTED_PROXY_HOPS", 1), ("MCP_USER_IDS", frozenset({7})), ("MCP_ALL_USERS", False),
+                        ("MCP_TRUSTED_PROXY_HOPS", 1), ("MCP_REFRESH_GRACE_S", 60), ("MCP_GLOBAL_RPM", 600),
+                        ("MCP_USER_IDS", frozenset({7})), ("MCP_ALL_USERS", False),
                         ("MCP_ALLOWED_HOSTS", []), ("MCP_ALLOWED_ORIGINS", []), ("MCP_DEV_RAW_TOKEN", False),
                         ("KILL_SWITCH", False)):
         monkeypatch.setattr(config, name, value)
@@ -79,7 +80,8 @@ def env(monkeypatch):
     monkeypatch.setattr(mcp_oauth, "fetch_cimd", fetch)
     monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
     def reset():
-        for store in (mcp_oauth.USED, mcp_oauth.REVOKED, mcp_oauth.BUCKETS, mcp_oauth._CIMD, mcp_oauth._CIMD_BAD):
+        for store in (mcp_oauth.USED, mcp_oauth.REVOKED, mcp_oauth.BUCKETS, mcp_oauth._CIMD, mcp_oauth._CIMD_BAD,
+                      mcp_oauth._GLOBAL_WARNED):
             store.clear()
     reset()
     yield st
@@ -239,8 +241,10 @@ def test_happy_path_end_to_end(env, c, capsys):
     assert mcp(c, new["access_token"]).status_code == 200
     newer = token(c, grant_type="refresh_token", refresh_token=new["refresh_token"])                     # and again
     assert newer.status_code == 200
-    old = token(c, grant_type="refresh_token", refresh_token=tok["refresh_token"], client_id=HOSTED)
-    assert old.status_code == 400 and old.json()["error"] == "invalid_grant"
+    late = {"grant_type": "refresh_token", "refresh_token": tok["refresh_token"], "client_id": HOSTED}
+    with pytest.raises(mcp_oauth.OAuthError) as old:             # the rotated-away token, after the grace window
+        mcp_oauth.token(late, now=time.time() + 61)
+    assert (old.value.error, old.value.status) == ("invalid_grant", 400)
 
     # nothing secret was printed along the way
     out = capsys.readouterr().out + capsys.readouterr().err
@@ -778,7 +782,7 @@ def test_client_address_comes_from_the_right_of_x_forwarded_for(monkeypatch):
 
 
 def test_global_ceiling_holds_when_addresses_are_spread(env, c, monkeypatch):
-    monkeypatch.setattr(mcp_oauth, "RATE_ALL", {"authorize": (300, 60.0), "approve": (300, 60.0), "token": (12, 60.0)})
+    monkeypatch.setattr(config, "MCP_GLOBAL_RPM", 12)
     got = [c.post("/token", data={"grant_type": "refresh_token", "refresh_token": "x"},
                   headers={"X-Forwarded-For": "203.0.113.%d" % i}).status_code for i in range(20)]
     assert got == [400] * 12 + [429] * 8                         # 20 different (genuine) addresses, one shared ceiling
@@ -787,7 +791,7 @@ def test_global_ceiling_holds_when_addresses_are_spread(env, c, monkeypatch):
 def test_rate_limit_memory_is_bounded_without_a_global_reset(monkeypatch):
     """Was: above 50,000 keys EVERYTHING was forgotten - flooding addresses reset everyone's limits."""
     monkeypatch.setattr(mcp_oauth, "RATE", {"token": (2, 60.0)})
-    monkeypatch.setattr(mcp_oauth, "RATE_ALL", {"token": (10 ** 9, 60.0)})
+    monkeypatch.setattr(config, "MCP_GLOBAL_RPM", 10 ** 9)
     b = mcp_oauth._Buckets(cap=50)
     assert [b.allow("token", "victim", now=0) for _ in range(3)] == [True, True, False]
     for i in range(40):
@@ -931,9 +935,10 @@ def test_refresh_token_reuse_revokes_the_newest_tokens_of_that_sign_in(env, c, c
     t3 = token(c, grant_type="refresh_token", refresh_token=t2["refresh_token"]).json()
     assert mcp(c, t3["access_token"]).status_code == 200
     capsys.readouterr()
-    for _ in range(3):                                            # the stolen / replayed old token
-        r = token(c, grant_type="refresh_token", refresh_token=t1["refresh_token"])
-        assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
+    for _ in range(3):                                            # the stolen / replayed old token, after the grace window
+        with pytest.raises(mcp_oauth.OAuthError) as e:
+            mcp_oauth.token({"grant_type": "refresh_token", "refresh_token": t1["refresh_token"]}, now=time.time() + 61)
+        assert e.value.error == "invalid_grant"
     newest = token(c, grant_type="refresh_token", refresh_token=t3["refresh_token"])
     assert newest.status_code == 400 and newest.json()["error"] == "invalid_grant"   # was 200: the chain lived on
     for access in (t1["access_token"], t2["access_token"], t3["access_token"]):
@@ -944,3 +949,93 @@ def test_refresh_token_reuse_revokes_the_newest_tokens_of_that_sign_in(env, c, c
         assert secret not in out
     assert mcp(c, other["access_token"]).status_code == 200
     assert token(c, grant_type="refresh_token", refresh_token=other["refresh_token"]).status_code == 200
+
+
+# ---------------------------------------------------------------- G1: a grace window, so honest clients are not signed out
+
+def test_two_refreshes_at_once_both_succeed_and_nothing_is_revoked(env, c, capsys):
+    """Was: two concurrent refreshes with the same token (or a retry after a lost response) ended the whole sign-in."""
+    from concurrent.futures import ThreadPoolExecutor
+    for trial in range(8):
+        t1 = signed_in(c)
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            a, b = list(ex.map(lambda _: token(c, grant_type="refresh_token", refresh_token=t1["refresh_token"]), range(2)))
+        assert a.status_code == 200 and b.status_code == 200, (trial, a.text, b.text)
+        pa, pb = a.json(), b.json()
+        assert pa["refresh_token"] != pb["refresh_token"] and pa["access_token"] != pb["access_token"]
+        for pair in (pa, pb):                                     # both pairs are valid, and stay valid
+            assert mcp(c, pair["access_token"]).status_code == 200
+            assert token(c, grant_type="refresh_token", refresh_token=pair["refresh_token"]).status_code == 200
+        retry = token(c, grant_type="refresh_token", refresh_token=t1["refresh_token"])       # a retry, still inside the window
+        assert retry.status_code == 200 and mcp(c, t1["access_token"]).status_code == 200
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def test_reuse_after_the_grace_window_is_refused_and_revokes_the_chain(env, c, capsys):
+    t1 = signed_in(c)
+    form = {"grant_type": "refresh_token", "refresh_token": t1["refresh_token"]}
+    t0 = int(time.time())
+    first = mcp_oauth.token(form, now=t0)
+    again = mcp_oauth.token(form, now=t0 + 60)                    # the last second of the window
+    assert mcp(c, first["access_token"]).status_code == 200 and mcp(c, again["access_token"]).status_code == 200
+    with pytest.raises(mcp_oauth.OAuthError) as e:
+        mcp_oauth.token(form, now=t0 + 61)                        # grace + 1 s
+    assert e.value.error == "invalid_grant"
+    for pair in (first, again):                                   # the chain is gone: newest tokens too
+        assert_challenge(mcp(c, pair["access_token"]), "invalid_token")
+        assert token(c, grant_type="refresh_token", refresh_token=pair["refresh_token"]).json()["error"] == "invalid_grant"
+    with pytest.raises(mcp_oauth.OAuthError):
+        mcp_oauth.token(form, now=t0 + 5)                         # ... and the window does not reopen it
+    assert capsys.readouterr().out.count("sign-in chain revoked for user 7") == 1
+
+
+def test_grace_zero_is_strict(env, c, monkeypatch):
+    monkeypatch.setattr(config, "MCP_REFRESH_GRACE_S", 0)
+    t1 = signed_in(c)
+    assert token(c, grant_type="refresh_token", refresh_token=t1["refresh_token"]).status_code == 200
+    assert token(c, grant_type="refresh_token", refresh_token=t1["refresh_token"]).json()["error"] == "invalid_grant"
+
+
+def test_grace_default_is_sixty_seconds():
+    import importlib
+    import os
+    old = {k: os.environ.pop(k, None) for k in ("REC_MCP_REFRESH_GRACE_S", "REC_MCP_GLOBAL_RPM")}
+    try:
+        cfg = importlib.reload(config)
+        assert (cfg.MCP_REFRESH_GRACE_S, cfg.MCP_GLOBAL_RPM) == (60, 600)
+        os.environ.update(REC_MCP_REFRESH_GRACE_S="5", REC_MCP_GLOBAL_RPM="abc")
+        cfg = importlib.reload(config)
+        assert (cfg.MCP_REFRESH_GRACE_S, cfg.MCP_GLOBAL_RPM) == (5, 600)
+    finally:
+        for k, v in old.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        importlib.reload(config)
+
+
+# ---------------------------------------------------------------- G2: the shared ceiling
+
+def test_ten_busy_addresses_no_longer_block_sign_in_for_everyone(env, c):
+    """Was: the shared ceiling for /authorize was 300 a minute = 10 addresses at their own limit of 30."""
+    now = time.time()
+    for i in range(10):
+        got = [mcp_oauth.BUCKETS.check("authorize", "198.51.100.%d" % i, now) for _ in range(31)]
+        assert got == [None] * 30 + ["address"]
+    assert mcp_oauth.BUCKETS.check("authorize", "203.0.113.50", now) is None        # an 11th address still signs in
+    assert authz(c).status_code == 302
+
+
+def test_global_ceiling_is_configurable_and_says_so_once_a_minute(env, c, monkeypatch, capsys):
+    monkeypatch.setattr(config, "MCP_GLOBAL_RPM", 5)
+    got = [c.post("/token", data={"grant_type": "refresh_token", "refresh_token": "x"},
+                  headers={"X-Forwarded-For": "203.0.113.%d" % i}).status_code for i in range(12)]
+    assert got == [400] * 5 + [429] * 7
+    out = capsys.readouterr().out
+    assert out.count("mcp oauth WARNING: global rate ceiling reached on token (REC_MCP_GLOBAL_RPM=5 a minute)") == 1
+    assert "203.0.113" not in out                                # no client data in the log line
+    assert mcp_oauth.warn_global("token", now=time.time() + 30) is False and mcp_oauth.warn_global("token", now=time.time() + 61) is True
+    # a per-address refusal is not the global one: no warning
+    mcp_oauth.BUCKETS.clear(); mcp_oauth._GLOBAL_WARNED.clear(); capsys.readouterr()
+    monkeypatch.setattr(config, "MCP_GLOBAL_RPM", 600)
+    monkeypatch.setattr(mcp_oauth, "RATE", {"authorize": (30, 60.0), "approve": (30, 60.0), "token": (2, 60.0)})
+    assert [token(c, grant_type="refresh_token", refresh_token="x").status_code for _ in range(4)] == [400, 400, 429, 429]
+    assert "WARNING" not in capsys.readouterr().out

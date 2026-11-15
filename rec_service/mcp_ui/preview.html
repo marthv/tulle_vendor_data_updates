@@ -73,7 +73,8 @@
         categories: [
           { key: "Venue", label: "Venue", booked: { name: "Kohl Mansion", category: "Venue", price: 12505, paid: 4000 },
             quotes: [{ name: "The Barn at Forest Hill", category: "Venue", amount_hidden: true }], saved: [KOHL] },
-          { key: "Photography", label: "Photography", booked: { name: "Olivia Ray Photography", category: "Photography", amount_hidden: true },
+          { key: "Photography", label: "Photography",      // hostile: a hidden row that still carries numbers - none may show
+            booked: { name: "Olivia Ray Photography", category: "Photography", amount_hidden: true, price: 888888, paid: 999999 },
             quotes: [], saved: [OLIVIA] }],
         extras: [{ name: "Catering Co", category: "Food and Beverage", price: 9000, paid: 0 }], considering: [], saved_other: [] } },
     { panel: "my-wedding.html", tool: "get_my_wedding", title: "3. My wedding - empty plan", result: {
@@ -103,7 +104,11 @@
         status: "not_found", query: "Zzyzx Ballroom", matches: [], note: "No vendor with that name was found. The lookup matches a vendor's full name." } },
     { panel: "vendors.html", tool: "find_vendor", title: "5. Hostile strings and a bad link (nothing may run, no button for the bad link)", result: {
         status: "found", query: "<img src=x onerror=alert(1)>", matches: [{ name: "<script>alert(1)</scr" + "ipt> & \"Quoted\" <b>Hall</b>", state: "<i>TX</i>",
-          category: "Venue", venue_type: ["<u>Barn</u>"], tulle_url: "https://www.tulletogether.app.evil.example/vendors/V1" }], also: [] } }
+          category: "Venue", venue_type: ["<u>Barn</u>"], tulle_url: "https://www.tulletogether.app.evil.example/vendors/V1" }], also: [] } },
+    { panel: "vendors.html", tool: "list_saved_vendors", title: "6. Links that are not vendor pages (no button on any of these)", result: {
+        saved_count: 3, vendors: [card("Right host, wrong path", "Texas", "Venue", null, "../login?next=/vendors/V1"),
+          { name: "Right host, other page", state: "Texas", category: "Venue", tulle_url: "https://www.tulletogether.app/pricing" },
+          { name: "Right host, odd port", state: "Texas", category: "Venue", tulle_url: "https://www.tulletogether.app:8443/vendors/V1" }] } }
   ];
 
   // Claude's style variables (design-guidelines.md, read 2026-11-15) as light-dark() values, like the real host sends.

@@ -97,7 +97,8 @@ h2 { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: u
     if (typeof u !== "string" || u.length > 200 || u.indexOf(TULLE) !== 0) return "";
     try {
       var p = new URL(u);
-      return p.protocol === "https:" && p.hostname === "www.tulletogether.app" && !p.username && !p.password ? p.href : "";
+      return p.protocol === "https:" && p.hostname === "www.tulletogether.app" && !p.port && !p.username && !p.password
+             && p.pathname.indexOf("/vendors/") === 0 ? p.href : "";      // a vendor page on the exact host, nothing else
     } catch (e) { return ""; }
   }
 

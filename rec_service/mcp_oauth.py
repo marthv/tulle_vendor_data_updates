@@ -45,9 +45,11 @@ TOKENS ARE STATELESS AND ENCRYPTED (this service restarts on every deploy and ha
         only. After a restart a code could be replayed inside its 60 s life (it still needs the PKCE verifier), and
         an OLD refresh token becomes usable again until its own expiry. More than one worker process has the same
         gap all the time.
-      - A refresh token presented a second time (caught while the process still remembers it) revokes its whole
-        sign-in chain - the newest tokens too - and prints one warning line (user id only). The cost: two refreshes
-        racing with the same token also end the sign-in, and the couple signs in again.
+      - A refresh token presented again within REC_MCP_REFRESH_GRACE_S (default 60 s) of its FIRST use is answered
+        with another fresh pair, and nothing is revoked: two tabs refreshing at once, or a retry after a lost
+        response, must not sign the couple out. The accepted trade-off: for that minute a copied refresh token
+        works too, and both pairs stay valid. Presented again AFTER the window (while the process still remembers
+        it), it revokes the whole sign-in chain - the newest tokens too - and prints one warning line (user id only).
       - There is no revocation by the couple: disconnecting in Claude does not kill a token here. Signing out of
         Tulle (the Xano token dies) or changing REC_MCP_TOKEN_KEY (everyone signs in again) does.
 
@@ -60,8 +62,9 @@ ORIGIN HEADERS
 
 RATE LIMITS
     In memory, per endpoint: a token bucket per client address (/authorize and /oauth/approve 30 a minute, /token 120
-    a minute - hosted Claude calls it from Anthropic's shared egress range) AND one bucket for everyone (RATE_ALL)
-    as a backstop when addresses are spread. The client address is taken from the RIGHT of X-Forwarded-For,
+    a minute - hosted Claude calls it from Anthropic's shared egress range) AND one bucket for everyone
+    (REC_MCP_GLOBAL_RPM, default 600 a minute per endpoint) as a backstop when addresses are spread; hitting that
+    one prints a warning line, at most once a minute, with no client data. The client address is taken from the RIGHT of X-Forwarded-For,
     REC_MCP_TRUSTED_PROXY_HOPS entries in (default 1: the entry the one proxy in front of us appended); with no such
     entry, the socket peer. X-Real-IP and the left of X-Forwarded-For are client-controlled and never used. Whether
     the platform's proxy appends exactly one entry is NOT verified - if it adds more, raise the setting. Request
@@ -102,7 +105,6 @@ SHARES = ["Your wedding profile: location, guest count, date, budget and style",
           "Vendors you ask about by name (name, state and type)"]
 NOT_SHARED = "Vendor prices and pricing documents are never shared."
 RATE = {"authorize": (30, 60.0), "approve": (30, 60.0), "token": (120, 60.0)}     # (requests, per seconds) per address
-RATE_ALL = {"authorize": (300, 60.0), "approve": (300, 60.0), "token": (1200, 60.0)}   # ... and for everyone together
 MAX_BODY = 16 * 1024            # /token and /oauth/approve request bodies
 MAX_BUCKETS = 20000             # client addresses remembered for rate limiting (least recently seen dropped first)
 CIMD_FAIL_S = 60                # a client document that could not be used is not fetched again for this long
@@ -271,21 +273,28 @@ class _Used:
     """Token ids that must not be accepted again, until they would have expired anyway. In memory (module docstring)."""
 
     def __init__(self, cap=200000):
-        self._d, self._lock, self.cap = {}, threading.Lock(), cap
+        self._d, self._t, self._lock, self.cap = {}, {}, threading.Lock(), cap
 
-    def claim(self, jti, exp, now=None):
-        """True the first time this id is seen (and remembers it), False on every later call."""
+    def first_use(self, jti, exp, now=None):
+        """None the first time this id is seen (and remembers it and when); on every later call, WHEN that was."""
         now = time.time() if now is None else now
         with self._lock:
             if len(self._d) >= self.cap:
                 for k in [k for k, e in self._d.items() if e <= now]:
                     del self._d[k]
+                    self._t.pop(k, None)
                 while len(self._d) >= self.cap:                    # still full: forget the ones closest to expiry
-                    del self._d[min(self._d, key=self._d.get)]
+                    k = min(self._d, key=self._d.get)
+                    del self._d[k]
+                    self._t.pop(k, None)
             if self._d.get(jti, 0) > now:
-                return False
-            self._d[jti] = exp
-            return True
+                return self._t.get(jti, 0)
+            self._d[jti], self._t[jti] = exp, now
+            return None
+
+    def claim(self, jti, exp, now=None):
+        """True the first time this id is seen (and remembers it), False on every later call."""
+        return self.first_use(jti, exp, now) is None
 
     def has(self, jti, now=None):
         now = time.time() if now is None else now
@@ -295,6 +304,7 @@ class _Used:
     def clear(self):
         with self._lock:
             self._d.clear()
+            self._t.clear()
 
 
 USED = _Used()          # approvals, codes and refresh tokens that were used
@@ -317,11 +327,16 @@ class _Buckets:
         return ok
 
     def allow(self, name, addr, now=None):
+        return self.check(name, addr, now) is None
+
+    def check(self, name, addr, now=None):
+        """None = go ahead; "address" = this client address is over its limit; "global" = the endpoint's shared
+        ceiling (REC_MCP_GLOBAL_RPM a minute) is reached."""
         now = time.time() if now is None else now
         with self._lock:
             if not self._take((name, addr), RATE[name][0], RATE[name][1], now):
-                return False
-            ok = self._take((name, None), RATE_ALL[name][0], RATE_ALL[name][1], now)      # everyone together
+                return "address"
+            ok = None if self._take((name, None), max(1, int(config.MCP_GLOBAL_RPM)), 60.0, now) else "global"
             cap = self.cap or MAX_BUCKETS
             while len(self._d) > cap:
                 old = next(iter(self._d))
@@ -339,6 +354,18 @@ class _Buckets:
 
 
 BUCKETS = _Buckets()
+_GLOBAL_WARNED = {}
+
+
+def warn_global(name, now=None):
+    """One line when an endpoint's shared ceiling is hit - at most once a minute per endpoint, no client data."""
+    now = time.time() if now is None else now
+    if now - _GLOBAL_WARNED.get(name, -1e9) >= 60:
+        _GLOBAL_WARNED[name] = now
+        print("mcp oauth WARNING: global rate ceiling reached on %s (REC_MCP_GLOBAL_RPM=%d a minute) - requests are being refused"
+              % (name, int(config.MCP_GLOBAL_RPM)))
+        return True
+    return False
 
 
 # ---------------------------------------------------------------- the client: a Client ID Metadata Document
@@ -584,11 +611,11 @@ def _tokens(uid, xt, cid, rexp, now, fam):
             "expires_in": min(ACCESS_S, left), "refresh_token": seal("refresh", dict(base, rexp=int(rexp)), left, now)}
 
 
-def token(form):
+def token(form, now=None):
     """POST /token (form-encoded): authorization_code (+ PKCE verifier) or refresh_token (rotating)."""
     import mcp_server
     grant = form.get("grant_type", "")
-    now = int(time.time())
+    now = int(time.time() if now is None else now)
     if form.get("resource") and not _same(canonical(form["resource"]), canonical(resource())):
         raise OAuthError("invalid_target", "this authorization server only issues tokens for %s" % resource())
     if grant == "authorization_code":
@@ -630,8 +657,14 @@ def token(form):
             raise OAuthError("temporarily_unavailable", "try again in a moment", 503)
         if int(user.get("id") or 0) != int(r["uid"]):
             raise bad
-        if not USED.claim(r["jti"], r["exp"], now):
-            # A rotated-away refresh token came back: someone holds a copy. End the whole chain (best effort, in memory).
+        first = USED.first_use(r["jti"], r["exp"], now)
+        if first is not None:
+            grace = int(config.MCP_REFRESH_GRACE_S or 0)
+            if grace > 0 and now - first <= grace:
+                # Again within the grace window of its first use: a retry after a lost response, or two refreshes at
+                # once. Answer with another fresh pair; nothing is revoked (module docstring: the accepted trade-off).
+                return _tokens(r["uid"], r["xt"], r["cid"], r["rexp"], now, fam or secrets.token_urlsafe(9))
+            # A rotated-away refresh token came back later: someone holds a copy. End the whole chain (in memory).
             if fam and REVOKED.claim("fam:" + fam, int(r["rexp"]), now):
                 print("mcp oauth WARNING: a used refresh token was presented again - sign-in chain revoked for user %s" % int(r["uid"]))
             raise bad
@@ -763,7 +796,10 @@ def install(app):
         return JSONResponse({"error": e.error, "error_description": e.description}, status_code=e.status, headers=no_store)
 
     def limited(name, request):
-        if not BUCKETS.allow(name, _addr(request)):
+        why = BUCKETS.check(name, _addr(request))
+        if why == "global":
+            warn_global(name)
+        if why:
             return JSONResponse({"error": "slow_down", "error_description": "too many requests, try again shortly"},
                                 status_code=429, headers=dict(no_store, **{"Retry-After": "30"}))
         return None

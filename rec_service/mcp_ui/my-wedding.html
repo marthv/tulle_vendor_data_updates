@@ -227,7 +227,7 @@ h2 { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: u
       });
     return ul;
   }
-  function amountCell(item) {
+  function amountCell(item) {                                      // hidden: words only, whatever else the row carries
     if (item && item.amount_hidden === true) return el("span", "hid", "Amount in Tulle");
     var p = num(item && item.price);
     return el("span", "amt", p === null ? "" : money(p));
@@ -260,7 +260,7 @@ h2 { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: u
       li.appendChild(el("div", "cat", str(c.label, 40) || str(c.key, 40)));
       if (c.booked) {
         li.appendChild(itemRow(c.booked));
-        var paid = num(c.booked.paid);
+        var paid = c.booked.amount_hidden === true ? null : num(c.booked.paid);    // a hidden row shows no number at all
         if (paid) li.appendChild(el("div", "sub", money(paid) + " paid"));
       } else {
         li.appendChild(el("div", "quiet", "Not booked yet"));
