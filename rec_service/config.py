@@ -134,6 +134,8 @@ def _int_set(raw):
 
 
 MCP_USER_IDS = _int_set(os.environ.get("REC_MCP_USER_IDS", ""))
+# REC_MCP_USER_IDS=* (the literal star, alone or in the list) = every signed-in couple may use it.
+MCP_ALL_USERS = "*" in [x.strip() for x in os.environ.get("REC_MCP_USER_IDS", "").split(",")]
 MCP_ALLOWED_HOSTS = [h.strip() for h in os.environ.get("REC_MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
 # Anti-scrape cap (owner data policy 2026-11-15): find_vendor calls per account per UTC day, counted from the rec_usage
 # rows the calls write (kind "mcp_find_vendor", not-found ones included). 0 = no lookups at all.
@@ -141,6 +143,23 @@ try:
     MCP_DAILY_LOOKUPS = max(0, int(os.environ.get("REC_MCP_DAILY_LOOKUPS", "25")))
 except ValueError:
     MCP_DAILY_LOOKUPS = 25
+# "Sign in with Tulle" (mcp_oauth.py, 2026-11-15): /mcp is an OAuth-protected resource Claude can add as a connector.
+# REC_MCP_PUBLIC_URL = the public https origin of this service, no path (e.g. https://mcp.tulletogether.app): the MCP
+#   URL is <it>/mcp and the OAuth issuer is <it>. REQUIRED with REC_MCP=1 (empty = nothing is mounted); its host is
+#   added to REC_MCP_ALLOWED_HOSTS automatically.
+# REC_MCP_TOKEN_KEY = the secret that encrypts every code / token (32+ characters). REQUIRED (missing = not mounted).
+#   Changing it signs everyone out of the connector.
+# REC_MCP_CONSENT_URL = the consent page on the Tulle web app that /authorize sends the browser to.
+# REC_MCP_CLIENT_HOSTS = hosts whose client metadata documents are accepted as OAuth clients (default: Claude's).
+# REC_MCP_ALLOWED_ORIGINS = Origin header values /mcp, /authorize and /token accept (default none: a request with any
+#   Origin is refused; the consent page's two routes have their own rule).
+# REC_MCP_DEV_RAW_TOKEN=1 = /mcp also takes the couple's raw Xano token as the bearer. Local testing only.
+MCP_PUBLIC_URL = os.environ.get("REC_MCP_PUBLIC_URL", "").strip().rstrip("/")
+MCP_TOKEN_KEY = os.environ.get("REC_MCP_TOKEN_KEY", "")
+MCP_CONSENT_URL = os.environ.get("REC_MCP_CONSENT_URL", "https://www.tulletogether.app/connect-claude").strip()
+MCP_CLIENT_HOSTS = [h.strip().lower() for h in os.environ.get("REC_MCP_CLIENT_HOSTS", "claude.ai").split(",") if h.strip()]
+MCP_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("REC_MCP_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+MCP_DEV_RAW_TOKEN = os.environ.get("REC_MCP_DEV_RAW_TOKEN", "0").strip() == "1"
 # Streamed answer text (owner 2026-10-31, Claude-style Planner chat): the final model turn is streamed and the answer
 # text written so far is published on GET /rec/progress/{request_id} as `text`, so the page shows it while the model is
 # still writing. Never for a couple with no plan (free mode redacts prices only on the finished answer). "0" = off: the

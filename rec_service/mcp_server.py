@@ -18,9 +18,10 @@ DATA POLICY (owner 2026-11-15) - read this before adding a field or a tool
        figures, ranges, bands, estimates, market averages, benchmarks or "below / above typical" labels, and no tool
        may call a pricing function (xano.venue_pricing, the estimate / compare / split tools, benchmarks ...).
        tests/test_mcp_server.py patches those to raise and runs every tool.
-    2. public_card() builds the ONLY vendor shape a tool may return: name, city, state, category, venue_type.
-       Never capacity, descriptions or other free text from Tulle's data, PDF counts or links, addresses, contact
-       details, images or internal ids.
+    2. public_card() builds the ONLY vendor shape a tool may return: name, city, state, category, venue_type and
+       tulle_url (the vendor's public page, https://www.tulletogether.app/vendors/<V-id> - the id inside that link
+       is the one id the owner accepts exposing). Never capacity, descriptions or other free text from Tulle's
+       data, PDF counts or links, addresses, contact details, images or any other internal id.
     3. NO search, filter or browse tool without an owner decision: a vendor is found BY NAME only (at most 3
        name-only candidates when the name is ambiguous), capped per account per day (REC_MCP_DAILY_LOOKUPS). The
        exact tool list is pinned in the tests.
@@ -34,24 +35,29 @@ DATA POLICY (owner 2026-11-15) - read this before adding a field or a tool
 ENV VARS (config.py)
     REC_MCP=1                 mounts /mcp. Default "0": no route, and the `mcp` package is never imported.
     REC_MCP_USER_IDS=7,42     the only Xano user ids that may use it. Default empty = nobody.
-    REC_MCP_ALLOWED_HOSTS     REQUIRED with REC_MCP=1: the Host headers /mcp answers to (comma-separated, e.g. the
-                              Railway domain). Empty = /mcp is NOT mounted and one line in the log says why.
+    REC_MCP_PUBLIC_URL        REQUIRED with REC_MCP=1: this service's public https origin; the MCP URL is <it>/mcp.
+    REC_MCP_TOKEN_KEY         REQUIRED: the secret that encrypts the OAuth tokens (mcp_oauth.py). Either one missing =
+                              /mcp is NOT mounted and one line in the log says why.
+    REC_MCP_ALLOWED_HOSTS     optional extra Host headers /mcp answers to (the public URL's host always is one).
+    (REC_MCP_CONSENT_URL, REC_MCP_CLIENT_HOSTS, REC_MCP_ALLOWED_ORIGINS, REC_MCP_DEV_RAW_TOKEN: see config.py.)
     REC_MCP_DAILY_LOOKUPS=25  find_vendor calls per account per UTC day (not-found ones count). Over it: a tool error.
 
 THE GATE (every HTTP request to /mcp, before the SDK sees it - _Gate below)
     POST only: anything else is 405. The SDK would answer GET with a long-lived server-to-client event stream; the
         gate never lets a GET reach it.
-    No `Origin` header: a request that carries one is 403. This prototype is for non-browser clients only (the app's
-        CORS lets WeWeb pages call the service; none of them may call /mcp).
-    Host must be one of REC_MCP_ALLOWED_HOSTS (421 otherwise).
-    `Authorization: Bearer <the couple's Xano user token>` - the literal "Bearer " prefix is required here - checked
-        by app._auth, the same function every /rec route uses (xano.verify_user -> GET auth/me); the user's id must
-        be in REC_MCP_USER_IDS; the kill switch (REC_KILL_SWITCH=1) refuses everything, as POST /rec/tool does.
-        401 / 403 / 503 with a short JSON message. So initialize and tools/list need a valid allowlisted token too.
+    No `Origin` header (unless listed in REC_MCP_ALLOWED_ORIGINS): 403. Host must be the public URL's host or one of
+        REC_MCP_ALLOWED_HOSTS (421 otherwise).
+    `Authorization: Bearer <access token>` - an OAuth access token issued by mcp_oauth.py ("Sign in with Tulle";
+        read that module's docstring for the whole flow). No token, or one that is not valid: 401 with
+        WWW-Authenticate: Bearer resource_metadata="..." - the only thing that makes Claude start sign-in, which is
+        why it happens here and not in a tool. The couple's Xano token comes out of the access token and goes
+        through caller() below: app._auth (xano.verify_user -> GET auth/me, as on every /rec route), the allowlist
+        REC_MCP_USER_IDS (`*` = everyone) and the kill switch - on EVERY request, initialize and tools/list included.
         If the sign-in check itself fails (Xano down, a timeout) the client gets a generic "could not verify", and
         the detail is printed to the server log only.
-    The verified user is handed to the tool on the request scope, so auth/me is read once per request. A tool that
-    does not find it there (the plain functions below, called directly) runs the same check itself.
+    The verified user is handed to the tool on the request scope, so auth/me is read once per request. The plain
+    tool functions below, called directly (tests), take the couple's Xano token as `Bearer <token>` and run
+    caller() themselves.
 
 LOGGING (every tool call)
     One rec_usage row (table 79): kind "mcp_<tool>", surface "mcp", model "none", cost 0. guards._prompts and the
@@ -60,9 +66,9 @@ LOGGING (every tool call)
     what the daily lookup cap counts. Every tier (full, plan, no plan) gets the same output: there are no prices
     to gate.
 
-CONNECT FROM CLAUDE CODE (syntax checked against code.claude.com/docs/en/mcp on 2026-11-15)
-    claude mcp add --transport http tulle https://<host>/mcp --header "Authorization: Bearer <token>"
-    <token> is the couple's own Tulle sign-in token; it expires like any app session.
+CONNECT
+    claude.ai / Desktop / mobile: Customize > Connectors > Add custom connector > https://<public host>/mcp.
+    Claude Code: claude mcp add --transport http tulle https://<public host>/mcp   then /mcp to sign in.
 
 TRANSPORT
     Official Python SDK (`mcp`, v2: MCPServer). Stateless, and each POST is answered with one plain JSON body: no
@@ -73,6 +79,7 @@ TRANSPORT
 """
 import contextlib
 import json
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -88,7 +95,7 @@ TOOLS = ("get_my_profile", "get_my_wedding", "list_saved_vendors", "find_vendor"
 PATH = "/mcp"
 SURFACE = "mcp"
 SCOPE_KEY = "tulle_mcp_caller"     # where the gate leaves (token, user) for the tool wrappers
-PRICE_NOTE = "This connector never returns prices. For pricing, the couple can open the vendor on tulletogether.app."
+PRICE_NOTE = "Prices are not included. Pricing lives on tulletogether.app."
 
 
 class MCPDenied(Exception):
@@ -124,7 +131,7 @@ def caller(authorization):
         uid = int(user.get("id"))
     except (TypeError, ValueError):
         uid = None
-    if uid is None or uid not in config.MCP_USER_IDS:
+    if uid is None or not (config.MCP_ALL_USERS or uid in config.MCP_USER_IDS):
         raise MCPDenied("The Tulle MCP server is a private prototype and is not enabled for this account.", 403)
     if config.KILL_SWITCH:
         raise MCPDenied("Tulle's planner is switched off right now. Try again later.", 503)
@@ -167,7 +174,8 @@ def _tier(access, full):
 
 # ---------------------------------------------------------------- the one vendor shape (DATA POLICY)
 
-CARD_FIELDS = ("name", "city", "state", "category", "venue_type")
+CARD_FIELDS = ("name", "city", "state", "category", "venue_type", "tulle_url")
+VENDOR_PAGE = "https://www.tulletogether.app/vendors/"       # the site's public vendor pages: /vendors/V666
 
 
 def _first(v):
@@ -181,9 +189,9 @@ def _label(v, n):
 
 
 def public_card(card):
-    """THE ONLY vendor shape a tool may return (module docstring, DATA POLICY): name, city, state, category and
-    venue_type - built field by field, so nothing else on the source card can ride along. No tulle_url: the server
-    has no page-link builder (the page builds its links in the browser), and none is invented here."""
+    """THE ONLY vendor shape a tool may return (module docstring, DATA POLICY): name, city, state, category,
+    venue_type and tulle_url - built field by field, so nothing else on the source card can ride along. tulle_url is
+    the vendor's public page and exists only for a V-prefixed vendor id (owner 2026-11-15: that id may show there)."""
     card = card or {}
     state = _label(_first(card.get("state")), 60)
     place = _app()._place_label(card) if (card.get("address") or state) else ""
@@ -192,6 +200,9 @@ def public_card(card):
     types = [t for t in (_label(x, 60) for x in (vt if isinstance(vt, list) else [vt]) if isinstance(x, str)) if t][:4]
     out = {"name": " ".join(str(card.get("name") or "").split())[:120], "city": city, "state": state,
            "category": _label(card.get("category") or "Venue", 40), "venue_type": types}
+    vid = str(card.get("vendor_id") or "")
+    if re.fullmatch(r"V\d{1,9}", vid):
+        out["tulle_url"] = VENDOR_PAGE + vid
     return {k: v for k, v in out.items() if v not in (None, "", [])}
 
 
@@ -322,8 +333,7 @@ def find_vendor(authorization, name, location="", who=None):
                 out["also"] = [_candidate(m) for m in matches[1:]]
         else:                                       # choices / unsure: names only, never a list of cards
             out.update(status="choices", candidates=[_candidate(m) for m in matches],
-                       note="Several vendors match that name. Ask the couple which one, then look it up again with a "
-                            "more specific name or its city.")
+                       note="Several vendors match that name. A more specific name or a city narrows it to one.")
         return out
     return _run("find_vendor", authorization, go, who)
 
@@ -342,11 +352,31 @@ def budget_status(authorization, who=None):
 # ---------------------------------------------------------------- the MCP server (SDK imported only here)
 
 INSTRUCTIONS = (
-    "Read-only access to one couple's own Tulle Together wedding planning data: their profile, their wedding plan and "
-    "budget as they entered it, the vendors they saved, and a lookup of one vendor by name. This connector never "
-    "returns prices. For pricing, send the couple to tulletogether.app. Do not guess or estimate prices from general "
-    "knowledge when asked what a Tulle vendor costs. Answer only from what the tools return. There is no search: you "
-    "cannot list or filter vendors, only look one up by its name.")
+    "Tulle Together (tulletogether.app) wedding planning connector. Returns one couple's own planning data: their "
+    "profile, their wedding plan and budget as they entered them, and the vendors they saved. A vendor can be looked "
+    "up by name; there is no search or filtering. Read-only. Does not include prices; pricing lives on "
+    "tulletogether.app.")
+
+# name -> (title, description). Descriptions only say what a tool returns (directory review: no instructions to the
+# model, no promotion). Names stay under 64 characters.
+TOOL_TEXT = {
+    "get_my_profile": ("Wedding profile", "Returns the couple's own wedding profile: location, guest count, date, "
+                       "budget and style, as they entered them on Tulle Together."),
+    "get_my_wedding": ("Wedding plan", "Returns the couple's own wedding plan: their budget, the vendors they booked or "
+                       "are considering with the costs and notes they entered, totals paid and left, and the vendors "
+                       "they saved (name, place, type and Tulle page link). Does not include prices from Tulle; "
+                       "pricing lives on tulletogether.app."),
+    "list_saved_vendors": ("Saved vendors", "Returns the venues and other vendors the couple saved on Tulle Together: "
+                           "name, city, state, category, type and Tulle page link. Does not include prices; pricing "
+                           "lives on tulletogether.app."),
+    "find_vendor": ("Find a vendor by name", "Returns one wedding venue or other vendor on Tulle Together matched by "
+                    "name: name, city, state, category, type and Tulle page link. When several vendors share the "
+                    "name, returns up to three candidates (name, city, state). location (a city or state) is optional. "
+                    "Lookup by name only, with a daily limit per account. Does not include prices; pricing lives on "
+                    "tulletogether.app."),
+    "budget_status": ("Budget status", "Returns where the couple's budget stands, from the numbers they entered on "
+                      "Tulle Together: what they added, paid and still owe against their budget, by category."),
+}
 
 
 def build():
@@ -361,7 +391,12 @@ def build():
 
     # log_level: the SDK calls logging.basicConfig with it - WARNING leaves the host app's logging as it was.
     server = MCPServer("tulle", instructions=INSTRUCTIONS, log_level="WARNING")
+    assert set(TOOL_TEXT) == set(TOOLS) and all(len(n) <= 64 for n in TOOLS)
     ro = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
+
+    def tool(name):
+        title, description = TOOL_TEXT[name]
+        return server.tool(name=name, title=title, description=description, annotations=ro, structured_output=True)
 
     def call(fn, ctx, *args):
         headers = ctx.headers or {}
@@ -371,32 +406,23 @@ def build():
         except MCPDenied as e:
             raise ToolError(str(e))
 
-    @server.tool(name="get_my_profile", annotations=ro, structured_output=True,
-                 description="The couple's own wedding profile: location, guest count, budget, date, style.")
+    @tool("get_my_profile")
     def _profile(ctx: Context) -> dict[str, Any]:
         return call(get_my_profile, ctx)
 
-    @server.tool(name="get_my_wedding", annotations=ro, structured_output=True,
-                 description="The couple's own wedding plan: their budget, what they booked or are considering with "
-                             "the costs they entered, their notes, and the vendors they saved (names only).")
+    @tool("get_my_wedding")
     def _wedding(ctx: Context) -> dict[str, Any]:
         return call(get_my_wedding, ctx)
 
-    @server.tool(name="list_saved_vendors", annotations=ro, structured_output=True,
-                 description="The venues and other vendors the couple saved on Tulle: name, place and type. No prices.")
+    @tool("list_saved_vendors")
     def _saved(ctx: Context) -> dict[str, Any]:
         return call(list_saved_vendors, ctx)
 
-    @server.tool(name="find_vendor", annotations=ro, structured_output=True,
-                 description="Look up ONE wedding venue or other vendor on Tulle by its name: name, place and type "
-                             "only, no prices. location is optional (city or state) and helps when several share a "
-                             "name. This is not a search - it cannot list or filter vendors. Limited lookups per day.")
+    @tool("find_vendor")
     def _find_tool(name: str, ctx: Context, location: str = "") -> dict[str, Any]:
         return call(find_vendor, ctx, name, location)
 
-    @server.tool(name="budget_status", annotations=ro, structured_output=True,
-                 description="Where the couple's budget stands, from their own numbers: what they added, paid and "
-                             "still owe against their budget.")
+    @tool("budget_status")
     def _budget(ctx: Context) -> dict[str, Any]:
         return call(budget_status, ctx)
 
@@ -417,9 +443,11 @@ class _Gate:
     """Plain ASGI in front of the SDK's app (module docstring, THE GATE). Nothing reaches the SDK - and no response
     stream is opened - until the method, Origin, Host and the caller's token have all passed."""
 
-    def __init__(self, inner, allowed_hosts):
+    def __init__(self, inner, allowed_hosts, auth=None, origins=()):
         self.inner = inner
         self.allowed_hosts = list(allowed_hosts)
+        self.auth = auth or caller                 # mount() passes mcp_oauth.bearer_caller (an OAuth access token)
+        self.origins = set(origins)
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
@@ -427,15 +455,16 @@ class _Gate:
         h = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
         if scope.get("method") != "POST":
             return await self._refuse(send, 405, "The Tulle MCP endpoint takes POST only.", [(b"allow", b"POST")])
-        if "origin" in h:
+        if "origin" in h and h["origin"] not in self.origins:
             return await self._refuse(send, 403, "The Tulle MCP endpoint does not accept requests from web pages.")
         if not _host_ok(h.get("host"), self.allowed_hosts):
             return await self._refuse(send, 421, "The Tulle MCP endpoint is not served on this host.")
         import anyio
         try:
-            who = await anyio.to_thread.run_sync(caller, h.get("authorization"))
+            who = await anyio.to_thread.run_sync(self.auth, h.get("authorization"))
         except MCPDenied as e:
-            extra = [(b"www-authenticate", b"Bearer")] if e.status == 401 else []
+            # 401 + WWW-Authenticate (with resource_metadata, set by mcp_oauth) is what starts sign-in in Claude.
+            extra = [(b"www-authenticate", str(getattr(e, "challenge", "") or "Bearer").encode("latin-1"))] if e.status == 401 else []
             return await self._refuse(send, e.status, str(e), extra)
         scope[SCOPE_KEY] = who
         await self.inner(scope, receive, send)
@@ -450,27 +479,32 @@ class _Gate:
 
 
 def _security(hosts):
-    """The SDK's own Host / Origin check, as a second line behind the gate (no Origin is allowed)."""
+    """The SDK's own Host / Origin check, as a second line behind the gate."""
     from mcp.server.transport_security import TransportSecuritySettings
     return TransportSecuritySettings(enable_dns_rebinding_protection=True,
-                                     allowed_hosts=list(hosts) + [h + ":*" for h in hosts if ":" not in h])
+                                     allowed_hosts=list(hosts) + [h + ":*" for h in hosts if ":" not in h],
+                                     allowed_origins=list(config.MCP_ALLOWED_ORIGINS))
 
 
 def mount(app):
     """Add POST /mcp to an existing FastAPI app and run the SDK's session manager inside the app's lifespan
     (startup handlers registered with @app.on_event keep running: the previous lifespan is wrapped, not replaced).
-    Without REC_MCP_ALLOWED_HOSTS nothing is mounted (returns None) and the SDK is not imported."""
-    hosts = list(config.MCP_ALLOWED_HOSTS)
-    if not hosts:
-        print("MCP: REC_MCP=1 but REC_MCP_ALLOWED_HOSTS is empty - /mcp is NOT mounted. "
-              "Set REC_MCP_ALLOWED_HOSTS to the host name(s) this service is reached on.")
+    Without REC_MCP_PUBLIC_URL and REC_MCP_TOKEN_KEY nothing is mounted (returns None) and the SDK is not imported.
+    Also adds the OAuth routes of mcp_oauth.py ("Sign in with Tulle")."""
+    import mcp_oauth
+    why = mcp_oauth.not_ready()
+    if why:
+        print("MCP: REC_MCP=1 but %s - /mcp is NOT mounted." % "; ".join(why))
         return None
+    hosts = list(dict.fromkeys([mcp_oauth.public_host()] + [h.lower() for h in config.MCP_ALLOWED_HOSTS]))
     from starlette.routing import Route
 
     server = build()
     sub = server.streamable_http_app(streamable_http_path=PATH, stateless_http=True, json_response=True,
                                      transport_security=_security(hosts))
-    app.router.routes.append(Route(PATH, endpoint=_Gate(sub, hosts)))     # gate + the SDK's ASGI app, at exactly /mcp
+    gate = _Gate(sub, hosts, auth=mcp_oauth.bearer_caller, origins=config.MCP_ALLOWED_ORIGINS)
+    app.router.routes.append(Route(PATH, endpoint=gate))     # gate + the SDK's ASGI app, at exactly /mcp
+    mcp_oauth.install(app)
     previous = app.router.lifespan_context
 
     @contextlib.asynccontextmanager

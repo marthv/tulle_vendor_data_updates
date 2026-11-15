@@ -23,10 +23,10 @@ HERE = pathlib.Path(__file__).resolve().parent.parent
 T = "2026-11-15"
 # The couple's OWN numbers (these must come back): budget 60000, booked 12505 / paid 4000, a 900 quote, 9000 extra.
 USER = {"id": 7, "first_name": "Ana", "Wedding_Location_Updated": ["Texas"], "Wedding_Guest_Count": 120,
-        "Wedding_Budget": 60000, "favorited_vendors": ["V1", "P1", "F9"], "email": "ana@example.com"}
+        "Wedding_Budget": 60000, "favorited_vendors": ["V101", "V202", "V303"], "email": "ana@example.com"}
 PACK = [{"id": 1, "user_id": 7, "vendor_name": "Example 1: Venue", "total_cost": 30000, "Selected": True, "Category": "Venue"},
         {"id": 2, "user_id": 7, "vendor_name": "Kohl Mansion", "total_cost": 12505, "Balance_Paid": 4000,
-         "Selected": True, "Category": "Venue", "Notes": "tulle:V1", "Contact_Information": "ask for Dana",
+         "Selected": True, "Category": "Venue", "Notes": "tulle:V101", "Contact_Information": "ask for Dana",
          "Files": {"name": "contract.pdf", "url": "https://files.example/vault/SECRETFILE/contract.pdf"}},
         {"id": 3, "user_id": 7, "vendor_name": "Catering Co", "total_cost": 9000, "Selected": True,
          "Category": "Food and Beverage", "Notes": "deposit due in May"},
@@ -52,15 +52,16 @@ def tulle_row(vid, name, category="Venue", state="Texas", city="Austin", **extra
         "florist_pricing": {"typical_total": 7373}, "reason": "LEAK reason"}, **extra)
 
 
-CARDS = {"V1": tulle_row("V1", "Kohl Mansion"),
-         "P1": tulle_row("P1", "OliviaPhotos", category="Photography"),
-         "F9": tulle_row("F9", "Bloomery", category="Beauty", city="Dallas")}
-TWINS = [tulle_row("A%d" % i, "Ashton Gardens %s" % n, state=st, city=c)
+CARDS = {"V101": tulle_row("V101", "Kohl Mansion"),
+         "V202": tulle_row("V202", "OliviaPhotos", category="Photography"),
+         "V303": tulle_row("V303", "Bloomery", category="Beauty", city="Dallas")}
+TWINS = [tulle_row("V40%d" % i, "Ashton Gardens %s" % n, state=st, city=c)
          for i, (n, st, c) in enumerate([("North", "Georgia", "Atlanta"), ("West", "Ohio", "Columbus"),
                                          ("East", "Ohio", "Dayton"), ("South", "Utah", "Provo")], 1)]
 FORBIDDEN_NUMBERS = ("12345", "12,345", "15678", "2222", "2,222", "4444", "31313", "5151", "5,151", "6161", "41414",
                      "41,414", "7373", "987651", "287", "233", "311", "4321", "78701", "555-0199", "30.26", "97.74")
-CARD_KEYS = {"name", "city", "state", "category", "venue_type"}              # the public card: nothing else, ever
+CARD_KEYS = {"name", "city", "state", "category", "venue_type", "tulle_url"}   # the public card: nothing else, ever
+PAGE = re.compile(r"https://www\.tulletogether\.app/vendors/V\d{1,9}")           # the one place an id may show
 CARD_PLACES = {"matches": CARD_KEYS, "vendors": CARD_KEYS, "saved": CARD_KEYS, "saved_other": CARD_KEYS,
                "candidates": {"name", "city", "state"}, "also": {"name", "city", "state"}}
 PRICING_FUNCTIONS = ("venue_pricing", "cached_venue_pricing", "market_benchmarks", "cached_market_benchmarks",
@@ -79,6 +80,9 @@ def walk(obj):
     def card(c, allowed, where):
         assert isinstance(c, dict) and set(c) <= allowed, (where, sorted(set(c) - allowed))
         for k, v in c.items():
+            if k == "tulle_url":
+                assert isinstance(v, str) and PAGE.fullmatch(v), (where, v)
+                continue
             for x in (v if isinstance(v, list) else [v]):
                 assert isinstance(x, str) and "$" not in x and not re.search(r"\d", x), (where, k, x)
 
@@ -115,8 +119,8 @@ def env(monkeypatch):
         cat = k.get("category", "Venue")
         st["searched"].append((term, cat))
         if cat == "Venue":
-            return ([dict(CARDS["V1"])] if "kohl" in term else [dict(v) for v in TWINS] if "ashton" in term else [])
-        return [dict(CARDS["P1"])] if cat == "Photography" and "olivia" in term else []
+            return ([dict(CARDS["V101"])] if "kohl" in term else [dict(v) for v in TWINS] if "ashton" in term else [])
+        return [dict(CARDS["V202"])] if cat == "Photography" and "olivia" in term else []
 
     def forbidden(fname):
         def boom(*a, **k):
@@ -214,37 +218,68 @@ STUB = ("import sys, types\n"
         "pricing_warm.start = lambda: starts.append(1)      # the real startup handler, minus its network warm-up\n")
 
 
+KEY = "k" * 40
+ON = {"REC_MCP": "1", "REC_MCP_USER_IDS": "7, 42,abc,", "REC_MCP_PUBLIC_URL": "https://tulle.test", "REC_MCP_TOKEN_KEY": KEY}
+
+
 def test_flag_on_mounts_mcp_on_the_real_app_and_startup_runs_exactly_once():
     pytest.importorskip("mcp")
     code = STUB + (
         "import app, config\n"
         "from fastapi.testclient import TestClient\n"
-        "assert config.MCP_ENABLED and config.MCP_USER_IDS == frozenset({7, 42})\n"
-        "assert [r.path for r in app.app.routes if getattr(r, 'path', '').startswith('/mcp')] == ['/mcp']\n"
-        "with TestClient(app.app, base_url='http://tulle.test') as c:\n"
+        "assert config.MCP_ENABLED and config.MCP_USER_IDS == frozenset({7, 42}) and not config.MCP_ALL_USERS\n"
+        "paths = [getattr(r, 'path', '') for r in app.app.routes]\n"
+        "assert paths.count('/mcp') == 1 and '/token' in paths and '/authorize' in paths and '/oauth/approve' in paths\n"
+        "with TestClient(app.app, base_url='https://tulle.test') as c:\n"
         "    assert starts == [1], starts\n"
         "    assert c.get('/health').status_code == 200\n"
         "    assert c.get('/mcp').status_code == 405\n"
-        "    assert c.post('/mcp', json={}).status_code == 401\n"
+        "    r = c.post('/mcp', json={})\n"
+        "    assert r.status_code == 401 and 'resource_metadata=' in r.headers['www-authenticate']\n"
+        "    assert c.get('/.well-known/oauth-protected-resource/mcp').json()['resource'] == 'https://tulle.test/mcp'\n"
         "assert starts == [1], starts\n"
         "print('OK')")
-    r = _fresh(code, REC_MCP="1", REC_MCP_USER_IDS="7, 42,abc,", REC_MCP_ALLOWED_HOSTS="tulle.test")
+    r = _fresh(code, **ON)
     assert r.returncode == 0 and "OK" in r.stdout, r.stderr[-2000:]
 
 
-def test_flag_on_without_allowed_hosts_does_not_mount_and_says_why():
+@pytest.mark.parametrize("missing,line", [("REC_MCP_PUBLIC_URL", "REC_MCP_PUBLIC_URL is empty"),
+                                          ("REC_MCP_TOKEN_KEY", "REC_MCP_TOKEN_KEY is missing or shorter than 32")])
+def test_flag_on_without_public_url_or_key_does_not_mount_and_says_why(missing, line):
     code = STUB + (
         "import app, config\n"
         "from fastapi.testclient import TestClient\n"
-        "assert config.MCP_ENABLED and config.MCP_ALLOWED_HOSTS == []\n"
-        "assert not [r for r in app.app.routes if getattr(r, 'path', '').startswith('/mcp')]\n"
+        "assert config.MCP_ENABLED\n"
+        "paths = [getattr(r, 'path', '') for r in app.app.routes]\n"
+        "assert not [p for p in paths if p.startswith(('/mcp', '/oauth', '/authorize', '/token', '/.well-known'))]\n"
         "assert 'mcp' not in sys.modules\n"
         "with TestClient(app.app) as c:\n"
         "    assert c.post('/mcp', json={}).status_code == 404 and starts == [1]\n"
         "print('OK')")
-    r = _fresh(code, REC_MCP="1", REC_MCP_USER_IDS="7")
+    r = _fresh(code, **{k: v for k, v in ON.items() if k != missing})
     assert r.returncode == 0 and "OK" in r.stdout, r.stderr[-2000:]
-    assert r.stdout.count("REC_MCP_ALLOWED_HOSTS is empty - /mcp is NOT mounted") == 1
+    assert r.stdout.count(line) == 1 and r.stdout.count("/mcp is NOT mounted") == 1
+
+
+BLOCK = ("class Block:\n"
+         "    def find_spec(self, name, path=None, target=None):\n"
+         "        if name.split('.')[0] in BLOCKED:\n"
+         "            raise ImportError(name + ' is not installed (simulated)')\n"
+         "sys.meta_path.insert(0, Block())\n")
+
+
+def test_import_app_works_without_mcp_and_without_cryptography():
+    """Flag off: neither package is touched. Flag on without `cryptography`: not mounted, one line says why."""
+    code = STUB + "BLOCKED = ('mcp', 'mcp_types', 'cryptography')\n" + BLOCK + (
+        "import app, config\n"
+        "assert not [r for r in app.app.routes if getattr(r, 'path', '').startswith(('/mcp', '/oauth', '/token'))]\n"
+        "assert not {'mcp', 'cryptography', 'mcp_server', 'mcp_oauth'} & set(sys.modules)\n"
+        "print('OK', config.MCP_ENABLED)")
+    off = _fresh(code)
+    assert off.returncode == 0 and "OK False" in off.stdout, off.stderr[-2000:]
+    on = _fresh(code.replace("assert not {'mcp', 'cryptography', 'mcp_server', 'mcp_oauth'}", "assert not {'mcp', 'cryptography'}"), **ON)
+    assert on.returncode == 0 and "OK True" in on.stdout, on.stderr[-2000:]
+    assert "the `cryptography` package is not installed - /mcp is NOT mounted" in on.stdout
 
 
 # ---------------------------------------------------------------- (b) (c) (f) refusals: an error, no data, no Xano read
@@ -323,10 +358,22 @@ def test_the_exact_tool_list():
     assert not [t for t in mcp_server.TOOLS if banned.search(t)]
 
 
-def test_the_instructions_tell_the_client_model_there_are_no_prices():
-    for line in ("This connector never returns prices.", "For pricing, send the couple to tulletogether.app.",
-                 "Do not guess or estimate prices from general knowledge when asked what a Tulle vendor costs."):
-        assert line in mcp_server.INSTRUCTIONS
+ORDERS = re.compile(r"\b(you must|you should|always|never|do not|don't|make sure|be sure|please|must|should|"
+                    r"ask the|tell the|send the|point the|remind|recommend|best|leading|trusted)\b", re.I)
+
+
+def test_instructions_and_tool_texts_only_describe_what_is_returned():
+    """Directory review rejects instruction-style or promotional descriptions (owner 2026-11-15)."""
+    texts = {"instructions": mcp_server.INSTRUCTIONS}
+    texts.update({n: "%s. %s" % mcp_server.TOOL_TEXT[n] for n in mcp_server.TOOLS})
+    assert set(mcp_server.TOOL_TEXT) == set(mcp_server.TOOLS)
+    for name, text in texts.items():
+        assert not ORDERS.search(text), (name, ORDERS.search(text).group(0))
+    assert "Does not include prices; pricing lives on tulletogether.app." in mcp_server.INSTRUCTIONS
+    for n in ("get_my_wedding", "list_saved_vendors", "find_vendor"):
+        assert "pricing lives on tulletogether.app" in mcp_server.TOOL_TEXT[n][1]
+    assert all(mcp_server.TOOL_TEXT[n][1].startswith("Returns ") and len(n) <= 64 and mcp_server.TOOL_TEXT[n][0]
+               for n in mcp_server.TOOLS)
 
 
 # ---------------------------------------------------------------- the walker: every tool, every tier
@@ -341,9 +388,11 @@ def test_no_pricing_and_only_public_cards_in_any_tool_for_any_tier(env, tier):
     for name, args in (("OliviaPhotos", []), ("Ashton Gardens", []), ("Ashton Gardens", ["Ohio"]), ("Zzyzx Ballroom", [])):
         walk(mcp_server.find_vendor("Bearer good", name, *args))
     assert out["find_vendor"]["matches"] == [{"name": "Kohl Mansion", "city": "Austin", "state": "Texas",
-                                              "category": "Venue", "venue_type": ["Estate / Mansion"]}]
+                                              "category": "Venue", "venue_type": ["Estate / Mansion"],
+                                              "tulle_url": "https://www.tulletogether.app/vendors/V101"}]
     assert out["list_saved_vendors"]["vendors"][1] == {"name": "OliviaPhotos", "city": "Austin", "state": "Texas",
-                                                       "category": "Photography", "venue_type": ["Documentary"]}
+                                                       "category": "Photography", "venue_type": ["Documentary"],
+                                                       "tulle_url": "https://www.tulletogether.app/vendors/V202"}
     assert out["get_my_profile"]["plan"] == tier
 
 
@@ -366,16 +415,21 @@ def test_the_walker_itself_catches_what_it_should():
                 {"saved": [dict(ok["matches"][0], city="12 Main St")]},
                 {"candidates": [dict(ok["matches"][0])]},                      # a candidate is name + place only
                 {"x": {"y": [{"also": [{"name": "A", "vendor_id": "V1"}]}]}},
+                {"also": [{"name": "A", "tulle_url": "https://www.tulletogether.app/vendors/V1"}]},   # candidates: no link
+                {"matches": [dict(ok["matches"][0], tulle_url="https://www.tulletogether.app/vendors/V1?ref=9")]},
+                {"matches": [dict(ok["matches"][0], tulle_url="https://evil.example/vendors/V1")]},
                 {"note": "Rental starts at $12,345."}, {"anything": {"deep": ["LEAK"]}}):
         with pytest.raises(AssertionError):
             walk(bad)
 
 
-def test_public_card_copies_nothing_but_its_five_fields():
-    c = mcp_server.public_card(CARDS["V1"])
+def test_public_card_copies_nothing_but_its_six_fields():
+    c = mcp_server.public_card(CARDS["V101"])
     assert c == {"name": "Kohl Mansion", "city": "Austin", "state": "Texas", "category": "Venue",
-                 "venue_type": ["Estate / Mansion"]} and set(c) <= set(mcp_server.CARD_FIELDS)
-    assert "tulle_url" not in c                                  # no page-link builder exists in the server
+                 "venue_type": ["Estate / Mansion"], "tulle_url": "https://www.tulletogether.app/vendors/V101"}
+    assert set(c) <= set(mcp_server.CARD_FIELDS) and "tulle_url" not in mcp_server._candidate(CARDS["V101"])
+    for odd_id in ("", None, "P1", "V", "V12/../x", "V1?x=1", "v101", 101, "V1234567890"):   # only a real V-id links
+        assert "tulle_url" not in mcp_server.public_card(dict(CARDS["V101"], vendor_id=odd_id)), odd_id
     odd = mcp_server.public_card({"name": "Barn 9", "state": ["Ohio"], "address": "77 Elm Rd",
                                   "venue_type": ["Barn / Ranch", "From $5,000", 7, "Seats 200"], "category": "Venue"})
     assert odd == {"name": "Barn 9", "state": "Ohio", "category": "Venue", "venue_type": ["Barn / Ranch"]}
@@ -398,7 +452,7 @@ def test_get_my_wedding_returns_what_the_couple_entered(env, tier):
     assert [(q["name"], q["price"]) for q in cats["Entertainment"]["quotes"]] == [("Old DJ", 900)]
     assert w["slices"] == [{"label": "Venue", "amount": 12505}, {"label": "Food and Beverage", "amount": 9000}]
     # Tulle's vendors in it: public cards only, no price hint (the app's screen shows "about $12,345" to plan holders)
-    assert cats["Venue"]["saved"] == [mcp_server.public_card(CARDS["V1"])]
+    assert cats["Venue"]["saved"] == [mcp_server.public_card(CARDS["V101"])]
     assert cats["Photography"]["saved"][0]["name"] == "OliviaPhotos"
     assert [c["name"] for c in w["saved_other"]] == ["Bloomery"]
     assert "price" not in json.dumps(cats["Venue"]["saved"]) and "show_prices" not in w
@@ -424,7 +478,7 @@ def test_profile_is_the_couples_own_answers(env):
 
 def test_find_vendor_one_match_a_non_venue_and_a_miss(env):
     one = mcp_server.find_vendor("Bearer good", "Kohl Mansion", "Austin")
-    assert one["status"] == "found" and len(one["matches"]) == 1 and "never returns prices" in one["note"]
+    assert one["status"] == "found" and len(one["matches"]) == 1 and "Prices are not included" in one["note"]
     ph = mcp_server.find_vendor("Bearer good", "OliviaPhotos")
     assert ph["status"] == "found" and ph["matches"][0]["category"] == "Photography"
     miss = mcp_server.find_vendor("Bearer good", "Zzyzx Ballroom")
@@ -437,6 +491,7 @@ def test_find_vendor_one_match_a_non_venue_and_a_miss(env):
 def test_several_matches_give_at_most_three_name_only_candidates(env):
     r = walk(mcp_server.find_vendor("Bearer good", "Ashton Gardens"))            # 4 venues share the name
     assert r["status"] == "choices" and r["matches"] == [] and "more specific name" in r["note"]
+    assert not ORDERS.search(r["note"])
     assert len(r["candidates"]) == 3
     assert all(set(c) == {"name", "city", "state"} and c["name"].startswith("Ashton Gardens") for c in r["candidates"])
     one = mcp_server.find_vendor("Bearer good", "Ashton Gardens", "Utah")        # the place picks one
@@ -537,7 +592,12 @@ LIST = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
 def client(env, monkeypatch):
     """A fresh FastAPI host with /mcp mounted (the real app's startup would start the pricing warmer)."""
     pytest.importorskip("mcp")
-    monkeypatch.setattr(config, "MCP_ALLOWED_HOSTS", ["testserver"])
+    monkeypatch.setattr(config, "MCP_PUBLIC_URL", "https://testserver")
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY", KEY)
+    monkeypatch.setattr(config, "MCP_ALLOWED_HOSTS", [])        # the public URL's host is allowed by itself
+    # The gate tests below pass the couple's raw Xano token: the local-testing switch. Without it /mcp takes only
+    # OAuth access tokens - tests/test_mcp_oauth.py covers that path end to end.
+    monkeypatch.setattr(config, "MCP_DEV_RAW_TOKEN", True)
     host = FastAPI()
 
     @host.get("/health")
@@ -558,10 +618,11 @@ def _rpc(client, method, params=None, token="good", rid=1):
 def test_end_to_end_over_streamable_http(env, client):
     assert client.get("/health").json() == {"ok": True}          # the host's own routes still answer
     init = _rpc(client, "initialize", INIT["params"])["result"]
-    assert init["serverInfo"]["name"] == "tulle" and "never returns prices" in init["instructions"]
+    assert init["serverInfo"]["name"] == "tulle" and init["instructions"] == mcp_server.INSTRUCTIONS
     tools = _rpc(client, "tools/list")["result"]["tools"]
     assert sorted(t["name"] for t in tools) == EXACT_TOOLS       # what a client really sees: no search, no pricing
     assert all(t["annotations"]["readOnlyHint"] is True for t in tools)
+    assert {t["name"]: (t["title"], t["description"]) for t in tools} == mcp_server.TOOL_TEXT
     schemas = {t["name"]: t["inputSchema"] for t in tools}
     assert schemas["find_vendor"]["required"] == ["name"]
     assert sorted(schemas["find_vendor"]["properties"]) == ["location", "name"]          # a name, never a filter
@@ -604,8 +665,8 @@ def test_only_post_reaches_the_sdk_so_no_stream_is_ever_opened(env, client, meth
 @pytest.mark.parametrize("auth", [None, "Bearer bad", "good", "bearer good"])
 def test_every_mcp_request_needs_a_valid_token_before_the_sdk_sees_it(env, client, body, auth):
     r = client.post("/mcp", json=body, headers=dict(HEADERS, **({"Authorization": auth} if auth else {})))
-    assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
-    assert "Not signed in" in r.json()["error"] and "tools" not in r.text and "Ana" not in r.text
+    assert r.status_code == 401 and "tools" not in r.text and "Ana" not in r.text
+    assert 'resource_metadata="https://testserver/.well-known/oauth-protected-resource/mcp"' in r.headers["www-authenticate"]
     assert env["logged"] == []
 
 
@@ -634,13 +695,22 @@ def test_host_allowlist(env, client):
     assert env["auth"] == []                                     # a wrong host is refused before the token is read
 
 
-def test_mount_without_allowed_hosts_adds_nothing(env, monkeypatch, capsys):
-    monkeypatch.setattr(config, "MCP_ALLOWED_HOSTS", [])
+@pytest.mark.parametrize("name,value,line", [("MCP_PUBLIC_URL", "", "REC_MCP_PUBLIC_URL is empty"),
+                                             ("MCP_PUBLIC_URL", "http://mcp.tulle.test", "must be an https origin"),
+                                             ("MCP_PUBLIC_URL", "https://mcp.tulle.test/mcp", "must be an https origin"),
+                                             ("MCP_TOKEN_KEY", "", "REC_MCP_TOKEN_KEY is missing"),
+                                             ("MCP_TOKEN_KEY", "short", "REC_MCP_TOKEN_KEY is missing"),
+                                             ("MCP_CONSENT_URL", "http://www.tulletogether.app/x", "REC_MCP_CONSENT_URL")])
+def test_mount_adds_nothing_when_the_oauth_settings_are_incomplete(env, monkeypatch, capsys, name, value, line):
+    monkeypatch.setattr(config, "MCP_PUBLIC_URL", "https://testserver")
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY", KEY)
+    monkeypatch.setattr(config, name, value)
     host = FastAPI()
-    before = host.router.lifespan_context
+    before, routes = host.router.lifespan_context, len(host.routes)
     assert mcp_server.mount(host) is None
-    assert not [r for r in host.routes if getattr(r, "path", "") == "/mcp"] and host.router.lifespan_context is before
-    assert capsys.readouterr().out.count("REC_MCP_ALLOWED_HOSTS is empty - /mcp is NOT mounted") == 1
+    assert len(host.routes) == routes and host.router.lifespan_context is before and not host.user_middleware
+    out = capsys.readouterr().out
+    assert line in out and out.count("/mcp is NOT mounted") == 1 and KEY not in out
     assert TestClient(host).post("/mcp", json=LIST).status_code == 404
 
 
