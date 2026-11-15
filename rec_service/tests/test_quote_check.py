@@ -10,6 +10,8 @@ Q = {"vendor_name": "Lakeside Barn", "category": "Venue", "total_cost": 18000, "
 
 
 def test_non_forever_quote_is_refused(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "QUOTE_AUDIENCE", "forever")     # the 11-08 rule, one env var away
     monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7, "forever_access_purchased": False}))
     r = TestClient(app.app).post("/rec/refine", json={"message": "Is this a good deal?", "quote": Q})
     assert r.status_code == 403 and r.json()["detail"]["status"] == "quote_forever_only"
@@ -41,8 +43,20 @@ def test_forever_quote_reaches_the_model_but_not_the_stored_turn(monkeypatch):
 
 def test_attachment_read_is_forever_only_and_images_only(monkeypatch):
     c = TestClient(app.app)
+    import config
+    monkeypatch.setattr(config, "QUOTE_AUDIENCE", "forever")
     monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7, "forever_access_purchased": False}))
     assert c.post("/rec/attachment/read", json={"file": {"path": "/vault/a/b.png", "mime": "image/png"}}).status_code == 403
     monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7, "forever_access_purchased": True}))
     assert c.post("/rec/attachment/read", json={"file": {"path": "/vault/a/b.pdf", "mime": "application/pdf"}}).status_code == 400
     assert c.post("/rec/attachment/read", json={"file": {"path": "https://evil/x.png", "mime": "image/png"}}).status_code == 400
+
+
+def test_quote_check_is_open_to_everyone_by_default(monkeypatch):
+    # owner 2026-11-14: "lets make quote check for everyone ... later we can move to forever only"
+    import config
+    assert config.QUOTE_AUDIENCE == "all"
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7, "forever_access_purchased": False}))
+    monkeypatch.setattr(app, "_tracked", lambda rid, u, fn: {"ok": True})
+    r = TestClient(app.app).post("/rec/refine", json={"message": "Is this a good deal?", "quote": Q})
+    assert r.status_code == 200, r.text

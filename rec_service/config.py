@@ -148,6 +148,10 @@ FOREVER_ONLY = os.environ.get("REC_FOREVER_ONLY", "1") == "1"
 # "paid" = every buyer with active access (1 week / 4 weeks too), same experience as Forever. "forever" =
 # the 10-03 rule. Free users stay refused while FOREVER_ONLY is on.
 BETA_AUDIENCE = os.environ.get("REC_BETA_AUDIENCE", "forever").strip().lower()
+# Who can upload a quote / contract / screenshot and ask about it. Owner 2026-11-14: open to EVERYONE for now to
+# drive adoption ("later we can move to forever only") - set REC_QUOTE_AUDIENCE=forever to put the 11-08 rule back.
+# A free couple's quote question still spends a free question like any other.
+QUOTE_AUDIENCE = os.environ.get("REC_QUOTE_AUDIENCE", "all").strip().lower()
 # Forever beta check-in (Kate 2026-10-03, user: "the point is for beta testing"): after this many questions
 # a Forever user must leave feedback once to keep going. Whether they bother is the stickiness signal.
 # 0 turns it off. Feedback rows: Xano table 81 rec_feedback.

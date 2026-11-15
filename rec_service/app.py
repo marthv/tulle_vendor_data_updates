@@ -318,12 +318,17 @@ ATTACH_PROMPT = ("This image was attached by a couple planning their wedding (a 
                  "deadlines, max 200 chars\"}. Use 0 or empty when a value isn't shown. Never invent a figure.")
 
 
+def _can_attach(user):
+    """Quote / file upload: everyone (owner 2026-11-14), or Forever only when REC_QUOTE_AUDIENCE=forever."""
+    return config.QUOTE_AUDIENCE != "forever" or xano.has_forever(user)
+
+
 @app.post("/rec/attachment/read")
 def read_attachment(body: AttachmentBody, authorization: str = Header(None)):
     """11-08 (owner): Forever couples paste a screenshot (or attach an image) in the Planner; this reads it into the same
     shape parse-vendor-pdf returns for PDFs, plus a summary. PDFs keep going through ep157. Counts no question."""
     _, user = _auth(authorization)
-    if not xano.has_forever(user):
+    if not _can_attach(user):
         raise HTTPException(403, {"status": "attachment_forever_only"})
     att = wedding.clean_attachment(body.file)
     mime = str((body.file or {}).get("mime") or "").lower()
@@ -526,6 +531,7 @@ def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_lef
             # Open planner (2026-10-31): a free user who used today's allowance is capped (429), not paywalled.
             "paywall": (not paid) and (config.FOREVER_ONLY or (not config.FREE_DAILY_MODE and not fb_req and not left)),
             "free_daily_mode": config.FREE_DAILY_MODE,
+            "attach_open": config.QUOTE_AUDIENCE != "forever",   # 11-14: the page shows the upload to everyone when true
             "free_daily_limit": config.FREE_DAILY_AFTER_INITIAL if config.FREE_DAILY_MODE else None,
             # 11-08 owner rule: "initial" = the first 3 free questions (page: "n free questions left"); "daily" = 1 a day after
             "free_phase": (guards.free_phase(rows) if (rows is not None and not paid) else None),
@@ -1481,8 +1487,8 @@ def _recent_chat(user_id):
 @app.post("/rec/refine")
 def refine(body: RefineBody, background: BackgroundTasks, authorization: str = Header(None)):
     token, user = _auth(authorization)
-    if body.quote is not None and not xano.has_forever(user):
-        raise HTTPException(403, {"status": "quote_forever_only"})   # owner 11-08: quote check is a Forever feature
+    if body.quote is not None and not _can_attach(user):
+        raise HTTPException(403, {"status": "quote_forever_only"})   # only when REC_QUOTE_AUDIENCE=forever (11-08 rule)
     try:
         return _tracked(body.request_id, user, lambda tr: _refine(token, user, body, background, tr))
     except HTTPException as e:
