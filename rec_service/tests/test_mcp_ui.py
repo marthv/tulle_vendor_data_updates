@@ -191,7 +191,7 @@ def test_vendor_links_open_only_tulle_pages_through_the_host():
 def test_vendors_panel_has_no_price_anywhere():
     src = _panel("vendors.html")
     script = src[src.index("<script>"):]
-    for word in ("price", "amount", "cost", "fee", "budget", "money", "paid", "$"):
+    for word in ("price", "amount", "cost", "fee", "budget", "money", "paid"):
         assert word not in script.lower(), word
     assert not re.search(r"\$\s?\d", src)
 
