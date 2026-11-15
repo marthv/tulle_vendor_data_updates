@@ -74,3 +74,14 @@ def test_experiments_brief_ignores_mcp_rows():
     e = eb.engagement([], planner, NOW_MS)
     assert (e["couples"], e["q"]) == (3, 3)
     assert eb.engagement([], planner + mcp, NOW_MS) == e         # before: 4 couples
+
+
+def test_gates_ignores_mcp_error_rows():
+    """An MCP tool error must not mark a couple as having hit a Planner limit (verifier finding, 2026-11-15)."""
+    import experiments_brief as eb
+    now = 1_800_000_000_000
+    users = [{"id": 501, "email": "a@example.com", "created_at": now - 3 * eb.DAY, "total_pdf_views": 0}]
+    rows = [{"user_id": 501, "kind": "mcp_lookup_venue", "status": "error"}]
+    assert eb.gates(users, rows, [], now)["a"]["chat"] == 0
+    rows.append({"user_id": 501, "kind": "refine", "status": "blocked_free_limit"})
+    assert eb.gates(users, rows, [], now)["a"]["chat"] == 1

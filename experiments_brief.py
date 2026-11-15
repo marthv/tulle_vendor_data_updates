@@ -222,7 +222,7 @@ def gates(users, usage_rows, payments, now_ms):
         t = p.get("Time_of_Payment") or 0
         if uid and t and (uid not in paid_at or t < paid_at[uid]):
             paid_at[uid] = t
-    limited = {int(r.get("user_id") or 0) for r in usage_rows if r.get("status") not in (None, "", "ok")}
+    limited = {int(r.get("user_id") or 0) for r in usage_rows if not _mcp(r) and r.get("status") not in (None, "", "ok")}
 
     def cohort(lo, hi):
         c = [u for u in users if lo <= (u.get("created_at") or 0) < hi and not internal(u.get("id"), u.get("email"))]
