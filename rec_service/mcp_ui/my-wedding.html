@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<title>My wedding</title>
+<style>
+/* Tulle panel for get_my_wedding / budget_status. Self-contained: no network request of any kind.
+   Structure (text, borders) follows the host's style variables; Tulle's greens are the accents. */
+:root {
+  --g900:#0A3D24; --g800:#0D5C3A; --g700:#0F7348; --g500:#00A368; --g400:#1DBD7E; --g300:#52D19A;
+  --g200:#A8EAC8; --g100:#D4F5E4; --g50:#EDF9F3;
+  --ink:#18191A; --ink2:#2E3035; --ink3:#52555C; --ink4:#7E8189; --ink5:#A8ABB3; --ink6:#CDD0D8; --ink7:#E8EAEE; --ink8:#F4F5F7;
+  --cream:#FAF8F4; --white:#FFFFFF; --amber:#D97706;
+  --r8:8px; --r12:12px; --r16:16px;
+  --font-d:"Lora", Georgia, "Times New Roman", serif;
+  --font-u:"Sora", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  /* roles - light */
+  --t1:var(--color-text-primary, #18191A); --t2:var(--color-text-secondary, #52555C); --t3:var(--color-text-tertiary, #6B6E76);
+  --line:#E8EAEE; --track:#E8EAEE; --accent:#0F7348; --accent-soft:#EDF9F3; --chip-line:#A8EAC8; --chip-text:#0D5C3A;
+  --warn:#A85B04; --ring:#00A368;
+  --s0:#0F7348; --s1:#1DBD7E; --s2:#0A3D24; --s3:#D97706; --s4:#52D19A; --s5:#A8ABB3;
+}
+:root[data-theme="dark"] {
+  --t1:var(--color-text-primary, #FAF9F5); --t2:var(--color-text-secondary, #C2C0B6); --t3:var(--color-text-tertiary, #A6A49B);
+  --line:var(--color-border-tertiary, rgba(222,220,209,.18)); --track:rgba(222,220,209,.16);
+  --accent:#52D19A; --accent-soft:rgba(82,209,154,.12); --chip-line:rgba(82,209,154,.4); --chip-text:#A8EAC8;
+  --warn:#F0A94A; --ring:#52D19A;
+  --s0:#1DBD7E; --s1:#A8EAC8; --s2:#0F7348; --s3:#D97706; --s4:#D4F5E4; --s5:#A8ABB3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --t1:var(--color-text-primary, #FAF9F5); --t2:var(--color-text-secondary, #C2C0B6); --t3:var(--color-text-tertiary, #A6A49B);
+    --line:var(--color-border-tertiary, rgba(222,220,209,.18)); --track:rgba(222,220,209,.16);
+    --accent:#52D19A; --accent-soft:rgba(82,209,154,.12); --chip-line:rgba(82,209,154,.4); --chip-text:#A8EAC8;
+    --warn:#F0A94A; --ring:#52D19A;
+    --s0:#1DBD7E; --s1:#A8EAC8; --s2:#0F7348; --s3:#D97706; --s4:#D4F5E4; --s5:#A8ABB3;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; }
+body { font-family: var(--font-u); font-size: 14px; line-height: 1.45; color: var(--t1); -webkit-text-size-adjust: 100%; }
+#app { padding: 14px 16px 16px; max-width: 760px; margin: 0 auto; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 2px; }
+h1 { font-family: var(--font-d); font-weight: 600; font-size: 22px; line-height: 1.2; margin: 0 0 12px; }
+h2 { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--t3); margin: 18px 0 8px; }
+.top { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; }
+.donut { position: relative; width: 168px; height: 168px; flex: 0 0 auto; margin: 0 auto; }
+.donut svg { width: 100%; height: 100%; transform: rotate(-90deg); display: block; }
+.donut circle { fill: none; stroke-width: 14; }
+.donut .track { stroke: var(--track); }
+.s0 { stroke: var(--s0); background: var(--s0); } .s1 { stroke: var(--s1); background: var(--s1); }
+.s2 { stroke: var(--s2); background: var(--s2); } .s3 { stroke: var(--s3); background: var(--s3); }
+.s4 { stroke: var(--s4); background: var(--s4); } .s5 { stroke: var(--s5); background: var(--s5); }
+.centre { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 26px; }
+.centre .big { font-family: var(--font-d); font-weight: 600; font-size: 21px; line-height: 1.15; }
+.centre .cap { font-size: 11px; color: var(--t3); }
+.centre .left { font-size: 12px; font-weight: 600; color: var(--accent); margin-top: 4px; }
+.centre .left.over { color: var(--warn); }
+.side { flex: 1 1 220px; min-width: 0; }
+.legend { list-style: none; margin: 0; padding: 0; }
+.legend li { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; }
+.sw { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 5px; align-self: center; color: #fff; font-size: 10px; font-weight: 700;
+      display: inline-flex; align-items: center; justify-content: center; text-shadow: 0 0 2px rgba(0,0,0,.65); }
+.legend .lab { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.legend .amt { font-family: var(--font-d); font-weight: 600; white-space: nowrap; }
+.legend .pct { color: var(--t3); font-size: 12px; white-space: nowrap; min-width: 34px; text-align: right; }
+.order { font-size: 11px; color: var(--t3); margin: 4px 0 0; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.stats li { flex: 1 1 96px; border: 1px solid var(--line); border-radius: var(--r12); padding: 8px 10px; }
+.stats .k { display: block; font-size: 11px; color: var(--t3); }
+.stats .v { font-family: var(--font-d); font-weight: 600; font-size: 16px; }
+.cats { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r16); }
+.cats > li { padding: 10px 12px; border-top: 1px solid var(--line); }
+.cats > li:first-child { border-top: 0; }
+.cat { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.row .name { font-family: var(--font-d); font-weight: 600; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
+.row .amt { font-family: var(--font-d); font-weight: 600; white-space: nowrap; }
+.row .hid, .quiet { color: var(--t3); font-size: 12px; font-weight: 400; font-family: var(--font-u); }
+.sub { color: var(--t3); font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.chip { border: 1px solid var(--chip-line); background: var(--accent-soft); color: var(--chip-text); border-radius: 999px;
+        padding: 3px 10px; font-size: 12px; max-width: 100%; overflow-wrap: anywhere; }
+.chip .pl { opacity: .8; }
+.chip.plain { border-color: var(--line); background: transparent; color: var(--t2); }
+.note { margin: 12px 0 0; font-size: 12px; color: var(--t3); }
+.empty { text-align: center; padding: 26px 12px 20px; border: 1px dashed var(--line); border-radius: var(--r16); }
+.empty .mark { width: 40px; height: 40px; border-radius: 50%; background: var(--accent-soft); border: 1px solid var(--chip-line); margin: 0 auto 10px; }
+.empty .t { font-family: var(--font-d); font-weight: 600; font-size: 17px; margin: 0 0 4px; }
+.empty .d { color: var(--t2); margin: 0; }
+.sk { border-radius: var(--r8); background: var(--track); height: 14px; margin: 8px 0; }
+.sk.w40 { width: 40%; } .sk.w70 { width: 70%; } .sk.big { height: 120px; border-radius: var(--r16); }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
+@media (max-width: 420px) { .top { flex-direction: column; align-items: stretch; } .donut { width: 150px; height: 150px; } }
+@media (prefers-reduced-motion: no-preference) { .donut circle.seg { transition: stroke-dasharray .35s ease; } .sk { animation: pulse 1.4s ease-in-out infinite; } }
+@keyframes pulse { 50% { opacity: .55; } }
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite">
+  <p class="eyebrow">Tulle Together</p>
+  <h1>My wedding</h1>
+  <div id="body"><div class="sk big"></div><div class="sk w70"></div><div class="sk w40"></div></div>
+</main>
+<svg id="ns" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute"></svg>
+<script>
+(function () {
+  "use strict";
+  var body = document.getElementById("body");
+  var SVG_NS = document.getElementById("ns").namespaceURI;
+
+  // ---------- tiny pure helpers (every value from a tool result is untrusted: text only, never markup)
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+  function str(v, max) { return typeof v === "string" ? v.slice(0, max || 140) : ""; }
+  function num(v) { return typeof v === "number" && isFinite(v) ? v : null; }
+  function list(v) { return Array.isArray(v) ? v : []; }
+  function money(n) {
+    n = num(n);
+    if (n === null) return "";
+    var s = String(Math.round(Math.abs(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return (n < 0 ? "-$" : "$") + s;
+  }
+  function pct(part, whole) { return whole > 0 ? Math.round(100 * part / whole) + "%" : ""; }
+  function place(c) { return [str(c && c.city, 60), str(c && c.state, 60)].filter(Boolean).join(", "); }
+
+  // ---------- one shape for both tools
+  function normalise(sc) {
+    if (!sc || typeof sc !== "object") return null;
+    if (sc.status && typeof sc.status === "object") {          // budget_status
+      var st = sc.status;
+      return { budget: num(st.budget), booked: num(st.added) || 0, left: num(st.remaining), paid: num(st.paid) || 0,
+               slices: list(st.by_category).map(function (b) { return { label: str(b && b.category, 60), amount: num(b && b.added) || 0 }; }),
+               cats: [], extras: [], other: [], savedOther: [], hidden: num(sc.amounts_hidden) || 0, note: str(sc.note, 200), on: true };
+    }
+    return { budget: num(sc.budget), booked: num(sc.booked_total) || 0, left: num(sc.left), paid: num(sc.paid_total) || 0,
+             slices: list(sc.slices).map(function (s) { return { label: str(s && s.label, 60), amount: num(s && s.amount) || 0 }; }),
+             cats: list(sc.categories), extras: list(sc.extras), other: list(sc.considering), savedOther: list(sc.saved_other),
+             hidden: num(sc.amounts_hidden) || 0, note: str(sc.note, 200), on: sc.enabled !== false };
+  }
+  function topSlices(slices) {                                  // at most 5 named slices + "Other"
+    var s = slices.filter(function (x) { return x.amount > 0 && x.label; });
+    if (s.length <= 6) return s;
+    var rest = s.slice(5).reduce(function (a, x) { return a + x.amount; }, 0);
+    return s.slice(0, 5).concat([{ label: "Other", amount: rest, other: true }]);
+  }
+  function isEmpty(v) {
+    var any = function (c) { return c && (c.booked || list(c.saved).length || list(c.quotes).length); };
+    return !v.on || (!v.budget && !v.booked && !v.slices.length && !v.cats.some(any) && !v.extras.length && !v.other.length && !v.savedOther.length);
+  }
+
+  // ---------- drawing
+  function donut(v, slices) {
+    var wrap = el("div", "donut");
+    var svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 140 140");
+    svg.setAttribute("role", "img");
+    var total = Math.max(v.budget || 0, v.booked, slices.reduce(function (a, s) { return a + s.amount; }, 0));
+    svg.setAttribute("aria-label", "Budget ring: " + (slices.length ? slices.map(function (s) { return s.label + " " + money(s.amount); }).join(", ") : "nothing booked yet"));
+    var r = 56, C = 2 * Math.PI * r, at = 0;
+    var track = document.createElementNS(SVG_NS, "circle");
+    track.setAttribute("class", "track"); track.setAttribute("cx", "70"); track.setAttribute("cy", "70"); track.setAttribute("r", String(r));
+    svg.appendChild(track);
+    slices.forEach(function (s, i) {
+      if (!(total > 0)) return;
+      var len = C * s.amount / total, show = len > 4 ? len - 1.5 : len;
+      var c = document.createElementNS(SVG_NS, "circle");
+      c.setAttribute("class", "seg " + (s.other ? "s5" : "s" + Math.min(i, 4)));
+      c.setAttribute("cx", "70"); c.setAttribute("cy", "70"); c.setAttribute("r", String(r));
+      c.setAttribute("stroke-dasharray", show.toFixed(2) + " " + (C - show).toFixed(2));
+      c.setAttribute("stroke-dashoffset", (-at).toFixed(2));
+      var t = document.createElementNS(SVG_NS, "title");
+      t.textContent = s.label + ": " + money(s.amount);
+      c.appendChild(t);
+      svg.appendChild(c);
+      at += len;
+    });
+    wrap.appendChild(svg);
+    var mid = el("div", "centre");
+    if (v.budget) {
+      mid.appendChild(el("span", "big", money(v.budget)));
+      mid.appendChild(el("span", "cap", "total budget"));
+      if (v.left !== null) {
+        mid.appendChild(el("span", "left" + (v.left < 0 ? " over" : ""), v.left < 0 ? money(-v.left) + " over budget" : money(v.left) + " left to spend"));
+      }
+    } else {
+      mid.appendChild(el("span", "big", money(v.booked)));
+      mid.appendChild(el("span", "cap", "booked so far"));
+    }
+    wrap.appendChild(mid);
+    return wrap;
+  }
+  function legend(v, slices) {
+    var side = el("div", "side");
+    if (!slices.length) { side.appendChild(el("p", "quiet", "Nothing booked yet.")); return side; }
+    var whole = Math.max(v.budget || 0, v.booked);
+    var ol = el("ol", "legend");
+    slices.forEach(function (s, i) {
+      var li = el("li");
+      li.appendChild(el("span", "sw " + (s.other ? "s5" : "s" + Math.min(i, 4)), i + 1));   // numbered: not colour alone
+      li.appendChild(el("span", "lab", s.label));
+      li.appendChild(el("span", "amt", money(s.amount)));
+      li.appendChild(el("span", "pct", pct(s.amount, whole)));
+      ol.appendChild(li);
+    });
+    side.appendChild(ol);
+    side.appendChild(el("p", "order", "Ring order: 1 starts at the top, then clockwise." + (v.budget ? " Share of the total budget." : "")));
+    return side;
+  }
+  function stats(v) {
+    var ul = el("ul", "stats");
+    [["Booked", money(v.booked)], ["Paid", money(v.paid)], v.left === null ? null : [v.left < 0 ? "Over budget" : "Left to spend", money(Math.abs(v.left))]]
+      .forEach(function (p) {
+        if (!p) return;
+        var li = el("li");
+        li.appendChild(el("span", "k", p[0]));
+        li.appendChild(el("span", "v", p[1]));
+        ul.appendChild(li);
+      });
+    return ul;
+  }
+  function amountCell(item) {
+    if (item && item.amount_hidden === true) return el("span", "hid", "Amount in Tulle");
+    var p = num(item && item.price);
+    return el("span", "amt", p === null ? "" : money(p));
+  }
+  function itemRow(item) {
+    var row = el("div", "row");
+    row.appendChild(el("span", "name", str(item && item.name) || "Unnamed"));
+    row.appendChild(amountCell(item));
+    return row;
+  }
+  function chips(items, plain, prefix) {
+    var ul = el("ul", "chips");
+    items.slice(0, 12).forEach(function (c) {
+      var name = str(c && c.name, 80);
+      if (!name) return;
+      var li = el("li", "chip" + (plain ? " plain" : ""));
+      li.appendChild(el("span", "", (prefix || "") + name));
+      var pl = place(c);
+      if (pl) li.appendChild(el("span", "pl", " · " + pl));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+  function categories(v) {
+    var ul = el("ul", "cats"), shown = 0;
+    v.cats.forEach(function (c) {
+      var saved = list(c && c.saved), quotes = list(c && c.quotes);
+      if (!c || (!c.booked && !saved.length && !quotes.length)) return;
+      var li = el("li");
+      li.appendChild(el("div", "cat", str(c.label, 40) || str(c.key, 40)));
+      if (c.booked) {
+        li.appendChild(itemRow(c.booked));
+        var paid = num(c.booked.paid);
+        if (paid) li.appendChild(el("div", "sub", money(paid) + " paid"));
+      } else {
+        li.appendChild(el("div", "quiet", "Not booked yet"));
+      }
+      if (quotes.length) li.appendChild(chips(quotes, true, "Considering: "));
+      if (saved.length) li.appendChild(chips(saved, false, "Saved: "));
+      ul.appendChild(li);
+      shown++;
+    });
+    return shown ? ul : null;
+  }
+  function extras(v) {
+    var ul = el("ul", "cats");
+    v.extras.slice(0, 12).forEach(function (x) {
+      var li = el("li");
+      var cat = str(x && x.category, 40);
+      if (cat) li.appendChild(el("div", "cat", cat));
+      li.appendChild(itemRow(x));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+  function emptyState(title, detail) {
+    var d = el("div", "empty");
+    d.appendChild(el("div", "mark"));
+    d.appendChild(el("p", "t", title));
+    d.appendChild(el("p", "d", detail));
+    return d;
+  }
+
+  function render(sc) {
+    var v = normalise(sc);
+    body.textContent = "";
+    if (!v) { body.appendChild(emptyState("Nothing to show", "The plan could not be read this time.")); return; }
+    if (isEmpty(v)) {
+      body.appendChild(emptyState("Your plan is empty", "Set a budget or mark a vendor as booked in Tulle and it will show up here."));
+      return;
+    }
+    var slices = topSlices(v.slices);
+    var top = el("div", "top");
+    top.appendChild(donut(v, slices));
+    top.appendChild(legend(v, slices));
+    body.appendChild(top);
+    body.appendChild(stats(v));
+    var cats = categories(v);
+    if (cats) { body.appendChild(el("h2", "", "By category")); body.appendChild(cats); }
+    if (v.extras.length) { body.appendChild(el("h2", "", "Other costs")); body.appendChild(extras(v)); }
+    var loose = v.other.concat([]);
+    if (loose.length) { body.appendChild(el("h2", "", "Also considering")); body.appendChild(chips(loose, true, "")); }
+    if (v.savedOther.length) { body.appendChild(el("h2", "", "Other saved vendors")); body.appendChild(chips(v.savedOther, false, "")); }
+    if (v.hidden > 0) body.appendChild(el("p", "note", v.note || "Some booked amounts are only shown in the Tulle app."));
+  }
+
+  // ---------- host bridge: MCP Apps over postMessage (JSON-RPC 2.0), written out by hand - no SDK, no network
+  var nextId = 1, pending = {}, inHost = window.parent && window.parent !== window;
+  function post(msg) { if (inHost) window.parent.postMessage(msg, "*"); }
+  function request(method, params) {
+    return new Promise(function (resolve, reject) {
+      var id = nextId++;
+      pending[id] = { resolve: resolve, reject: reject };
+      post({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
+    });
+  }
+  function notify(method, params) { post({ jsonrpc: "2.0", method: method, params: params || {} }); }
+  function applyContext(ctx) {
+    if (!ctx || typeof ctx !== "object") return;
+    var root = document.documentElement;
+    if (ctx.theme === "light" || ctx.theme === "dark") { root.setAttribute("data-theme", ctx.theme); root.style.colorScheme = ctx.theme; }
+    var vars = ctx.styles && ctx.styles.variables;
+    if (vars && typeof vars === "object") {
+      Object.keys(vars).forEach(function (k) {
+        if (/^--[a-z0-9-]+$/.test(k) && typeof vars[k] === "string" && vars[k].length < 200) root.style.setProperty(k, vars[k]);
+      });
+    }
+    var ins = ctx.safeAreaInsets;
+    if (ins && typeof ins === "object") {
+      var app = document.getElementById("app");
+      ["top", "right", "bottom", "left"].forEach(function (side, i) {
+        var base = [14, 16, 16, 16][i], extra = num(ins[side]) || 0;
+        app.style["padding" + side.charAt(0).toUpperCase() + side.slice(1)] = (base + Math.max(0, Math.min(extra, 200))) + "px";
+      });
+    }
+  }
+  function resultOf(params) {
+    if (!params || typeof params !== "object") return null;
+    if (params.structuredContent && typeof params.structuredContent === "object") return params.structuredContent;
+    try { return JSON.parse(params.content[0].text); } catch (e) { return null; }     // text-only hosts
+  }
+  window.addEventListener("message", function (ev) {
+    if (ev.source !== window.parent) return;
+    var m = ev.data;
+    if (!m || typeof m !== "object" || m.jsonrpc !== "2.0") return;
+    if (m.method === undefined) {                                // a response to one of our requests
+      var p = pending[m.id];
+      if (!p) return;
+      delete pending[m.id];
+      if (m.error) p.reject(m.error); else p.resolve(m.result);
+      return;
+    }
+    if (m.method === "ui/notifications/tool-result") {
+      if (m.params && m.params.isError) { body.textContent = ""; body.appendChild(emptyState("Couldn't load your plan", "Ask again in a moment.")); }
+      else render(resultOf(m.params));
+    } else if (m.method === "ui/notifications/host-context-changed") {
+      applyContext(m.params);
+    } else if (m.method === "ui/notifications/tool-cancelled") {
+      body.textContent = ""; body.appendChild(emptyState("Cancelled", "The request was stopped before your plan loaded."));
+    } else if (m.id !== undefined) {                             // a request from the host (ping, ui/resource-teardown, ...)
+      post({ jsonrpc: "2.0", id: m.id, result: {} });
+    }
+  });
+  function reportSize() {
+    var r = document.documentElement.getBoundingClientRect();
+    notify("ui/notifications/size-changed", { width: Math.ceil(r.width), height: Math.ceil(r.height) });
+  }
+  if (inHost) {
+    request("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "Tulle - My wedding", version: "1.0.0" },
+                               appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] } })
+      .then(function (res) {
+        applyContext(res && res.hostContext);
+        notify("ui/notifications/initialized", {});
+        if (window.ResizeObserver) new ResizeObserver(reportSize).observe(document.documentElement);
+        reportSize();
+      }, function () { /* the host refused: stay on the skeleton */ });
+  }
+  window.__tullePanel = { render: render, money: money, normalise: normalise, topSlices: topSlices };   // for preview / by-hand checks
+})();
+</script>
+</body>
+</html>

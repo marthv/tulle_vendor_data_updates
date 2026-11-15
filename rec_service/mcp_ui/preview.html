@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tulle MCP panels - preview</title>
+<!-- NOT served by the app. Open this file in a browser to SEE the two panels without Claude.
+     It plays the host: each panel runs in a sandboxed iframe and is fed a fixture tool result over the same
+     postMessage protocol Claude uses (ui/initialize -> ui/notifications/initialized -> tool-input -> tool-result,
+     size-changed, host-context-changed, ui/open-link). Fixtures are made up; shapes are the tools' real shapes. -->
+<style>
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #ECEAE3; color: #18191A; }
+  header { position: sticky; top: 0; z-index: 2; background: #18191A; color: #fff; padding: 10px 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  header b { font-size: 15px; }
+  header button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #555; background: #2E3035; color: #fff; cursor: pointer; }
+  header button[aria-pressed="true"] { background: #00A368; border-color: #00A368; color: #18191A; font-weight: 600; }
+  #log { margin-left: auto; font-size: 12px; color: #A8EAC8; max-width: 50ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  section { padding: 16px; }
+  section h2 { margin: 0 0 4px; font-size: 16px; }
+  section p { margin: 0 0 10px; color: #52555C; font-size: 12px; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .host { border-radius: 14px; padding: 14px; }
+  .host.light { background: #FAF9F5; }
+  .host.dark { background: #262624; }
+  .host .tag { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 8px; }
+  .host.light .tag { color: #73726C; } .host.dark .tag { color: #9C9A92; }
+  .frame { border-radius: 12px; overflow: hidden; }
+  .host.light .frame { background: #FFFFFF; border: 1px solid rgba(31,30,29,.15); }
+  .host.dark .frame { background: #30302E; border: 1px solid rgba(222,220,209,.15); }
+  iframe { display: block; width: 100%; height: 120px; border: 0; background: transparent; }
+  body.narrow .pair { grid-template-columns: 340px 340px; }
+</style>
+</head>
+<body>
+<header>
+  <b>Tulle MCP panels</b>
+  <button id="narrow" aria-pressed="false" type="button">Phone width (340px)</button>
+  <button id="swap" type="button">Swap themes live (host-context-changed)</button>
+  <span id="log">No link opened yet.</span>
+</header>
+<div id="root"></div>
+<script>
+(function () {
+  "use strict";
+  var URL0 = "https://www.tulletogether.app/vendors/";
+  var card = function (name, state, category, types, id) {
+    var c = { name: name, state: state, category: category };
+    if (types) c.venue_type = types;
+    if (id) c.tulle_url = URL0 + id;
+    return c;
+  };
+  var KOHL = card("Kohl Mansion", "California", "Venue", ["Estate / Mansion"], "V666");
+  var OLIVIA = card("Olivia Ray Photography", "California", "Photography", ["Documentary"], "V1204");
+  var FIXTURES = [
+    { panel: "my-wedding.html", tool: "get_my_wedding", title: "1. My wedding - full plan", result: {
+        enabled: true, budget: 60000, booked_total: 38400, left: 21600, paid_total: 9500, amounts_hidden: 0,
+        slices: [{ label: "Venue", amount: 18500 }, { label: "Food and Beverage", amount: 9000 }, { label: "Photography", amount: 5200 },
+                 { label: "Flowers", amount: 3200 }, { label: "Entertainment", amount: 2500 }],
+        categories: [
+          { key: "Venue", label: "Venue", booked: { name: "Kohl Mansion", category: "Venue", price: 18500, paid: 5000, file: { name: "contract.pdf" } },
+            quotes: [], saved: [KOHL, card("The Barn at Forest Hill", "California", "Venue", ["Barn / Ranch"], "V88")] },
+          { key: "Photography", label: "Photography", booked: { name: "Olivia Ray Photography", category: "Photography", price: 5200, paid: 1500 },
+            quotes: [{ name: "North Light Studio", category: "Photography", price: 4800, paid: 0 }], saved: [OLIVIA] },
+          { key: "Entertainment", label: "Music", booked: { name: "DJ Marlowe", category: "Entertainment", price: 2500, paid: 0 }, quotes: [], saved: [] },
+          { key: "Flowers", label: "Flowers", booked: { name: "Bloomery", category: "Flowers", price: 3200, paid: 0 }, quotes: [], saved: [] }],
+        extras: [{ name: "Catering Co", category: "Food and Beverage", price: 9000, paid: 3000, notes: "deposit due in May" }],
+        considering: [{ name: "Late-night taco cart", category: "Other", price: 900, paid: 0 }],
+        saved_other: [card("Glam Co", "California", "Beauty", null, "V2301")] } },
+    { panel: "my-wedding.html", tool: "get_my_wedding", title: "2. My wedding - plan with hidden amounts", result: {
+        enabled: true, budget: 45000, booked_total: 21505, left: 23495, paid_total: 4000, amounts_hidden: 2,
+        note: "Some booked amounts are shown only in the Tulle app.",
+        slices: [{ label: "Venue", amount: 12505 }, { label: "Food and Beverage", amount: 9000 }],
+        categories: [
+          { key: "Venue", label: "Venue", booked: { name: "Kohl Mansion", category: "Venue", price: 12505, paid: 4000 },
+            quotes: [{ name: "The Barn at Forest Hill", category: "Venue", amount_hidden: true }], saved: [KOHL] },
+          { key: "Photography", label: "Photography", booked: { name: "Olivia Ray Photography", category: "Photography", amount_hidden: true },
+            quotes: [], saved: [OLIVIA] }],
+        extras: [{ name: "Catering Co", category: "Food and Beverage", price: 9000, paid: 0 }], considering: [], saved_other: [] } },
+    { panel: "my-wedding.html", tool: "get_my_wedding", title: "3. My wedding - empty plan", result: {
+        enabled: true, budget: null, booked_total: 0, left: null, paid_total: 0, amounts_hidden: 0, slices: [],
+        categories: [{ key: "Venue", label: "Venue", booked: null, quotes: [], saved: [] },
+                     { key: "Photography", label: "Photography", booked: null, quotes: [], saved: [] }],
+        extras: [], considering: [], saved_other: [] } },
+    { panel: "my-wedding.html", tool: "budget_status", title: "3b. My wedding panel fed by budget_status (over budget)", result: {
+        tool: "budget_status", text: "You've added $48,200 across 4 items: $9,500 paid, $38,700 still owed.", amounts_hidden: 1,
+        note: "Some booked amounts are shown only in the Tulle app.", source: "the couple's own Budget tab on Tulle",
+        status: { budget: 45000, added: 48200, paid: 9500, owed: 38700, remaining: -3200, pct_of_budget: 107, item_count: 4,
+                  by_category: [{ category: "Venue", added: 28000, paid: 5000, owed: 23000 }, { category: "Food and Beverage", added: 12000, paid: 3000, owed: 9000 },
+                                { category: "Photography", added: 5200, paid: 1500, owed: 3700 }, { category: "Flowers", added: 3000, paid: 0, owed: 3000 }] } } },
+    { panel: "vendors.html", tool: "list_saved_vendors", title: "4a. Vendors - saved list (8, so 'Show all' appears)", result: {
+        saved_count: 8, note: "Prices are not included.", vendors: [KOHL, OLIVIA,
+          card("The Barn at Forest Hill", "California", "Venue", ["Barn / Ranch"], "V88"), card("Bloomery", "California", "Flowers", null, "V2001"),
+          card("DJ Marlowe", "California", "Entertainment", ["DJ"], "V1502"), card("Glam Co", "California", "Beauty", null, "V2301"),
+          card("Harvest Table Catering", "California", "Food and Beverage", null, "V1911"),
+          card("A Very Long Vendor Name That Has To Wrap Across Several Lines Without Breaking The Card", "District of Columbia", "Venue", ["Hotel / Resort", "Rooftop / Skyline Views"], "V7")] } },
+    { panel: "vendors.html", tool: "find_vendor", title: "4b. Vendors - single match (with two similar names)", result: {
+        status: "found", query: "Kohl Mansion", note: "Prices are not included.", matches: [KOHL],
+        also: [{ name: "Kohl Mansion Gardens", state: "California" }, { name: "The Kohl Mansion Carriage House", state: "California" }] } },
+    { panel: "vendors.html", tool: "find_vendor", title: "4c. Vendors - candidates", result: {
+        status: "choices", query: "Ashton Gardens", matches: [], note: "Several vendors match that name.",
+        candidates: [{ name: "Ashton Gardens North", state: "Georgia" }, { name: "Ashton Gardens West", state: "Texas" }, { name: "Ashton Gardens Atlanta", state: "Georgia" }] } },
+    { panel: "vendors.html", tool: "find_vendor", title: "4d. Vendors - not found", result: {
+        status: "not_found", query: "Zzyzx Ballroom", matches: [], note: "No vendor with that name was found. The lookup matches a vendor's full name." } },
+    { panel: "vendors.html", tool: "find_vendor", title: "5. Hostile strings and a bad link (nothing may run, no button for the bad link)", result: {
+        status: "found", query: "<img src=x onerror=alert(1)>", matches: [{ name: "<script>alert(1)</scr" + "ipt> & \"Quoted\" <b>Hall</b>", state: "<i>TX</i>",
+          category: "Venue", venue_type: ["<u>Barn</u>"], tulle_url: "https://www.tulletogether.app.evil.example/vendors/V1" }], also: [] } }
+  ];
+
+  // Claude's style variables (design-guidelines.md, read 2026-11-15) as light-dark() values, like the real host sends.
+  var VARS = {
+    "--color-background-primary": "light-dark(#FFFFFF, #30302E)", "--color-background-secondary": "light-dark(#F5F4ED, #262624)",
+    "--color-text-primary": "light-dark(#141413, #FAF9F5)", "--color-text-secondary": "light-dark(#3D3D3A, #C2C0B6)",
+    "--color-text-tertiary": "light-dark(#73726C, #9C9A92)", "--color-border-primary": "light-dark(rgba(31,30,29,.4), rgba(222,220,209,.4))",
+    "--color-border-tertiary": "light-dark(rgba(31,30,29,.15), rgba(222,220,209,.15))", "--color-ring-primary": "light-dark(rgba(20,20,19,.7), rgba(250,249,245,.7))",
+    "--font-sans": "\"Anthropic Sans\", sans-serif", "--border-radius-md": "8px", "--border-radius-xl": "12px", "--border-width-regular": "0.5px"
+  };
+  var views = [];          // { frame, theme, fixture }
+  var root = document.getElementById("root"), log = document.getElementById("log");
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function context(theme, width) {
+    return { theme: theme, styles: { variables: VARS }, displayMode: "inline", availableDisplayModes: ["inline", "fullscreen"],
+             containerDimensions: { width: width, maxHeight: 6000 }, platform: "web", locale: "en-US",
+             safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 } };
+  }
+  FIXTURES.forEach(function (fx) {
+    var sec = el("section");
+    sec.appendChild(el("h2", "", fx.title));
+    sec.appendChild(el("p", "", fx.panel + "  ←  " + fx.tool));
+    var pair = el("div", "pair");
+    ["light", "dark"].forEach(function (theme) {
+      var host = el("div", "host " + theme);
+      host.appendChild(el("p", "tag", "Claude " + theme));
+      var wrap = el("div", "frame");
+      var frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-scripts");
+      frame.setAttribute("title", fx.title + " (" + theme + ")");
+      frame.src = fx.panel;
+      wrap.appendChild(frame);
+      host.appendChild(wrap);
+      pair.appendChild(host);
+      views.push({ frame: frame, theme: theme, fixture: fx, host: host });
+    });
+    sec.appendChild(pair);
+    root.appendChild(sec);
+  });
+
+  window.addEventListener("message", function (ev) {
+    var v = views.filter(function (x) { return x.frame.contentWindow === ev.source; })[0];
+    var m = ev.data;
+    if (!v || !m || m.jsonrpc !== "2.0") return;
+    var send = function (msg) { v.frame.contentWindow.postMessage(msg, "*"); };
+    if (m.method === "ui/initialize") {
+      send({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: "2026-01-26", hostInfo: { name: "tulle-preview", version: "0" },
+             hostCapabilities: { openLinks: {} }, hostContext: context(v.theme, v.frame.clientWidth) } });
+    } else if (m.method === "ui/notifications/initialized") {
+      send({ jsonrpc: "2.0", method: "ui/notifications/tool-input", params: { arguments: {} } });
+      send({ jsonrpc: "2.0", method: "ui/notifications/tool-result",
+             params: { content: [{ type: "text", text: JSON.stringify(v.fixture.result) }], structuredContent: v.fixture.result } });
+    } else if (m.method === "ui/notifications/size-changed") {
+      if (m.params && m.params.height > 0) v.frame.style.height = Math.min(m.params.height, 6000) + "px";
+    } else if (m.method === "ui/open-link") {
+      log.textContent = "ui/open-link → " + String(m.params && m.params.url) + "  (Claude would show its confirmation first)";
+      send({ jsonrpc: "2.0", id: m.id, result: {} });
+    } else if (m.id !== undefined) {
+      send({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: "not in the preview host" } });
+    }
+  });
+  document.getElementById("narrow").addEventListener("click", function () {
+    var on = document.body.classList.toggle("narrow");
+    this.setAttribute("aria-pressed", String(on));
+  });
+  document.getElementById("swap").addEventListener("click", function () {
+    views.forEach(function (v) {
+      v.theme = v.theme === "light" ? "dark" : "light";
+      v.host.className = "host " + v.theme;
+      v.host.firstChild.textContent = "Claude " + v.theme;
+      v.frame.contentWindow.postMessage({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: v.theme } }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

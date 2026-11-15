@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<title>Vendors</title>
+<style>
+/* Tulle panel for list_saved_vendors / find_vendor. Self-contained: no network request of any kind.
+   It shows name, type and place only - never a price. */
+:root {
+  --g900:#0A3D24; --g800:#0D5C3A; --g700:#0F7348; --g500:#00A368; --g400:#1DBD7E; --g300:#52D19A;
+  --g200:#A8EAC8; --g100:#D4F5E4; --g50:#EDF9F3;
+  --ink:#18191A; --ink2:#2E3035; --ink3:#52555C; --ink4:#7E8189; --ink5:#A8ABB3; --ink6:#CDD0D8; --ink7:#E8EAEE; --ink8:#F4F5F7;
+  --cream:#FAF8F4; --white:#FFFFFF; --amber:#D97706;
+  --r8:8px; --r12:12px; --r16:16px;
+  --font-d:"Lora", Georgia, "Times New Roman", serif;
+  --font-u:"Sora", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --t1:var(--color-text-primary, #18191A); --t2:var(--color-text-secondary, #52555C); --t3:var(--color-text-tertiary, #6B6E76);
+  --line:#E8EAEE; --track:#E8EAEE; --accent:#0F7348; --accent-soft:#EDF9F3; --chip-line:#A8EAC8; --chip-text:#0D5C3A; --ring:#00A368;
+}
+:root[data-theme="dark"] {
+  --t1:var(--color-text-primary, #FAF9F5); --t2:var(--color-text-secondary, #C2C0B6); --t3:var(--color-text-tertiary, #A6A49B);
+  --line:var(--color-border-tertiary, rgba(222,220,209,.18)); --track:rgba(222,220,209,.16);
+  --accent:#52D19A; --accent-soft:rgba(82,209,154,.12); --chip-line:rgba(82,209,154,.4); --chip-text:#A8EAC8; --ring:#52D19A;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --t1:var(--color-text-primary, #FAF9F5); --t2:var(--color-text-secondary, #C2C0B6); --t3:var(--color-text-tertiary, #A6A49B);
+    --line:var(--color-border-tertiary, rgba(222,220,209,.18)); --track:rgba(222,220,209,.16);
+    --accent:#52D19A; --accent-soft:rgba(82,209,154,.12); --chip-line:rgba(82,209,154,.4); --chip-text:#A8EAC8; --ring:#52D19A;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; }
+body { font-family: var(--font-u); font-size: 14px; line-height: 1.45; color: var(--t1); -webkit-text-size-adjust: 100%; }
+#app { padding: 14px 16px 16px; max-width: 860px; margin: 0 auto; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 2px; }
+h1 { font-family: var(--font-d); font-weight: 600; font-size: 22px; line-height: 1.2; margin: 0 0 4px; }
+.lede { color: var(--t2); margin: 0 0 12px; overflow-wrap: anywhere; }
+h2 { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--t3); margin: 18px 0 8px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; list-style: none; margin: 0; padding: 0; }
+.card { border: 1px solid var(--line); border-radius: var(--r16); padding: 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.card .cat { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+.card h3 { font-family: var(--font-d); font-weight: 600; font-size: 17px; line-height: 1.25; margin: 0; overflow-wrap: anywhere; }
+.card .meta { color: var(--t2); font-size: 13px; overflow-wrap: anywhere; }
+.card .where { color: var(--t3); font-size: 12px; }
+.card .grow { flex: 1 1 auto; min-height: 6px; }
+.btn { appearance: none; border: 0; border-radius: var(--r8); min-height: 44px; padding: 10px 14px; cursor: pointer;
+       font: 600 14px/1.2 var(--font-u); background: var(--g500); color: var(--ink); width: 100%; }
+.btn:hover, .btn:active { background: var(--g800); color: var(--white); }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--chip-line); margin-top: 10px; }
+.btn.ghost:hover, .btn.ghost:active { background: var(--accent-soft); color: var(--accent); }
+.names { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r12); }
+.names li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.names li:first-child { border-top: 0; }
+.names .n { font-family: var(--font-d); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.names .s { color: var(--t3); font-size: 12px; white-space: nowrap; align-self: center; }
+.note { margin: 12px 0 0; font-size: 12px; color: var(--t3); }
+.empty { text-align: center; padding: 26px 12px 20px; border: 1px dashed var(--line); border-radius: var(--r16); }
+.empty .mark { width: 40px; height: 40px; border-radius: 50%; background: var(--accent-soft); border: 1px solid var(--chip-line); margin: 0 auto 10px; }
+.empty .t { font-family: var(--font-d); font-weight: 600; font-size: 17px; margin: 0 0 4px; }
+.empty .d { color: var(--t2); margin: 0; overflow-wrap: anywhere; }
+.sk { border-radius: var(--r12); background: var(--track); height: 96px; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (max-width: 460px) { .grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: no-preference) { .btn { transition: background-color .15s ease, color .15s ease; } .sk { animation: pulse 1.4s ease-in-out infinite; } }
+@keyframes pulse { 50% { opacity: .55; } }
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite">
+  <p class="eyebrow">Tulle Together</p>
+  <h1 id="title">Vendors</h1>
+  <div id="body"><div class="grid"><div class="sk"></div><div class="sk"></div></div></div>
+</main>
+<script>
+(function () {
+  "use strict";
+  var body = document.getElementById("body"), title = document.getElementById("title");
+  var TULLE = "https://www.tulletogether.app/";      // the only place a button may open
+  var FIRST = 6;                                     // cards shown before "Show all"
+
+  // ---------- tiny pure helpers (every value from a tool result is untrusted: text only, never markup)
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+  function str(v, max) { return typeof v === "string" ? v.slice(0, max || 140) : ""; }
+  function list(v) { return Array.isArray(v) ? v : []; }
+  function place(c) { return [str(c && c.city, 60), str(c && c.state, 60)].filter(Boolean).join(", "); }
+  function kinds(c) { return list(c && c.venue_type).map(function (t) { return str(t, 60); }).filter(Boolean).slice(0, 3).join(", "); }
+  function tulleUrl(u) {                             // a link is wired only if it is a Tulle vendor page
+    if (typeof u !== "string" || u.length > 200 || u.indexOf(TULLE) !== 0) return "";
+    try {
+      var p = new URL(u);
+      return p.protocol === "https:" && p.hostname === "www.tulletogether.app" && !p.username && !p.password ? p.href : "";
+    } catch (e) { return ""; }
+  }
+
+  function card(c) {
+    var li = el("li", "card");
+    li.appendChild(el("div", "cat", str(c && c.category, 40) || "Vendor"));
+    li.appendChild(el("h3", "", str(c && c.name) || "Unnamed vendor"));
+    var k = kinds(c);
+    if (k) li.appendChild(el("div", "meta", k));
+    var where = place(c);
+    if (where) li.appendChild(el("div", "where", where));
+    li.appendChild(el("div", "grow"));
+    var url = tulleUrl(c && c.tulle_url);
+    if (url) {
+      var b = el("button", "btn", "Open in Tulle");
+      b.type = "button";
+      b.setAttribute("aria-label", "Open " + (str(c.name) || "this vendor") + " in Tulle");
+      b.addEventListener("click", function () { openLink(url); });
+      li.appendChild(b);
+    }
+    return li;
+  }
+  function grid(cards) {
+    var wrap = el("div"), ul = el("ul", "grid");
+    cards.slice(0, FIRST).forEach(function (c) { ul.appendChild(card(c)); });
+    wrap.appendChild(ul);
+    if (cards.length > FIRST) {
+      var more = el("button", "btn ghost", "Show all " + cards.length);
+      more.type = "button";
+      more.addEventListener("click", function () {
+        cards.slice(FIRST, 60).forEach(function (c) { ul.appendChild(card(c)); });
+        more.remove();
+      });
+      wrap.appendChild(more);
+    }
+    return wrap;
+  }
+  function names(items) {
+    var ul = el("ul", "names");
+    items.slice(0, 3).forEach(function (c) {
+      var n = str(c && c.name);
+      if (!n) return;
+      var li = el("li");
+      li.appendChild(el("span", "n", n));
+      li.appendChild(el("span", "s", place(c)));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+  function emptyState(heading, detail) {
+    var d = el("div", "empty");
+    d.appendChild(el("div", "mark"));
+    d.appendChild(el("p", "t", heading));
+    d.appendChild(el("p", "d", detail));
+    return d;
+  }
+
+  function render(sc) {
+    body.textContent = "";
+    if (!sc || typeof sc !== "object") { body.appendChild(emptyState("Nothing to show", "The vendors could not be read this time.")); return; }
+    if (Array.isArray(sc.vendors)) {                 // list_saved_vendors
+      title.textContent = "Saved vendors";
+      var saved = sc.vendors.filter(function (c) { return c && str(c.name); });
+      if (!saved.length) { body.appendChild(emptyState("No saved vendors yet", "Tap the heart on a vendor in Tulle and it will show up here.")); return; }
+      body.appendChild(el("p", "lede", saved.length + (saved.length === 1 ? " vendor" : " vendors") + " saved on Tulle"));
+      body.appendChild(grid(saved));
+      return;
+    }
+    var q = str(sc.query, 120);                      // find_vendor
+    title.textContent = "Vendor lookup";
+    var matches = list(sc.matches).filter(function (c) { return c && str(c.name); });
+    var cands = list(sc.candidates);
+    if (matches.length) {
+      body.appendChild(grid(matches.slice(0, 1)));
+      var also = list(sc.also);
+      if (also.length) { body.appendChild(el("h2", "", "Similar names")); body.appendChild(names(also)); }
+    } else if (cands.length) {
+      body.appendChild(el("p", "lede", q ? "Several vendors match “" + q + "”." : "Several vendors match that name."));
+      body.appendChild(el("h2", "", "Did you mean"));
+      body.appendChild(names(cands));
+      body.appendChild(el("p", "note", "A fuller name or a state narrows it to one."));
+    } else {
+      body.appendChild(emptyState("No vendor by that name", q ? "Nothing on Tulle matches “" + q + "”. The lookup needs a vendor’s full name."
+                                                                : "The lookup needs a vendor’s full name."));
+    }
+  }
+
+  // ---------- host bridge: MCP Apps over postMessage (JSON-RPC 2.0), written out by hand - no SDK, no network
+  var nextId = 1, pending = {}, inHost = window.parent && window.parent !== window;
+  function post(msg) { if (inHost) window.parent.postMessage(msg, "*"); }
+  function request(method, params) {
+    return new Promise(function (resolve, reject) {
+      var id = nextId++;
+      pending[id] = { resolve: resolve, reject: reject };
+      post({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
+    });
+  }
+  function notify(method, params) { post({ jsonrpc: "2.0", method: method, params: params || {} }); }
+  function openLink(url) {                           // the host opens it (and asks the couple first); nothing navigates here
+    var safe = tulleUrl(url);
+    if (safe && inHost) request("ui/open-link", { url: safe }).then(function () {}, function () {});
+  }
+  function applyContext(ctx) {
+    if (!ctx || typeof ctx !== "object") return;
+    var root = document.documentElement;
+    if (ctx.theme === "light" || ctx.theme === "dark") { root.setAttribute("data-theme", ctx.theme); root.style.colorScheme = ctx.theme; }
+    var vars = ctx.styles && ctx.styles.variables;
+    if (vars && typeof vars === "object") {
+      Object.keys(vars).forEach(function (k) {
+        if (/^--[a-z0-9-]+$/.test(k) && typeof vars[k] === "string" && vars[k].length < 200) root.style.setProperty(k, vars[k]);
+      });
+    }
+    var ins = ctx.safeAreaInsets;
+    if (ins && typeof ins === "object") {
+      var app = document.getElementById("app");
+      ["top", "right", "bottom", "left"].forEach(function (side, i) {
+        var base = [14, 16, 16, 16][i], extra = typeof ins[side] === "number" && isFinite(ins[side]) ? ins[side] : 0;
+        app.style["padding" + side.charAt(0).toUpperCase() + side.slice(1)] = (base + Math.max(0, Math.min(extra, 200))) + "px";
+      });
+    }
+  }
+  function resultOf(params) {
+    if (!params || typeof params !== "object") return null;
+    if (params.structuredContent && typeof params.structuredContent === "object") return params.structuredContent;
+    try { return JSON.parse(params.content[0].text); } catch (e) { return null; }     // text-only hosts
+  }
+  window.addEventListener("message", function (ev) {
+    if (ev.source !== window.parent) return;
+    var m = ev.data;
+    if (!m || typeof m !== "object" || m.jsonrpc !== "2.0") return;
+    if (m.method === undefined) {                    // a response to one of our requests
+      var p = pending[m.id];
+      if (!p) return;
+      delete pending[m.id];
+      if (m.error) p.reject(m.error); else p.resolve(m.result);
+      return;
+    }
+    if (m.method === "ui/notifications/tool-result") {
+      if (m.params && m.params.isError) { body.textContent = ""; body.appendChild(emptyState("Couldn't load vendors", "Ask again in a moment.")); }
+      else render(resultOf(m.params));
+    } else if (m.method === "ui/notifications/host-context-changed") {
+      applyContext(m.params);
+    } else if (m.method === "ui/notifications/tool-cancelled") {
+      body.textContent = ""; body.appendChild(emptyState("Cancelled", "The request was stopped before the vendors loaded."));
+    } else if (m.id !== undefined) {                 // a request from the host (ping, ui/resource-teardown, ...)
+      post({ jsonrpc: "2.0", id: m.id, result: {} });
+    }
+  });
+  function reportSize() {
+    var r = document.documentElement.getBoundingClientRect();
+    notify("ui/notifications/size-changed", { width: Math.ceil(r.width), height: Math.ceil(r.height) });
+  }
+  if (inHost) {
+    request("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "Tulle - Vendors", version: "1.0.0" },
+                               appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] } })
+      .then(function (res) {
+        applyContext(res && res.hostContext);
+        notify("ui/notifications/initialized", {});
+        if (window.ResizeObserver) new ResizeObserver(reportSize).observe(document.documentElement);
+        reportSize();
+      }, function () { /* the host refused: stay on the skeleton */ });
+  }
+  window.__tullePanel = { render: render, tulleUrl: tulleUrl };   // for preview / by-hand checks
+})();
+</script>
+</body>
+</html>

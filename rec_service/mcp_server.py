@@ -546,13 +546,15 @@ def build():
     from mcp_types import ToolAnnotations
 
     # log_level: the SDK calls logging.basicConfig with it - WARNING leaves the host app's logging as it was.
-    server = MCPServer("tulle", instructions=INSTRUCTIONS, log_level="WARNING")
+    import mcp_ui                                  # the two Tulle panels (MCP Apps); see mcp_ui.py
+    server = MCPServer("tulle", instructions=INSTRUCTIONS, log_level="WARNING", extensions=[mcp_ui.extension()])
     assert set(TOOL_TEXT) == set(TOOLS) and all(len(n) <= 64 for n in TOOLS)
     ro = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 
     def tool(name):
         title, description = TOOL_TEXT[name]
-        return server.tool(name=name, title=title, description=description, annotations=ro, structured_output=True)
+        return server.tool(name=name, title=title, description=description, annotations=ro, structured_output=True,
+                           meta=mcp_ui.tool_meta(name) or None)
 
     def call(fn, ctx, *args):
         headers = ctx.headers or {}
