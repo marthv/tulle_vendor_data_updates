@@ -92,6 +92,16 @@ def primary_pdf(rows):
     return max(rows, key=key) if rows else None
 
 
+def pdf_summary(rows):
+    """{count, years} for the Planner card (2026-11-14): the PDFs the vendor page lists - rows with a PDF_Link that are
+    not hidden (Show_PDF false) - and their distinct pricing years, newest first."""
+    rows = [r for r in rows or [] if r.get("PDF_Link") and r.get("Show_PDF") is not False]
+    years = set()
+    for r in rows:
+        years.update(int(y) for y in re.findall(r"(?:19|20)\d{2}", str(r.get("Year_of_Pricing") or "")))
+    return {"count": len(rows), "years": sorted(years, reverse=True)}
+
+
 def record_vendor_view(token, user, vendor_id, vendor_name=""):
     """PATCH user/update_vendor_views with the couple's token - the request every Discovery vendor card makes on
     click (total_vendor_views + 1, vendor_id, vendor_name), so a PDF opened from the Planner counts as a vendor page

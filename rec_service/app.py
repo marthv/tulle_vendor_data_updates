@@ -128,7 +128,8 @@ app.add_middleware(_UserAgentToSheetLog)
 OPENING_ASK = ("Recommend 3 venues for us based on our profile, and tell us the single most useful next step "
                "for where we are in planning.")
 HISTORY_TURNS = 8
-_POOL = ThreadPoolExecutor(max_workers=8)
+_POOL = ThreadPoolExecutor(max_workers=8)
+
 
 def _submit_usage(row):
     """Queue a usage-row write on the pool. The request's surface (?surface=, 2026-11-11) is read HERE, on the request
@@ -268,6 +269,7 @@ class RefineBody(BaseModel):
     messages: list[Turn] = []     # legacy shape: prior turns + the new user message last
     request_id: str = Field("", max_length=progress.MAX_ID_LEN)   # optional: progress + Stop (2026-10-25)
     quote: Optional[dict] = None  # 11-08: a vendor quote the couple uploaded, parsed by ep157 (Forever only)
+    ctx_arm: str = Field("", max_length=16)   # 11-14 context-first test: "context" | "control" | "" (test off)
 
 
 QUOTE_KEYS = ("document_type", "summary", "vendor_name", "category", "total_cost", "package_name", "deposit_or_paid",
@@ -942,7 +944,7 @@ def _state1(st):
     return st[0] if isinstance(st, list) and st else st
 
 
-def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, repeat=False):
+def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, repeat=False, fit_chip=False):
     """The fast answer for "look up <venue>", or None (not a lookup, or unsure -> the model answers as before)."""
     if not config.NAME_LOOKUP:
         return None
@@ -1025,6 +1027,19 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         text_out += " Open its pricing PDF on the card for everything the venue sent couples."
         chips = ["Similar venues near %s" % vn,
                  ("Cost breakdown for %s" % vn) if full else ("Is %s a good fit for us?" % vn)]
+        if fit_chip:
+            # 11-14 context-first test, 'context' arm: lookup-only chats end after 1.1 messages and 15% open a PDF;
+            # a lookup + a follow-up question opened one 66% of the time (planner log 11-03..11-14, correlation). So the
+            # first chip is a concrete fit question in the couple's own terms. Never a dollar figure; free couples get
+            # no "budget" either (free_mode.chips drops any money chip, and the free answer can't talk price).
+            free = _detail(paid, access) == "free"
+            if guests > 0:
+                fit = ("Does %s fit our %d guests?" if free else "Does %s fit our %d guests and budget?") % (vn, guests)
+            elif budget > 0 and not free:
+                fit = "Does %s fit our budget?" % vn
+            else:
+                fit = "Is %s a good fit for us?" % vn
+            chips = [fit] + [c for c in chips if c != fit and c != "Is %s a good fit for us?" % vn]
         if saved and card.get("vendor_id") not in saved:
             chips.append("Compare %s with my saved venues" % vn)
         if status == "best":
@@ -1394,7 +1409,7 @@ def _save_profile_answers(user, pending, text):
     return answers, [n["note"] for n in added if n.get("note")]
 
 
-def _refine_in_chat(token, user, chat, text, background, tracker=None, quote=None):
+def _refine_in_chat(token, user, chat, text, background, tracker=None, quote=None, fit_chip=False):
     """One typed question inside a stored conversation: server-held history in, both turns saved after."""
     _chat_used(chat.get("id") if isinstance(chat, dict) else chat)
     t0 = time.time()
@@ -1410,7 +1425,7 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None, quote=Non
     last_u = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "user"), "")
     repeat = bool(last_u) and last_u.strip().lower() == text.strip().lower()
     # "oheka castle": no model (2026-10-26). Never for an answer to our own profile question ("Near Dallas").
-    out = None if (answered or is_chip or quote) else _lookup_fast(token, user, text, last_a, chat["id"], tracker, repeat=repeat)
+    out = None if (answered or is_chip or quote) else _lookup_fast(token, user, text, last_a, chat["id"], tracker, repeat=repeat, fit_chip=fit_chip)
     if out is None:
         msgs, kw = _model_inputs(history, text)
         if quote and msgs and msgs[-1].get("role") == "user":   # model-only: the stored turn stays the short question
@@ -1485,7 +1500,7 @@ def _refine(token, user, body, background, tracker):
         text = (body.message or "").strip()[:2000]
         if not text:
             raise HTTPException(400, "message required")
-        return _refine_in_chat(token, user, chat, text, background, tracker, quote=body.quote)
+        return _refine_in_chat(token, user, chat, text, background, tracker, quote=body.quote, fit_chip=body.ctx_arm == "context")
     # No chat_id (the page asks before any opening has created a conversation). Until 2026-10-12 this ran
     # statelessly and saved nothing: user 827's 3 rated questions were lost and each one started from scratch,
     # so a state named in one question was forgotten by the next. Now: continue the user's conversation from
@@ -1504,11 +1519,11 @@ def _refine(token, user, body, background, tracker):
     # legacy shape (prior turns in `messages`) still continues the recent chat.
     chat = _recent_chat(user["id"]) if len(body.messages or []) > 1 else None
     if chat:
-        return _refine_in_chat(token, user, chat, text, background, tracker, quote=body.quote)
+        return _refine_in_chat(token, user, chat, text, background, tracker, quote=body.quote, fit_chip=body.ctx_arm == "context")
     # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard
     # allowed and the model answered, so a blocked or failed question leaves no empty conversation behind.
     last_a = next((m["content"] for m in reversed(msgs[:-1]) if m["role"] == "assistant"), "")
-    out = None if body.quote else _lookup_fast(token, user, text, last_a, 0, tracker)   # venue by name: no model (2026-10-26)
+    out = None if body.quote else _lookup_fast(token, user, text, last_a, 0, tracker, fit_chip=body.ctx_arm == "context")   # venue by name: no model (2026-10-26)
     if out is None:
         if body.quote:
             msgs = msgs[:-1] + [{"role": "user", "content": text + quote_block(body.quote, str(body.quote.get("_file_name") or ""))}]
@@ -2056,6 +2071,47 @@ def open_pdf(body: PdfBody, authorization: str = Header(None)):
                                                                        pdf_id=row.get("PDF_ID") or row.get("id")))
     return {"url": row.get("PDF_Link"), "mode": mode, "views_left": left, "last_free": mode == "free" and views == 1,
             "year": row.get("Year_of_Pricing") or ""}
+
+
+class PdfCountsBody(BaseModel):
+    vendor_ids: list[str] = []
+
+
+_PDF_COUNTS = {}            # vendor_id -> (summary, time) - PDF lists change a few times a week at most
+_PDF_COUNTS_TTL_S = 6 * 3600
+_PDF_COUNTS_POOL = ThreadPoolExecutor(max_workers=6)   # its own pool: never queues behind answers in _POOL
+
+
+@app.post("/rec/pdf-counts")
+def pdf_counts(body: PdfCountsBody, authorization: str = Header(None)):
+    """How many pricing PDFs each card's vendor has, and their years (owner 2026-11-14: 'in some cases there might be
+    multiple, and we might want to say that'). The page asks after the cards render, so answers are never slowed.
+    Same list the vendor page shows (ep93): rows with a PDF link that are not hidden. {counts: {vid: {count, years}}};
+    a vendor whose list could not be read is left out (the card then reads as before)."""
+    token, _ = _auth(authorization)
+    ids = []
+    for v in body.vendor_ids or []:
+        v = str(v or "").strip()[:20]
+        if v and v not in ids:
+            ids.append(v)
+    ids = ids[:12]
+    now, out, todo = time.time(), {}, []
+    for v in ids:
+        hit = _PDF_COUNTS.get(v)
+        if hit and now - hit[1] < _PDF_COUNTS_TTL_S:
+            out[v] = hit[0]
+        else:
+            todo.append(v)
+    futs = {v: _PDF_COUNTS_POOL.submit(xano.pdf_rows, token, v) for v in todo}
+    for v, f in futs.items():
+        try:
+            summary = xano.pdf_summary(f.result(timeout=6))
+        except Exception as e:
+            print("pdf_counts failed for", v, repr(e)[:120])
+            continue
+        _PDF_COUNTS[v] = (summary, now)
+        out[v] = summary
+    return {"counts": out}
 
 
 class AnswerFeedbackBody(BaseModel):

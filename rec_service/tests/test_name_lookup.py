@@ -390,3 +390,27 @@ def test_a_destination_typed_after_our_own_question_still_gets_the_coverage_line
                       {"role": "assistant", "text": "Here are three. Want me to keep to New Jersey only?"}]
     j = ask("Rosewood Bermuda")
     assert env["model"] == 0 and j["lookup"]["status"] == "not_found" and "Tulle covers US venues" in j["text"]
+
+
+# ---------------------------------------------------------------- 11-14 context-first test: fit chip on a lookup
+
+def test_context_arm_puts_a_concrete_fit_chip_first(env, monkeypatch):
+    monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Guest_Count": 120, "Wedding_Budget": 45000})
+    env["forever"], env["access"] = False, False
+    r = TestClient(app.app).post("/rec/refine", json={"chat_id": 9, "message": "oheka castle", "ctx_arm": "context"})
+    j = r.json()
+    assert j["chips"][0] == "Does Oheka Castle fit our 120 guests?", j["chips"]
+    assert "$" not in " ".join(j["chips"])                      # free mode: still no price anywhere
+    assert not any(ch.startswith("Is ") and "good fit" in ch for ch in j["chips"])   # not asked twice
+    env["forever"], env["access"] = True, True                  # a full member: guests + budget, still no figure
+    j = TestClient(app.app).post("/rec/refine", json={"chat_id": 9, "message": "oheka castle", "ctx_arm": "context"}).json()
+    assert j["chips"][0] == "Does Oheka Castle fit our 120 guests and budget?", j["chips"]
+
+
+def test_control_arm_and_no_arm_keep_todays_chips(env, monkeypatch):
+    monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Guest_Count": 120, "Wedding_Budget": 45000})
+    env["forever"], env["access"] = False, False
+    for arm in ("control", ""):
+        r = TestClient(app.app).post("/rec/refine", json={"chat_id": 9, "message": "oheka castle", "ctx_arm": arm})
+        chips = r.json()["chips"]
+        assert not any(ch.startswith("Does ") for ch in chips), chips
