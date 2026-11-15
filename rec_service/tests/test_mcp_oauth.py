@@ -574,7 +574,7 @@ def test_tampered_truncated_and_foreign_tokens(env, c, monkeypatch):
     a, r = tok["access_token"], tok["refresh_token"]
     flip = lambda s, i: s[:i] + ("B" if s[i] != "B" else "C") + s[i + 1:]       # noqa: E731
     for bad in (a[:-1], a[:-8], a[:30], a + "A", flip(a, 3), flip(a, len(a) // 2), flip(a, len(a) - 2), "", "a.b.c",
-                "A" * 200, a + "=", a.replace("-", "+")):
+                "A" * 200, a + "=", "+" + a[1:], a[:9] + "/" + a[10:]):      # (not a.replace("-", "+"): a no-op on a token with no "-")
         assert_challenge(mcp(c, bad), "invalid_token" if bad else None)
     for bad in (r[:-1], r[:30], r + "A", flip(r, 5), flip(r, len(r) // 2), "A" * 200):
         x = token(c, grant_type="refresh_token", refresh_token=bad)
