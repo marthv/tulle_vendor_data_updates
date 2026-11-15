@@ -147,17 +147,31 @@ except ValueError:
 # REC_MCP_PUBLIC_URL = the public https origin of this service, no path (e.g. https://mcp.tulletogether.app): the MCP
 #   URL is <it>/mcp and the OAuth issuer is <it>. REQUIRED with REC_MCP=1 (empty = nothing is mounted); its host is
 #   added to REC_MCP_ALLOWED_HOSTS automatically.
-# REC_MCP_TOKEN_KEY = the secret that encrypts every code / token (32+ characters). REQUIRED (missing = not mounted).
-#   Changing it signs everyone out of the connector.
+# REC_MCP_TOKEN_KEY = the secret that encrypts every code / token: base64 of at least 32 random bytes. REQUIRED
+#   (missing or not such a value = not mounted). Make one with:
+#     python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+#   To rotate: move the current value to REC_MCP_TOKEN_KEY_OLD (tokens under it are still read, never issued) and set
+#   a new REC_MCP_TOKEN_KEY; drop the old one after 14 days. Changing the key with no _OLD signs everyone out.
 # REC_MCP_CONSENT_URL = the consent page on the Tulle web app that /authorize sends the browser to.
-# REC_MCP_CLIENT_HOSTS = hosts whose client metadata documents are accepted as OAuth clients (default: Claude's).
+# REC_MCP_CLIENT_IDS = the exact client_id URLs accepted as OAuth clients (default: Claude's two metadata documents).
+# REC_MCP_CLIENT_HOSTS = the hosts those URLs must also be on (a second condition, default claude.ai).
+# REC_MCP_TRUSTED_PROXY_HOPS = how many proxies in front of this service append to X-Forwarded-For (default 1): the
+#   client address for rate limits is read that many entries from the RIGHT of the header. 0 = use the socket peer.
 # REC_MCP_ALLOWED_ORIGINS = Origin header values /mcp, /authorize and /token accept (default none: a request with any
 #   Origin is refused; the consent page's two routes have their own rule).
 # REC_MCP_DEV_RAW_TOKEN=1 = /mcp also takes the couple's raw Xano token as the bearer. Local testing only.
 MCP_PUBLIC_URL = os.environ.get("REC_MCP_PUBLIC_URL", "").strip().rstrip("/")
 MCP_TOKEN_KEY = os.environ.get("REC_MCP_TOKEN_KEY", "")
+MCP_TOKEN_KEY_OLD = os.environ.get("REC_MCP_TOKEN_KEY_OLD", "")
 MCP_CONSENT_URL = os.environ.get("REC_MCP_CONSENT_URL", "https://www.tulletogether.app/connect-claude").strip()
 MCP_CLIENT_HOSTS = [h.strip().lower() for h in os.environ.get("REC_MCP_CLIENT_HOSTS", "claude.ai").split(",") if h.strip()]
+MCP_CLIENT_IDS = [u.strip() for u in os.environ.get(
+    "REC_MCP_CLIENT_IDS", "https://claude.ai/oauth/mcp-oauth-client-metadata,"
+                          "https://claude.ai/oauth/claude-code-client-metadata").split(",") if u.strip()]
+try:
+    MCP_TRUSTED_PROXY_HOPS = max(0, int(os.environ.get("REC_MCP_TRUSTED_PROXY_HOPS", "1")))
+except ValueError:
+    MCP_TRUSTED_PROXY_HOPS = 1
 MCP_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("REC_MCP_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 MCP_DEV_RAW_TOKEN = os.environ.get("REC_MCP_DEV_RAW_TOKEN", "0").strip() == "1"
 # Streamed answer text (owner 2026-10-31, Claude-style Planner chat): the final model turn is streamed and the answer

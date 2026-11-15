@@ -243,7 +243,7 @@ STUB = ("import sys, types\n"
         "pricing_warm.start = lambda: starts.append(1)      # the real startup handler, minus its network warm-up\n")
 
 
-KEY = "k" * 40
+KEY = "a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2s="       # base64 of 32 bytes (b"k" * 32)
 ON = {"REC_MCP": "1", "REC_MCP_USER_IDS": "7, 42,abc,", "REC_MCP_PUBLIC_URL": "https://tulle.test", "REC_MCP_TOKEN_KEY": KEY}
 
 
@@ -269,7 +269,7 @@ def test_flag_on_mounts_mcp_on_the_real_app_and_startup_runs_exactly_once():
 
 
 @pytest.mark.parametrize("missing,line", [("REC_MCP_PUBLIC_URL", "REC_MCP_PUBLIC_URL is empty"),
-                                          ("REC_MCP_TOKEN_KEY", "REC_MCP_TOKEN_KEY is missing or shorter than 32")])
+                                          ("REC_MCP_TOKEN_KEY", "REC_MCP_TOKEN_KEY is missing or is not base64 of at least 32 bytes")])
 def test_flag_on_without_public_url_or_key_does_not_mount_and_says_why(missing, line):
     code = STUB + (
         "import app, config\n"
@@ -395,7 +395,9 @@ def test_instructions_and_tool_texts_only_describe_what_is_returned():
     for name, text in texts.items():
         assert not ORDERS.search(text), (name, ORDERS.search(text).group(0))
     for n in ("get_my_wedding", "list_saved_vendors", "find_vendor"):
-        assert "pricing lives on tulletogether.app" in mcp_server.TOOL_TEXT[n][1]
+        assert "Does not include prices" in mcp_server.TOOL_TEXT[n][1]
+    for n in mcp_server.TOOLS:                                   # F5: purely descriptive - no pointer to the site
+        assert "tulletogether.app" not in mcp_server.TOOL_TEXT[n][1] and "pricing lives" not in mcp_server.TOOL_TEXT[n][1]
     assert all(mcp_server.TOOL_TEXT[n][1].startswith("Returns ") and len(n) <= 64 and mcp_server.TOOL_TEXT[n][0]
                for n in mcp_server.TOOLS)
 
@@ -594,7 +596,8 @@ def test_find_vendor_exact_name_a_non_venue_and_a_miss(env):
 @pytest.mark.parametrize("query,location", [
     ("Brooklyn", ""), ("hotel", ""), ("barn", ""), ("hotel", "Texas"), ("barn texas", ""), ("the hotel", ""),
     ("garden", ""), ("Brooklyn NY", ""), ("New York", ""), ("winery", "Brooklyn"), ("wedding venue", ""), ("venues", "Texas"),
-    ("Emma Garden", ""), ("Hill Barn", ""), ("Forest", ""), ("Winery Brooklyn", "")])
+    ("Emma Garden", ""), ("Hill Barn", ""), ("Forest", ""), ("Winery Brooklyn", ""),
+    ("Emma", ""), ("Kohl", ""), ("Ashton", ""), ("Hill", ""), ("Olivia", ""), ("Mansion", ""), ("Emma", "Texas")])   # F6: one word
 def test_generic_or_partial_words_do_not_browse(env, query, location):
     """V3: 'Brooklyn' returned 3 names and 'hotel' + a state 2. The mocked search returns every vendor containing any
     word of the query - a real browse surface - and nothing may come back."""
@@ -609,13 +612,31 @@ def test_generic_or_partial_words_do_not_browse(env, query, location):
     ("The Barn at Forest Hill", "The Barn at Forest Hill"),      # the full exact name
     ("barn at forest hill", "The Barn at Forest Hill"),
     ("Forest Hill", "The Barn at Forest Hill"),                  # two words of a three-word name
-    ("Hotel Emma", "Hotel Emma"), ("Emma", "Hotel Emma"),        # half of a two-word name
+    ("Hotel Emma", "Hotel Emma"), ("OliviaPhotos", "OliviaPhotos"),   # a one-word query only as the exact, whole name
     ("Brooklyn Winery", "Brooklyn Winery"),                      # only place / type words, but it IS the exact name
     ("The Brooklyn Barn", "The Brooklyn Barn"), ("Garden Hotel", "Garden Hotel")])
 def test_a_full_or_nearly_full_name_matches(env, query, name):
     r = walk(mcp_server.find_vendor("Bearer good", query))
     assert r["status"] == "found" and [c["name"] for c in r["matches"]] == [name], r
     assert len(r.get("also") or []) <= 2
+
+
+def test_one_distinctive_word_cannot_enumerate_vendor_names(env, monkeypatch):
+    """F6: with one word enough, 19 of 36 mock vendors were listed in 47 calls. Every single word of every known name is
+    tried here; only a vendor whose whole name IS that one word may come back."""
+    monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 10000)
+    names = [v["name"] for v in list(CARDS.values()) + TWINS + BROWSE]
+    monkeypatch.setattr(xano, "name_search", lambda term, token="", **k: [
+        dict(v, category=k.get("category", "Venue")) for v in list(CARDS.values()) + TWINS + BROWSE
+        if any(w in v["name"].lower() for w in term.split())])
+    words = sorted({w for n in names for w in re.findall(r"[A-Za-z]{4,}", n)})
+    found = set()
+    for w in words:
+        r = mcp_server.find_vendor("Bearer good", w)
+        found |= {c["name"] for c in (r.get("matches") or []) + (r.get("candidates") or []) + (r.get("also") or [])}
+    assert found == {"OliviaPhotos", "Bloomery"}, found          # the two one-word names, asked for exactly
+    assert mcp_server.name_match("Oheka", "Oheka Castle") == 0 and mcp_server.name_match("Oheka Castle", "Oheka Castle") == 2
+    assert mcp_server.name_match("Bloomery", "Bloomery") == 2 and mcp_server.name_match("Bloom", "Bloomery") == 0
 
 
 def test_minimum_four_letters(env):
@@ -899,10 +920,15 @@ def test_host_allowlist(env, client):
                                              ("MCP_PUBLIC_URL", "https://mcp.tulle.test/mcp", "must be an https origin"),
                                              ("MCP_TOKEN_KEY", "", "REC_MCP_TOKEN_KEY is missing"),
                                              ("MCP_TOKEN_KEY", "short", "REC_MCP_TOKEN_KEY is missing"),
+                                             ("MCP_TOKEN_KEY", "a" * 32, "not base64 of at least 32 bytes"),      # F2: was accepted
+                                             ("MCP_TOKEN_KEY", "k" * 40, "not base64 of at least 32 bytes"),      # decodes to 30 bytes
+                                             ("MCP_TOKEN_KEY", "not base64 at all !!" * 3, "not base64 of at least 32 bytes"),
+                                             ("MCP_TOKEN_KEY_OLD", "oops", "REC_MCP_TOKEN_KEY_OLD is set but is not base64"),
                                              ("MCP_CONSENT_URL", "http://www.tulletogether.app/x", "REC_MCP_CONSENT_URL")])
 def test_mount_adds_nothing_when_the_oauth_settings_are_incomplete(env, monkeypatch, capsys, name, value, line):
     monkeypatch.setattr(config, "MCP_PUBLIC_URL", "https://testserver")
     monkeypatch.setattr(config, "MCP_TOKEN_KEY", KEY)
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY_OLD", "")
     monkeypatch.setattr(config, name, value)
     host = FastAPI()
     before, routes = host.router.lifespan_context, len(host.routes)
@@ -910,6 +936,7 @@ def test_mount_adds_nothing_when_the_oauth_settings_are_incomplete(env, monkeypa
     assert len(host.routes) == routes and host.router.lifespan_context is before and not host.user_middleware
     out = capsys.readouterr().out
     assert line in out and out.count("/mcp is NOT mounted") == 1 and KEY not in out
+    assert str(value) not in out or len(str(value)) < 8 or name != "MCP_TOKEN_KEY"      # a bad key is never echoed
     assert TestClient(host).post("/mcp", json=LIST).status_code == 404
 
 

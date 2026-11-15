@@ -24,7 +24,8 @@ MCP_URL = BASE + "/mcp"
 PRM_URL = BASE + "/.well-known/oauth-protected-resource/mcp"
 CONSENT = "https://www.tulletogether.app/connect-claude"
 ORIGIN = "https://www.tulletogether.app"
-KEY = "test-key-" + "x" * 40
+KEY = base64.urlsafe_b64encode(b"test-key-" + b"x" * 30).decode()        # base64 of 39 bytes
+KEY2 = base64.b64encode(bytes(range(40))).decode()                         # another valid key (standard alphabet)
 # Claude's two client metadata documents, as published 2026-11-15 (copied here; tests never fetch them).
 HOSTED = "https://claude.ai/oauth/mcp-oauth-client-metadata"
 CODE_CLI = "https://claude.ai/oauth/claude-code-client-metadata"
@@ -68,7 +69,8 @@ def env(monkeypatch):
             raise mcp_oauth.OAuthError("invalid_client", "the client metadata document could not be fetched")
         return st["docs"][url]
     for name, value in (("MCP_PUBLIC_URL", BASE), ("MCP_TOKEN_KEY", KEY), ("MCP_CONSENT_URL", CONSENT),
-                        ("MCP_CLIENT_HOSTS", ["claude.ai"]), ("MCP_USER_IDS", frozenset({7})), ("MCP_ALL_USERS", False),
+                        ("MCP_CLIENT_HOSTS", ["claude.ai"]), ("MCP_CLIENT_IDS", [HOSTED, CODE_CLI]), ("MCP_TOKEN_KEY_OLD", ""),
+                        ("MCP_TRUSTED_PROXY_HOPS", 1), ("MCP_USER_IDS", frozenset({7})), ("MCP_ALL_USERS", False),
                         ("MCP_ALLOWED_HOSTS", []), ("MCP_ALLOWED_ORIGINS", []), ("MCP_DEV_RAW_TOKEN", False),
                         ("KILL_SWITCH", False)):
         monkeypatch.setattr(config, name, value)
@@ -76,13 +78,12 @@ def env(monkeypatch):
     monkeypatch.setattr(appmod, "_submit_usage", lambda row: None)
     monkeypatch.setattr(mcp_oauth, "fetch_cimd", fetch)
     monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
-    for store in (mcp_oauth.USED, mcp_oauth.BUCKETS):
-        store.clear()
-    mcp_oauth._CIMD.clear()
+    def reset():
+        for store in (mcp_oauth.USED, mcp_oauth.REVOKED, mcp_oauth.BUCKETS, mcp_oauth._CIMD, mcp_oauth._CIMD_BAD):
+            store.clear()
+    reset()
     yield st
-    mcp_oauth._CIMD.clear()
-    mcp_oauth.USED.clear()
-    mcp_oauth.BUCKETS.clear()
+    reset()
 
 
 def _host():
@@ -235,10 +236,11 @@ def test_happy_path_end_to_end(env, c, capsys):
     assert r2.status_code == 200
     new = r2.json()
     assert new["refresh_token"] != tok["refresh_token"] and new["access_token"] != tok["access_token"]
+    assert mcp(c, new["access_token"]).status_code == 200
+    newer = token(c, grant_type="refresh_token", refresh_token=new["refresh_token"])                     # and again
+    assert newer.status_code == 200
     old = token(c, grant_type="refresh_token", refresh_token=tok["refresh_token"], client_id=HOSTED)
     assert old.status_code == 400 and old.json()["error"] == "invalid_grant"
-    assert mcp(c, new["access_token"]).status_code == 200
-    assert token(c, grant_type="refresh_token", refresh_token=new["refresh_token"]).status_code == 200   # and again
 
     # nothing secret was printed along the way
     out = capsys.readouterr().out + capsys.readouterr().err
@@ -310,7 +312,11 @@ def test_client_host_allowlist_is_configurable(env, c, monkeypatch):
     env["docs"][other] = {"client_id": other, "redirect_uris": ["https://clients.example.org/cb"]}
     assert authz(c, client_id=other, redirect_uri="https://clients.example.org/cb").status_code == 400
     monkeypatch.setattr(config, "MCP_CLIENT_HOSTS", ["claude.ai", "clients.example.org"])
+    assert authz(c, client_id=other, redirect_uri="https://clients.example.org/cb").status_code == 400      # host alone is not enough
+    monkeypatch.setattr(config, "MCP_CLIENT_IDS", [HOSTED, CODE_CLI, other])
     assert authz(c, client_id=other, redirect_uri="https://clients.example.org/cb").status_code == 302
+    monkeypatch.setattr(config, "MCP_CLIENT_HOSTS", ["claude.ai"])                                         # ... and the id alone is not either
+    assert authz(c, client_id=other, redirect_uri="https://clients.example.org/cb").status_code == 400
 
 
 @pytest.mark.parametrize("doc", [
@@ -579,7 +585,7 @@ def test_tampered_truncated_and_foreign_tokens(env, c, monkeypatch):
     for bad in (r[:-1], r[:30], r + "A", flip(r, 5), flip(r, len(r) // 2), "A" * 200):
         x = token(c, grant_type="refresh_token", refresh_token=bad)
         assert x.status_code == 400 and x.json()["error"] == "invalid_grant"
-    monkeypatch.setattr(config, "MCP_TOKEN_KEY", "another-key-" + "y" * 40)      # issued under another key
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY", KEY2)                           # issued under another key
     assert_challenge(mcp(c, a), "invalid_token")
     assert token(c, grant_type="refresh_token", refresh_token=r).json()["error"] == "invalid_grant"
     monkeypatch.setattr(config, "MCP_TOKEN_KEY", KEY)
@@ -702,9 +708,9 @@ def test_rate_limits(env, c, monkeypatch):
     assert got == [400, 400, 429, 429]
     r = token(c, grant_type="refresh_token", refresh_token="x")
     assert r.headers["retry-after"] == "30" and r.json()["error"] == "slow_down"
-    # per client address: another address still gets through
+    # per client address (the entry our proxy appended to X-Forwarded-For): another address still gets through
     assert c.post("/token", data={"grant_type": "refresh_token", "refresh_token": "x"},
-                  headers={"X-Real-IP": "203.0.113.9"}).status_code == 400
+                  headers={"X-Forwarded-For": "203.0.113.9"}).status_code == 400
     b = mcp_oauth._Buckets()
     assert [b.allow("token", "a", now=0) for _ in range(3)] == [True, True, False]
     assert b.allow("token", "a", now=31) is True                 # refills: 2 a minute -> one every 30 s
@@ -744,3 +750,197 @@ def test_seal_is_opaque_and_kind_bound(env):
         with pytest.raises(mcp_oauth.BadToken):
             mcp_oauth.unseal(t, kind)
     assert mcp_oauth.seal("access", {"uid": 7}, 60) != mcp_oauth.seal("access", {"uid": 7}, 60)     # fresh nonce + id
+
+
+# ---------------------------------------------------------------- F1: rate limits that a header cannot talk around
+
+def test_rotating_spoofable_headers_does_not_get_around_the_rate_limit(env, c, monkeypatch):
+    """Rotating X-Real-IP let 40 of 40 through a 30-a-minute limit. Only the entry OUR proxy appends counts."""
+    monkeypatch.setattr(mcp_oauth, "RATE", {"authorize": (30, 60.0), "approve": (30, 60.0), "token": (30, 60.0)})
+    got = [c.post("/token", data={"grant_type": "refresh_token", "refresh_token": "x"},
+                  headers={"X-Real-IP": "198.51.100.%d" % i, "Forwarded": "for=198.51.100.%d" % i,
+                           "X-Forwarded-For": "198.51.100.%d, 203.0.113.7" % i}).status_code for i in range(40)]
+    assert got.count(400) == 30 and got.count(429) == 10         # one client behind the proxy: the forged left side is ignored
+
+
+def test_client_address_comes_from_the_right_of_x_forwarded_for(monkeypatch):
+    addr = mcp_oauth.client_addr
+    monkeypatch.setattr(config, "MCP_TRUSTED_PROXY_HOPS", 1)
+    assert addr({"x-forwarded-for": "6.6.6.6, 203.0.113.7"}, "10.0.0.1") == "203.0.113.7"
+    assert addr({"x-forwarded-for": "203.0.113.7"}, "10.0.0.1") == "203.0.113.7"
+    assert addr({"x-real-ip": "6.6.6.6"}, "10.0.0.1") == "10.0.0.1"               # X-Real-IP alone is never trusted
+    assert addr({}, "10.0.0.1") == "10.0.0.1" and addr({"x-forwarded-for": " , "}, None) == "?"
+    monkeypatch.setattr(config, "MCP_TRUSTED_PROXY_HOPS", 2)
+    assert addr({"x-forwarded-for": "6.6.6.6, 203.0.113.7, 172.16.0.9"}, "10.0.0.1") == "203.0.113.7"
+    assert addr({"x-forwarded-for": "203.0.113.7"}, "10.0.0.1") == "10.0.0.1"     # fewer entries than hops: the peer
+    monkeypatch.setattr(config, "MCP_TRUSTED_PROXY_HOPS", 0)
+    assert addr({"x-forwarded-for": "6.6.6.6, 203.0.113.7"}, "10.0.0.1") == "10.0.0.1"
+
+
+def test_global_ceiling_holds_when_addresses_are_spread(env, c, monkeypatch):
+    monkeypatch.setattr(mcp_oauth, "RATE_ALL", {"authorize": (300, 60.0), "approve": (300, 60.0), "token": (12, 60.0)})
+    got = [c.post("/token", data={"grant_type": "refresh_token", "refresh_token": "x"},
+                  headers={"X-Forwarded-For": "203.0.113.%d" % i}).status_code for i in range(20)]
+    assert got == [400] * 12 + [429] * 8                         # 20 different (genuine) addresses, one shared ceiling
+
+
+def test_rate_limit_memory_is_bounded_without_a_global_reset(monkeypatch):
+    """Was: above 50,000 keys EVERYTHING was forgotten - flooding addresses reset everyone's limits."""
+    monkeypatch.setattr(mcp_oauth, "RATE", {"token": (2, 60.0)})
+    monkeypatch.setattr(mcp_oauth, "RATE_ALL", {"token": (10 ** 9, 60.0)})
+    b = mcp_oauth._Buckets(cap=50)
+    assert [b.allow("token", "victim", now=0) for _ in range(3)] == [True, True, False]
+    for i in range(40):
+        b.allow("token", "flood-%d" % i, now=1)
+    assert b.allow("token", "victim", now=2) is False            # still limited: recently seen, so not evicted
+    for i in range(500):
+        b.allow("token", "flood2-%d" % i, now=3)
+    assert len(b._d) <= 50 and ("token", None) in b._d           # bounded, and the shared bucket is never dropped
+
+
+@pytest.mark.parametrize("path", ["/token", "/oauth/approve"])
+def test_oversized_bodies_are_refused_before_they_are_read(env, c, monkeypatch, path):
+    read = []
+    from starlette.requests import Request
+    real = Request.stream
+
+    async def stream(self):
+        async for chunk in real(self):
+            read.append(len(chunk))
+            yield chunk
+    monkeypatch.setattr(Request, "stream", stream)
+    h = ({"Content-Type": "application/x-www-form-urlencoded"} if path == "/token" else
+         {"Origin": ORIGIN, "Authorization": "Bearer xano-good", "Content-Type": "application/json"})
+    r = c.post(path, content=b"a=" + b"x" * 200000, headers=h)
+    assert r.status_code == 413 and r.json()["error"] == "invalid_request" and read == []       # Content-Length said enough
+    # no honest Content-Length (chunked): the cap is enforced while reading
+    read.clear()
+    r = c.post(path, content=iter([b"a=" + b"x" * 9000, b"y" * 9000, b"z" * 9000]), headers=h)
+    assert r.status_code == 413 and sum(read) <= 27002
+    assert c.post(path, content=b"x", headers=dict(h, **{"Content-Length": "abc"})).status_code in (400, 413)
+
+
+# ---------------------------------------------------------------- F2: the key
+
+def test_key_must_be_base64_of_at_least_32_bytes():
+    kb = mcp_oauth._key_bytes
+    assert kb(KEY) and kb(KEY2) and kb(KEY.rstrip("=")) == kb(KEY) and kb(" " + KEY + "\n") == kb(KEY)
+    std = base64.b64encode(b"\xfb\xff" * 16).decode()             # "+" and "/" (standard) == "-" and "_" (urlsafe)
+    assert "+" in std and "/" in std and kb(std) == kb(std.replace("+", "-").replace("/", "_")) == b"\xfb\xff" * 16
+    for bad in ("", None, "a" * 32, "k" * 40, "short", "not base64 !!" * 5, base64.b64encode(b"x" * 31).decode(), "=" * 44, "a" * 600):
+        assert kb(bad) is None, bad
+
+
+def test_each_kind_of_token_has_its_own_hkdf_key(env):
+    master = mcp_oauth._key_bytes(KEY)
+    keys = {k: mcp_oauth._subkey(master, k) for k in ("request", "code", "access", "refresh")}
+    assert len(set(keys.values())) == 4 and all(len(v) == 32 for v in keys.values())
+    assert master[:32] not in keys.values() and hashlib.sha256(master).digest() not in keys.values()
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    assert keys["access"] == HKDF(algorithm=hashes.SHA256(), length=32, salt=b"tulle-mcp-oauth-v2",
+                                  info=b"tulle-mcp-oauth-v2|access").derive(master)
+    assert mcp_oauth._subkey(mcp_oauth._key_bytes(KEY2), "access") != keys["access"]
+
+
+def test_key_rotation_old_key_reads_but_never_issues(env, c, monkeypatch):
+    old = signed_in(c)                                           # issued under KEY
+    raw = base64.urlsafe_b64decode(old["access_token"] + "=" * (-len(old["access_token"]) % 4))
+    assert raw[0] == mcp_oauth._kid(mcp_oauth._key_bytes(KEY))    # the first byte names the key
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY", KEY2)            # rotate: new key, the old one kept for reading
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY_OLD", KEY)
+    assert mcp(c, old["access_token"]).status_code == 200
+    new = token(c, grant_type="refresh_token", refresh_token=old["refresh_token"]).json()
+    raw2 = base64.urlsafe_b64decode(new["access_token"] + "=" * (-len(new["access_token"]) % 4))
+    assert raw2[0] == mcp_oauth._kid(mcp_oauth._key_bytes(KEY2)) and mcp(c, new["access_token"]).status_code == 200
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY_OLD", "")          # the old key is retired
+    assert_challenge(mcp(c, old["access_token"]), "invalid_token")
+    assert mcp(c, new["access_token"]).status_code == 200
+    swapped = bytes([raw2[0] ^ 1]) + raw2[1:]                     # a token claiming another key id does not open
+    assert_challenge(mcp(c, base64.urlsafe_b64encode(swapped).rstrip(b"=").decode()), "invalid_token")
+
+
+def test_two_keys_with_the_same_key_id_are_both_tried(env, monkeypatch):
+    monkeypatch.setattr(mcp_oauth, "_kid", lambda master: 7)
+    t = mcp_oauth.seal("access", {"uid": 7}, 60)
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY", KEY2)
+    monkeypatch.setattr(config, "MCP_TOKEN_KEY_OLD", KEY)
+    assert mcp_oauth.unseal(t, "access")["uid"] == 7
+
+
+# ---------------------------------------------------------------- F3: exact client ids, failed lookups remembered
+
+@pytest.mark.parametrize("client_id", [
+    "https://claude.ai/oauth/some-other-document", "https://claude.ai/public/artifacts/evil.json",
+    "https://claude.ai/oauth/mcp-oauth-client-metadata/", "https://claude.ai/oauth/mcp-oauth-client-metadata?x=1",
+    "https://CLAUDE.AI/oauth/mcp-oauth-client-metadata", "https://claude.ai/oauth/claude-code-client-metadata/confidential_client"])
+def test_only_the_exact_client_id_urls_are_accepted(env, c, client_id):
+    """Was a host-wide rule: ANY claude.ai path serving a self-naming document was a client."""
+    env["docs"][client_id] = {"client_id": client_id, "redirect_uris": [CALLBACK]}
+    r = authz(c, client_id=client_id)
+    assert r.status_code == 400 and r.json()["error"] == "invalid_client" and env["fetched"] == []
+
+
+def test_default_client_ids_are_claudes_two_documents():
+    import importlib
+    import os
+    old = os.environ.pop("REC_MCP_CLIENT_IDS", None)
+    try:
+        assert importlib.reload(config).MCP_CLIENT_IDS == [HOSTED, CODE_CLI]
+    finally:
+        if old is not None:
+            os.environ["REC_MCP_CLIENT_IDS"] = old
+        importlib.reload(config)
+
+
+def test_a_failed_client_lookup_is_not_fetched_again_for_a_minute(env, c):
+    del env["docs"][HOSTED]
+    assert [authz(c).status_code for _ in range(5)] == [400] * 5
+    assert env["fetched"] == [HOSTED]                            # was: one fetch per request
+    env["docs"][CODE_CLI] = {"client_id": "https://claude.ai/oauth/other", "redirect_uris": ["http://localhost/callback"]}
+    for _ in range(3):
+        assert authz(c, client_id=CODE_CLI, redirect_uri="http://localhost:1/callback").status_code == 400
+    assert env["fetched"] == [HOSTED, CODE_CLI]
+    env["docs"][HOSTED] = dict(DOCS[HOSTED])
+    with pytest.raises(mcp_oauth.OAuthError):
+        mcp_oauth.client_document(HOSTED, now=time.time() + 30)   # still remembered as failed
+    assert mcp_oauth.client_document(HOSTED, now=time.time() + 61)["redirect_uris"] == [CALLBACK]    # then tried again
+
+
+# ---------------------------------------------------------------- F4: one approval per request
+
+def test_a_request_can_be_approved_only_once(env, c, monkeypatch):
+    monkeypatch.setattr(config, "MCP_ALL_USERS", True)
+    blob = blob_of(c)
+    assert approve(c, blob, token="nope").status_code == 401     # a failed attempt does not use it up
+    first = approve(c, blob)
+    assert first.status_code == 200
+    for tok in ("xano-good", "xano-other"):                      # not again - by the same couple or anyone else
+        again = approve(c, blob, token=tok)
+        assert again.status_code == 400 and again.json()["error"] == "invalid_request" and "redirect" not in again.text
+    assert exchange(c, q(first.json()["redirect"])["code"]).status_code == 200       # the one code issued still works
+    assert c.get("/oauth/request", params={"req": blob}, headers={"Origin": ORIGIN}).status_code == 200
+
+
+# ---------------------------------------------------------------- F7: refresh-token reuse ends the chain
+
+def test_refresh_token_reuse_revokes_the_newest_tokens_of_that_sign_in(env, c, capsys):
+    t1 = signed_in(c)
+    other = signed_in(c)                                          # a separate sign-in of the same couple: untouched
+    t2 = token(c, grant_type="refresh_token", refresh_token=t1["refresh_token"]).json()
+    t3 = token(c, grant_type="refresh_token", refresh_token=t2["refresh_token"]).json()
+    assert mcp(c, t3["access_token"]).status_code == 200
+    capsys.readouterr()
+    for _ in range(3):                                            # the stolen / replayed old token
+        r = token(c, grant_type="refresh_token", refresh_token=t1["refresh_token"])
+        assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
+    newest = token(c, grant_type="refresh_token", refresh_token=t3["refresh_token"])
+    assert newest.status_code == 400 and newest.json()["error"] == "invalid_grant"   # was 200: the chain lived on
+    for access in (t1["access_token"], t2["access_token"], t3["access_token"]):
+        assert_challenge(mcp(c, access), "invalid_token")
+    out = capsys.readouterr().out
+    assert out.count("mcp oauth WARNING: a used refresh token was presented again - sign-in chain revoked for user 7") == 1
+    for secret in (t1["refresh_token"], t3["refresh_token"], t3["access_token"], "xano-good"):
+        assert secret not in out
+    assert mcp(c, other["access_token"]).status_code == 200
+    assert token(c, grant_type="refresh_token", refresh_token=other["refresh_token"]).status_code == 200

@@ -33,8 +33,8 @@ CARD = {"vendor_id": "V101", "name": "Kohl Mansion", "state": "Texas", "category
 
 @pytest.fixture
 def c(monkeypatch):
-    for name, value in (("MCP_PUBLIC_URL", BASE), ("MCP_TOKEN_KEY", "k" * 40), ("MCP_USER_IDS", frozenset({7})),
-                        ("MCP_ALL_USERS", False), ("MCP_ALLOWED_HOSTS", []), ("MCP_ALLOWED_ORIGINS", []),
+    for name, value in (("MCP_PUBLIC_URL", BASE), ("MCP_TOKEN_KEY", "a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2s="), ("MCP_USER_IDS", frozenset({7})),
+                        ("MCP_TOKEN_KEY_OLD", ""), ("MCP_ALL_USERS", False), ("MCP_ALLOWED_HOSTS", []), ("MCP_ALLOWED_ORIGINS", []),
                         ("MCP_DEV_RAW_TOKEN", False), ("KILL_SWITCH", False)):
         monkeypatch.setattr(config, name, value)
 

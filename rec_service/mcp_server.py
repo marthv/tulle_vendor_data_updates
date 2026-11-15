@@ -24,8 +24,8 @@ DATA POLICY (owner 2026-11-15) - read this before adding a field or a tool
        is the one id the owner accepts exposing). Never capacity, descriptions or other free text from Tulle's
        data, PDF counts or links, addresses, contact details, images or any other internal id.
     3. NO search, filter or browse tool without an owner decision: a vendor is found BY NAME only, and only on a
-       strong name match (name_match below: the words typed must sit in the vendor's name and cover at least half
-       of it; a query of only place / venue-type words must be the exact name). At most 3 names come back, at most
+       strong name match (name_match below: at least two words typed, sitting in the vendor's name and covering at
+       least half of it; one word, or only place / venue-type words, must be the vendor's exact name). At most 3 names come back, at most
        6 upstream searches run per call, and calls are capped per account per day (REC_MCP_DAILY_LOOKUPS, counted
        in memory under a lock AND from the usage rows). The exact tool list is pinned in the tests.
     4. What the couple typed in themselves (budget, the costs of what they booked, their quotes and notes) is
@@ -274,15 +274,16 @@ def generic_only(text):
 
 
 def name_match(query, vendor_name):
-    """0 = not a match; 2 = the vendor's exact name; 1 + coverage (1.5 .. 2) = the words typed sit in the name, in
-    order, as whole words, and are at least half of the name's words. A query of only place / venue-type words
-    matches nothing but the exact name."""
+    """0 = not a match; 2 = the vendor's exact name (the only way a one-word query, or a query of only place /
+    venue-type words, can match); 1 + coverage (1.5 .. 2) = at least TWO words typed, sitting in the name in order
+    as whole words, and at least half of the name's words. One distinctive word ("Oheka", "Emma") is not enough:
+    that let names be enumerated a word at a time."""
     q, n = _words(query), _words(vendor_name)
     if not q or not n:
         return 0.0
     if q == n:
         return 2.0
-    if generic_only(query):
+    if len(q) < 2 or generic_only(query):
         return 0.0
     if not any(n[i:i + len(q)] == q for i in range(len(n) - len(q) + 1)):
         return 0.0
@@ -520,15 +521,14 @@ TOOL_TEXT = {
                        "are considering with the amounts they entered, their notes on rows they created, totals paid "
                        "and left, and the vendors they saved (name, state, category, type and Tulle page link). An "
                        "amount that matches a figure pre-filled by Tulle is marked amount_hidden and left out of the "
-                       "totals. Does not include prices from Tulle; pricing lives on tulletogether.app."),
+                       "totals. Does not include prices from Tulle."),
     "list_saved_vendors": ("Saved vendors", "Returns the venues and other vendors the couple saved on Tulle Together: "
-                           "name, state, category, type and Tulle page link. Does not include prices; pricing lives "
-                           "on tulletogether.app."),
+                           "name, state, category, type and Tulle page link. Does not include prices."),
     "find_vendor": ("Find a vendor by name", "Returns one wedding venue or other vendor on Tulle Together whose name "
                     "matches the name given: name, state, category, type and Tulle page link, plus up to two other "
                     "matching names. When no single vendor stands out, returns up to three names with their state. "
                     "Matches a vendor's full or nearly full name only; location (a city or state) is optional. Has a "
-                    "daily limit per account. Does not include prices; pricing lives on tulletogether.app."),
+                    "daily limit per account. Does not include prices."),
     "budget_status": ("Budget status", "Returns where the couple's budget stands, from the numbers they entered on "
                       "Tulle Together: what they added, paid and still owe against their budget, by category. Amounts "
                       "pre-filled by Tulle are left out and counted in amounts_hidden."),

@@ -11,15 +11,16 @@ THE FLOW
     2. Claude reads that document (RFC 9728: resource = <base>/mcp exactly, authorization_servers = [<base>]) and then
        <base>/.well-known/oauth-authorization-server (RFC 8414), which advertises CIMD + a public client ("none") +
        PKCE S256 - the two values Claude needs before it uses a Client ID Metadata Document.
-    3. The browser opens GET /authorize. Claude's client_id is an HTTPS URL: its host must be in REC_MCP_CLIENT_HOSTS
-       (default claude.ai), the document behind it is fetched (HTTPS only, 5 s, 64 KB, no redirects, public addresses
+    3. The browser opens GET /authorize. Claude's client_id is an HTTPS URL: it must be one of REC_MCP_CLIENT_IDS
+       exactly (default: Claude's two documents) on a host in REC_MCP_CLIENT_HOSTS, the document behind it is fetched (HTTPS only, 5 s, 64 KB, no redirects, public addresses
        only) and must name itself and list the redirect_uri (exact match; loopback hosts match with the port ignored,
        as Claude Code needs). The validated request is sealed into a 10-minute blob and the browser is sent to the
        consent page on the Tulle web app: <REC_MCP_CONSENT_URL>?req=<blob>. There is no client database and no DCR.
     4. The consent page (WeWeb - the couple's Tulle session lives there, and a third of couples have no password)
        calls GET /oauth/request?req= for what to show, and on Approve POST /oauth/approve with the couple's own Xano
        token. That is checked by mcp_server.caller (app._auth, the allowlist, the kill switch) and answered with
-       {"redirect": "<redirect_uri>?code=...&state=..."}.
+       {"redirect": "<redirect_uri>?code=...&state=..."}. A request can be approved ONCE: the same blob again is
+       400 invalid_request (the page should disable its button after the first click).
     5. Claude POSTs /token (form-encoded): the code + its PKCE verifier -> an access token (1 h) and a refresh token.
        Refresh rotates: a new refresh token each time, the old one is refused with invalid_grant.
     6. Every /mcp request carries the access token. The gate opens it, checks it was issued for <base>/mcp, takes
@@ -29,19 +30,26 @@ THE FLOW
        REC_MCP_DEV_RAW_TOKEN=1, for local testing).
 
 TOKENS ARE STATELESS AND ENCRYPTED (this service restarts on every deploy and has no session store)
-    AES-256-GCM (the `cryptography` package), key = SHA-256 of REC_MCP_TOKEN_KEY. One format for all four kinds -
-    request blob (10 min), code (60 s), access (1 h), refresh (until 14 days after approval: the assumed life of the
-    Xano token inside; rotation never extends it). The kind is bound into the authenticated data, so an access token
-    can never be opened as a refresh token or a code. The payload holds the user id, the couple's Xano token (the
-    tools need it downstream; it never leaves this service in the clear), client_id, redirect_uri and PKCE challenge
-    (codes), the audience, issued-at, expiry and a random id. Nothing here is ever logged.
+    AES-256-GCM (the `cryptography` package). REC_MCP_TOKEN_KEY is base64 of at least 32 random bytes:
+        python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+    Each kind of token is encrypted under its OWN key, derived from it with HKDF-SHA256 (info = the kind), and the
+    kind and the resource are bound into the authenticated data as well - an access token can never be opened as a
+    refresh token or a code. The first byte of a token names the key it was made with, so the key can be rotated:
+    REC_MCP_TOKEN_KEY_OLD is read for decryption only. Four kinds - request blob (10 min), code (60 s), access
+    (1 h), refresh (until 14 days after approval: the assumed life of the Xano token inside; rotation never extends
+    it). The payload holds the user id, the couple's Xano token (the tools need it downstream; it never leaves this
+    service in the clear), client_id, redirect_uri and PKCE challenge (codes), a sign-in chain id, issued-at,
+    expiry and a random id. Nothing here is ever logged.
     KNOWN LIMITS of having no store:
-      - "used once" (codes) and "rotated away" (refresh tokens) are remembered in memory only. After a restart a
-        code could be replayed inside its 60 s life (it still needs the PKCE verifier), and an OLD refresh token
-        becomes usable again until its own expiry. More than one worker process has the same gap all the time.
-      - There is no revocation: disconnecting in Claude does not kill a token here. Signing out of Tulle (the Xano
-        token dies) or changing REC_MCP_TOKEN_KEY (everyone signs in again) does.
-      - Two refreshes racing with the same token: the second gets invalid_grant and the couple signs in again.
+      - "used once" (approvals, codes), "rotated away" (refresh tokens) and "chain revoked" are remembered in memory
+        only. After a restart a code could be replayed inside its 60 s life (it still needs the PKCE verifier), and
+        an OLD refresh token becomes usable again until its own expiry. More than one worker process has the same
+        gap all the time.
+      - A refresh token presented a second time (caught while the process still remembers it) revokes its whole
+        sign-in chain - the newest tokens too - and prints one warning line (user id only). The cost: two refreshes
+        racing with the same token also end the sign-in, and the couple signs in again.
+      - There is no revocation by the couple: disconnecting in Claude does not kill a token here. Signing out of
+        Tulle (the Xano token dies) or changing REC_MCP_TOKEN_KEY (everyone signs in again) does.
 
 ORIGIN HEADERS
     /oauth/request and /oauth/approve are the only routes a web page may call, and only from the origin of
@@ -51,9 +59,13 @@ ORIGIN HEADERS
     variable (e.g. https://claude.ai). Unverified either way.
 
 RATE LIMITS
-    Per client address, in memory: /authorize and /oauth/approve 30 a minute, /token 120 a minute (hosted Claude
-    calls it from Anthropic's shared egress range). The address is X-Real-IP, else the last X-Forwarded-For entry,
-    else the socket peer - which of these the proxy in front sets is not verified.
+    In memory, per endpoint: a token bucket per client address (/authorize and /oauth/approve 30 a minute, /token 120
+    a minute - hosted Claude calls it from Anthropic's shared egress range) AND one bucket for everyone (RATE_ALL)
+    as a backstop when addresses are spread. The client address is taken from the RIGHT of X-Forwarded-For,
+    REC_MCP_TRUSTED_PROXY_HOPS entries in (default 1: the entry the one proxy in front of us appended); with no such
+    entry, the socket peer. X-Real-IP and the left of X-Forwarded-For are client-controlled and never used. Whether
+    the platform's proxy appends exactly one entry is NOT verified - if it adds more, raise the setting. Request
+    bodies on /token and /oauth/approve are refused over 16 KB before they are read.
 """
 import base64
 import hashlib
@@ -66,6 +78,7 @@ import secrets
 import socket
 import threading
 import time
+from collections import OrderedDict
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import config
@@ -88,7 +101,11 @@ SHARES = ["Your wedding profile: location, guest count, date, budget and style",
           "The vendors you saved on Tulle (name, state and type)",
           "Vendors you ask about by name (name, state and type)"]
 NOT_SHARED = "Vendor prices and pricing documents are never shared."
-RATE = {"authorize": (30, 60.0), "approve": (30, 60.0), "token": (120, 60.0)}     # (requests, per seconds)
+RATE = {"authorize": (30, 60.0), "approve": (30, 60.0), "token": (120, 60.0)}     # (requests, per seconds) per address
+RATE_ALL = {"authorize": (300, 60.0), "approve": (300, 60.0), "token": (1200, 60.0)}   # ... and for everyone together
+MAX_BODY = 16 * 1024            # /token and /oauth/approve request bodies
+MAX_BUCKETS = 20000             # client addresses remembered for rate limiting (least recently seen dropped first)
+CIMD_FAIL_S = 60                # a client document that could not be used is not fetched again for this long
 
 
 class OAuthError(Exception):
@@ -131,12 +148,15 @@ def not_ready():
     elif not u.netloc or u.path or u.query or u.fragment or not (
             u.scheme == "https" or (u.scheme == "http" and (u.hostname or "") in LOOPBACK)):
         why.append("REC_MCP_PUBLIC_URL must be an https origin with no path, e.g. https://mcp.tulletogether.app")
-    if len(str(config.MCP_TOKEN_KEY or "")) < 32:
-        why.append("REC_MCP_TOKEN_KEY is missing or shorter than 32 characters")
+    if _key_bytes(config.MCP_TOKEN_KEY) is None:
+        why.append("REC_MCP_TOKEN_KEY is missing or is not base64 of at least 32 bytes")
+    if str(config.MCP_TOKEN_KEY_OLD or "").strip() and _key_bytes(config.MCP_TOKEN_KEY_OLD) is None:
+        why.append("REC_MCP_TOKEN_KEY_OLD is set but is not base64 of at least 32 bytes")
     if not consent_origin().startswith("https://"):
         why.append("REC_MCP_CONSENT_URL must be an https URL")
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF  # noqa: F401
     except Exception:
         why.append("the `cryptography` package is not installed")
     return why
@@ -170,32 +190,77 @@ def _unb64(s):
         raise BadToken()
 
 
-def _aead():
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    return AESGCM(hashlib.sha256(b"tulle-mcp-oauth-v1|" + str(config.MCP_TOKEN_KEY).encode("utf-8")).digest())
+def _key_bytes(value):
+    """The master key in REC_MCP_TOKEN_KEY(_OLD): base64 (urlsafe or standard, padding optional) of 32+ bytes, else None."""
+    v = "".join(str(value or "").split())
+    if not v or len(v) > 512 or not re.fullmatch(r"[A-Za-z0-9+/_-]+={0,2}", v):
+        return None
+    try:
+        raw = base64.b64decode(v.rstrip("=").replace("-", "+").replace("_", "/") + "=" * (-len(v.rstrip("=")) % 4), validate=True)
+    except Exception:
+        return None
+    return raw if len(raw) >= 32 else None
 
 
-def _aad(kind):
-    return ("tulle-mcp-oauth-v1:%s:%s" % (kind, resource())).encode("utf-8")
+_SUBKEYS = {}
+
+
+def _subkey(master, kind):
+    """The AES-256 key for one kind of token: HKDF-SHA256(master, info = kind). Cached."""
+    hit = _SUBKEYS.get((master, kind))
+    if hit is None:
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+        hit = HKDF(algorithm=hashes.SHA256(), length=32, salt=b"tulle-mcp-oauth-v2",
+                   info=("tulle-mcp-oauth-v2|" + kind).encode("utf-8")).derive(master)
+        if len(_SUBKEYS) > 64:
+            _SUBKEYS.clear()
+        _SUBKEYS[(master, kind)] = hit
+    return hit
+
+
+def _kid(master):
+    """One byte naming a master key (so a token says which key made it; two keys can share it - both are tried)."""
+    return hashlib.sha256(b"tulle-mcp-oauth-kid|" + master).digest()[0]
+
+
+def _keys():
+    """[current, old] master keys that are configured and valid. Sealing uses the first only."""
+    return [k for k in (_key_bytes(config.MCP_TOKEN_KEY), _key_bytes(config.MCP_TOKEN_KEY_OLD)) if k]
+
+
+def _aad(kind, kid):
+    return ("tulle-mcp-oauth-v2:%s:%d:%s" % (kind, kid, resource())).encode("utf-8")
 
 
 def seal(kind, payload, ttl, now=None):
     """payload (a small dict) -> an opaque token of this kind that expires ttl seconds from now."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    master = _key_bytes(config.MCP_TOKEN_KEY)
+    if master is None:
+        raise RuntimeError("REC_MCP_TOKEN_KEY is not usable")
     now = int(time.time() if now is None else now)
     body = dict(payload, k=kind, iat=now, exp=now + int(ttl), jti=secrets.token_urlsafe(12))
-    nonce = os.urandom(12)
-    return _b64(nonce + _aead().encrypt(nonce, json.dumps(body, separators=(",", ":")).encode("utf-8"), _aad(kind)))
+    nonce, kid = os.urandom(12), _kid(master)
+    ct = AESGCM(_subkey(master, kind)).encrypt(nonce, json.dumps(body, separators=(",", ":")).encode("utf-8"), _aad(kind, kid))
+    return _b64(bytes([kid]) + nonce + ct)
 
 
 def unseal(token, kind, now=None):
     """The payload of a token of exactly this kind, or BadToken (wrong kind, wrong key, altered, cut short, expired)."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     raw = _unb64(token)
-    if len(raw) < 12 + 16 + 2:
+    if len(raw) < 1 + 12 + 16 + 2:
         raise BadToken()
-    try:
-        body = json.loads(_aead().decrypt(raw[:12], raw[12:], _aad(kind)).decode("utf-8"))
-    except Exception:
-        raise BadToken()
+    kid, nonce, ct, body = raw[0], raw[1:13], raw[13:], None
+    for master in _keys():
+        if _kid(master) != kid:
+            continue
+        try:
+            body = json.loads(AESGCM(_subkey(master, kind)).decrypt(nonce, ct, _aad(kind, kid)).decode("utf-8"))
+            break
+        except Exception:
+            body = None
     now = time.time() if now is None else now
     if not isinstance(body, dict) or body.get("k") != kind or not isinstance(body.get("exp"), int) or body["exp"] <= now:
         raise BadToken()
@@ -222,30 +287,50 @@ class _Used:
             self._d[jti] = exp
             return True
 
+    def has(self, jti, now=None):
+        now = time.time() if now is None else now
+        with self._lock:
+            return self._d.get(jti, 0) > now
+
     def clear(self):
         with self._lock:
             self._d.clear()
 
 
-USED = _Used()
+USED = _Used()          # approvals, codes and refresh tokens that were used
+REVOKED = _Used()       # sign-in chains ended because one of their refresh tokens was presented twice
 
 
 class _Buckets:
-    """Token bucket per (endpoint, client address)."""
+    """Token buckets per (endpoint, client address) plus one per endpoint for everyone. Bounded: the least recently
+    seen addresses are dropped first (a dropped address simply starts with a full bucket again)."""
 
-    def __init__(self):
-        self._d, self._lock = {}, threading.Lock()
+    def __init__(self, cap=None):
+        self._d, self._lock, self.cap = OrderedDict(), threading.Lock(), cap
+
+    def _take(self, key, limit, per, now, spend=True):
+        tokens, last = self._d.get(key, (float(limit), now))
+        tokens = min(float(limit), tokens + max(0.0, now - last) * limit / per)
+        ok = tokens >= 1.0
+        self._d[key] = (tokens - 1.0 if ok and spend else tokens, now)
+        self._d.move_to_end(key)
+        return ok
 
     def allow(self, name, addr, now=None):
-        limit, per = RATE[name]
         now = time.time() if now is None else now
         with self._lock:
-            if len(self._d) > 50000:
-                self._d.clear()
-            tokens, last = self._d.get((name, addr), (float(limit), now))
-            tokens = min(float(limit), tokens + (now - last) * limit / per)
-            ok = tokens >= 1.0
-            self._d[(name, addr)] = (tokens - 1.0 if ok else tokens, now)
+            if not self._take((name, addr), RATE[name][0], RATE[name][1], now):
+                return False
+            ok = self._take((name, None), RATE_ALL[name][0], RATE_ALL[name][1], now)      # everyone together
+            cap = self.cap or MAX_BUCKETS
+            while len(self._d) > cap:
+                old = next(iter(self._d))
+                if old[1] is None:                       # never drop the shared buckets
+                    self._d.move_to_end(old)
+                    if all(k[1] is None for k in self._d):
+                        break
+                    continue
+                del self._d[old]
             return ok
 
     def clear(self):
@@ -275,14 +360,15 @@ def resolve(host):
 
 
 def check_client_url(client_id):
-    """The client_id must be an https URL with a path on a host we accept (REC_MCP_CLIENT_HOSTS). No network."""
+    """The client_id must be one of REC_MCP_CLIENT_IDS exactly, and an https URL with a path on a host in
+    REC_MCP_CLIENT_HOSTS. No network."""
     cid = str(client_id or "")
     u = urlsplit(cid)
     host = (u.hostname or "").lower()
     if (len(cid) > MAX_PARAM or u.scheme != "https" or not host or u.username or u.password or u.fragment
             or u.port not in (None, 443) or not u.path or u.path == "/" or ".." in u.path.split("/")):
         raise OAuthError("invalid_client", "client_id must be an https URL of a client metadata document")
-    if host not in {h.lower() for h in config.MCP_CLIENT_HOSTS}:
+    if host not in {h.lower() for h in config.MCP_CLIENT_HOSTS} or not any(_same(cid, known) for known in config.MCP_CLIENT_IDS):
         raise OAuthError("invalid_client", "this client is not accepted here")
     return host
 
@@ -318,28 +404,40 @@ def fetch_cimd(url):
     return doc
 
 
-_CIMD, _CIMD_LOCK = {}, threading.Lock()
+_CIMD, _CIMD_BAD, _CIMD_LOCK = {}, {}, threading.Lock()
 
 
 def client_document(client_id, now=None):
-    """The validated metadata document of this client (cached 10 minutes). OAuthError invalid_client otherwise."""
+    """The validated metadata document of this client (cached 10 minutes; a failure is remembered for a minute, so a
+    client_id that does not work is not fetched on every request). OAuthError invalid_client otherwise."""
     check_client_url(client_id)
     now = time.time() if now is None else now
     with _CIMD_LOCK:
         hit = _CIMD.get(client_id)
         if hit and hit[0] > now:
             return hit[1]
-    doc = fetch_cimd(client_id)
-    uris = doc.get("redirect_uris") if isinstance(doc, dict) else None
-    if not isinstance(doc, dict) or not isinstance(doc.get("client_id"), str) or not _same(doc["client_id"], client_id):
-        raise OAuthError("invalid_client", "the client metadata document does not match its URL")
-    if not isinstance(uris, list) or not uris or not all(isinstance(x, str) and x for x in uris):
-        raise OAuthError("invalid_client", "the client metadata document lists no redirect_uris")
+        bad = _CIMD_BAD.get(client_id)
+        if bad and bad[0] > now:
+            raise OAuthError("invalid_client", bad[1])
+    try:
+        doc = fetch_cimd(client_id)
+        uris = doc.get("redirect_uris") if isinstance(doc, dict) else None
+        if not isinstance(doc, dict) or not isinstance(doc.get("client_id"), str) or not _same(doc["client_id"], client_id):
+            raise OAuthError("invalid_client", "the client metadata document does not match its URL")
+        if not isinstance(uris, list) or not uris or not all(isinstance(x, str) and x for x in uris):
+            raise OAuthError("invalid_client", "the client metadata document lists no redirect_uris")
+    except OAuthError as e:
+        with _CIMD_LOCK:
+            if len(_CIMD_BAD) > 200:
+                _CIMD_BAD.clear()
+            _CIMD_BAD[client_id] = (now + CIMD_FAIL_S, e.description)
+        raise
     doc = {"client_id": client_id, "redirect_uris": list(uris)[:20]}
     with _CIMD_LOCK:
         if len(_CIMD) > 200:
             _CIMD.clear()
         _CIMD[client_id] = (now + CIMD_CACHE_S, doc)
+        _CIMD_BAD.pop(client_id, None)
     return doc
 
 
@@ -465,20 +563,23 @@ def approve(blob, authorization):
             raise OAuthError("not_available", "Tulle for Claude is not available for your account yet.", 403)
         raise OAuthError("temporarily_unavailable", "Tulle could not complete this right now. Try again in a moment.", 503)
     now = int(time.time())
+    if not USED.claim("req:" + r["jti"], r["exp"], now):          # one approval per request (a failed attempt above does not use it up)
+        raise OAuthError("invalid_request", "This sign-in request was already approved. Start again from Claude.")
     code = seal("code", {"uid": int(user["id"]), "xt": token, "cid": r["cid"], "ru": r["ru"], "cc": r["cc"],
-                         "rexp": now + REFRESH_S}, CODE_S, now)
+                         "rexp": now + REFRESH_S, "fam": secrets.token_urlsafe(9)}, CODE_S, now)
     p = {"code": code}
     if r.get("st"):
         p["state"] = r["st"]
     return {"redirect": _with_params(r["ru"], p)}
 
 
-def _tokens(uid, xt, cid, rexp, now):
-    """A fresh access + refresh pair. The refresh token dies at rexp (14 days after approval), however often rotated."""
+def _tokens(uid, xt, cid, rexp, now, fam):
+    """A fresh access + refresh pair. The refresh token dies at rexp (14 days after approval), however often rotated.
+    fam = the sign-in chain every token of this approval belongs to (revoked as a whole on refresh-token reuse)."""
     left = int(rexp - now)
     if left <= 0:
         raise OAuthError("invalid_grant", "the sign-in has expired")
-    base = {"uid": uid, "xt": xt, "cid": cid}
+    base = {"uid": uid, "xt": xt, "cid": cid, "fam": fam}
     return {"access_token": seal("access", base, min(ACCESS_S, left), now), "token_type": "Bearer",
             "expires_in": min(ACCESS_S, left), "refresh_token": seal("refresh", dict(base, rexp=int(rexp)), left, now)}
 
@@ -506,7 +607,7 @@ def token(form):
             raise OAuthError("invalid_grant", "the authorization code is not valid or has expired")
         if not USED.claim(c["jti"], c["exp"], now):
             raise OAuthError("invalid_grant", "the authorization code is not valid or has expired")
-        return _tokens(c["uid"], c["xt"], c["cid"], c["rexp"], now)
+        return _tokens(c["uid"], c["xt"], c["cid"], c["rexp"], now, c.get("fam") or secrets.token_urlsafe(9))
     if grant == "refresh_token":
         if not form.get("refresh_token"):
             raise OAuthError("invalid_request", "refresh_token is required")
@@ -516,6 +617,9 @@ def token(form):
         except BadToken:
             raise bad
         if form.get("client_id") and not _same(form["client_id"], r.get("cid")):
+            raise bad
+        fam = r.get("fam") or ""
+        if fam and REVOKED.has("fam:" + fam, now):
             raise bad
         # Still signed in to Tulle and still allowed? (the same check every /mcp call runs)
         try:
@@ -527,8 +631,11 @@ def token(form):
         if int(user.get("id") or 0) != int(r["uid"]):
             raise bad
         if not USED.claim(r["jti"], r["exp"], now):
+            # A rotated-away refresh token came back: someone holds a copy. End the whole chain (best effort, in memory).
+            if fam and REVOKED.claim("fam:" + fam, int(r["rexp"]), now):
+                print("mcp oauth WARNING: a used refresh token was presented again - sign-in chain revoked for user %s" % int(r["uid"]))
             raise bad
-        return _tokens(r["uid"], r["xt"], r["cid"], r["rexp"], now)
+        return _tokens(r["uid"], r["xt"], r["cid"], r["rexp"], now, fam or secrets.token_urlsafe(9))
     raise OAuthError("unsupported_grant_type", "authorization_code and refresh_token are supported")
 
 
@@ -554,6 +661,8 @@ def bearer_caller(authorization):
                     raise deny(str(e), "invalid_token", "The access token is invalid or expired")
                 raise
         raise deny("The access token is not valid or has expired.", "invalid_token", "The access token is invalid or expired")
+    if a.get("fam") and REVOKED.has("fam:" + a["fam"]):          # its chain was ended (refresh-token reuse)
+        raise deny("The access token is not valid or has expired.", "invalid_token", "The access token is invalid or expired")
     try:
         token_, user = mcp_server.caller("Bearer " + a["xt"])
     except mcp_server.MCPDenied as e:
@@ -567,10 +676,39 @@ def bearer_caller(authorization):
 
 # ---------------------------------------------------------------- HTTP (Starlette routes on the host app)
 
+def client_addr(headers, peer):
+    """The address rate limits are keyed on. X-Forwarded-For is trusted only from the right: the entry
+    REC_MCP_TRUSTED_PROXY_HOPS from the end was written by our own proxy; everything left of it (and X-Real-IP)
+    is whatever the client chose to send. No such entry -> the socket peer."""
+    hops = int(config.MCP_TRUSTED_PROXY_HOPS or 0)
+    xff = [x.strip() for x in str(headers.get("x-forwarded-for") or "").split(",") if x.strip()]
+    if hops >= 1 and len(xff) >= hops:
+        return xff[-hops][:64]
+    return str(peer or "?")[:64]
+
+
 def _addr(request):
-    h = request.headers
-    xff = [x.strip() for x in (h.get("x-forwarded-for") or "").split(",") if x.strip()]
-    return (h.get("x-real-ip") or "").strip() or (xff[-1] if xff else "") or (request.client.host if request.client else "?")
+    return client_addr(request.headers, request.client.host if request.client else "?")
+
+
+async def read_body(request, cap=None):
+    """The request body, or OAuthError 413 - decided from Content-Length before reading, and enforced while reading."""
+    cap = MAX_BODY if cap is None else cap
+    too_big = OAuthError("invalid_request", "the request body is too large", 413)
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > cap:
+                raise too_big
+        except ValueError:
+            raise OAuthError("invalid_request", "bad Content-Length")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > cap:
+            raise too_big
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _origin_refused(request):
@@ -653,10 +791,10 @@ def install(app):
         if stop:
             return stop
         ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
-        raw = await request.body()
-        if ctype != "application/x-www-form-urlencoded" or len(raw) > 16384:
+        if ctype != "application/x-www-form-urlencoded":
             return err(OAuthError("invalid_request", "send application/x-www-form-urlencoded"))
         try:
+            raw = await read_body(request)
             form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=20).items()}
             return JSONResponse(await anyio.to_thread.run_sync(token, form), headers=no_store)
         except OAuthError as e:
@@ -675,8 +813,10 @@ def install(app):
         if stop:
             return stop
         try:
-            body = json.loads((await request.body())[:16384].decode("utf-8") or "{}")
+            body = json.loads((await read_body(request)).decode("utf-8") or "{}")
             blob = body.get("req", "") if isinstance(body, dict) else ""
+        except OAuthError as e:
+            return err(e)
         except (UnicodeDecodeError, ValueError):
             blob = ""
         try:
