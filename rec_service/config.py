@@ -135,6 +135,12 @@ def _int_set(raw):
 
 MCP_USER_IDS = _int_set(os.environ.get("REC_MCP_USER_IDS", ""))
 MCP_ALLOWED_HOSTS = [h.strip() for h in os.environ.get("REC_MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
+# Anti-scrape cap (owner data policy 2026-11-15): find_vendor calls per account per UTC day, counted from the rec_usage
+# rows the calls write (kind "mcp_find_vendor", not-found ones included). 0 = no lookups at all.
+try:
+    MCP_DAILY_LOOKUPS = max(0, int(os.environ.get("REC_MCP_DAILY_LOOKUPS", "25")))
+except ValueError:
+    MCP_DAILY_LOOKUPS = 25
 # Streamed answer text (owner 2026-10-31, Claude-style Planner chat): the final model turn is streamed and the answer
 # text written so far is published on GET /rec/progress/{request_id} as `text`, so the page shows it while the model is
 # still writing. Never for a couple with no plan (free mode redacts prices only on the finished answer). "0" = off: the

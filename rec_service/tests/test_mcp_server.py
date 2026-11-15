@@ -1,7 +1,10 @@
-"""Read-only MCP prototype (mcp_server.py, 2026-11-15). No network: Xano is mocked, the SDK runs in-process."""
+"""Read-only MCP prototype (mcp_server.py, 2026-11-15). No network: Xano is mocked, the SDK runs in-process.
+DATA POLICY tests: the exact tool list, a walker over every tool's output for every tier (no pricing, public cards
+only), no pricing function ever called, the couple's own numbers still returned, the daily lookup cap."""
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -11,43 +14,95 @@ from fastapi.testclient import TestClient
 
 import app as appmod
 import config
-import free_mode
+import cost_tools
 import guards
 import mcp_server
 import xano
 
 HERE = pathlib.Path(__file__).resolve().parent.parent
 T = "2026-11-15"
+# The couple's OWN numbers (these must come back): budget 60000, booked 12505 / paid 4000, a 900 quote, 9000 extra.
 USER = {"id": 7, "first_name": "Ana", "Wedding_Location_Updated": ["Texas"], "Wedding_Guest_Count": 120,
-        "Wedding_Budget": 60000, "favorited_vendors": ["V1", "P1"], "email": "ana@example.com"}
-CARDS = {"V1": {"vendor_id": "V1", "vendor_idx": 1, "name": "Kohl Mansion", "state": "Texas", "category": "Venue",
-                "address": "1 Main St, Austin, TX 78701", "venue_type": ["Estate / Mansion"], "max_capacity_seated": 200,
-                "venue_fee_range": [12345, 15000], "image": "https://img/x.jpg",
-                "description": "A historic estate with gardens. Rental starts at $12,345."},
-         "P1": {"vendor_id": "P1", "name": "OliviaPhotos", "category": "Photography", "state": "Texas",
-                "price_range": [2222, 4444]}}
-PANEL = {"vendor_id": "V1", "headline": "Saturday rental $12,345", "guest_minimum": 80,
-         "verdict": "About 9% below similar Texas venues", "source_note": "From the venue's 2026 PDF",
-         "lines": [{"line": "Venue rental", "detail": "Saturday", "amount": 12345, "pct": None, "source": "pdf",
-                    "vs_market": "Below market"}],
-         "cost_inputs": None, "access_reason": "forever"}
-PHOTOG = {"vendor_id": "P1", "vendor_idx": 9, "name": "OliviaPhotos", "state": "Texas", "category": "Photography",
-          "address": "Austin, TX", "description": "Documentary style. Packages from $2,222.", "price_range": [2222, 4444]}
-TWINS = [{"vendor_id": "A1", "name": "Ashton Gardens North", "state": "Georgia", "category": "Venue",
-          "address": "1 Peach Rd, Atlanta, GA 30301", "venue_fee_range": [7100, 9300]},
-         {"vendor_id": "A2", "name": "Ashton Gardens West", "state": "Ohio", "category": "Venue",
-          "address": "2 Elm St, Columbus, OH 43004", "venue_fee_range": [8200, 9900]}]
-PACK = [{"id": 2, "user_id": 7, "vendor_name": "Kohl Mansion", "total_cost": 12505, "Balance_Paid": 4000,
-         "Selected": True, "Category": "Venue", "Notes": "tulle:V1"}]
-STATE_ROWS = [{"State": "Texas", "Cost_of_Average_Wedding": 24063}]
-PRICE_NUMBERS = ("12345", "12,345", "15000", "2222", "2,222", "4444", "24063", "22764", "24,063", "22,764",
-                 "7100", "9300", "8200", "9900")
+        "Wedding_Budget": 60000, "favorited_vendors": ["V1", "P1", "F9"], "email": "ana@example.com"}
+PACK = [{"id": 1, "user_id": 7, "vendor_name": "Example 1: Venue", "total_cost": 30000, "Selected": True, "Category": "Venue"},
+        {"id": 2, "user_id": 7, "vendor_name": "Kohl Mansion", "total_cost": 12505, "Balance_Paid": 4000,
+         "Selected": True, "Category": "Venue", "Notes": "tulle:V1", "Contact_Information": "ask for Dana",
+         "Files": {"name": "contract.pdf", "url": "https://files.example/vault/SECRETFILE/contract.pdf"}},
+        {"id": 3, "user_id": 7, "vendor_name": "Catering Co", "total_cost": 9000, "Selected": True,
+         "Category": "Food and Beverage", "Notes": "deposit due in May"},
+        {"id": 4, "user_id": 7, "vendor_name": "Old DJ", "total_cost": 900, "Selected": False, "Category": "Entertainment"}]
+
+
+def tulle_row(vid, name, category="Venue", state="Texas", city="Austin", **extra):
+    """A vendor as Tulle's data holds it, with a price or other forbidden value in EVERY field a card can carry.
+    Every forbidden value contains a number from FORBIDDEN_NUMBERS or the word LEAK."""
+    return dict({
+        "vendor_id": vid, "vendor_idx": 987651, "name": name, "state": state, "category": category,
+        "address": "4321 LEAK Street, %s, TX 78701" % city, "google_name": "LEAK google name",
+        "venue_type": ["Estate / Mansion"] if category == "Venue" else "Documentary",
+        "max_capacity_seated": 287, "venue_fee_range": [12345, 15678], "price_range": [2222, 4444],
+        "food_minimum": 31313, "guest_minimum": 83, "per_head": 233, "price_from": 5151, "price_to": 6161,
+        "price_label": "from $5,151", "price_band": {"low": 10000, "high": 15000, "label": "rental about $10K-$15K"},
+        "estimate_label": "About $41,414 for 120 guests", "estimate_total": 41414, "estimate_guests": 120,
+        "description": "LEAK description. Rental starts at $12,345.", "at_a_glance": ["LEAK glance", "$233 a head"],
+        "image": "https://img.example/LEAK.jpg", "pdf_link": "https://files.example/LEAK.pdf", "pdf_count": 7,
+        "package_count": 5, "packages_label": "5 packages from $2,222", "hours_label": "8 hours",
+        "phone": "512-555-0199", "email": "LEAK@vendor.example", "website": "https://LEAK.example",
+        "lat": 30.2672, "lng": -97.7431, "google_rating": 4.7, "google_review_count": 311,
+        "florist_pricing": {"typical_total": 7373}, "reason": "LEAK reason"}, **extra)
+
+
+CARDS = {"V1": tulle_row("V1", "Kohl Mansion"),
+         "P1": tulle_row("P1", "OliviaPhotos", category="Photography"),
+         "F9": tulle_row("F9", "Bloomery", category="Beauty", city="Dallas")}
+TWINS = [tulle_row("A%d" % i, "Ashton Gardens %s" % n, state=st, city=c)
+         for i, (n, st, c) in enumerate([("North", "Georgia", "Atlanta"), ("West", "Ohio", "Columbus"),
+                                         ("East", "Ohio", "Dayton"), ("South", "Utah", "Provo")], 1)]
+FORBIDDEN_NUMBERS = ("12345", "12,345", "15678", "2222", "2,222", "4444", "31313", "5151", "5,151", "6161", "41414",
+                     "41,414", "7373", "987651", "287", "233", "311", "4321", "78701", "555-0199", "30.26", "97.74")
+CARD_KEYS = {"name", "city", "state", "category", "venue_type"}              # the public card: nothing else, ever
+CARD_PLACES = {"matches": CARD_KEYS, "vendors": CARD_KEYS, "saved": CARD_KEYS, "saved_other": CARD_KEYS,
+               "candidates": {"name", "city", "state"}, "also": {"name", "city", "state"}}
+PRICING_FUNCTIONS = ("venue_pricing", "cached_venue_pricing", "market_benchmarks", "cached_market_benchmarks",
+                     "pe_benchmarks", "florist_pricing", "venue_details", "pdf_rows", "state_average_rows",
+                     "guest_modifier", "budget_categories", "venue_quotes", "search_venues", "search_pe",
+                     "search_listings")
+
+
+def walk(obj):
+    """THE REGRESSION GUARD. Fails if any tool output holds (1) a vendor card with a key outside the allowlist, (2) a
+    number or "$" anywhere inside a vendor card, or (3) any value of Tulle's data other than the card fields - found
+    by the marker every such mocked value carries (LEAK / FORBIDDEN_NUMBERS)."""
+    dump = json.dumps(obj)
+    assert "LEAK" not in dump and not any(n in dump for n in FORBIDDEN_NUMBERS), dump
+
+    def card(c, allowed, where):
+        assert isinstance(c, dict) and set(c) <= allowed, (where, sorted(set(c) - allowed))
+        for k, v in c.items():
+            for x in (v if isinstance(v, list) else [v]):
+                assert isinstance(x, str) and "$" not in x and not re.search(r"\d", x), (where, k, x)
+
+    def go(o, path):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k in CARD_PLACES:
+                    assert isinstance(v, list), (path, k)
+                    for c in v:
+                        card(c, CARD_PLACES[k], path + "." + k)
+                else:
+                    go(v, path + "." + k)
+        elif isinstance(o, list):
+            for x in o:
+                go(x, path + "[]")
+    go(obj, "$")
+    return obj
 
 
 @pytest.fixture
 def env(monkeypatch):
-    """An allowlisted FOREVER couple (id 7) by default; st["user"] / the tier lambdas are swapped per test."""
-    st = {"user": dict(USER, forever_access_purchased=True), "logged": [], "priced": [], "writes": [], "auth": []}
+    """An allowlisted FOREVER couple (id 7) by default. Every pricing function in xano raises if a tool touches it."""
+    st = {"user": dict(USER, forever_access_purchased=True), "logged": [], "usage": [], "writes": [], "auth": [],
+          "searched": []}
     submit = appmod._submit_usage
 
     def auth(authorization):
@@ -56,42 +111,57 @@ def env(monkeypatch):
             raise HTTPException(401, "sign in required")
         return "tok", st["user"]
 
-    def venue_pricing(token, vid, paid):
-        st["priced"].append((vid, paid))
-        return dict(PANEL, vendor_id=vid) if paid else dict(PANEL, vendor_id=vid, access_reason=None)
+    def name_search(term, token="", **k):
+        cat = k.get("category", "Venue")
+        st["searched"].append((term, cat))
+        if cat == "Venue":
+            return ([dict(CARDS["V1"])] if "kohl" in term else [dict(v) for v in TWINS] if "ashton" in term else [])
+        return [dict(CARDS["P1"])] if cat == "Photography" and "olivia" in term else []
+
+    def forbidden(fname):
+        def boom(*a, **k):
+            raise AssertionError("pricing function called by an MCP tool: %s" % fname)
+        return boom
+    for fname in PRICING_FUNCTIONS:
+        assert hasattr(xano, fname), fname
+        monkeypatch.setattr(xano, fname, forbidden(fname))
+    for mod, fname in ((appmod, "_find_and_price"), (appmod, "_price_or_none"), (appmod, "_lookup_card"),
+                       (cost_tools, "estimate_cost"), (cost_tools, "split_budget"), (cost_tools, "compare_venues")):
+        monkeypatch.setattr(mod, fname, forbidden(fname))
     monkeypatch.setattr(appmod, "_auth", auth)
     # The app's own _submit_usage, with its pool futures kept so a test can wait for the rows (st["logged"]).
     monkeypatch.setattr(appmod, "_submit_usage", lambda row: st["writes"].append(submit(row)))
     monkeypatch.setattr(config, "MCP_USER_IDS", frozenset({7}))
+    monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 25)
     monkeypatch.setattr(config, "KILL_SWITCH", False)
     monkeypatch.setattr(config, "BETA_AUDIENCE", "forever")
     monkeypatch.setattr(xano, "log_usage", lambda row: st["logged"].append(row))
+    monkeypatch.setattr(xano, "user_usage", lambda uid: list(st["usage"]))
     monkeypatch.setattr(xano, "today", lambda: T)
     monkeypatch.setattr(xano, "vendor_card", lambda vid: dict(CARDS[vid]) if vid in CARDS else None)
     monkeypatch.setattr(xano, "cached_vendor_card", lambda vid, stats=None: dict(CARDS[vid]) if vid in CARDS else None)
-    monkeypatch.setattr(xano, "user_packages", lambda tok, uid: list(PACK))
-    def name_search(term, token="", **k):
-        cat = k.get("category", "Venue")
-        if cat == "Venue":
-            return ([dict(CARDS["V1"], google_name="")] if "kohl" in term else
-                    [dict(v, google_name="") for v in TWINS] if "ashton" in term else [])
-        return [dict(PHOTOG, google_name="")] if cat == "Photography" and "olivia" in term else []
+    monkeypatch.setattr(xano, "user_packages", lambda tok, uid: [dict(p) for p in PACK])
     monkeypatch.setattr(xano, "name_search", name_search)
-    monkeypatch.setattr(xano, "venue_pricing", venue_pricing)
-    monkeypatch.setattr(xano, "state_average_rows", lambda tok: STATE_ROWS)
-    monkeypatch.setattr(xano, "guest_modifier", lambda tok, n: {120: 0.86}.get(n))
     monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
     return st
 
 
-def _free(st):
-    st["user"] = dict(USER, forever_access_purchased=False, date_until_access=None)
+def _full(st):
+    st["user"] = dict(USER, forever_access_purchased=True)
 
 
 def _light(st):
     """An active plan that is not FULL (REC_BETA_AUDIENCE=forever: a 1-week / 4-week buyer)."""
     st["user"] = dict(USER, forever_access_purchased=False, date_until_access="2099-01-01")
     assert xano.has_paid_access(st["user"]) and not xano.beta_member(st["user"])
+
+
+def _free(st):
+    st["user"] = dict(USER, forever_access_purchased=False, date_until_access=None)
+
+
+TIERS = {"full": _full, "light": _light, "free": _free}
+ARGS = {"find_vendor": ["Kohl Mansion"]}
 
 
 def _drain(st):
@@ -101,11 +171,7 @@ def _drain(st):
 
 def _calls():
     """Every tool once, as the plain functions the MCP wrappers call."""
-    return {"get_my_wedding": mcp_server.get_my_wedding("Bearer good"),
-            "get_my_profile": mcp_server.get_my_profile("Bearer good"),
-            "list_saved_venues": mcp_server.list_saved_venues("Bearer good"),
-            "lookup_venue": mcp_server.lookup_venue("Bearer good", "Kohl Mansion"),
-            "estimate_cost": mcp_server.estimate_cost("Bearer good")}
+    return {name: getattr(mcp_server, name)("Bearer good", *ARGS.get(name, [])) for name in mcp_server.TOOLS}
 
 
 # ---------------------------------------------------------------- (a) flag off: nothing mounted, SDK not imported
@@ -186,12 +252,11 @@ def test_flag_on_without_allowed_hosts_does_not_mount_and_says_why():
 @pytest.mark.parametrize("header", [None, "", "Bearer bad", "good", "bearer good", "Bearer ", "Basic good", 7])
 def test_no_or_invalid_token_is_refused(env, monkeypatch, header):
     monkeypatch.setattr(xano, "profile_of", lambda u: (_ for _ in ()).throw(AssertionError("no data read")))
-    for fn in (mcp_server.get_my_wedding, mcp_server.get_my_profile, mcp_server.list_saved_venues,
-               mcp_server.estimate_cost, lambda a: mcp_server.lookup_venue(a, "Kohl Mansion")):
+    for name in mcp_server.TOOLS:
         with pytest.raises(mcp_server.MCPDenied, match="Not signed in"):
-            fn(header)
+            getattr(mcp_server, name)(header, *ARGS.get(name, []))
     _drain(env)
-    assert env["logged"] == [] and env["priced"] == []
+    assert env["logged"] == [] and env["searched"] == []
 
 
 def test_auth_is_the_apps_own_check(monkeypatch):
@@ -217,11 +282,11 @@ def test_a_failed_sign_in_check_is_generic_and_the_detail_stays_in_the_server_lo
     monkeypatch.setattr(appmod, "_auth", lambda a: (_ for _ in ()).throw(requests.exceptions.ReadTimeout(secret)))
     for name in mcp_server.TOOLS:
         with pytest.raises(mcp_server.MCPDenied) as e:
-            getattr(mcp_server, name)("Bearer good", *(["Kohl Mansion"] if name == "lookup_venue" else []))
+            getattr(mcp_server, name)("Bearer good", *ARGS.get(name, []))
         assert str(e.value) == "Tulle could not verify the sign-in right now. Try again in a moment."
         assert e.value.status == 503 and "xano" not in str(e.value).lower()
     assert "mcp sign-in check failed" in capsys.readouterr().out      # server side only
-    assert env["logged"] == [] and env["priced"] == []
+    assert env["logged"] == [] and env["searched"] == []
 
 
 @pytest.mark.parametrize("allow", [frozenset(), frozenset({8, 70})])
@@ -230,42 +295,206 @@ def test_valid_user_not_on_the_allowlist_is_refused(env, monkeypatch, allow):
     monkeypatch.setattr(xano, "profile_of", lambda u: (_ for _ in ()).throw(AssertionError("no data read")))
     for name in mcp_server.TOOLS:
         with pytest.raises(mcp_server.MCPDenied, match="not enabled for this account"):
-            getattr(mcp_server, name)("Bearer good", *(["Kohl Mansion"] if name == "lookup_venue" else []))
+            getattr(mcp_server, name)("Bearer good", *ARGS.get(name, []))
     _drain(env)
-    assert env["logged"] == [] and env["priced"] == []
+    assert env["logged"] == [] and env["searched"] == []
 
 
 def test_kill_switch_refuses_every_tool(env, monkeypatch):
     monkeypatch.setattr(config, "KILL_SWITCH", True)
     for name in mcp_server.TOOLS:
         with pytest.raises(mcp_server.MCPDenied, match="switched off"):
-            getattr(mcp_server, name)("Bearer good", *(["Kohl Mansion"] if name == "lookup_venue" else []))
+            getattr(mcp_server, name)("Bearer good", *ARGS.get(name, []))
     _drain(env)
-    assert env["logged"] == [] and env["priced"] == []
+    assert env["logged"] == [] and env["searched"] == []
 
 
-# ---------------------------------------------------------------- (d) allowlisted full member: data from the mocks
+# ---------------------------------------------------------------- the tool list (no search, no pricing tool)
 
-def test_full_member_gets_each_tools_data(env):
-    out = _calls()
-    json.dumps(out)                                             # JSON-serialisable
-    w = out["get_my_wedding"]
-    assert w == appmod._wedding_view("tok", env["user"])        # exactly GET /rec/wedding's assembly
-    venue = next(c for c in w["categories"] if c["key"] == "Venue")
-    assert venue["booked"]["name"] == "Kohl Mansion" and venue["saved"][0]["price"] == 12345 and w["show_prices"]
-    p = out["get_my_profile"]
-    assert p["profile"] == xano.profile_of(env["user"]) and p["plan"] == "full" and p["price_locked"] is False
-    s = out["list_saved_venues"]
-    assert [c["name"] for c in s["venues"]] == ["Kohl Mansion", "OliviaPhotos"] and s["saved_count"] == 2
-    assert s["venues"][0]["venue_fee_range"] == [12345, 15000] and "image" not in s["venues"][0]
-    lk = out["lookup_venue"]
-    assert lk["status"] == "found" and lk["matches"][0]["vendor_id"] == "V1" and lk["price_locked"] is False
-    assert lk["pricing"]["lines"][0]["amount"] == 12345 and lk["pricing"]["verdict"] == PANEL["verdict"]
-    assert env["priced"] == [("V1", True)]                      # priced through xano.venue_pricing, paid panel
-    e = out["estimate_cost"]
-    assert e["estimate"]["type"] == "cost_estimate" and e["estimate"]["state"] == "Texas"
-    assert [t["amount"] for t in e["estimate"]["tiers"]] == [6829, 22764, 38698] and "$22,764" in e["text"]
+EXACT_TOOLS = ["budget_status", "find_vendor", "get_my_profile", "get_my_wedding", "list_saved_vendors"]
 
+
+def test_the_exact_tool_list():
+    assert sorted(mcp_server.TOOLS) == EXACT_TOOLS
+    for gone in ("lookup_venue", "list_saved_venues", "estimate_cost", "estimate_wedding_cost", "compare_venues",
+                 "split_budget", "list_vendors", "search_vendors", "search_venues", "next_step"):
+        assert not hasattr(mcp_server, gone), gone
+    banned = re.compile(r"search|filter|browse|list_vendors|estimate|compare|price|pricing|cost|benchmark|market")
+    assert not [t for t in mcp_server.TOOLS if banned.search(t)]
+
+
+def test_the_instructions_tell_the_client_model_there_are_no_prices():
+    for line in ("This connector never returns prices.", "For pricing, send the couple to tulletogether.app.",
+                 "Do not guess or estimate prices from general knowledge when asked what a Tulle vendor costs."):
+        assert line in mcp_server.INSTRUCTIONS
+
+
+# ---------------------------------------------------------------- the walker: every tool, every tier
+
+@pytest.mark.parametrize("tier", list(TIERS))
+def test_no_pricing_and_only_public_cards_in_any_tool_for_any_tier(env, tier):
+    """The mocked Tulle rows carry a price / free text / contact / id in every field (tulle_row); every pricing
+    function raises (env). Nothing but the public card may come out - the same for every tier."""
+    TIERS[tier](env)
+    out = walk(_calls())
+    json.dumps(out)
+    for name, args in (("OliviaPhotos", []), ("Ashton Gardens", []), ("Ashton Gardens", ["Ohio"]), ("Zzyzx Ballroom", [])):
+        walk(mcp_server.find_vendor("Bearer good", name, *args))
+    assert out["find_vendor"]["matches"] == [{"name": "Kohl Mansion", "city": "Austin", "state": "Texas",
+                                              "category": "Venue", "venue_type": ["Estate / Mansion"]}]
+    assert out["list_saved_vendors"]["vendors"][1] == {"name": "OliviaPhotos", "city": "Austin", "state": "Texas",
+                                                       "category": "Photography", "venue_type": ["Documentary"]}
+    assert out["get_my_profile"]["plan"] == tier
+
+
+def test_every_tier_gets_the_same_vendor_data(env):
+    got = {}
+    for tier, set_tier in TIERS.items():
+        set_tier(env)
+        o = _calls()
+        o["get_my_profile"].pop("plan")
+        got[tier] = o
+    assert got["full"] == got["light"] == got["free"]
+
+
+def test_the_walker_itself_catches_what_it_should():
+    ok = {"matches": [{"name": "Kohl Mansion", "city": "Austin", "state": "Texas", "category": "Venue"}]}
+    walk(ok)
+    for bad in ({"matches": [dict(ok["matches"][0], max_capacity_seated=200)]},
+                {"matches": [dict(ok["matches"][0], description="Lovely")]},
+                {"vendors": [dict(ok["matches"][0], venue_type=["From $9 a head"])]},
+                {"saved": [dict(ok["matches"][0], city="12 Main St")]},
+                {"candidates": [dict(ok["matches"][0])]},                      # a candidate is name + place only
+                {"x": {"y": [{"also": [{"name": "A", "vendor_id": "V1"}]}]}},
+                {"note": "Rental starts at $12,345."}, {"anything": {"deep": ["LEAK"]}}):
+        with pytest.raises(AssertionError):
+            walk(bad)
+
+
+def test_public_card_copies_nothing_but_its_five_fields():
+    c = mcp_server.public_card(CARDS["V1"])
+    assert c == {"name": "Kohl Mansion", "city": "Austin", "state": "Texas", "category": "Venue",
+                 "venue_type": ["Estate / Mansion"]} and set(c) <= set(mcp_server.CARD_FIELDS)
+    assert "tulle_url" not in c                                  # no page-link builder exists in the server
+    odd = mcp_server.public_card({"name": "Barn 9", "state": ["Ohio"], "address": "77 Elm Rd",
+                                  "venue_type": ["Barn / Ranch", "From $5,000", 7, "Seats 200"], "category": "Venue"})
+    assert odd == {"name": "Barn 9", "state": "Ohio", "category": "Venue", "venue_type": ["Barn / Ranch"]}
+    assert mcp_server.public_card({"name": "X", "address": "12 Main St, Suite 4"}) == {"name": "X", "category": "Venue"}
+
+
+# ---------------------------------------------------------------- the couple's own numbers ARE returned
+
+@pytest.mark.parametrize("tier", list(TIERS))
+def test_get_my_wedding_returns_what_the_couple_entered(env, tier):
+    TIERS[tier](env)
+    w = walk(mcp_server.get_my_wedding("Bearer good"))
+    assert (w["budget"], w["booked_total"], w["left"], w["paid_total"]) == (60000, 21505, 38495, 4000)
+    cats = {c["key"]: c for c in w["categories"]}
+    booked = cats["Venue"]["booked"]
+    assert (booked["name"], booked["price"], booked["paid"], booked["contact"]) == ("Kohl Mansion", 12505, 4000, "ask for Dana")
+    assert booked["file"] == {"name": "contract.pdf"} and "vendor_id" not in booked     # their file's name, not its link
+    assert "SECRETFILE" not in json.dumps(w)
+    assert [(e["name"], e["price"], e["notes"]) for e in w["extras"]] == [("Catering Co", 9000, "deposit due in May")]
+    assert [(q["name"], q["price"]) for q in cats["Entertainment"]["quotes"]] == [("Old DJ", 900)]
+    assert w["slices"] == [{"label": "Venue", "amount": 12505}, {"label": "Food and Beverage", "amount": 9000}]
+    # Tulle's vendors in it: public cards only, no price hint (the app's screen shows "about $12,345" to plan holders)
+    assert cats["Venue"]["saved"] == [mcp_server.public_card(CARDS["V1"])]
+    assert cats["Photography"]["saved"][0]["name"] == "OliviaPhotos"
+    assert [c["name"] for c in w["saved_other"]] == ["Bloomery"]
+    assert "price" not in json.dumps(cats["Venue"]["saved"]) and "show_prices" not in w
+
+
+@pytest.mark.parametrize("tier", list(TIERS))
+def test_budget_status_is_the_couples_own_arithmetic(env, tier):
+    TIERS[tier](env)
+    b = walk(mcp_server.budget_status("Bearer good"))
+    assert b["status"] == {"budget": 60000, "added": 21505, "paid": 4000, "owed": 17505, "remaining": 38495,
+                           "pct_of_budget": 36, "item_count": 2,
+                           "by_category": [{"category": "Venue", "added": 12505, "paid": 4000, "owed": 8505},
+                                           {"category": "Food and Beverage", "added": 9000, "paid": 0, "owed": 9000}]}
+    assert "$21,505" in b["text"]
+
+
+def test_profile_is_the_couples_own_answers(env):
+    p = mcp_server.get_my_profile("Bearer good")
+    assert p == {"profile": xano.profile_of(env["user"]), "plan": "full"} and p["profile"]["Wedding_Budget"] == 60000
+
+
+# ---------------------------------------------------------------- find_vendor: by name only, 3 candidates, daily cap
+
+def test_find_vendor_one_match_a_non_venue_and_a_miss(env):
+    one = mcp_server.find_vendor("Bearer good", "Kohl Mansion", "Austin")
+    assert one["status"] == "found" and len(one["matches"]) == 1 and "never returns prices" in one["note"]
+    ph = mcp_server.find_vendor("Bearer good", "OliviaPhotos")
+    assert ph["status"] == "found" and ph["matches"][0]["category"] == "Photography"
+    miss = mcp_server.find_vendor("Bearer good", "Zzyzx Ballroom")
+    assert miss["status"] == "not_found" and miss["matches"] == [] and "candidates" not in miss
+    with pytest.raises(mcp_server.MCPDenied, match="name"):
+        mcp_server.find_vendor("Bearer good", " a ")
+    assert env["searched"]
+
+
+def test_several_matches_give_at_most_three_name_only_candidates(env):
+    r = walk(mcp_server.find_vendor("Bearer good", "Ashton Gardens"))            # 4 venues share the name
+    assert r["status"] == "choices" and r["matches"] == [] and "more specific name" in r["note"]
+    assert len(r["candidates"]) == 3
+    assert all(set(c) == {"name", "city", "state"} and c["name"].startswith("Ashton Gardens") for c in r["candidates"])
+    one = mcp_server.find_vendor("Bearer good", "Ashton Gardens", "Utah")        # the place picks one
+    assert one["status"] == "found" and [c["name"] for c in one["matches"]] == ["Ashton Gardens South"]
+    two = mcp_server.find_vendor("Bearer good", "Ashton Gardens", "Ohio")
+    assert len(two.get("matches") or []) + len(two.get("candidates") or []) + len(two.get("also") or []) <= 3
+
+
+def _row(kind="mcp_find_vendor", day=T, status="ok", uid=7):
+    return {"user_id": uid, "kind": kind, "usage_day": day, "status": status}
+
+
+def test_daily_lookup_cap_under_at_and_over(env, monkeypatch):
+    monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 3)
+    # Not counted: other tools, other days, refused / failed calls.
+    noise = [_row("mcp_get_my_wedding"), _row("mcp_list_saved_vendors"), _row(day="2026-11-14"), _row(status="error"),
+             _row("refine"), _row("tool_estimate_cost")] * 5
+    env["usage"] = noise + [_row()] * 2                                           # under: 2 of 3
+    assert mcp_server.find_vendor("Bearer good", "Kohl Mansion")["status"] == "found"
+    env["usage"] = noise + [_row()] * 3                                           # at the cap
+    env["searched"].clear()
+    for name in ("Kohl Mansion", "Zzyzx Ballroom"):
+        with pytest.raises(mcp_server.MCPDenied, match="limit of 3 vendor lookups.*tulletogether.app"):
+            mcp_server.find_vendor("Bearer good", name)
+    env["usage"] = noise + [_row()] * 40                                          # over
+    with pytest.raises(mcp_server.MCPDenied, match="limit of 3"):
+        mcp_server.find_vendor("Bearer good", "Kohl Mansion")
+    assert env["searched"] == []                                                  # refused before any search
+    assert mcp_server.list_saved_vendors("Bearer good")["saved_count"] == 3       # the other tools still answer
+    assert mcp_server.get_my_wedding("Bearer good")["budget"] == 60000
+
+
+def test_not_found_lookups_count_toward_the_cap(env, monkeypatch):
+    """End to end over the real logging: each call's own usage row is what the next call counts."""
+    monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 2)
+    monkeypatch.setattr(xano, "log_usage", lambda row: env["usage"].append(dict(row, usage_day=T)))
+    assert mcp_server.find_vendor("Bearer good", "Zzyzx Ballroom")["status"] == "not_found"
+    _drain(env)
+    assert mcp_server.find_vendor("Bearer good", "Qwfp Manor")["status"] == "not_found"
+    _drain(env)
+    with pytest.raises(mcp_server.MCPDenied, match="limit of 2"):
+        mcp_server.find_vendor("Bearer good", "Kohl Mansion")
+    _drain(env)
+    assert [(r["kind"], r["status"]) for r in env["usage"]] == [("mcp_find_vendor", "ok")] * 2 + [("mcp_find_vendor", "error")]
+
+
+def test_cap_fails_closed_when_usage_cannot_be_read_and_zero_means_none(env, monkeypatch):
+    monkeypatch.setattr(xano, "user_usage", lambda uid: (_ for _ in ()).throw(xano.XanoError("table 79 down")))
+    with pytest.raises(mcp_server.MCPDenied, match="could not run find_vendor"):
+        mcp_server.find_vendor("Bearer good", "Kohl Mansion")
+    monkeypatch.setattr(xano, "user_usage", lambda uid: [])
+    monkeypatch.setattr(config, "MCP_DAILY_LOOKUPS", 0)
+    with pytest.raises(mcp_server.MCPDenied, match="limit of 0"):
+        mcp_server.find_vendor("Bearer good", "Kohl Mansion")
+    assert env["searched"] == []
+
+
+# ---------------------------------------------------------------- logging
 
 def test_each_call_is_logged_as_mcp_and_never_spends_a_question(env):
     _calls()
@@ -288,132 +517,12 @@ def test_a_logging_failure_never_breaks_a_tool(env, monkeypatch):
 
 
 def test_a_failing_tool_is_an_error_with_no_detail_and_is_logged(env, monkeypatch):
-    monkeypatch.setattr(xano, "state_average_rows", lambda tok: (_ for _ in ()).throw(xano.XanoError("500 secret")))
+    monkeypatch.setattr(xano, "user_packages", lambda tok, uid: (_ for _ in ()).throw(xano.XanoError("500 secret")))
     with pytest.raises(mcp_server.MCPDenied) as e:
-        mcp_server.estimate_cost("Bearer good")
-    assert "secret" not in str(e.value) and "estimate_cost" in str(e.value)
+        mcp_server.budget_status("Bearer good")
+    assert "secret" not in str(e.value) and "budget_status" in str(e.value)
     _drain(env)
-    assert [(r["kind"], r["status"]) for r in env["logged"]] == [("mcp_estimate_cost", "error")]
-
-
-def test_lookup_args_and_misses(env):
-    assert mcp_server.lookup_venue("Bearer good", "Kohl Mansion", "Austin")["status"] == "found"
-    miss = mcp_server.lookup_venue("Bearer good", "Zzyzx Ballroom")
-    assert miss["status"] == "not_found" and miss["matches"] == [] and "pricing" not in miss
-    with pytest.raises(mcp_server.MCPDenied, match="name"):
-        mcp_server.lookup_venue("Bearer good", " a ")
-
-
-def test_estimate_arguments_override_the_profile(env, monkeypatch):
-    monkeypatch.setattr(xano, "guest_modifier", lambda tok, n: {120: 0.86, 150: 1.3}.get(n))
-    e = mcp_server.estimate_cost("Bearer good", guests=150, peak_season=True)["estimate"]
-    assert (e["guests"], e["peak_season"], e["major_city"]) == (150, True, False)
-
-
-# ---------------------------------------------------------------- (e) no plan: no price figures leave
-
-def _assert_no_prices(obj):
-    dump = json.dumps(obj)
-    assert not free_mode._FIGURE.search(dump), dump
-    assert not any(n in dump for n in PRICE_NUMBERS), dump
-
-
-def test_free_couple_gets_no_price_figures_from_lookup_or_estimate(env, monkeypatch):
-    _free(env)
-    lk = mcp_server.lookup_venue("Bearer good", "Kohl Mansion")
-    assert lk["status"] == "found" and lk["price_locked"] is True and lk["plan"] == "free"
-    card = lk["matches"][0]
-    assert card["name"] == "Kohl Mansion" and card["price_locked"] is True
-    assert card["description"] == "A historic estate with gardens."        # the price sentence is gone
-    assert not {"pricing", "verdict"} & set(lk) and not {"venue_fee_range", "price_band", "estimate_label"} & set(card)
-    assert env["priced"] == [("V1", False)]         # Xano's free panel (ep231) was asked, never the paid one
-    _assert_no_prices(lk)
-    e = mcp_server.estimate_cost("Bearer good")
-    assert e["price_locked"] is True and e["shown"] == "cost_estimate" and e["missing"] == []
-    assert e["inputs"] == {"state": "Texas", "guests": 120, "major_city": False, "peak_season": False}
-    assert not {"estimate", "text", "tiers", "facts", "budget"} & set(e)
-    _assert_no_prices(e)
-
-
-def test_free_couple_sees_no_vendor_prices_in_the_other_tools(env):
-    _free(env)
-    s = mcp_server.list_saved_venues("Bearer good")
-    assert [c["name"] for c in s["venues"]] == ["Kohl Mansion", "OliviaPhotos"] and s["price_locked"] is True
-    _assert_no_prices(s)
-    w = mcp_server.get_my_wedding("Bearer good")
-    assert w["show_prices"] is False
-    assert all(v["price"] is None for c in w["categories"] for v in c["saved"])
-    assert mcp_server.get_my_profile("Bearer good")["plan"] == "free"
-
-
-def test_free_stays_price_free_even_in_the_open_planner_light_mode(env, monkeypatch):
-    """REC_FREE_PRICING=light shows no-plan couples price bands in the chat; the MCP server does not."""
-    _free(env)
-    monkeypatch.setattr(config, "FREE_DAILY_MODE", True)
-    monkeypatch.setattr(config, "FREE_PRICING", "light")
-    monkeypatch.setattr(config, "LIGHT_PRICE_BANDS", True)
-    _assert_no_prices(mcp_server.lookup_venue("Bearer good", "Kohl Mansion"))
-    _assert_no_prices(mcp_server.list_saved_venues("Bearer good"))
-
-
-def test_a_plan_that_is_not_full_gets_no_figures_from_tulles_pricing_data(env, monkeypatch):
-    """Only FULL gets figures. A 1-week / 4-week plan used to get agent._light_card, which left price_range and the
-    description's "$" sentences in (and the wedding screen's "about $X" hints)."""
-    _light(env)
-    monkeypatch.setattr(config, "LIGHT_PRICE_BANDS", True)
-    s = mcp_server.list_saved_venues("Bearer good")
-    assert [c["name"] for c in s["venues"]] == ["Kohl Mansion", "OliviaPhotos"] and s["price_locked"] is True
-    assert all(not {"price_range", "venue_fee_range", "price_band"} & set(c) and c["price_locked"] for c in s["venues"])
-    assert s["venues"][0]["description"] == "A historic estate with gardens."
-    _assert_no_prices(s)
-    lk = mcp_server.lookup_venue("Bearer good", "Kohl Mansion")
-    assert lk["plan"] == "light" and lk["price_locked"] is True and not {"pricing", "verdict"} & set(lk)
-    assert not {"venue_fee_range", "price_band", "estimate_label"} & set(lk["matches"][0])
-    assert env["priced"] == [("V1", False)]
-    _assert_no_prices(lk)
-    _assert_no_prices(mcp_server.lookup_venue("Bearer good", "OliviaPhotos"))
-    _assert_no_prices(mcp_server.lookup_venue("Bearer good", "Ashton Gardens"))
-    e = mcp_server.estimate_cost("Bearer good")
-    assert e["price_locked"] is True and "estimate" not in e
-    _assert_no_prices(e)
-
-
-def test_wedding_screen_keeps_the_couples_own_numbers_and_drops_tulles_price_hints(env):
-    _light(env)
-    assert appmod._wedding_view("tok", env["user"])["categories"][0]["saved"][0]["price"] == 12345   # what the app shows
-    w = mcp_server.get_my_wedding("Bearer good")
-    assert w["show_prices"] is False and all(v["price"] is None for c in w["categories"] for v in c["saved"])
-    venue = next(c for c in w["categories"] if c["key"] == "Venue")
-    assert w["budget"] == 60000 and venue["booked"]["price"] == 12505 and venue["booked"]["paid"] == 4000   # theirs
-    assert "12345" not in json.dumps(w)
-
-
-# ---------------------------------------------------------------- lookups that are not one venue
-
-def test_lookup_of_a_non_venue_vendor(env):
-    lk = mcp_server.lookup_venue("Bearer good", "OliviaPhotos")
-    assert lk["status"] == "found" and "pricing" not in lk and env["priced"] == []     # a listing: no venue panel
-    card = lk["matches"][0]
-    assert (card["vendor_id"], card["category"]) == ("P1", "Photography") and "image" not in card
-    _free(env)
-    locked = mcp_server.lookup_venue("Bearer good", "OliviaPhotos")
-    assert locked["matches"][0]["name"] == "OliviaPhotos" and locked["matches"][0]["description"] == "Documentary style."
-    _assert_no_prices(locked)
-
-
-def test_lookup_with_several_matches_returns_them_all(env):
-    lk = mcp_server.lookup_venue("Bearer good", "Ashton Gardens")
-    assert lk["status"] == "choices" and "pricing" not in lk
-    assert sorted(c["vendor_id"] for c in lk["matches"]) == ["A1", "A2"]
-    assert lk["matches"][0]["venue_fee_range"][0] and sorted(env["priced"]) == [("A1", True), ("A2", True)]
-    one = mcp_server.lookup_venue("Bearer good", "Ashton Gardens", "Ohio")              # the location picks one
-    assert one["status"] == "found" and [c["vendor_id"] for c in one["matches"]] == ["A2"]
-    _free(env)
-    env["priced"].clear()
-    locked = mcp_server.lookup_venue("Bearer good", "Ashton Gardens")
-    assert sorted(c["name"] for c in locked["matches"]) == ["Ashton Gardens North", "Ashton Gardens West"]
-    assert env["priced"] == []                                   # several matches, not full: nothing is priced
-    _assert_no_prices(locked)
+    assert [(r["kind"], r["status"]) for r in env["logged"]] == [("mcp_budget_status", "error")]
 
 
 # ---------------------------------------------------------------- end to end through the mounted ASGI app
@@ -448,24 +557,34 @@ def _rpc(client, method, params=None, token="good", rid=1):
 
 def test_end_to_end_over_streamable_http(env, client):
     assert client.get("/health").json() == {"ok": True}          # the host's own routes still answer
-    assert _rpc(client, "initialize", INIT["params"])["result"]["serverInfo"]["name"] == "tulle"
+    init = _rpc(client, "initialize", INIT["params"])["result"]
+    assert init["serverInfo"]["name"] == "tulle" and "never returns prices" in init["instructions"]
     tools = _rpc(client, "tools/list")["result"]["tools"]
-    assert sorted(t["name"] for t in tools) == sorted(mcp_server.TOOLS)
+    assert sorted(t["name"] for t in tools) == EXACT_TOOLS       # what a client really sees: no search, no pricing
     assert all(t["annotations"]["readOnlyHint"] is True for t in tools)
-    lookup_schema = next(t for t in tools if t["name"] == "lookup_venue")["inputSchema"]
-    assert lookup_schema["required"] == ["name"] and "ctx" not in lookup_schema["properties"]
+    schemas = {t["name"]: t["inputSchema"] for t in tools}
+    assert schemas["find_vendor"]["required"] == ["name"]
+    assert sorted(schemas["find_vendor"]["properties"]) == ["location", "name"]          # a name, never a filter
+    assert all(not s.get("properties") for n, s in schemas.items() if n != "find_vendor")
 
     env["auth"].clear()
-    ok = _rpc(client, "tools/call", {"name": "lookup_venue", "arguments": {"name": "Kohl Mansion"}})
+    ok = _rpc(client, "tools/call", {"name": "find_vendor", "arguments": {"name": "Kohl Mansion"}})
     assert not ok["result"].get("isError")
-    assert ok["result"]["structuredContent"]["matches"][0]["vendor_id"] == "V1"
-    assert ok["result"]["structuredContent"]["pricing"]["lines"][0]["amount"] == 12345
+    walk(ok["result"])                                           # structuredContent AND the text copy of it
+    assert ok["result"]["structuredContent"]["matches"][0]["name"] == "Kohl Mansion"
     assert env["auth"] == ["Bearer good"]                        # auth/me is read ONCE per request (gate -> tool)
+    for name in ("get_my_wedding", "list_saved_vendors", "budget_status", "get_my_profile"):
+        r = _rpc(client, "tools/call", {"name": name, "arguments": {}})
+        assert not r["result"].get("isError"), r
+        walk(r["result"]["structuredContent"])
 
-    bad = _rpc(client, "tools/call", {"name": "lookup_venue", "arguments": {"name": "a"}})     # a tool's own refusal
+    bad = _rpc(client, "tools/call", {"name": "find_vendor", "arguments": {"name": "a"}})     # a tool's own refusal
     assert bad["result"]["isError"] is True and "at least 3 letters" in json.dumps(bad["result"])
+    gone = _rpc(client, "tools/call", {"name": "estimate_cost", "arguments": {}})
+    assert gone.get("error") or gone["result"].get("isError")
     _drain(env)
-    assert [(r["kind"], r["status"]) for r in env["logged"]] == [("mcp_lookup_venue", "ok"), ("mcp_lookup_venue", "error")]
+    kinds = [(r["kind"], r["status"]) for r in env["logged"]]
+    assert kinds[0] == ("mcp_find_vendor", "ok") and ("mcp_find_vendor", "error") in kinds
 
 
 @pytest.mark.parametrize("method", ["get", "delete", "put", "patch"])

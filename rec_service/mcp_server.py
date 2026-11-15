@@ -2,21 +2,41 @@
 
 WHAT IT IS
     An MCP (Model Context Protocol) endpoint at /mcp on the existing FastAPI app, over streamable HTTP. A couple's own
-    AI client (Claude Code, Claude Desktop, ...) can read what the Planner already knows about them. Five tools, all
-    read-only, no model call, no writes:
-        get_my_wedding      the "My wedding" screen (GET /rec/wedding's data)
+    AI client (Claude Code, Claude Desktop, ...) can read their own planning data. Five tools, all read-only, no
+    model call, no writes:
         get_my_profile      the wedding profile (xano.profile_of)
-        list_saved_venues   the vendors they saved with the heart
-        lookup_venue        one venue by name (the Planner's name lookup), priced through xano.venue_pricing
-        estimate_cost       the "Estimate my cost" quick action (cost_tools.run_tool)
+        get_my_wedding      their own plan: budget, booked / considered items with the costs THEY entered, notes
+        list_saved_vendors  the vendors they saved with the heart, as public cards
+        find_vendor         one vendor BY NAME, as a public card (or up to 3 name-only candidates)
+        budget_status       their own budget against their own booked items (cost_tools.budget_status)
     It is NOT launched to couples: opening it up is gated on a team decision. Until then it only answers the user ids
     listed in REC_MCP_USER_IDS.
+
+DATA POLICY (owner 2026-11-15) - read this before adding a field or a tool
+    Everything a tool returns is sent to an OUTSIDE AI provider. So:
+    1. NO PRICING, for anyone, in any form. This server has nothing to do with Tulle's prices or pricing data: no
+       figures, ranges, bands, estimates, market averages, benchmarks or "below / above typical" labels, and no tool
+       may call a pricing function (xano.venue_pricing, the estimate / compare / split tools, benchmarks ...).
+       tests/test_mcp_server.py patches those to raise and runs every tool.
+    2. public_card() builds the ONLY vendor shape a tool may return: name, city, state, category, venue_type.
+       Never capacity, descriptions or other free text from Tulle's data, PDF counts or links, addresses, contact
+       details, images or internal ids.
+    3. NO search, filter or browse tool without an owner decision: a vendor is found BY NAME only (at most 3
+       name-only candidates when the name is ambiguous), capped per account per day (REC_MCP_DAILY_LOOKUPS). The
+       exact tool list is pinned in the tests.
+    4. What the couple typed in themselves (budget, the costs of what they booked, their quotes and notes) is
+       theirs and is returned.
+    Left out on purpose (2026-11-15): list_vendors (every listing path is the Discovery search endpoint, which is
+    price-aware and has no city filter), split_budget (its percentages are a Xano table, not constants), next_step
+    (plan.next_step reads table 90 while My wedding books into table 33 - it can suggest a slot already booked),
+    and every cost-estimate / comparison tool.
 
 ENV VARS (config.py)
     REC_MCP=1                 mounts /mcp. Default "0": no route, and the `mcp` package is never imported.
     REC_MCP_USER_IDS=7,42     the only Xano user ids that may use it. Default empty = nobody.
     REC_MCP_ALLOWED_HOSTS     REQUIRED with REC_MCP=1: the Host headers /mcp answers to (comma-separated, e.g. the
                               Railway domain). Empty = /mcp is NOT mounted and one line in the log says why.
+    REC_MCP_DAILY_LOOKUPS=25  find_vendor calls per account per UTC day (not-found ones count). Over it: a tool error.
 
 THE GATE (every HTTP request to /mcp, before the SDK sees it - _Gate below)
     POST only: anything else is 405. The SDK would answer GET with a long-lived server-to-client event stream; the
@@ -33,19 +53,12 @@ THE GATE (every HTTP request to /mcp, before the SDK sees it - _Gate below)
     The verified user is handed to the tool on the request scope, so auth/me is read once per request. A tool that
     does not find it there (the plain functions below, called directly) runs the same check itself.
 
-PRICES AND LOGGING (every tool call)
-    Only a FULL member (xano.beta_member - the chat's FULL detail) gets figures from Tulle's pricing data. Everyone
-    else - no plan, or a plan that is not full - gets NONE: every card goes through free_mode.card (the chat's
-    free whitelist: price keys such as venue_fee_range / price_range / price_band dropped, price sentences cut
-    from descriptions), no pricing panel or verdict, no price hints on saved vendors in get_my_wedding, and
-    estimate_cost returns what was computed for, not the amounts (agent._cost_tool's "no figures for the model"
-    rule). The couple's own numbers - their budget, costs they typed into their plan - stay.
-    This is deliberately stricter than the app (which shows plan holders bands and no-plan couples the estimate
-    chart): an MCP answer is read by a model we do not control.
-    Each call writes one rec_usage row (table 79): kind "mcp_<tool>", surface "mcp", model "none", cost 0.
-    guards._prompts and the reports (rec_watch.py, experiments_brief.py) leave "mcp_" rows out, so a call never
-    spends a question or a daily / monthly prompt and never counts as Planner usage. A failed log write never
-    fails the tool.
+LOGGING (every tool call)
+    One rec_usage row (table 79): kind "mcp_<tool>", surface "mcp", model "none", cost 0. guards._prompts and the
+    reports (rec_watch.py, experiments_brief.py) leave "mcp_" rows out, so a call never spends a question or a daily
+    / monthly prompt and never counts as Planner usage. A failed log write never fails the tool. The same rows are
+    what the daily lookup cap counts. Every tier (full, plan, no plan) gets the same output: there are no prices
+    to gate.
 
 CONNECT FROM CLAUDE CODE (syntax checked against code.claude.com/docs/en/mcp on 2026-11-15)
     claude mcp add --transport http tulle https://<host>/mcp --header "Authorization: Bearer <token>"
@@ -67,15 +80,15 @@ from fastapi import HTTPException
 
 import config
 import cost_tools
-import free_mode
 import lookup
+import wedding
 import xano
 
-TOOLS = ("get_my_wedding", "get_my_profile", "list_saved_venues", "lookup_venue", "estimate_cost")
+TOOLS = ("get_my_profile", "get_my_wedding", "list_saved_vendors", "find_vendor", "budget_status")
 PATH = "/mcp"
 SURFACE = "mcp"
 SCOPE_KEY = "tulle_mcp_caller"     # where the gate leaves (token, user) for the tool wrappers
-LOCKED_NOTE = "Prices are not included on this account: exact pricing is in each vendor's PDF on Tulle and on Tulle plans."
+PRICE_NOTE = "This connector never returns prices. For pricing, the couple can open the vendor on tulletogether.app."
 
 
 class MCPDenied(Exception):
@@ -88,7 +101,7 @@ class MCPDenied(Exception):
 
 def _app():
     """The FastAPI module, imported late: app.py imports this module at its very end (flag on), and the helpers
-    reused here (_auth, _find_and_price, _lookup_card, _wedding_view, _submit_usage) live there."""
+    reused here (_auth, _place_label, _any_vendor_search, _submit_usage) live there."""
     import app
     return app
 
@@ -152,51 +165,106 @@ def _tier(access, full):
     return "full" if full else "light" if access else "free"
 
 
-def _card(card, full):
-    """One vendor card. FULL: as the chat shows it. Anyone else: free_mode.card - the chat's whitelist for free couples
-    (no price keys at all, price sentences cut from the description). Images and UI-only keys left out."""
-    c = {k: v for k, v in (card or {}).items() if k not in ("image", "google_name", "lat", "lng")}
-    if not full:
-        c = free_mode.card(c)
-    if not c.get("reason"):
-        c.pop("reason", None)
-    return c
+# ---------------------------------------------------------------- the one vendor shape (DATA POLICY)
+
+CARD_FIELDS = ("name", "city", "state", "category", "venue_type")
+
+
+def _first(v):
+    return v[0] if isinstance(v, list) and v else ("" if isinstance(v, list) else v)
+
+
+def _label(v, n):
+    """A short label from Tulle's data, or "" - never a string that carries a figure."""
+    t = " ".join(str(v or "").split())[:n]
+    return "" if ("$" in t or any(ch.isdigit() for ch in t)) else t
+
+
+def public_card(card):
+    """THE ONLY vendor shape a tool may return (module docstring, DATA POLICY): name, city, state, category and
+    venue_type - built field by field, so nothing else on the source card can ride along. No tulle_url: the server
+    has no page-link builder (the page builds its links in the browser), and none is invented here."""
+    card = card or {}
+    state = _label(_first(card.get("state")), 60)
+    place = _app()._place_label(card) if (card.get("address") or state) else ""
+    city = _label(place.rsplit(", ", 1)[0], 60) if ", " in place else ""     # a street line has digits -> dropped
+    vt = card.get("venue_type")
+    types = [t for t in (_label(x, 60) for x in (vt if isinstance(vt, list) else [vt]) if isinstance(x, str)) if t][:4]
+    out = {"name": " ".join(str(card.get("name") or "").split())[:120], "city": city, "state": state,
+           "category": _label(card.get("category") or "Venue", 40), "venue_type": types}
+    return {k: v for k, v in out.items() if v not in (None, "", [])}
+
+
+def _candidate(card):
+    """A name-only candidate for an ambiguous lookup: name + city / state."""
+    c = public_card(card)
+    return {k: c[k] for k in ("name", "city", "state") if k in c}
+
+
+def lookups_today(user_id):
+    """find_vendor calls this account made today (UTC) that ran - found or not - from its rec_usage rows."""
+    day = xano.today()
+    return sum(1 for r in xano.user_usage(user_id)
+               if r.get("kind") == "mcp_find_vendor" and r.get("status") == "ok" and r.get("usage_day") == day)
 
 
 # ---------------------------------------------------------------- the five tools (plain functions; build() wraps them)
 
+def _own_item(item):
+    """A row the couple typed into their plan (booked vendor, quote, other cost): theirs, kept - minus the internal
+    vendor id and the link to their uploaded file (its name stays)."""
+    if not isinstance(item, dict):
+        return item
+    out = {k: v for k, v in item.items() if k != "vendor_id"}
+    if isinstance(out.get("file"), dict):
+        out["file"] = {"name": out["file"].get("name") or "File"}
+    return out
+
+
 def get_my_wedding(authorization, who=None):
-    """The couple's "My wedding" screen - GET /rec/wedding's data (app._wedding_view). Not FULL: the "about $X" hints
-    on saved vendors (Tulle's pricing data) are blanked; what the couple typed in (budget, booked costs, quotes) stays."""
+    """The couple's own plan, read as GET /rec/wedding reads it (packages + saved vendors -> wedding.view): their
+    budget, what they booked, their quotes and other costs exactly as THEY entered them. Saved vendors (Tulle's
+    data) are public cards; wedding.view's price hints are never asked for (show_prices=False) and not copied."""
     def go(token, user, access, full):
-        v = _app()._wedding_view(token, user)
-        if not full and isinstance(v, dict) and v.get("categories"):
-            v = dict(v, show_prices=False, categories=[
-                dict(c, saved=[dict(x, price=None) for x in c.get("saved") or []]) for c in v["categories"]])
-        return v
+        if not wedding.ENABLED:
+            return {"enabled": False}
+        packages = xano.user_packages(token, user["id"])
+        ids = xano.saved_vendor_ids(user)
+        cards = []
+        if ids:
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                cards = [c for c in ex.map(xano.cached_vendor_card, ids) if c]
+        v = wedding.view(user, packages, cards, show_prices=False)
+        keys = {c["key"] for c in wedding.CATS}
+        cats = [{"key": c.get("key"), "label": c.get("label"), "booked": _own_item(c.get("booked")),
+                 "quotes": [_own_item(x) for x in c.get("quotes") or []],
+                 "saved": [public_card(k) for k in cards if (k.get("category") or "Venue") == c.get("key")]}
+                for c in v.get("categories") or []]
+        return {"enabled": v.get("enabled"), "budget": v.get("budget"), "booked_total": v.get("booked_total"),
+                "left": v.get("left"), "paid_total": v.get("paid_total"), "slices": v.get("slices") or [],
+                "categories": cats, "extras": [_own_item(x) for x in v.get("extras") or []],
+                "considering": [_own_item(x) for x in v.get("considering") or []],
+                "saved_other": [public_card(k) for k in cards if k.get("category") not in keys]}
     return _run("get_my_wedding", authorization, go, who)
 
 
 def get_my_profile(authorization, who=None):
-    """The couple's wedding profile, plus which plan level this answer was built for."""
+    """The couple's wedding profile (their own answers), plus their plan level."""
     def go(token, user, access, full):
-        return {"profile": xano.profile_of(user), "plan": _tier(access, full), "price_locked": not full}
+        return {"profile": xano.profile_of(user), "plan": _tier(access, full)}
     return _run("get_my_profile", authorization, go, who)
 
 
-def list_saved_venues(authorization, who=None):
-    """The vendors the couple saved (user.favorited_vendors), as cards."""
+def list_saved_vendors(authorization, who=None):
+    """The vendors the couple saved (user.favorited_vendors), as public cards."""
     def go(token, user, access, full):
         ids = xano.saved_vendor_ids(user)
         cards = []
         if ids:
             with ThreadPoolExecutor(max_workers=8) as ex:
                 cards = [c for c in ex.map(lambda v: cost_tools._safe(xano.vendor_card, v), ids) if c]
-        out = {"saved_count": len(ids), "venues": [_card(c, full) for c in cards], "price_locked": not full}
-        if not full:
-            out["note"] = LOCKED_NOTE
-        return out
-    return _run("list_saved_venues", authorization, go, who)
+        return {"saved_count": len(ids), "vendors": [public_card(c) for c in cards], "note": PRICE_NOTE}
+    return _run("list_saved_vendors", authorization, go, who)
 
 
 def _query(name, location=""):
@@ -210,86 +278,75 @@ def _query(name, location=""):
     return dict(q, cue=True, after_question=False)
 
 
-def lookup_venue(authorization, name, location="", who=None):
-    """One venue (or other vendor) by name. Pricing comes from xano.venue_pricing(token, id, full) inside
-    app._find_and_price, so Xano's paywall decides what the panel holds; rule 4 decides what leaves here."""
+def _find(q, token, prefer):
+    """The name search of app._find_and_price WITHOUT its pricing step (that function fetches the pricing panel of
+    what it finds; nothing here may). Venues first, then the other vendor types by name."""
+    a = _app()
+    hint = q.get("category") or ""
+    if hint and hint != "Venue":
+        return lookup.resolve(q, lookup.find(q, a._any_vendor_search(token, (hint,))), prefer)
+    res = lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer)
+    if res["status"] == "not_found" and not lookup.destination_in(q["name"]):
+        other = lookup.resolve(q, lookup.find(q, a._any_vendor_search(token, a.OTHER_VENDOR_CATS)), prefer)
+        if other["status"] != "not_found":
+            res = other
+    return res
+
+
+def find_vendor(authorization, name, location="", who=None):
+    """One venue or other vendor BY NAME -> one public card, or up to 3 name-only candidates when the name is
+    ambiguous. No pricing is read. Capped per account per day (config.MCP_DAILY_LOOKUPS)."""
     name = " ".join(str(name or "").split())[:120]
     location = " ".join(str(location or "").split())[:80]
 
     def go(token, user, access, full):
         import agent
-        a = _app()
         if len(lookup.norm(name)) < 3:
-            raise MCPDenied("Give the venue's name (at least 3 letters).")
-        q = _query(name, location)
-        profile = xano.profile_of(user)
+            raise MCPDenied("Give the vendor's name (at least 3 letters).")
+        if lookups_today(user["id"]) >= config.MCP_DAILY_LOOKUPS:
+            raise MCPDenied("Today's limit of %d vendor lookups is used up. The couple can keep exploring vendors on "
+                            "tulletogether.app; lookups here reset tomorrow." % config.MCP_DAILY_LOOKUPS, 429)
         try:
-            prefer = agent._states_of(profile)
+            prefer = agent._states_of(xano.profile_of(user))
         except Exception:
             prefer = []
-        res = a._find_and_price(q, token, full, prefer)
+        res = _find(_query(name, location), token, prefer)
         status = res.get("status") or "not_found"
-        matches = list(res.get("matches") or [])[:3]
-        out = {"status": status, "query": name, "plan": _tier(access, full), "price_locked": not full, "matches": []}
+        matches = [m for m in res.get("matches") or [] if m.get("name")][:3]
+        out = {"status": status, "query": name, "matches": [], "note": PRICE_NOTE}
         if not matches or status == "not_found":
-            out.update(status="not_found", note="Tulle has no venue by that name. Check the spelling or add the city.")
-            return out
-        if (res.get("vendor_kind") or "Venue") != "Venue":       # photographer, florist, ...: a listing, no panel
-            out["matches"] = [_card(a._vendor_lookup_card(m), full) for m in matches]
-            return out
-
-        def num(k):
-            try:
-                return int(profile.get(k) or 0)
-            except (TypeError, ValueError):
-                return 0
-        guests, budget = num("Wedding_Guest_Count"), num("Wedding_Budget")
-        pricing = res.get("pricing") or {}
-        if status in ("found", "best"):
-            card, p = a._lookup_card(matches[0], pricing.get(matches[0]["vendor_id"]), full, guests, budget)
-            out["matches"] = [_card(card, full)]
-            others = [{"name": o.get("name"), "place": a._place_label(o)} for o in matches[1:] if o.get("name")]
-            if others:
-                out["also"] = others
-            if full and p:
-                out["pricing"] = {k: p.get(k) for k in ("headline", "guest_minimum", "verdict", "lines", "source_note")}
-        else:                                      # choices / unsure: every match, the caller picks
-            out["matches"] = [_card(a._lookup_card(m, pricing.get(m["vendor_id"]), full, guests, budget)[0], full)
-                              for m in matches]
-        if not full:
-            out["note"] = LOCKED_NOTE
+            out.update(status="not_found", note="Tulle has no vendor by that name. Check the spelling or add the city.")
+        elif status in ("found", "best"):
+            out["matches"] = [public_card(matches[0])]
+            if matches[1:]:
+                out["also"] = [_candidate(m) for m in matches[1:]]
+        else:                                       # choices / unsure: names only, never a list of cards
+            out.update(status="choices", candidates=[_candidate(m) for m in matches],
+                       note="Several vendors match that name. Ask the couple which one, then look it up again with a "
+                            "more specific name or its city.")
         return out
-    return _run("lookup_venue", authorization, go, who)
+    return _run("find_vendor", authorization, go, who)
 
 
-def estimate_cost(authorization, state="", guests=0, major_city=None, peak_season=None, budget=0, who=None):
-    """The "Estimate my cost" quick action: a typical whole-wedding cost for a state and guest count (market averages,
-    not vendor prices). Arguments left out come from the profile, as on POST /rec/tool."""
-    args = {"state": state, "guests": guests, "budget": budget}
-    if major_city is not None:
-        args["major_city"] = bool(major_city)
-    if peak_season is not None:
-        args["peak_season"] = bool(peak_season)
-
+def budget_status(authorization, who=None):
+    """Where the couple's budget stands: what THEY added to their Budget tab (selected items, the seeded examples left
+    out), paid and owed, against THEIR budget. cost_tools.budget_status: arithmetic over their own rows, no Tulle data."""
     def go(token, user, access, full):
-        res = cost_tools.run_tool("estimate_cost", args, token, user, access=access, xano=xano)
-        w = res["widget"] if access else free_mode.widget(res["widget"])
-        inputs = {k: w.get(k) for k in ("state", "guests", "major_city", "peak_season")}
-        if not full:
-            # Not FULL: say what was computed and what is missing, never the amounts (agent._cost_tool's LIGHT/FREE rule).
-            return {"tool": "estimate_cost", "shown": w.get("type"), "inputs": inputs,
-                    "missing": w.get("missing") or [], "price_locked": True,
-                    "note": "The figures are not included on this account. The couple can see this estimate as a chart "
-                            "in the Tulle Planner (Estimate my cost)."}
-        return {"tool": "estimate_cost", "text": cost_tools.summary_text(w), "estimate": w, "price_locked": False}
-    return _run("estimate_cost", authorization, go, who)
+        w = cost_tools.run_tool("budget_status", {}, token, user, access=access, xano=xano)["widget"]
+        keys = ("budget", "added", "paid", "owed", "remaining", "pct_of_budget", "item_count", "by_category")
+        return {"tool": "budget_status", "text": cost_tools.summary_text(w), "status": {k: w.get(k) for k in keys},
+                "source": "the couple's own Budget tab on Tulle"}
+    return _run("budget_status", authorization, go, who)
 
 
 # ---------------------------------------------------------------- the MCP server (SDK imported only here)
 
-INSTRUCTIONS = ("Read-only access to one couple's Tulle Together wedding planning data: their profile, their My wedding "
-                "screen, their saved vendors, a venue lookup by name and a typical-cost estimate. When a result says "
-                "price_locked, do not state or guess prices for it.")
+INSTRUCTIONS = (
+    "Read-only access to one couple's own Tulle Together wedding planning data: their profile, their wedding plan and "
+    "budget as they entered it, the vendors they saved, and a lookup of one vendor by name. This connector never "
+    "returns prices. For pricing, send the couple to tulletogether.app. Do not guess or estimate prices from general "
+    "knowledge when asked what a Tulle vendor costs. Answer only from what the tools return. There is no search: you "
+    "cannot list or filter vendors, only look one up by its name.")
 
 
 def build():
@@ -314,34 +371,34 @@ def build():
         except MCPDenied as e:
             raise ToolError(str(e))
 
-    @server.tool(name="get_my_wedding", annotations=ro, structured_output=True,
-                 description="The couple's My wedding screen: budget, what is booked, what is left, saved vendors and "
-                             "quotes by category.")
-    def _wedding(ctx: Context) -> dict[str, Any]:
-        return call(get_my_wedding, ctx)
-
     @server.tool(name="get_my_profile", annotations=ro, structured_output=True,
-                 description="The couple's wedding profile: location, guest count, budget, date, style.")
+                 description="The couple's own wedding profile: location, guest count, budget, date, style.")
     def _profile(ctx: Context) -> dict[str, Any]:
         return call(get_my_profile, ctx)
 
-    @server.tool(name="list_saved_venues", annotations=ro, structured_output=True,
-                 description="The venues and other vendors the couple saved on Tulle.")
+    @server.tool(name="get_my_wedding", annotations=ro, structured_output=True,
+                 description="The couple's own wedding plan: their budget, what they booked or are considering with "
+                             "the costs they entered, their notes, and the vendors they saved (names only).")
+    def _wedding(ctx: Context) -> dict[str, Any]:
+        return call(get_my_wedding, ctx)
+
+    @server.tool(name="list_saved_vendors", annotations=ro, structured_output=True,
+                 description="The venues and other vendors the couple saved on Tulle: name, place and type. No prices.")
     def _saved(ctx: Context) -> dict[str, Any]:
-        return call(list_saved_venues, ctx)
+        return call(list_saved_vendors, ctx)
 
-    @server.tool(name="lookup_venue", annotations=ro, structured_output=True,
-                 description="Look up one wedding venue (or other vendor) on Tulle by name. location is optional "
-                             "(city or state) and helps when several venues share a name.")
-    def _lookup(name: str, ctx: Context, location: str = "") -> dict[str, Any]:
-        return call(lookup_venue, ctx, name, location)
+    @server.tool(name="find_vendor", annotations=ro, structured_output=True,
+                 description="Look up ONE wedding venue or other vendor on Tulle by its name: name, place and type "
+                             "only, no prices. location is optional (city or state) and helps when several share a "
+                             "name. This is not a search - it cannot list or filter vendors. Limited lookups per day.")
+    def _find_tool(name: str, ctx: Context, location: str = "") -> dict[str, Any]:
+        return call(find_vendor, ctx, name, location)
 
-    @server.tool(name="estimate_cost", annotations=ro, structured_output=True,
-                 description="A typical whole-wedding cost for a US state and guest count (market averages, not a "
-                             "vendor's prices). Anything left out comes from the couple's profile.")
-    def _estimate(ctx: Context, state: str = "", guests: int = 0, major_city: bool | None = None,
-                  peak_season: bool | None = None, budget: int = 0) -> dict[str, Any]:
-        return call(estimate_cost, ctx, state, guests, major_city, peak_season, budget)
+    @server.tool(name="budget_status", annotations=ro, structured_output=True,
+                 description="Where the couple's budget stands, from their own numbers: what they added, paid and "
+                             "still owe against their budget.")
+    def _budget(ctx: Context) -> dict[str, Any]:
+        return call(budget_status, ctx)
 
     return server
 
