@@ -499,7 +499,7 @@ def test_expired_tampered_or_foreign_request_blobs(env, c):
     good = blob_of(c)
     stale = mcp_oauth.seal("request", {"cid": HOSTED, "ru": CALLBACK, "cc": CHALLENGE, "st": "s"}, 600, now=time.time() - 601)
     code = code_of(c)
-    for blob in (stale, good[:-2], good[:40], good + "A", "A" + good[1:], good[:60] + ("B" if good[60] != "B" else "C") + good[61:],
+    for blob in (stale, good[:-2], good[:40], good + "A", ("B" if good[0] != "B" else "C") + good[1:], good[:60] + ("B" if good[60] != "B" else "C") + good[61:],
                  "", "not a blob", code, signed_in(c)["access_token"]):
         for r in (approve(c, blob), c.get("/oauth/request", params={"req": blob}, headers={"Origin": ORIGIN})):
             assert r.status_code == 400 and r.json()["error"] == "invalid_request" and "redirect" not in r.json()
