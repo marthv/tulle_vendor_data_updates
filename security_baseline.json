@@ -45,7 +45,6 @@
     "10|wptp_upload_record/{wptp_upload_record_id}",
     "10|wptp_upload_record/{wptp_upload_record_id}",
     "10|wptp_upload_record/{wptp_upload_record_id}",
-    "10|wptp_venue_categories",
     "4|admin_location_adjustment",
     "4|app-version",
     "4|hub_stats",

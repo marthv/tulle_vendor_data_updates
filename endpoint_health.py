@@ -67,9 +67,9 @@ CHECKS = [
      {"secret": "<SECRET>"},
      "batch-ingest / extraction", "secret-gated; ~8.6MB/call, streamed here. NOT user auth."),
     ("wptp_venue_categories (ep177) — PIPELINE", "xano", "wptp_venue_categories",
-     {"page": 1, "per_page": 1},
-     "batch-ingest / extraction", "anonymous; _fetch_vendor_categories FAILS CLOSED, so "
-                                  "gating this aborts every extraction run"),
+     {"page": 1, "per_page": 1, "secret": "<SECRET>"},
+     "batch-ingest / extraction", "secret-gated 2026-11-16 (was anonymous); _fetch_vendor_categories "
+                                  "FAILS CLOSED, so a wrong/missing secret aborts every extraction run"),
 ]
 
 # Endpoints the dashboard writes through. Listed for completeness, never probed — a health
