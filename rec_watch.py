@@ -44,11 +44,35 @@ def _not_mcp(rows):
     return [r for r in rows if not str(r.get("kind") or "").startswith("mcp_")]
 
 
+def _is_ww(r):
+    return str(r.get("kind") or "").startswith("ww_")
+
+
+def _not_ww(rows):
+    """Usage rows minus whole-wedding proposals (kind "ww_proposal", rec_service/whole_wedding.py, 2026-11-15). They are
+    Planner usage, but a plan assembled in code is not a typed question: counted in with the others it would move the
+    question counts, the per-kind speed lines, "asked 0 questions" and the free-user counts. So every existing line
+    leaves them out and they get a line of their own (_ww_line). No such row exists while REC_WHOLE_WEDDING=0."""
+    return [r for r in rows if not _is_ww(r)]
+
+
+def _ww_line(rows):
+    """'• Whole-wedding plans: ...' for the ww_ rows among `rows`, or None when there are none."""
+    ww = [r for r in rows if _is_ww(r)]
+    if not ww:
+        return None
+    ok = [r for r in ww if r.get("status") == "ok"]
+    lat = sorted((r.get("latency_ms") or 0) / 1000.0 for r in ok if r.get("latency_ms"))
+    return "• Whole-wedding plans: %d by %d couples (%d used a free question) · p50 %.1fs · errors %d" % (
+        len(ok), len({r.get("user_id") for r in ok}), sum(1 for r in ok if r.get("counted_as_free")),
+        lat[len(lat) // 2] if lat else 0, sum(1 for r in ww if r.get("status") == "error"))
+
+
 def build(token, now=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     since_ms = (now - dt.timedelta(hours=24)).timestamp() * 1000
     days = {(now - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in (0, 1)}
-    rows = _not_mcp(r for d in days for r in _rows_for_day(token, d) if (r.get("created_at") or 0) >= since_ms)
+    rows = _not_ww(_not_mcp(r for d in days for r in _rows_for_day(token, d) if (r.get("created_at") or 0) >= since_ms))
     head = "*Recommendation engine* (last 24h)"
     if not rows:
         return head + " - no usage yet."
@@ -329,6 +353,8 @@ def weekly_planner(token, now=None):
         days = [(now - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(0, 14)]
         rows = [r for d in days for r in _rows_for_day(token, d)]
         rows = _not_mcp(r for r in rows if int(r.get("user_id") or 0) not in INTERNAL_USER_IDS)
+        ww_line = _ww_line([r for r in rows if (r.get("created_at") or 0) >= since_ms])
+        rows = _not_ww(rows)
         week = [r for r in rows if (r.get("created_at") or 0) >= since_ms]
         prev = [r for r in rows if prev_ms <= (r.get("created_at") or 0) < since_ms]
         ok = [r for r in week if r.get("status") == "ok"]
@@ -357,6 +383,8 @@ def weekly_planner(token, now=None):
                      % (len(returning), len(prev_users), ret_pct, repeat,
                         sum(1 for u in users if not any(r.get("kind") == "refine" and r.get("user_id") == u for r in ok))))
         lines.append("• Dead ends: " + dead_txt)
+        if ww_line:
+            lines.append(ww_line)
     except Exception as e:
         lines.append(":warning: _usage block failed: %s_" % str(e)[:120])
 
@@ -441,6 +469,8 @@ def planner_daily(token, now=None):
         days = [(now - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(0, 9)]
         rows = [r for d in days for r in _rows_for_day(token, d)]
         rows = [r for r in rows if int(r.get("user_id") or 0) not in INTERNAL_USER_IDS]
+        ww_line = _ww_line([r for r in rows if (r.get("created_at") or 0) >= since_ms])
+        rows = _not_ww(rows)
         day = [r for r in rows if (r.get("created_at") or 0) >= since_ms]
         prev = [r for r in rows if week_ms <= (r.get("created_at") or 0) < since_ms]
         ok = [r for r in day if r.get("status") == "ok"]
@@ -491,6 +521,8 @@ def planner_daily(token, now=None):
         tc = [int(r.get("tool_calls") or 0) for r in ok if r.get("kind") == "refine" and not is_lookup(r)]
         if tc:
             lines.append("• Questions needing 3+ tool calls: %d of %d (%.0f%%)" % (sum(1 for t in tc if t >= 3), len(tc), 100.0 * sum(1 for t in tc if t >= 3) / len(tc)))
+        if ww_line:
+            lines.append(ww_line)
     except Exception as e:
         lines.append(":warning: _usage block failed: %s_" % str(e)[:120])
 

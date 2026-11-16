@@ -75,6 +75,7 @@ import progress
 import railway_search
 import sheet_log
 import upsell
+import whole_wedding
 import xano
 
 app = FastAPI(title="Tulle recommendations")
@@ -270,6 +271,8 @@ class RefineBody(BaseModel):
     request_id: str = Field("", max_length=progress.MAX_ID_LEN)   # optional: progress + Stop (2026-10-25)
     quote: Optional[dict] = None  # 11-08: a vendor quote the couple uploaded, parsed by ep157 (Forever only)
     ctx_arm: str = Field("", max_length=16)   # 11-14 context-first test: "context" | "control" | "" (test off)
+    ww: Optional[dict] = None     # 11-15 whole-wedding flow (whole_wedding.py): sent only by a page that can draw its
+                                  # cards. {v, action?, category?, answers?, skip?, active?}. None = flow never runs.
 
 
 QUOTE_KEYS = ("document_type", "summary", "vendor_name", "category", "total_cost", "package_name", "deposit_or_paid",
@@ -754,7 +757,7 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         # Per-model-call ms + tools, and pricing cache hit/miss (2026-10-26). model_turns is re-stated, same value.
         **_turn_props(usage),
         # Railway search rollout (2026-10-26): which engine answered the venue searches, and the user's arm.
-        **_search_props(user, usage.get("search"))})
+        **_search_props(user, usage.get("search")), **_ww_props(user)})
     if in_plan:   # 2026-11-07: the one "next for your wedding" suggestion once the couple is engaged
         asked = sum(1 for r in rows if r.get("status") == "ok" and r.get("kind") == "refine") + (kind == "refine")
         # plan_next OFF (owner 2026-11-07: "I asked for a photographer, then it says find a photographer again").
@@ -1121,7 +1124,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         "lookup_status": status, "lookup_queries": len(res.get("queries") or []), "lookup_scores": res.get("scores"),
         "lookup_category": res.get("vendor_kind") or "Venue",
         "price_locked": not access, "free_refines_left": guards.free_refines_left(paid, used, feedback_given),
-        **_search_props(user, search)})
+        **_search_props(user, search), **_ww_props(user)})
     return dict(result, paid=paid, has_access=access,
                 **_counters("refine", paid, rows, counted_free, feedback_given, access, row_tools="lookup:" + status))
 
@@ -1499,6 +1502,10 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
 
 
 def _refine(token, user, body, background, tracker):
+    if body.ww is not None and body.quote is None and whole_wedding.assigned(user.get("id")):   # flag off -> never assigned
+        out = _ww_refine(token, user, body, background, tracker)
+        if out is not None:
+            return out
     if body.chat_id:
         chat = xano.get_chat(user["id"], body.chat_id)
         if not chat:
@@ -2341,6 +2348,388 @@ def wedding_item(body: WeddingEditBody, authorization: str = Header(None)):
     return _wedding_view(token, user)
 
 
+# ---------------------------------------------------------------- whole-wedding proposal (whole_wedding.py, 2026-11-15)
+# "Plan my wedding": one answer that proposes a venue and a pick or a labelled estimate for every category, a total
+# against the budget, and writes what the couple adds to My wedding. OFF unless REC_WHOLE_WEDDING=1 AND the account is
+# assigned (whole_wedding.arm) AND the page says it can draw the cards (RefineBody.ww) - otherwise nothing here runs.
+# No model call: assembled in code from the chat tools' own lookups. Accounting (owner brief 2026-11-15):
+#   a proposal (first or re-run) = ONE counted question, through _gate like any other, usage row kind "ww_proposal";
+#   the context card, its answers, "Add to My wedding", "we already booked X" and a re-run that changed nothing are
+#   not counted and write no usage row (a Mixpanel rec_server_request with kind "ww_*" instead).
+_WW_LAST = {}            # user_id -> (chat_id, proposal widget as sent, unix time): newest proposal, incl. before its
+_WW_LOCK = threading.Lock()   # chat turn is saved (the page can tap Add or "Make it cheaper" within that second)
+WW_LAST_TTL_S = 1800
+WW_TITLE = "Our wedding plan"
+WW_SAY = {"start": "Plan my wedding", "context": "Here are my details", "cheaper": "Make it cheaper",
+          "nicer": "Make it nicer", "swap": "Swap this one", "style": "Change the venue style",
+          "budget": "Change the budget", "booked": "We already booked this"}
+
+
+def _ww_remember(user_id, chat_id, widget):
+    with _WW_LOCK:
+        if len(_WW_LAST) > 2000:
+            _WW_LAST.clear()
+        _WW_LAST[int(user_id)] = (int(chat_id or 0), widget, time.time())
+
+
+def _ww_recall(user_id, chat_id):
+    with _WW_LOCK:
+        hit = _WW_LAST.get(int(user_id))
+    if hit and hit[0] == int(chat_id or 0) and hit[0] and time.time() - hit[2] <= WW_LAST_TTL_S:
+        return hit[1]
+    return None
+
+
+def _ww_view(token, user):
+    """wedding.view (the My wedding screen's own function) over the couple's table-33 rows, for the strip. Saved-vendor
+    cards are left out: they change no number the strip shows, and cost one table-11 read per saved vendor.
+    None when My wedding is off (REC_WEDDING=0) or can't be read - the proposal still works without the strip."""
+    if not wedding.ENABLED:
+        return None
+    try:
+        return wedding.view(user, xano.user_packages(token, user["id"]), [], show_prices=xano.has_paid_access(user))
+    except Exception as e:
+        print("ww wedding view failed:", repr(e)[:200])
+        return None
+
+
+def _ww_track(user, kind, arm, paid, access, **props):
+    _POOL.submit(xano.mp_track, user["id"], "rec_server_request", dict({
+        "kind": kind, "status": "ok", "forever": xano.has_forever(user), "beta_member": paid, "has_access": access,
+        "source": "rec_service", "cost_usd": 0, "ww_arm": arm, "price_locked": not access}, **props))
+
+
+def _ww_props(user):
+    """Mixpanel props every Planner answer carries while the test runs, so both arms can be read: {} with the flag off."""
+    return {"ww_arm": whole_wedding.arm(user.get("id"))} if config.WHOLE_WEDDING else {}
+
+
+def _ww_result(text, widgets=(), strip=None, **extra):
+    return dict({"text": text, "cards": [], "chips": [], "more_cards": [], "search_filters": {}, "notes_saved": [],
+                 "widgets": list(widgets), "dropped_unverified_ids": [], "upsell_prompt": None,
+                 "wedding_status": strip}, **extra)
+
+
+def _ww_save_answers(token, user, raw):
+    """The context card's answers -> the profile, exactly as the Planner's own quick profile edit saves them
+    (profile_fields + xano.update_profile through ep21 with the couple's token); the area -> a preference answer
+    (xano.merge_preferences, as the thin-profile "area" question). Returns (fresh user, skip ids, lines saved,
+    profile columns written)."""
+    states_now = profile_questions.state_of(xano.profile_of(user))
+    prof, area, skip, bad = whole_wedding.clean_answers(raw, states_now)
+    fields = {}
+    if prof and not bad:
+        fields, bad = profile_fields(ProfileBody(**prof))
+    if bad:
+        raise HTTPException(400, {"status": "invalid", "fields": bad})
+    if fields.get("Wedding_Location_Updated"):
+        loc = user.get("Wedding_Location_Updated") or []
+        loc = [loc] if isinstance(loc, str) else loc
+        if any("International" in str(l) for l in loc):      # a US state is added to an International profile, never swapped in
+            fields["Wedding_Location_Updated"] = fields["Wedding_Location_Updated"] + ["International"]
+    lines = []
+    if fields:
+        try:
+            xano.update_profile(token, fields)
+        except xano.XanoError as e:
+            print("ww update_profile failed:", repr(e)[:200])
+            raise HTTPException(502, {"status": "error"})
+        user = xano.verify_user(token) or dict(user, **fields)
+        _POOL.submit(xano.mp_track, user["id"], "rec_profile_updated", {
+            "fields": sorted(fields), "source": "rec_service", "via": "whole_wedding", "plan": xano.plan_label(user)})
+    if area:
+        try:
+            lines = [n["note"] for n in xano.merge_preferences(user["id"], {"area": [area]}) if n.get("note")]
+        except Exception as e:   # never fail the plan over the save
+            print("ww merge_preferences failed:", repr(e)[:200])
+    return user, skip, lines, sorted(fields)
+
+
+def _ww_refine(token, user, body, background, tracker):
+    """One step of the whole-wedding flow, or None when this message is not part of it (the normal answer runs)."""
+    t0 = time.time()
+    ww = body.ww if isinstance(body.ww, dict) else {}
+    text = (body.message or "").strip()[:2000]
+    action = str(ww.get("action") or "").strip().lower()
+    action = action if action in whole_wedding.ACTIONS else ""
+    explicit = bool(action)
+    chat = None
+    if body.chat_id:
+        chat = xano.get_chat(user["id"], body.chat_id)
+        if not chat:
+            raise HTTPException(404, "conversation not found")
+    cache = {}
+
+    def hist():
+        if "h" not in cache:
+            cache["h"] = xano.get_messages(chat["id"]) if chat else []
+        return cache["h"]
+    react, over = {}, {}
+    if not action:
+        if whole_wedding.detect_start(text):
+            action, over = "start", whole_wedding.typed_context(text)
+        elif chat and ww.get("active"):       # the page shows one of our cards: the reply may be a reaction to it
+            react = whole_wedding.reaction(text) or {}
+            if react and (_ww_recall(user["id"], chat["id"]) or whole_wedding.flow_active(hist())):
+                action = react["action"]
+            elif not react and whole_wedding.pending_context(hist()):
+                over = whole_wedding.typed_context(text)
+                action = "context" if over else ""
+        if not action:
+            return None
+    arm = whole_wedding.arm(user["id"])
+    paid, access = xano.beta_member(user), xano.has_paid_access(user)
+    detail = _detail(paid, access)
+    chat_id = chat["id"] if chat else 0
+    prev = (_ww_recall(user["id"], chat_id) or whole_wedding.latest_proposal(hist())) if chat else None
+    if action in ("cheaper", "nicer", "swap", "style", "budget", "booked") and not prev:
+        if not explicit:
+            return None
+        action = "start"                     # a button on a card whose chat we can no longer read: plan afresh
+    say = text or WW_SAY.get(action, "Plan my wedding")
+    counted_free, spent, meta, widgets, strip, saved_lines, upsell_prompt = False, False, None, [], None, [], None
+    step = "proposal"
+    slog = railway_search.SearchLog(railway_search.arm(user.get("id")))
+
+    if action == "booked":
+        slot = react.get("category") or str(ww.get("category") or "")
+        slot = slot if slot in whole_wedding.SLOT_KEYS else ""
+        name = (react.get("name") or str(ww.get("name") or "")).strip()[:200]
+        price = whole_wedding._int(react.get("price") or ww.get("price"))
+        paid, access, rows, feedback_given, _, base = _gate("refine", user, chat_id, waive_free=True)
+        step = "booked"
+        label = dict(whole_wedding.SLOTS).get(slot, "vendor").lower()
+        if not (slot and name and price > 0) or not wedding.ENABLED:
+            step = "booked_ask"
+            out_text = ("Tell me who you booked and the price you agreed, and I'll put it in My wedding as booked - "
+                        "for example: We booked our %s: Hackett House for $12,000." % (label if slot else "venue"))
+            strip = whole_wedding.strip(_ww_view(token, user))
+        else:
+            view = _ww_view(token, user)
+            have = (whole_wedding.slot_items(view).get(slot) or {}).get("booked") or {}
+            if not whole_wedding._same(have.get("name"), name):
+                xano.package_add(whole_wedding.booked_row(user["id"], slot, name, price))
+                view = _ww_view(token, user)
+            widget = whole_wedding.apply_booked(prev, slot, name, price)
+            whole_wedding.mark_added(widget["rows"], view)
+            widgets = [widget]
+            strip = whole_wedding.strip(view, ["Booked: %s - %s" % (dict(whole_wedding.SLOTS)[slot], name)])
+            out_text = whole_wedding.text_for(widget, "booked")
+            _POOL.submit(xano.add_memory_note, user["id"], "Already booked their %s: %s" % (label, name[:120]))
+            saved_lines = ["Already booked their %s: %s" % (label, name[:120])]
+    elif action in ("cheaper", "nicer") and detail != "full":
+        # Tier rules unchanged: ranking by price needs the real figures. The existing upgrade card, nothing spent.
+        paid, access, rows, feedback_given, _, base = _gate("refine", user, chat_id, waive_free=True)
+        step = "upsell"
+        out_text = ("That one needs vendors' real figures, and those come with a plan. Your plan above stays as it "
+                    "is: swap any line, or add what you like to My wedding.")
+        upsell_prompt = upsell.prompt(has_plan=access)
+        strip = whole_wedding.strip(_ww_view(token, user))
+    else:
+        skip = [s for s in (ww.get("skip") or []) if s in whole_wedding.OPTIONAL]
+        saved_fields = []
+        if action == "context" and isinstance(ww.get("answers"), dict):
+            user, skip2, saved_lines, saved_fields = _ww_save_answers(token, user, ww["answers"])
+            skip = sorted(set(skip + skip2) | set(whole_wedding.OPTIONAL))     # the card was shown: never ask twice
+            paid, access = xano.beta_member(user), xano.has_paid_access(user)
+        answers = prefs.from_notes(_memory_row(user["id"]).get("notes") or [])
+        if action in ("start", "context"):
+            ctx = whole_wedding.context_of(user, answers, over)
+            need = whole_wedding.missing(ctx, skip)
+        else:   # a reaction re-plans the wedding the card was built for
+            ctx = dict(whole_wedding.context_of(user, answers), states=list(prev.get("states") or []),
+                       guests=whole_wedding._int(prev.get("guests")), budget=whole_wedding._int(prev.get("budget")),
+                       area=prev.get("area") or "", date=prev.get("when") or "")
+            ctx["city"] = _re.sub(r"^the ", "", ctx["area"].split(",")[0].strip()) if ctx["area"] else ""
+            if action == "budget":
+                ctx["budget"] = whole_wedding._int(react.get("budget") or ww.get("budget")) or ctx["budget"]
+            need = []
+        # The gate first, as for any question: a couple with none left sees the usual 402 / 429 before any card.
+        paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat_id)
+        show_card = bool(whole_wedding.blocked_by(need)) or (bool(need) and action == "start" and not over)
+        if show_card or not (ctx["states"] and ctx["guests"] and ctx["budget"]):
+            step, counted_free = "context", False
+            widgets = [whole_wedding.context_card(ctx, need or whole_wedding.missing(ctx))]
+            out_text = "A few quick details and I'll plan the whole wedding."
+            strip = whole_wedding.strip(_ww_view(token, user))
+            _ww_track(user, "ww_context", arm, paid, access, ww_action=action, asked=[f["id"] for f in widgets[0]["fields"]],
+                      saved=saved_fields)
+        else:
+            if tracker and tracker.cancelled():
+                _log_stopped(dict(base, kind=whole_wedding.KIND), whole_wedding.KIND, user, paid, access)
+                return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat_id or None)
+            category = react.get("category") or str(ww.get("category") or "")
+            style = react.get("style") or str(ww.get("style") or "")
+            style = style if style in xano.VENUE_TYPES else ""
+            if action == "swap" and category not in whole_wedding.SLOT_KEYS:
+                action = "start"
+            if action == "style" and not style:
+                action = "start"
+            if action == "style":           # a stated preference: saved the way every preference answer is
+                try:
+                    saved_lines += [n["note"] for n in xano.merge_preferences(user["id"], {"style": [style]}) if n.get("note")]
+                except Exception as e:
+                    print("ww merge_preferences failed:", repr(e)[:200])
+            build_action = "base" if action in ("start", "context") else action
+            try:
+                view = _ww_view(token, user)
+                widget, meta = whole_wedding.build(token, user, ctx, detail, prev=None if build_action == "base" else prev,
+                                                   action=build_action, category=category, style=style, view=view,
+                                                   tracker=tracker, slog=slog)
+            except progress.Stopped:
+                _log_stopped(dict(base, kind=whole_wedding.KIND), whole_wedding.KIND, user, paid, access)
+                return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat_id or None)
+            except Exception as e:  # never charge a question for our own failure
+                xano.log_usage(dict(base, kind=whole_wedding.KIND, status="error", model="whole_wedding",
+                                    error=str(e)[:500]))
+                raise HTTPException(502, {"status": "error"})
+            if tracker and tracker.cancelled():
+                _log_stopped(dict(base, kind=whole_wedding.KIND), whole_wedding.KIND, user, paid, access)
+                return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat_id or None)
+            spent = bool(widget.get("changed"))          # a re-run that changed nothing is never charged
+            counted_free = counted_free and spent
+            widgets = [widget]
+            strip = whole_wedding.strip(view)
+            out_text = whole_wedding.text_for(widget, build_action)
+            if action in ("cheaper", "nicer"):
+                note = "Asked for a %s version of their whole-wedding plan" % action
+                _POOL.submit(xano.add_memory_note, user["id"], note)
+                saved_lines.append(note)
+            elif action == "swap":
+                old = next((r for r in prev.get("rows") or [] if r.get("slot") == category), {})
+                if old.get("name") and spent:
+                    note = "Passed on %s for their %s" % (old["name"][:120], dict(whole_wedding.SLOTS)[category].lower())
+                    _POOL.submit(xano.add_memory_note, user["id"], note)
+                    saved_lines.append(note)
+            if not paid and upsell.is_price_question(text) and not upsell.shown_in(hist()):
+                upsell_prompt = upsell.prompt(has_plan=access)       # the existing price-question card, once per chat
+    ms = int((time.time() - t0) * 1000)
+    result = _ww_result(out_text, widgets, strip, notes_saved=saved_lines, upsell_prompt=upsell_prompt)
+    if detail == "free" and step in ("proposal", "upsell"):
+        # price-free mode: the same guard as every other answer (text, cards, chips, widgets)
+        result = free_mode.sanitize_result(result)
+        result.pop("price_redactions", None)
+        result["chips"] = []
+    elif detail == "free":    # our own fixed wording (and the couple's own number when they booked): lock the card only
+        result.update(widgets=free_mode.widgets(result["widgets"]), price_locked=True)
+    result["ww"] = {"arm": arm, "action": action, "step": step, "counted": spent, "model_calls": 0,
+                    "tool_calls": meta.calls if meta else 0, "ms": ms}
+    search = slog.summary()
+    if step == "proposal" and spent:
+        # No search_engine / search_ms on this row: the Railway-search comparison (rec_watch.search_rows) reads every
+        # row that has them, and a whole plan's latency is not one venue search's. The Mixpanel event carries them.
+        # ww_arm is dropped by Xano until table 79 has that column, so the arm also rides in `tools`.
+        _submit_usage(dict(base, kind=whole_wedding.KIND, status="ok", counted_as_free=counted_free, model="whole_wedding",
+                           input_tokens=0, cache_read_tokens=0, cache_write_tokens=0, output_tokens=0,
+                           tool_calls=meta.calls, cost_usd=0, latency_ms=ms,
+                           tools=("ww:%s,arm:%s" % (action, arm))[:500], categories=",".join(meta.categories)[:200],
+                           ww_arm=arm))
+    if step != "context":
+        _ww_track(user, whole_wedding.KIND if step == "proposal" else "ww_" + step, arm, paid, access, ww_action=action,
+                  counted=spent, counted_as_free=bool(counted_free), detail=detail, model_calls=0,
+                  tool_calls=meta.calls if meta else 0, latency_s=round(ms / 1000.0, 1),
+                  categories=meta.categories if meta else [],
+                  rows=len((widgets[0].get("rows") if widgets else None) or []),
+                  **{"ww_" + k: v for k, v in ((meta.ms if meta else {}) or {}).items()},
+                  **_search_props(user, search))
+    if meta:   # per-step timing in the Railway log, like the opening's reuse line
+        print("ww proposal user=%s action=%s detail=%s calls=%d counted=%s ms=%s" % (
+            user.get("id"), action, detail, meta.calls, spent, meta.ms))
+    if chat is None:      # only now: a blocked or failed step leaves no empty conversation behind
+        chat = xano.create_chat(user["id"], WW_TITLE)
+    else:
+        _chat_used(chat["id"])
+        if (chat.get("title") or "").startswith("Venue picks"):
+            chat["title"] = WW_TITLE
+    proposal = next((w for w in result["widgets"] if isinstance(w, dict) and w.get("type") == whole_wedding.PROPOSAL), None)
+    if proposal:
+        _ww_remember(user["id"], chat["id"], proposal)
+    out = dict(result, paid=paid, has_access=access,
+               **_counters("refine", paid, rows, counted_free, feedback_given, access, spent=spent))
+
+    def persist():
+        xano.add_message(chat["id"], "user", say)
+        xano.add_message(chat["id"], "assistant", out["text"], _stored_cards(out), [])
+        xano.touch_chat(chat)
+        sheet_log.event(user, "Whole wedding: %s" % (action if step == "proposal" else step), say, out.get("text"),
+                        chat["id"], None, None, "" if out.get("widgets") else sheet_log.flag_of(out), ms)
+    background.add_task(persist)
+    return _public(out, chat_id=chat["id"])
+
+
+class WwAddBody(BaseModel):
+    chat_id: int = 0
+    slots: list[str] = []        # the proposal rows to add, by slot ("Venue", "Photography", ...)
+    all: bool = False            # "Add all to My wedding"
+
+
+def _ww_assigned(user):
+    if not whole_wedding.assigned(user.get("id")):
+        raise HTTPException(404, {"status": "off"})
+
+
+def _ww_chat_proposal(user, chat_id):
+    w = _ww_recall(user["id"], chat_id)
+    if w is None and chat_id:
+        chat = xano.get_chat(user["id"], chat_id)
+        if not chat:
+            raise HTTPException(404, "conversation not found")
+        w = whole_wedding.latest_proposal(xano.get_messages(chat["id"]))
+    return w
+
+
+def _ww_rows_added(widget, view):
+    rows = whole_wedding.mark_added([dict(r) for r in (widget or {}).get("rows") or []], view)
+    return {r["slot"]: bool(r.get("added")) for r in rows if r.get("slot")}
+
+
+@app.post("/rec/ww/add")
+def ww_add(body: WwAddBody, authorization: str = Header(None)):
+    """"Add to My wedding" / "Add all" on a proposal: table-33 rows, Selected false ("still deciding") - the store the
+    My wedding screen reads. The rows come from the proposal the SERVER holds for this chat, never from the page. No
+    model call, never counted (like POST /rec/tool); respects the kill switch."""
+    token, user = _auth(authorization)
+    _ww_assigned(user)
+    if config.KILL_SWITCH:
+        raise HTTPException(503, {"status": "killed"})
+    if not wedding.ENABLED:
+        raise HTTPException(503, {"status": "off"})
+    widget = _ww_chat_proposal(user, body.chat_id)
+    if not widget:
+        raise HTTPException(409, {"status": "no_proposal"})
+    paid, access = xano.beta_member(user), xano.has_paid_access(user)
+    if _detail(paid, access) != "full":
+        widget = free_mode.proposal(widget)     # a couple without full figures can never copy a vendor's price out
+    slots = "all" if body.all else [s for s in body.slots if s in whole_wedding.SLOT_KEYS]
+    new = whole_wedding.package_rows(user["id"], widget, slots, xano.user_packages(token, user["id"]))
+    for _, row in new:
+        xano.package_add(row)
+    view = _ww_view(token, user)
+    labels = dict(whole_wedding.SLOTS)
+    changed = ["Added: %s - %s" % (labels[s], r["vendor_name"]) for s, r in new]
+    arm = whole_wedding.arm(user["id"])
+    _ww_track(user, "ww_add", arm, paid, access, slots=[s for s, _ in new], n_added=len(new), add_all=bool(body.all),
+              chat_id=int(body.chat_id or 0), with_amount=sum(1 for _, r in new if r["total_cost"]))
+    if new:
+        sheet_log.event(user, "Added to My wedding (plan)", ", ".join("%s (%s)" % (r["vendor_name"], s) for s, r in new),
+                        "", int(body.chat_id or 0), [{"name": r["vendor_name"]} for _, r in new])
+    return {"ok": True, "added": [s for s, _ in new], "wedding_status": whole_wedding.strip(view, changed),
+            "rows_added": _ww_rows_added(widget, view), "ww": {"arm": arm}}
+
+
+@app.get("/rec/ww/status")
+def ww_status(chat_id: int = 0, authorization: str = Header(None)):
+    """The My wedding strip for a chat that shows a proposal (the page calls it when it reopens one): the screen's own
+    numbers, and which of the proposal's rows are already in My wedding. Counts nothing."""
+    token, user = _auth(authorization)
+    if not whole_wedding.assigned(user.get("id")):
+        return {"whole_wedding": False, "wedding_status": None, "rows_added": {}}
+    view = _ww_view(token, user)
+    widget = _ww_chat_proposal(user, chat_id) if chat_id else None
+    return {"whole_wedding": True, "ww_arm": whole_wedding.arm(user["id"]), "wedding_status": whole_wedding.strip(view),
+            "rows_added": _ww_rows_added(widget, view) if widget else {}}
+
+
 class EventBody(BaseModel):
     kind: str = ""            # vendor_click | save | unsave
     vendor_id: str = ""
@@ -2386,6 +2775,8 @@ def status(authorization: str = Header(None)):
             "search_arm": railway_search.arm(user.get("id")), "railway_search_pct": config.RAILWAY_SEARCH_PCT,
             # "My wedding" A/B (2026-11-07): this couple's arm; the page shows Add + the plan only when enabled.
             "ab_plan": plan.arm(user.get("id")), "plan_enabled": plan.arm(user.get("id")) == "plan",
+            # Whole-wedding proposal (2026-11-15): true = this account is assigned; the page shows "Plan my wedding".
+            "whole_wedding": whole_wedding.assigned(user.get("id")), "ww_arm": whole_wedding.arm(user.get("id")),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 

@@ -63,13 +63,19 @@ def _mcp(r):
     return str(r.get("kind") or "").startswith("mcp_")
 
 
+def _ww(r):
+    """A whole-wedding proposal (kind "ww_proposal", rec_service/whole_wedding.py, 2026-11-15): its own experiment with
+    its own readout - left out of every block here so the numbers below keep meaning what they meant before it."""
+    return str(r.get("kind") or "").startswith("ww_")
+
+
 def free_daily(rows, now_ms):
     """rows = table-79 rows from SCAN_FROM_DAY to today (any order). Returns a dict of counts."""
     by_user = {}
     free = set()
     for r in rows:
         uid = int(r.get("user_id") or 0)
-        if not uid or uid in INTERNAL_IDS or _mcp(r):
+        if not uid or uid in INTERNAL_IDS or _mcp(r) or _ww(r):
             continue
         day = r.get("usage_day") or _day(r.get("created_at") or 0)
         if r.get("counted_as_free") or r.get("status") == "blocked_free_limit":
@@ -96,7 +102,8 @@ def free_daily(rows, now_ms):
     post_n, post_back = follow(post, first)
 
     yday = _day(now_ms - DAY)
-    y_rows = [r for r in rows if (r.get("usage_day") or "") == yday and int(r.get("user_id") or 0) not in INTERNAL_IDS]
+    y_rows = [r for r in rows if (r.get("usage_day") or "") == yday and int(r.get("user_id") or 0) not in INTERNAL_IDS
+              and not _ww(r)]
     y_free_q = {int(r["user_id"]) for r in y_rows if r.get("kind") == "refine" and r.get("counted_as_free")
                 and r.get("status") == "ok"}
     y_blocked = {int(r["user_id"]) for r in y_rows if r.get("status") == "blocked_free_limit"}
@@ -182,7 +189,7 @@ def engagement(users, usage_rows, now_ms):
 
     def qs(lo, hi):
         rr = [r for r in usage_rows if lo <= (r.get("created_at") or 0) < hi and int(r.get("user_id") or 0) not in INTERNAL_IDS
-              and r.get("status") == "ok" and not _mcp(r)]
+              and r.get("status") == "ok" and not _mcp(r) and not _ww(r)]
         couples = {int(r["user_id"]) for r in rr}
         q = sum(1 for r in rr if r.get("kind") == "refine")
         return len(couples), q
@@ -222,7 +229,8 @@ def gates(users, usage_rows, payments, now_ms):
         t = p.get("Time_of_Payment") or 0
         if uid and t and (uid not in paid_at or t < paid_at[uid]):
             paid_at[uid] = t
-    limited = {int(r.get("user_id") or 0) for r in usage_rows if not _mcp(r) and r.get("status") not in (None, "", "ok")}
+    limited = {int(r.get("user_id") or 0) for r in usage_rows if not _mcp(r) and not _ww(r)
+               and r.get("status") not in (None, "", "ok")}
 
     def cohort(lo, hi):
         c = [u for u in users if lo <= (u.get("created_at") or 0) < hi and not internal(u.get("id"), u.get("email"))]
@@ -250,7 +258,7 @@ def gates_line(g):
 # usage row. Adoption = couples with a bubble row; 'more messages?' = questions per day (all surfaces) since the first
 # bubble row vs the 7 days before it. Pre/post, other launches in the same week.
 def bubble(rows, now_ms):
-    real = [r for r in rows if int(r.get("user_id") or 0) not in INTERNAL_IDS]
+    real = [r for r in rows if int(r.get("user_id") or 0) not in INTERNAL_IDS and not _ww(r)]
     bub = [r for r in real if str(r.get("surface") or "").startswith("bubble")]
     if not bub:
         return None

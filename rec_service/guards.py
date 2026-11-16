@@ -80,10 +80,15 @@ def free_limit(feedback_given):
     return config.FREE_REFINES + (config.FREE_FEEDBACK_BONUS if feedback_given else 0)
 
 
+# A whole-wedding proposal (kind "ww_proposal", whole_wedding.py, 2026-11-15) is one question like any other: it has
+# its own kind only so the reports can tell it from a typed question. No such row exists while REC_WHOLE_WEDDING=0.
+QUESTION_KINDS = ("refine", "more", "ww_proposal")
+
+
 def free_questions_today(usage_rows, today):
     """Daily free mode (owner 2026-11-07: 1 question a day): questions ("refine" + "Show 3 more") asked on `today`.
     Openings never count (a home-screen starter must not use up the day's question), nor clarifying lookups."""
-    return sum(1 for r in _ok(usage_rows) if r.get("kind") in ("refine", "more") and r.get("usage_day") == today
+    return sum(1 for r in _ok(usage_rows) if r.get("kind") in QUESTION_KINDS and r.get("usage_day") == today
                and not _clarification(r))
 
 

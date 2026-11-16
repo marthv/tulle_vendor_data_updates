@@ -300,3 +300,14 @@ LISTINGS_IN_CHAT = os.environ.get("REC_LISTINGS_IN_CHAT", "1") == "1"
 # minimum spend - from the florists' PDFs, florals work 2026-10-27) go to the Planner. FULL sees figures, LIGHT the
 # tier + a rounded band, free mode nothing. 0 = florists exactly as before (no pricing).
 FLORIST_PRICING = os.environ.get("REC_FLORIST_PRICING", "1").strip() not in ("0", "false", "no", "")
+# WHOLE-WEDDING PROPOSAL (owner 2026-11-15, whole_wedding.py): "Plan my wedding" - the Planner proposes a venue and a
+# pick or a clearly labelled estimate for every category, a total against the budget, and writes what the couple adds
+# to My wedding (table 33, as "considering"). OFF by default: with REC_WHOLE_WEDDING=0 nothing below is read, no request
+# is routed to it and /rec/status says whole_wedding false.
+# REC_WHOLE_WEDDING_PCT = share of accounts assigned (stable per account: sha256("wholewedding:" + user_id) % 100 < pct;
+#   0 = nobody, 100 = everyone). REC_WHOLE_WEDDING_USER_IDS = accounts always assigned (internal testing; arm "forced").
+# REC_WHOLE_WEDDING_STEP_PCT = how far "Make it cheaper" / "Make it nicer" move the target (a product dial, not data).
+WHOLE_WEDDING = os.environ.get("REC_WHOLE_WEDDING", "0").strip() == "1"
+WHOLE_WEDDING_PCT = _pct(os.environ.get("REC_WHOLE_WEDDING_PCT", "0"))
+WHOLE_WEDDING_USER_IDS = _int_set(os.environ.get("REC_WHOLE_WEDDING_USER_IDS", ""))
+WHOLE_WEDDING_STEP_PCT = max(1, min(50, _pct(os.environ.get("REC_WHOLE_WEDDING_STEP_PCT", "15")) or 15))

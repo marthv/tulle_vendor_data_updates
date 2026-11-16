@@ -166,10 +166,38 @@ def widget(w):
     couple's own numbers (owner 2026-10-25: allowed). venue_compare must not show vendor PDF pricing: only the
     couple's manual quotes stay, locked=True with reason unlock_pdf_pricing (also for a widget stored while
     they had a plan)."""
+    if isinstance(w, dict) and w.get("type") == "wedding_proposal":
+        return proposal(w)
     if not isinstance(w, dict) or w.get("type") != "venue_compare":
         return w
     return dict(w, rows=[r for r in w.get("rows") or [] if r.get("source") == "manual"], unpriced=[],
                 locked=True, reason="unlock_pdf_pricing")
+
+
+def proposal(w):
+    """A whole-wedding proposal (whole_wedding.py, 2026-11-15) safe for a couple with no plan: the plan's SHAPE - the
+    picks, and the estimates that are only a share of their own budget (allowed, like the budget split) - with every
+    figure that came from a vendor's pricing removed: real rows lose their amount and band and read "locked", the
+    venue's food line loses its figure, the total is gone. A row the couple booked themselves keeps their own number.
+    whole_wedding.build never puts those figures in for them; this is the second lock, and the one a stored proposal
+    goes through when a lapsed member reopens the chat."""
+    rows = []
+    for r in w.get("rows") or []:
+        r = dict(r)
+        if r.get("basis") in ("real", "included") and not r.get("booked"):
+            r.update(amount=None, band="")
+            for k in ("why", "based_on", "breaks"):
+                if has_price_talk(r.get(k)):
+                    r[k] = ""
+            if r.get("basis") == "real":
+                r.update(locked=True, badge="Real price from Tulle data · locked")
+                r["based_on"] = r.get("based_on") or "From their pricing PDF. Open the PDF, or unlock a plan to see it here."
+            else:
+                r["why"] = r.get("why") or "Counted with the venue."
+        rows.append(r)
+    return dict(w, rows=rows, detail="free", total=None, over_under=None, verdict="", total_locked=True,
+                total_note="Your total unlocks with the real prices.",
+                changes=[c for c in w.get("changes") or [] if not has_price_talk(c)])
 
 
 def widgets(ws):

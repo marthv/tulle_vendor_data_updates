@@ -43,6 +43,8 @@ def compute(usage_rows, plan_rows, payments, internal=()):
         if not uid or uid in internal or r.get("status") not in ("ok", "free", "paid"):
             continue
         kind = r.get("kind") or ""
+        if str(kind).startswith("ww_"):     # whole-wedding proposals (2026-11-15): their own experiment, not this one
+            continue
         a = arms[_plan.arm(uid)].setdefault(uid, {"q": 0, "pdf": 0, "used": False})
         if kind in ("opening", "refine") and r.get("status") == "ok":
             a["used"] = True
