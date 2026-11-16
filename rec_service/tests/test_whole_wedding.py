@@ -382,7 +382,8 @@ def test_full_proposal_structure_amounts_and_labels(w):
     assert "Estimated by Tulle: service" not in v["based_on"] and "all-in for 120 guests before tax and tip" in v["why"]
     assert (rows["Photography"]["name"], rows["Photography"]["amount"], rows["Photography"]["basis"]) == ("Jane Doe Photo", 4550, "real")
     assert (rows["Entertainment"]["name"], rows["Entertainment"]["amount"]) == ("DJ Spin", 2550)     # the band is over the share
-    assert (rows["Flowers"]["name"], rows["Flowers"]["amount"], rows["Flowers"]["basis"]) == ("Bloom & Co", 4150, "real")
+    # a florist's "typical total" is Tulle's working from their sheet, not a price on it: an estimate (fix 3, 11-16)
+    assert (rows["Flowers"]["name"], rows["Flowers"]["amount"], rows["Flowers"]["basis"]) == ("Bloom & Co", 4150, "estimate")
     fb = rows["Food and Beverage"]                                                # inside the venue's all-in: never counted twice
     assert fb["basis"] == "included" and fb["amount"] is None and "$12,360" in fb["why"] and fb["badge"] == ww.REAL
     pl, be = rows["Wedding Planner"], rows["Beauty"]
@@ -460,7 +461,9 @@ def test_no_vendor_figure_reaches_a_couple_without_a_plan(w, monkeypatch, pricin
     assert not any(c[0] == "pricing" and c[2] for c in w.calls)                # the paid pricing endpoint is never asked
     for s in ("Venue", "Photography", "Entertainment", "Flowers"):
         r = rows[s]
-        assert r["name"] and r["amount"] is None and r["locked"] is True and r["badge"] == ww.REAL + " · locked", r
+        # only a package price is certainly "real"; a locked venue all-in / florist total may be part estimate (fix 3)
+        badge = ww.REAL_LOCKED if s in ("Photography", "Entertainment") else ww.PRICED_LOCKED
+        assert r["name"] and r["amount"] is None and r["locked"] is True and r["badge"] == badge, r
     assert rows["Venue"]["name"] == "Grand Hall" and rows["Photography"]["name"] == "Jane Doe Photo"
     assert (rows["Venue"]["band"] == "rental about $9K-$10K") if detail == "light" else (rows["Venue"]["band"] == "")
     # estimates are a share of the couple's own budget: shown to everyone, labelled
@@ -576,7 +579,7 @@ def test_adds_land_in_table_33_as_considering_and_the_strip_matches_the_screen(w
     row = w.packages[0]
     assert row == dict(row, user_id=7001, vendor_name="Hackett House", total_cost=21012, Balance_Paid=0, Balance_Left=21012,
                        Category="Venue", Selected=False, Notes="", vendor_id="V1",
-                       Package_Name="Tulle Planner proposal · real price from Tulle data · tulle:V1")
+                       Package_Name="Tulle Planner proposal · real price from Tulle data · tulle:V1 · " + ww._stamp("Hackett House", 21012))
     v = view_of(w, FULL)                                  # the My wedding screen's own function
     venue = v["categories"][0]
     assert venue["key"] == "Venue" and venue["booked"] is None and v["booked_total"] == 0     # considering, NOT booked
@@ -594,7 +597,8 @@ def test_adds_land_in_table_33_as_considering_and_the_strip_matches_the_screen(w
     assert len(w.packages) == 6 and all(p["Selected"] is False for p in w.packages) and v["booked_total"] == 0
     by = {p["Category"]: p for p in w.packages}
     assert by["Beauty"]["vendor_name"] == "Glow Studio" and by["Beauty"]["total_cost"] == 1200
-    assert by["Beauty"]["Package_Name"] == "Tulle Planner proposal · estimate, not a quote · tulle:B1"
+    assert by["Beauty"]["Package_Name"] == "Tulle Planner proposal · estimate, not a quote · tulle:B1 · " + ww._stamp("Glow Studio", 1200)
+    assert by["Flowers"]["Package_Name"].startswith("Tulle Planner proposal · estimate, not a quote · tulle:F1")
     assert by["Wedding Planner"]["vendor_name"] == "Planner (not chosen yet)" and "tulle:manual" in by["Wedding Planner"]["Package_Name"]
     assert [q["name"] for q in v["considering"]] and {q["category"] for q in v["considering"]} == {"Wedding Planner", "Beauty"}
     s = d["wedding_status"]

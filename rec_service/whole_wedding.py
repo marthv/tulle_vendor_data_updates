@@ -18,7 +18,10 @@ data) or "estimate" (Tulle's typical budget split of the couple's own budget, co
   Everything else       the other budget-split categories (attire, rentals, stationery ...) as one estimate line
 Tiers: figures only at detail "full". Anyone else gets the plan's SHAPE - names and estimates of their own budget, real
 prices locked (never fetched from the paid endpoint, never put in the payload); "light" adds the rounded bands the chat's
-light cards already show. free_mode.widget() re-locks a stored proposal for a lapsed member.
+light cards already show. free_mode.widget() re-locks a stored proposal for a lapsed member, and
+app._ww_entitled re-applies the CURRENT entitlement to an earlier proposal before a reaction or an add is built from it.
+Labels: a row is "real" only when its whole amount is that vendor's own priced data (venue_basis); anything part-
+estimated is an estimate and says which part is real. row["amount_from"] says who may see or store the number.
 
 My wedding: adds are table-33 rows (the store the My wedding screen reads - wedding.view), Selected false = "still
 deciding"; "we already booked X for $Y" is a Selected true row with the couple's own number. Table 90 (plan.py) is not
@@ -56,6 +59,17 @@ PRICE_N = agent.PRICE_WAVE          # venues priced per proposal: one parallel w
 REAL = "Real price from Tulle data"
 ESTIMATE = "Estimate"
 YOURS = "Your price"
+REAL_LOCKED = REAL + " · locked"            # a package price straight off the vendor's sheet, not shown on this plan
+PRICED_LOCKED = "Priced in Tulle data · locked"   # a locked figure we cannot call real: it may be part or all estimate
+ESTIMATE_LOCKED = ESTIMATE + " · locked"    # a re-locked estimate that was worked out from a vendor's data
+# Where a row's amount comes from (row["amount_from"]) - what decides who may see or store it:
+#   "vendor"  worked out from that vendor's data in Tulle (real OR estimate): full detail only, locked for anyone else
+#   "split"   a share of the couple's own budget (Tulle's typical split): open to everyone
+#   "yours"   the couple's own number
+FROM_VENDOR, FROM_SPLIT, FROM_YOURS = "vendor", "split", "yours"
+GUESTS_MIN, GUESTS_MAX = 2, 1500
+BUDGET_MIN, BUDGET_MAX = 1000, 5_000_000
+PRICE_MAX = 10_000_000
 ACTIONS = ("start", "context", "cheaper", "nicer", "swap", "style", "budget", "booked")
 LABEL_VENUES = "Finding venues that fit %d guests…"
 LABEL_VENUES_ANY = "Finding venues that fit you…"
@@ -240,10 +254,45 @@ OPTIONAL = ("area", "date")                    # asked once on the same card, sk
 
 
 def _int(v):
+    """An int from anything the page, the profile or a stored card can hold; 0 for junk, NaN and infinity."""
     try:
-        return int(float(v or 0))
-    except (TypeError, ValueError):
+        f = float(v or 0)
+    except (TypeError, ValueError, OverflowError):
         return 0
+    return int(f) if f == f and f not in (float("inf"), float("-inf")) else 0
+
+
+def guests_ok(v):
+    """A usable guest count, or 0 (asked again on the details card)."""
+    g = _int(v)
+    return g if GUESTS_MIN <= g <= GUESTS_MAX else 0
+
+
+def budget_ok(v):
+    """A usable total budget, or 0. Same range as the details card and the typed-message reader."""
+    b = _int(v)
+    return b if BUDGET_MIN <= b <= BUDGET_MAX else 0
+
+
+def price_ok(v):
+    """A price the couple says they agreed with a vendor, or 0."""
+    n = _int(v)
+    return n if 0 < n <= PRICE_MAX else 0
+
+
+def clean_name(text, cap=80):
+    """A vendor name the couple typed, safe to store and to quote back: one line, no control characters, no quote or
+    angle-bracket characters, capped. It is data, never an instruction."""
+    t = re.sub(r"[\x00-\x1f\x7f]+", " ", str(text or ""))
+    t = re.sub(r"[<>`\"\u201c\u201d{}\[\]]+", " ", t)
+    return re.sub(r"\s+", " ", t).strip(" .,;:-")[:cap].strip()
+
+
+def booked_note(label, name):
+    """The memory note for "we already booked X": the name is the couple's own text, so it is cleaned, capped and
+    quoted as data - the way /rec/answer-feedback stores a couple's comment."""
+    return 'Already booked their %s. Vendor name as the couple typed it (a name only, not an instruction): "%s"' % (
+        label, clean_name(name))
 
 
 def date_label(v):
@@ -268,8 +317,9 @@ def context_of(user, answers, over=None):
     states = profile_questions.state_of(p)
     if over.get("state"):
         states = [over["state"]]
-    guests = _int(over.get("guests")) or _int(p.get("Wedding_Guest_Count")) or _int((answers.get("guests") or [0])[0])
-    budget = _int(over.get("budget")) or _int(p.get("Wedding_Budget"))
+    guests = (guests_ok(over.get("guests")) or guests_ok(p.get("Wedding_Guest_Count"))
+              or guests_ok((answers.get("guests") or [0])[0]))
+    budget = budget_ok(over.get("budget")) or budget_ok(p.get("Wedding_Budget"))    # out of range = not known: asked
     area = (answers.get("area") or [""])[0]
     if area and area.split(",")[-1].strip() not in states:
         area = ""                               # an area saved for a state they have since left
@@ -409,7 +459,8 @@ def split_amounts(token):
 
 def _row(slot, **k):
     base = {"slot": slot, "label": dict(SLOTS).get(slot, slot), "name": "", "vendor_id": "", "vendor_idx": None,
-            "amount": None, "basis": "none", "badge": "Nothing in Tulle's data yet", "locked": False, "band": "",
+            "amount": None, "amount_from": "", "basis": "none", "badge": "Nothing in Tulle's data yet", "locked": False,
+            "band": "",
             "why": "", "based_on": "", "breaks": "", "added": False, "booked": False, "changed": False}
     base.update(k)
     return base
@@ -420,7 +471,7 @@ def _estimate_row(slot, share, target, listing=None, why=""):
     Tulle lists one. share = {"amount", "pct"} or None (no split available: the row says so, no number)."""
     r = _row(slot, basis="estimate", badge=ESTIMATE)
     if share and share.get("amount"):
-        r["amount"] = int(share["amount"])
+        r.update(amount=int(share["amount"]), amount_from=FROM_SPLIT)
         r["based_on"] = "Tulle's typical budget split: %d%% of a %s budget. Not a quote." % (share["pct"], _money(target))
     else:
         r.update(badge="No estimate yet", basis="none",
@@ -438,6 +489,29 @@ def _over(amount, cap, label):
     if amount and cap and amount > cap:
         return "Over your %s share (%s) by %s" % (label, _money(cap), _money(amount - cap))
     return ""
+
+
+def _prev_amount(prev_row):
+    """The figure "cheaper" / "nicer" compares against: the previous pick's own amount, when the couple may see it."""
+    r = prev_row or {}
+    return r.get("amount") if r.get("amount_from") == FROM_VENDOR and not r.get("locked") else None
+
+
+def venue_basis(e):
+    """How an all-in from estimate.compute may be labelled. -> (basis, badge, based_on).
+    "real" ONLY when every line that puts money in the total comes from this venue's own price sheet. One estimated
+    line (Tulle's food-and-drink or service estimate for venues like it) makes the whole amount an estimate, and the
+    label says which part is real."""
+    paid = [l for l in (e or {}).get("lines") or [] if (l.get("amount") or 0) > 0]
+    pdf = [l["item"].lower() for l in paid if l.get("source") == "this venue's PDF"]
+    est = [l["item"].lower() for l in paid if l.get("source") != "this venue's PDF"]
+    if pdf and not est:
+        return "real", REAL, "From this venue's pricing PDF: %s." % ", ".join(pdf)
+    if pdf:
+        text = "%s from their price sheet; %s estimated by Tulle. Not a quote." % (", ".join(pdf), ", ".join(est))
+        return "estimate", ESTIMATE, text[0].upper() + text[1:]
+    return "estimate", ESTIMATE, ("Tulle's estimate for venues this size. This venue's PDF doesn't give a rental or "
+                                  "food price. Not a quote.")
 
 
 def choose(cands, cap, mode="base", prev_amount=None):
@@ -569,7 +643,7 @@ def _venue_rows(token, user, ctx, full, detail, cap, share, target, mode, prev_r
         cands.sort(key=lambda c: -_int(c[0][0].get("max_capacity_seated")))
         picked = cands[0] if cands else None
     else:
-        picked = choose(cands, cap, mode, (prev_row or {}).get("amount") if (prev_row or {}).get("basis") == "real" else None)
+        picked = choose(cands, cap, mode, _prev_amount(prev_row))
     if picked is None:
         return None, None, relaxed
     (v, p, e), amount = picked
@@ -591,18 +665,9 @@ def _venue_rows(token, user, ctx, full, detail, cap, share, target, mode, prev_r
     food = None
     if full and e:
         lines = {l["item"]: l for l in e["lines"]}
-        from_pdf = [k for k, l in lines.items() if l.get("source") == "this venue's PDF"]
-        est = list(e.get("estimated_lines") or [])
-        row["amount"] = int(amount)
+        basis, badge, based_on = venue_basis(e)
+        row.update(amount=int(amount), amount_from=FROM_VENDOR, basis=basis, badge=badge, based_on=based_on)
         fit.append("all-in for %d guests before tax and tip" % e["guests"])
-        if "Rental" in from_pdf or "Food and drink" in from_pdf:
-            row["based_on"] = "From this venue's pricing PDF: %s.%s" % (
-                ", ".join(x.lower() for x in from_pdf),
-                (" Estimated by Tulle: %s." % ", ".join(x.lower() for x in est)) if est else "")
-        else:
-            row.update(basis="estimate", badge=ESTIMATE,
-                       based_on="Tulle's estimate for venues this size. This venue's PDF doesn't give a rental or "
-                                "food price. Not a quote.")
         if e.get("priced_at_guest_minimum"):
             row["based_on"] += " " + e["priced_at_guest_minimum"]
         over = _over(amount, cap, "venue and food")
@@ -614,13 +679,14 @@ def _venue_rows(token, user, ctx, full, detail, cap, share, target, mode, prev_r
         # Tulle has this venue's PDF but no all-in for it: a named pick, and the amount is the budget-split estimate.
         est_row = _estimate_row("Venue", share, target, v, why="Tulle has this venue's pricing PDF but no all-in figure "
                                 "for it yet, so the amount is an estimate. Open the PDF for its real prices.")
-        row.update({k: est_row[k] for k in ("amount", "basis", "badge", "based_on")})
+        row.update({k: est_row[k] for k in ("amount", "amount_from", "basis", "badge", "based_on")})
         fit.append(est_row["why"])
     else:
         card = agent._with_rental(dict(v), p, guests, budget)
         band = (agent._light_card(card).get("price_band") or {}).get("label") if detail == "light" else ""
-        row.update(locked=True, badge=REAL + " · locked", band=band or "",
-                   based_on="From this venue's pricing PDF. Open the PDF, or unlock a plan to see it here.")
+        # Not "real": without the figures we cannot know how much of this venue's all-in is its own price sheet.
+        row.update(basis="locked", locked=True, badge=PRICED_LOCKED, band=band or "",
+                   based_on="Tulle holds this venue's pricing PDF. Open the PDF, or unlock a plan to see the figure here.")
     row["why"] = " · ".join(fit)
     return row, food, relaxed
 
@@ -633,8 +699,7 @@ def _pe_row(token, slot, ctx, full, cap, share, target, mode, prev_row, exclude,
     vendors = [v for v in r.get("vendors") or [] if v.get("vendor_id") and str(v["vendor_id"]) not in exclude]
     price = lambda v: (int(v["from_price"]) if isinstance(v.get("from_price"), (int, float)) and v["from_price"] > 0
                        else None)
-    picked = choose([(v, price(v) if full else None) for v in vendors], cap, mode,
-                    (prev_row or {}).get("amount") if (prev_row or {}).get("basis") == "real" else None)
+    picked = choose([(v, price(v) if full else None) for v in vendors], cap, mode, _prev_amount(prev_row))
     if picked is None:
         return None
     v, amount = picked
@@ -646,11 +711,11 @@ def _pe_row(token, slot, ctx, full, cap, share, target, mode, prev_row, exclude,
     row = _row(slot, name=v.get("name") or "", vendor_id=str(v.get("vendor_id") or ""), vendor_idx=v.get("vendor_idx"),
                basis="real", badge=REAL, why=fit)
     if full:
-        row.update(amount=amount, breaks=_over(amount, cap, label),
+        row.update(amount=amount, amount_from=FROM_VENDOR, breaks=_over(amount, cap, label),
                    based_on="Their lowest %spackage in the pricing PDF Tulle holds. Other packages cost more." % (
                        "wedding-day " if slot == "Photography" else ""))
     else:
-        row.update(locked=True, badge=REAL + " · locked",
+        row.update(locked=True, badge=REAL_LOCKED,
                    based_on="Package prices from their pricing PDF. Open the PDF, or unlock a plan to see them here.")
     return row
 
@@ -676,10 +741,10 @@ def _flowers_row(token, ctx, full, detail, cap, share, target, mode, prev_row, e
             return _estimate_row("Flowers", share, target, v)
         band = agent._florist_note(v.get("florist_pricing"), "light") if detail == "light" else ""
         return _row("Flowers", name=v.get("name") or "", vendor_id=str(v.get("vendor_id") or ""),
-                    vendor_idx=v.get("vendor_idx"), basis="real", badge=REAL + " · locked", locked=True, band=band or "",
-                    based_on="From this florist's pricing PDF. Open the PDF, or unlock a plan to see it here.")
-    picked = choose([(v, total(v)) for v in vendors], cap, mode, (prev_row or {}).get("amount")
-                    if (prev_row or {}).get("basis") == "real" else None)
+                    vendor_idx=v.get("vendor_idx"), basis="locked", badge=PRICED_LOCKED, locked=True, band=band or "",
+                    based_on="Tulle holds this florist's price sheet. Open the PDF, or unlock a plan to see a typical "
+                             "total here.")
+    picked = choose([(v, total(v)) for v in vendors], cap, mode, _prev_amount(prev_row))
     if picked is None:
         return None if vendors or prev_row else _estimate_row("Flowers", share, target)
     v, amount = picked
@@ -687,9 +752,11 @@ def _flowers_row(token, ctx, full, detail, cap, share, target, mode, prev_row, e
         return _estimate_row("Flowers", share, target, v)
     fp = v.get("florist_pricing") or {}
     return _row("Flowers", name=v.get("name") or "", vendor_id=str(v.get("vendor_id") or ""),
-                vendor_idx=v.get("vendor_idx"), amount=amount, basis="real", badge=REAL,
+                vendor_idx=v.get("vendor_idx"), amount=amount, amount_from=FROM_VENDOR, basis="estimate", badge=ESTIMATE,
                 why=("%s tier" % fp["tier"]) if fp.get("tier") else "",
-                based_on="A typical wedding total worked out from this florist's pricing PDF. Your order will differ.",
+                # Not a price on their sheet: Tulle's typical order priced from it. So an estimate, and it says so.
+                based_on="Tulle's typical wedding order priced from this florist's own price sheet. Your order will "
+                         "differ. Not a quote.",
                 breaks=_over(amount, cap, "flowers"))
 
 
@@ -710,7 +777,8 @@ def _food_row(food, full):
 
 def _yours(slot, item):
     return _row(slot, name=item.get("name") or "", vendor_id=str(item.get("vendor_id") or ""),
-                amount=_int(item.get("price")) or None, basis="yours", badge=YOURS, booked=True, added=True,
+                amount=_int(item.get("price")) or None, amount_from=FROM_YOURS, basis="yours", badge=YOURS, booked=True,
+                added=True,
                 why="Booked by you", based_on="Your own number from My wedding.")
 
 
@@ -870,7 +938,7 @@ def build(token, user, ctx, detail, *, prev=None, action="base", category="", st
         row["changed"] = bool(prev and old and _changed(old, row))
         if row["changed"]:
             changes.append(_change_line(label, old, row))
-        elif prev and old and slot in redo and (one or (kept_why and old.get("basis") == "real" and not old.get("locked"))):
+        elif prev and old and slot in redo and (one or (kept_why and _prev_amount(old) is not None)):
             changes.append("%s: %s%s" % (label, kept_why or "nothing else in Tulle's data here",
                                          (" - kept %s" % old["name"]) if old.get("name") else ""))
         rows.append(row)
@@ -1000,37 +1068,79 @@ def text_for(widget, action="base"):
 
 # ---------------------------------------------------------------- My wedding: rows and the strip
 
-def package_rows(user_id, widget, slots, packages=()):
-    """Table-33 rows for the proposal rows the couple adds - "still deciding" (Selected false), the same shape the
-    Budget tab's own unbooked packages have (wedding.considering_rows). Rows My wedding already holds are skipped.
-    total_cost / Balance_Left carry the proposal's number: Tulle-derived for a "real" or "estimate" row at full
-    detail, 0 for a locked row (the price is not ours to copy out for a couple without a plan)."""
+FLOW_MARK = "Tulle Planner proposal · "
+
+
+def _stamp(name, amount):
+    """What an add leaves in Package_Name so a later add can tell "still exactly as the Planner wrote it" from "the
+    couple has edited it": the amount written and a short hash of the name written."""
+    return "ww:%d:%s" % (int(amount or 0), hashlib.sha1(str(name or "").strip().lower().encode()).hexdigest()[:6])
+
+
+def flow_owned(p):
+    """True only for a table-33 row this flow wrote AND nobody has touched since: it carries the flow's marker, is
+    still "deciding" (not booked), has no notes, no file and nothing paid, and its name and amount are exactly the
+    ones stamped when it was written. Anything else is the couple's - a row they made, booked, renamed, re-priced or
+    annotated - and is never replaced or changed here. (No marker column exists; this errs towards "theirs".)"""
+    pn = str(p.get("Package_Name") or "")
+    if not pn.startswith(FLOW_MARK) or p.get("Selected") is True or wedding.is_example(p):
+        return False
+    if wedding.user_notes(p) or wedding.file_of(p) or p.get("Files") or _int(p.get("Balance_Paid")):
+        return False
+    return pn.endswith(" · " + _stamp(p.get("vendor_name"), _int(p.get("total_cost"))))
+
+
+def package_ops(user_id, widget, slots, packages=()):
+    """What "Add to My wedding" writes to table 33 for the chosen proposal rows -> [(op, slot, row, item)].
+    Rows are "still deciding" (Selected false), the shape the Budget tab's own unbooked packages have.
+      add      nothing of the flow's in that category: a new row
+      replace  the flow's own untouched row for that category holds a DIFFERENT vendor (the couple swapped, then
+               added again): that row is rewritten in place, so a category never holds two Planner picks
+      refresh  the flow's own untouched row holds the SAME vendor but the proposal's number moved: amount updated
+    Idempotent per (category, vendor): a vendor My wedding already holds in that category - booked, the couple's own
+    row, or ours - is never written twice. Rows the couple made, booked or edited are never changed (flow_owned).
+    total_cost / Balance_Left carry the proposal's number at full detail; a locked row stores NO amount (0, the
+    table's "no price yet") - a vendor's figure is not ours to copy out for a couple without a plan."""
     want = set(SLOT_KEYS) if slots in ("all", None) else {s for s in slots if s in SLOT_KEYS}
-    have = [(slot_of_category(p.get("Category")), wedding._vid(p), str(p.get("vendor_name") or ""))
-            for p in packages or [] if not wedding.is_example(p)]
+    pk = [p for p in packages or [] if not wedding.is_example(p)]
+    newest = lambda ps: max(ps, key=lambda p: (p.get("created_at") or 0, p.get("id") or 0))
     out = []
     for r in (widget or {}).get("rows") or []:
         slot = r.get("slot")
         if slot not in want or r.get("basis") in ("yours", "included", "none") or r.get("booked"):
             continue
-        vid, name = str(r.get("vendor_id") or ""), row_name(r)
-        if any(s == slot and ((vid and _same(v, vid)) or _same(n, name)) for s, v, n in have):
-            continue
-        amount = 0 if r.get("locked") else _int(r.get("amount"))
+        vid, name = str(r.get("vendor_id") or ""), row_name(r)[:200]
+        amount = 0 if r.get("locked") else max(0, min(_int(r.get("amount")), PRICE_MAX))
         basis = ("price locked - see the pricing PDF" if r.get("locked") else
                  "real price from Tulle data" if r.get("basis") == "real" else "estimate, not a quote")
-        row = {"user_id": int(user_id), "vendor_name": name[:200], "total_cost": amount, "Balance_Paid": 0,
+        row = {"user_id": int(user_id), "vendor_name": name, "total_cost": amount, "Balance_Paid": 0,
                "Balance_Left": amount, "Category": wedding.table_category(slot), "Selected": False, "Notes": "",
-               "Package_Name": "Tulle Planner proposal · %s · tulle:%s" % (basis, vid or "manual")}
+               "Package_Name": "%s%s · tulle:%s · %s" % (FLOW_MARK, basis, vid or "manual", _stamp(name, amount))}
         if vid:
             row["vendor_id"] = vid
-        out.append((slot, row))
+        in_slot = [p for p in pk if slot_of_category(p.get("Category")) == slot]
+        same = [p for p in in_slot if (vid and _same(wedding._vid(p), vid)) or _same(p.get("vendor_name"), name)]
+        if same:
+            ours = [p for p in same if flow_owned(p)]
+            if amount and len(ours) == len(same) and _int(newest(ours).get("total_cost")) != amount:
+                out.append(("refresh", slot, row, newest(ours)))
+            continue
+        ours = [p for p in in_slot if flow_owned(p)]
+        out.append(("replace", slot, row, newest(ours)) if ours else ("add", slot, row, None))
     return out
+
+
+def booked_item(view, slot, name):
+    """The booked My wedding item with this name in this category (the category's main booking or an extra), or None."""
+    cat = next((c for c in (view or {}).get("categories") or [] if c.get("key") == slot), {})
+    items = ([cat["booked"]] if cat.get("booked") else []) + [
+        e for e in (view or {}).get("extras") or [] if slot_of_category(e.get("category")) == slot]
+    return next((i for i in items if _same(i.get("name"), name)), None)
 
 
 def booked_row(user_id, slot, name, price):
     """"We already booked X for $Y": the same row POST /rec/wedding/book writes (Selected true, their own number)."""
-    price = max(0, min(_int(price), 10_000_000))
+    price = max(0, min(_int(price), PRICE_MAX))
     return {"user_id": int(user_id), "vendor_name": str(name or "").strip()[:200], "total_cost": price, "Balance_Paid": 0,
             "Balance_Left": price, "Category": wedding.table_category(slot), "Selected": True, "Notes": "",
             "Package_Name": "Booked in My wedding · tulle:manual"}

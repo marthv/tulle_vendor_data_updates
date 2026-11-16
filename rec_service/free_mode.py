@@ -181,19 +181,26 @@ def proposal(w):
     venue's food line loses its figure, the total is gone. A row the couple booked themselves keeps their own number.
     whole_wedding.build never puts those figures in for them; this is the second lock, and the one a stored proposal
     goes through when a lapsed member reopens the chat."""
+    # Allow-list, not block-list (fix 2026-11-16): an amount stays ONLY when it is the couple's own number or a share of
+    # their own budget (amount_from "split"). Everything else - a real price, AND an estimate Tulle worked out from a
+    # vendor's data (a venue all-in that is part or all estimated, a florist's typical total) - is removed, whatever
+    # its badge says. A row with no amount_from (an older shape) is treated as vendor-derived.
     rows = []
     for r in w.get("rows") or []:
         r = dict(r)
-        if r.get("basis") in ("real", "included") and not r.get("booked"):
+        own = bool(r.get("booked")) or r.get("basis") == "yours"
+        open_share = r.get("basis") == "estimate" and r.get("amount_from") == "split"
+        if not own and not open_share and r.get("basis") != "none":
             r.update(amount=None, band="")
             for k in ("why", "based_on", "breaks"):
                 if has_price_talk(r.get(k)):
                     r[k] = ""
-            if r.get("basis") == "real":
-                r.update(locked=True, badge="Real price from Tulle data · locked")
-                r["based_on"] = r.get("based_on") or "From their pricing PDF. Open the PDF, or unlock a plan to see it here."
-            else:
+            if r.get("basis") == "included":
                 r["why"] = r.get("why") or "Counted with the venue."
+            else:
+                r.update(locked=True, badge={"real": "Real price from Tulle data · locked", "estimate": "Estimate · locked"}
+                         .get(r.get("basis"), "Priced in Tulle data · locked"))
+                r["based_on"] = r.get("based_on") or "From their pricing PDF. Open the PDF, or unlock a plan to see it here."
         rows.append(r)
     return dict(w, rows=rows, detail="free", total=None, over_under=None, verdict="", total_locked=True,
                 total_note="Your total unlocks with the real prices.",
