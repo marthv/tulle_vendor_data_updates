@@ -2424,6 +2424,13 @@ class _ww_writing:
         return False
 
 
+def _ww_last(user_id, detail):
+    """The newest proposal this account was shown, in any chat, while _WW_LAST still holds it - as it may see it now."""
+    with _WW_LOCK:
+        hit = _WW_LAST.get(int(user_id))
+    return _ww_entitled(hit[1], detail) if hit and time.time() - hit[2] <= WW_LAST_TTL_S else None
+
+
 def _ww_view(token, user):
     """wedding.view (the My wedding screen's own function) over the couple's table-33 rows, for the strip. Saved-vendor
     cards are left out: they change no number the strip shows, and cost one table-11 read per saved vendor.
@@ -2527,10 +2534,19 @@ def _ww_refine(token, user, body, background, tracker):
     chat_id = chat["id"] if chat else 0
     prev = (_ww_recall(user["id"], chat_id) or whole_wedding.latest_proposal(hist())) if chat else None
     prev = _ww_entitled(prev, detail)        # the CURRENT entitlement, on every action (a lapsed member's old card)
+    # A request we cannot carry out gets a short "couldn't do that" - never a fresh, counted plan in its place.
+    cant = ""
     if action in ("cheaper", "nicer", "swap", "style", "budget", "booked") and not prev:
         if not explicit:
             return None
-        action = "start"                     # a button on a card whose chat we can no longer read: plan afresh
+        cant = ("I couldn't find the plan that button belongs to, so nothing changed. Say \"Plan my wedding\" and I'll put a "
+                "fresh one together.")
+    elif action == "swap" and (react.get("category") or str(ww.get("category") or "")) not in whole_wedding.SLOT_KEYS:
+        cant = ("I couldn't tell which line to swap, so nothing changed. Tap Swap on a line of the plan, or tell me "
+                "which one - for example: swap the photographer.")
+    elif action == "style" and (react.get("style") or str(ww.get("style") or "")) not in xano.VENUE_TYPES:
+        cant = ("I couldn't tell which venue style you meant, so nothing changed. Tell me in a few words - for "
+                "example: we want a barn.")
     say = text or WW_SAY.get(action, "Plan my wedding")
     counted_free, spent, meta, widgets, strip, saved_lines, upsell_prompt = False, False, None, [], None, [], None
     memory_notes = []         # written only once the answer exists and has a chat to live in
@@ -2538,7 +2554,11 @@ def _ww_refine(token, user, body, background, tracker):
     slog = railway_search.SearchLog(railway_search.arm(user.get("id")))
     new_budget = whole_wedding.budget_ok(react.get("budget") or ww.get("budget")) if action == "budget" else 0
 
-    if action == "booked":
+    if cant:
+        paid, access, rows, feedback_given, _, base = _gate("refine", user, chat_id, waive_free=True)
+        step, out_text = "cant", cant
+        strip = whole_wedding.strip(_ww_view(token, user))
+    elif action == "booked":
         slot = react.get("category") or str(ww.get("category") or "")
         slot = slot if slot in whole_wedding.SLOT_KEYS else ""
         name = whole_wedding.clean_name(react.get("name") or str(ww.get("name") or ""))
@@ -2552,16 +2572,34 @@ def _ww_refine(token, user, body, background, tracker):
                         "for example: We booked our %s: Hackett House for $12,000." % (label if slot else "venue"))
             strip = whole_wedding.strip(_ww_view(token, user))
         else:
+            other = None
             with _ww_writing(user["id"]):
                 view = _ww_view(token, user)
                 have = whole_wedding.booked_item(view, slot, name)
-                if not have:
-                    xano.package_add(whole_wedding.booked_row(user["id"], slot, name, price))
+                other = None if have else next(iter(whole_wedding.booked_in(view, slot)), None)
+                if have:
+                    if whole_wedding._int(have.get("price")) != price and have.get("id"):
+                        # the same vendor, a new number: it is their booking and their price, so the row follows it
+                        xano.package_update(user["id"], have["id"], {}, price=price)
+                        view = _ww_view(token, user)
+                elif not other:
+                    # The vendor the flow itself added as "still deciding" BECOMES the booking (their price), so the
+                    # category never holds the same vendor twice. A row the couple made or edited is left as it is.
+                    mine = whole_wedding.flow_row_named(xano.user_packages(token, user["id"]), slot, name)
+                    if not (mine and xano.package_update(user["id"], mine["id"], whole_wedding.booked_changes(mine),
+                                                         price=price, paid=0)):
+                        xano.package_add(whole_wedding.booked_row(user["id"], slot, name, price))
                     view = _ww_view(token, user)
-                elif whole_wedding._int(have.get("price")) != price and have.get("id"):
-                    # the same vendor, a new number: it is their booking and their price, so the row follows it
-                    xano.package_update(user["id"], have["id"], {}, price=price)
-                    view = _ww_view(token, user)
+        if step == "booked" and other:
+            # A DIFFERENT vendor is already booked in this category: writing a second booking would count both in
+            # their budget without saying so. Their row is left untouched; nothing is written; they say which is right.
+            step = "booked_conflict"
+            was = "%s (%s)" % (other.get("name") or "another vendor", "$" + format(whole_wedding._int(other.get("price")), ","))
+            out_text = ("My wedding already has %s booked as your %s, so I haven't added %s - that would count both. "
+                        "If %s replaced it, open My wedding and undo %s, then tell me again. If you booked both, add "
+                        "the second one there with + Add a cost." % (was, label, name, name, other.get("name") or "it"))
+            strip = whole_wedding.strip(view)
+        elif step == "booked":
             widget = whole_wedding.apply_booked(prev, slot, name, price)
             whole_wedding.mark_added(widget["rows"], view)
             widgets = [widget]
@@ -2622,10 +2660,6 @@ def _ww_refine(token, user, body, background, tracker):
             category = react.get("category") or str(ww.get("category") or "")
             style = react.get("style") or str(ww.get("style") or "")
             style = style if style in xano.VENUE_TYPES else ""
-            if action == "swap" and category not in whole_wedding.SLOT_KEYS:
-                action = "start"
-            if action == "style" and not style:
-                action = "start"
             if action == "style":           # a stated preference: saved the way every preference answer is
                 try:
                     saved_lines += [n["note"] for n in xano.merge_preferences(user["id"], {"style": [style]}) if n.get("note")]
@@ -2648,6 +2682,8 @@ def _ww_refine(token, user, body, background, tracker):
                 _log_stopped(dict(base, kind=whole_wedding.KIND), whole_wedding.KIND, user, paid, access)
                 return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat_id or None)
             spent = bool(widget.get("changed"))          # a re-run that changed nothing is never charged
+            if build_action == "base" and whole_wedding.same_plan(_ww_last(user["id"], detail), widget):
+                spent = False                            # "Plan my wedding" again, same inputs, same plan: re-shown
             counted_free = counted_free and spent
             widgets = [widget]
             strip = whole_wedding.strip(view)
@@ -2797,6 +2833,9 @@ def ww_add(body: WwAddBody, authorization: str = Header(None)):
                            ("Replaced: %s - now %s (was %s)" % (labels[slot], row["vendor_name"], item.get("vendor_name") or ""))
                            if op == "replace" else ("Updated: %s - %s" % (labels[slot], row["vendor_name"])))
         view = _ww_view(token, user)
+    summary = whole_wedding.add_summary(ops)       # mixed adds / replaces / updates: one honest line for the strip
+    if summary:
+        changed = [summary]
     arm = whole_wedding.arm(user["id"])
     _ww_track(user, "ww_add", arm, paid, access, slots=[s for s, _ in new], n_added=len(new), add_all=bool(body.all),
               chat_id=int(body.chat_id or 0), with_amount=sum(1 for _, r in new if r["total_cost"]),

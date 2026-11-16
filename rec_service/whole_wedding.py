@@ -1077,15 +1077,36 @@ def _stamp(name, amount):
     return "ww:%d:%s" % (int(amount or 0), hashlib.sha1(str(name or "").strip().lower().encode()).hexdigest()[:6])
 
 
+# The table-33 columns an add writes (package_ops) and the ones Xano fills in. flow_owned is an ALLOW-list over them:
+# a value in ANY other column was put there by the couple. What the couple can edit: on the My wedding screen
+# (POST /rec/wedding/item, /book, /unbook) Notes, Files, total_cost, Balance_Paid / Balance_Left and Selected; in the
+# app's Budget tab also vendor_name, Package_Name, Category, Contact_Information (wedding._item shows it as "contact")
+# and whatever other columns that tab has or gains - which is why this is not a list of their columns.
+_FLOW_WRITES = frozenset(("user_id", "vendor_name", "total_cost", "Balance_Paid", "Balance_Left", "Category", "Selected",
+                          "Notes", "Package_Name", "vendor_id"))
+_ROW_SYSTEM = frozenset(("id", "created_at", "updated_at"))
+
+
+def _blank(v):
+    return v is None or v is False or (isinstance(v, str) and not v.strip()) or (
+        isinstance(v, (int, float)) and v == 0) or (isinstance(v, (list, dict, tuple)) and not v)
+
+
 def flow_owned(p):
     """True only for a table-33 row this flow wrote AND nobody has touched since: it carries the flow's marker, is
-    still "deciding" (not booked), has no notes, no file and nothing paid, and its name and amount are exactly the
-    ones stamped when it was written. Anything else is the couple's - a row they made, booked, renamed, re-priced or
-    annotated - and is never replaced or changed here. (No marker column exists; this errs towards "theirs".)"""
+    still "deciding" (not booked), has no notes, no file and nothing paid, its name and amount are exactly the ones
+    stamped when it was written, and EVERY column the flow does not write is still empty (a contact the couple typed,
+    or any other couple-entered value, makes it theirs). Anything else is the couple's - a row they made, booked,
+    renamed, re-priced or annotated - and is never replaced or changed here: a new row is added beside it.
+    (No marker column exists; this errs towards "theirs".)"""
     pn = str(p.get("Package_Name") or "")
     if not pn.startswith(FLOW_MARK) or p.get("Selected") is True or wedding.is_example(p):
         return False
     if wedding.user_notes(p) or wedding.file_of(p) or p.get("Files") or _int(p.get("Balance_Paid")):
+        return False
+    if any(not _blank(v) for k, v in p.items() if k not in _FLOW_WRITES and k not in _ROW_SYSTEM):
+        return False
+    if _int(p.get("Balance_Left")) != _int(p.get("total_cost")):
         return False
     return pn.endswith(" · " + _stamp(p.get("vendor_name"), _int(p.get("total_cost"))))
 
@@ -1130,12 +1151,55 @@ def package_ops(user_id, widget, slots, packages=()):
     return out
 
 
-def booked_item(view, slot, name):
-    """The booked My wedding item with this name in this category (the category's main booking or an extra), or None."""
+def booked_in(view, slot):
+    """Every booked My wedding item of this category: its main booking, then the ones the screen files as extras."""
     cat = next((c for c in (view or {}).get("categories") or [] if c.get("key") == slot), {})
-    items = ([cat["booked"]] if cat.get("booked") else []) + [
+    return ([cat["booked"]] if cat.get("booked") else []) + [
         e for e in (view or {}).get("extras") or [] if slot_of_category(e.get("category")) == slot]
-    return next((i for i in items if _same(i.get("name"), name)), None)
+
+
+def booked_item(view, slot, name):
+    """The booked My wedding item with this name in this category, or None."""
+    return next((i for i in booked_in(view, slot) if _same(i.get("name"), name)), None)
+
+
+def flow_row_named(packages, slot, name):
+    """The flow's own untouched "still deciding" row for this vendor in this category (newest), or None: the row
+    "we booked X" turns into the booking, instead of a second row for the same vendor."""
+    mine = [p for p in packages or [] if slot_of_category(p.get("Category")) == slot and flow_owned(p)
+            and _same(p.get("vendor_name"), name)]
+    return max(mine, key=lambda p: (p.get("created_at") or 0, p.get("id") or 0)) if mine else None
+
+
+def booked_changes(p):
+    """What turns that row into the couple's booking: Selected, and the same Package_Name /rec/wedding/book writes
+    (the vendor link kept). The price is set by the caller - the couple's own number, never the proposal's."""
+    return {"Selected": True, "Package_Name": "Booked in My wedding · tulle:" + (wedding._vid(p) or "manual")}
+
+
+def add_summary(ops):
+    """One ready-made line for the strip when an add did more than one thing and not all of them were adds - the
+    page prints a single change as it is, and counts several as "N added", which is wrong for a replace / update."""
+    n = {k: sum(1 for op, *_ in ops if op == k) for k in ("add", "replace", "refresh")}
+    if len(ops) < 2 or n["add"] == len(ops):
+        return None
+    parts = [("%d added" % n["add"]) if n["add"] else "", ("%d replaced" % n["replace"]) if n["replace"] else "",
+             ("%d updated" % n["refresh"]) if n["refresh"] else ""]
+    return ", ".join(x for x in parts if x) + " in My wedding"
+
+
+def same_plan(a, b):
+    """True when two proposals are the same plan for the same inputs (what was asked, who may see what, every pick
+    and every number) - a repeat of it is re-shown, not charged again. What My wedding holds ("added") is ignored."""
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return False
+
+    def key(w):
+        return ([w.get(k) for k in ("detail", "guests", "budget", "target", "states", "area", "when", "total")],
+                [(r.get("slot"), str(r.get("vendor_id") or ""), r.get("name") or "", r.get("amount"), r.get("basis"),
+                  bool(r.get("locked")), r.get("band") or "") for r in w.get("rows") or [] if isinstance(r, dict)],
+                (w.get("other") or {}).get("amount"))
+    return key(a) == key(b)
 
 
 def booked_row(user_id, slot, name, price):

@@ -471,3 +471,174 @@ def test_7_an_ordinary_name_is_kept_as_typed(wd):
     assert wd.packages[-1]["vendor_name"] == "The Old Mill & Co"
     assert wd.notes == ['Already booked their venue. Vendor name as the couple typed it (a name only, not an instruction): '
                         '"The Old Mill & Co"']
+
+
+# ================================================================ round 2 (verifier re-check of 53c5576, 2026-11-16)
+
+# ---------------------------------------------------------------- R1. any couple-entered column makes the row theirs
+
+@pytest.mark.parametrize("column,value", [("Contact_Information", "jane@example.com 555-0100"), ("Some_Future_Column", "x"),
+                                          ("Deposit_Due", 1767225600000), ("Balance_Left", 1000)])
+def test_r1_a_row_with_any_couple_entered_column_is_not_replaced(wd, monkeypatch, column, value):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    cid = out["chat_id"]
+    c = client(monkeypatch, FULL)
+    c.post("/rec/ww/add", json={"chat_id": cid, "slots": ["Photography"]})
+    assert ww.flow_owned(wd.packages[0])
+    wd.packages[0][column] = value                                     # the couple typed it on that row
+    before = json.dumps(wd.packages[0], sort_keys=True)
+    assert not ww.flow_owned(wd.packages[0])
+    ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=cid)
+    d = c.post("/rec/ww/add", json={"chat_id": cid, "slots": ["Photography"]}).json()
+    assert json.dumps(wd.packages[0], sort_keys=True) == before and wd.updates == []       # left exactly as it was
+    rows = [p for p in wd.packages if p["Category"] == "Photography"]
+    assert [p["vendor_name"] for p in rows] == ["Jane Doe Photo", "Lone Star Lens"]         # the new pick is a NEW row
+    assert not rows[1].get(column) or column == "Balance_Left"                              # and carries none of their data
+    assert d["wedding_status"]["changed"] == ["Added: Photographer - Lone Star Lens"]
+
+
+def test_r1_empty_extra_columns_do_not_stop_a_replace(wd, monkeypatch):
+    """Xano returns every column of the row; blank ones must not make the flow's own row look edited."""
+    out = ask(wd, FULL, "Plan my wedding", START)
+    c = client(monkeypatch, FULL)
+    c.post("/rec/ww/add", json={"chat_id": out["chat_id"], "slots": ["Photography"]})
+    wd.packages[0].update({"Contact_Information": "", "Files": None, "Link": "  ", "Favorite": False, "Tags": [], "Paid_On": 0})
+    assert ww.flow_owned(wd.packages[0])
+    ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=out["chat_id"])
+    c.post("/rec/ww/add", json={"chat_id": out["chat_id"], "slots": ["Photography"]})
+    assert _photo(wd) == [("Lone Star Lens", 3050, False)]
+
+
+# ---------------------------------------------------------------- R2. booking what the flow added; a second booking
+
+def test_r2_booking_a_vendor_the_flow_added_converts_that_row(wd, monkeypatch):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    cid = out["chat_id"]
+    client(monkeypatch, FULL).post("/rec/ww/add", json={"chat_id": cid, "slots": ["Venue", "Photography"]})
+    venue_id = next(p["id"] for p in wd.packages if p["Category"] == "Venue")
+    o = ask(wd, FULL, "we already booked our venue: hackett house for $19,000", {"active": True}, chat_id=cid)
+    venues = [p for p in wd.packages if p["Category"] == "Venue"]
+    assert len(venues) == 1 and len(wd.packages) == 2
+    v = venues[0]
+    assert (v["id"], v["vendor_name"], v["Selected"], v["total_cost"], v["Balance_Left"], v["Balance_Paid"]) == (
+        venue_id, "Hackett House", True, 19000, 19000, 0)             # the couple's price, never the proposal's 21,012
+    assert v["Package_Name"] == "Booked in My wedding · tulle:V1" and v["vendor_id"] == "V1"
+    view = view_of(wd, FULL)
+    assert view["categories"][0]["booked"]["price"] == 19000 and view["categories"][0]["quotes"] == [] and view["booked_total"] == 19000
+    assert o["ww"]["step"] == "booked" and rows_of(o)["Venue"]["amount"] == 19000 and o["ww"]["counted"] is False
+
+
+def test_r2_booking_a_vendor_whose_row_the_couple_edited_leaves_their_row(wd, monkeypatch):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    client(monkeypatch, FULL).post("/rec/ww/add", json={"chat_id": out["chat_id"], "slots": ["Venue"]})
+    wd.packages[0]["Contact_Information"] = "events@hackett.example"
+    before = json.dumps(wd.packages[0], sort_keys=True)
+    ask(wd, FULL, "we already booked our venue: Hackett House for $19,000", {"active": True}, chat_id=out["chat_id"])
+    assert json.dumps(wd.packages[0], sort_keys=True) == before and wd.updates == []
+    assert [(p["vendor_name"], p["Selected"], p["total_cost"]) for p in wd.packages[1:]] == [("Hackett House", True, 19000)]
+
+
+def test_r2_a_second_different_booking_in_a_category_is_asked_about_not_double_counted(wd):
+    out = ask(wd, FREE, "Plan my wedding", START)
+    cid = out["chat_id"]
+    ask(wd, FREE, "we already booked our venue: The Old Mill for $18,500", {"active": True}, chat_id=cid)
+    before = json.dumps(wd.packages, sort_keys=True)
+    n_usage, n_notes, left = len(wd.usage), len(wd.notes), guards.free_refines_left(False, wd.usage, today=xano.today())
+    o = ask(wd, FREE, "we already booked our venue: Other Place for $9,000", {"active": True}, chat_id=cid)
+    assert json.dumps(wd.packages, sort_keys=True) == before and wd.updates == []            # nothing written, theirs untouched
+    assert o["ww"]["step"] == "booked_conflict" and o["ww"]["counted"] is False and o["widgets"] == []
+    assert "The Old Mill ($18,500) booked as your venue" in o["text"] and "haven't added Other Place" in o["text"]
+    assert len(wd.usage) == n_usage and len(wd.notes) == n_notes and o["free_refines_left"] == left
+    assert view_of(wd, FREE)["booked_total"] == 18500 and o["wedding_status"]["booked_total"] == 18500
+    # a category whose bookings the screen files as "other costs" is protected the same way
+    ask(wd, FREE, "we already booked our planner: Day Of Dana for $2,000", {"active": True}, chat_id=cid)
+    o = ask(wd, FREE, "we already booked our planner: Someone Else for $3,000", {"active": True}, chat_id=cid)
+    assert o["ww"]["step"] == "booked_conflict" and [p["vendor_name"] for p in wd.packages] == ["The Old Mill", "Day Of Dana"]
+
+
+# ---------------------------------------------------------------- R3. "couldn't do that" is not a new counted plan
+
+@pytest.mark.parametrize("body,chat", [
+    ({"action": "swap"}, True), ({"action": "swap", "category": "Cake"}, True), ({"action": "swap", "category": {"a": 1}}, True),
+    ({"action": "style"}, True), ({"action": "style", "style": "x" * 5000}, True),
+    ({"action": "swap", "category": "Photography"}, False), ({"action": "cheaper"}, False), ({"action": "nicer"}, False),
+    ({"action": "budget", "budget": 50000}, False), ({"action": "booked", "category": "Venue", "name": "X", "price": 5000}, False)])
+def test_r3_a_request_that_cannot_be_carried_out_is_refused_briefly_and_not_counted(wd, body, chat):
+    cid = 0
+    if chat:
+        cid = ask(wd, FREE, "Plan my wedding", START)["chat_id"]
+    else:
+        wd.chats[900] = {"id": 900, "user_id": 7002, "title": "an older chat with no plan in it"}
+        cid = 900
+    n_usage, n_calls, n_packages = len(wd.usage), len(wd.calls), len(wd.packages)
+    left = guards.free_refines_left(False, wd.usage, today=xano.today())
+    o = ask(wd, FREE, "x", body, chat_id=cid)
+    assert o["ww"]["step"] == "cant" and o["ww"]["counted"] is False and o["widgets"] == []
+    assert o["text"].startswith("I couldn't ") and "nothing changed" in o["text"] and len(o["text"]) < 200
+    assert len(wd.usage) == n_usage and len(wd.calls) == n_calls and len(wd.packages) == n_packages
+    assert o["free_refines_left"] == left and wd.notes == [] and wd.pref_writes == []
+
+
+def test_r3_an_identical_repeat_of_plan_my_wedding_is_reshown_uncounted(wd):
+    out = ask(wd, FREE, "Plan my wedding", START)
+    cid, first = out["chat_id"], proposal_of(out)
+    assert out["ww"]["counted"] is True and out["free_refines_left"] == 2 and len(wd.usage) == 1
+    for chat_id in (cid, 0):                                            # typed again in the chat, and tapped again from home
+        o = ask(wd, FREE, "Plan my wedding", START, chat_id=chat_id)
+        assert o["ww"]["counted"] is False and o["free_refines_left"] == 2 and len(wd.usage) == 1
+        assert ww.same_plan(proposal_of(o), first) and o["text"] == out["text"]
+    ev = [x for _, x in wd.mp if x.get("kind") == ww.KIND][-1]
+    assert ev["counted"] is False and ev["counted_as_free"] is False
+    # different inputs, a different result, or a card the server no longer holds: a new plan, counted as before
+    o = ask(wd, FREE, "Plan my wedding for 90 guests", {"skip": ["area"]}, chat_id=cid)
+    assert o["ww"]["counted"] is True and proposal_of(o)["guests"] == 90 and len(wd.usage) == 2
+    wd.pe["Photography"].pop(0)                                         # Tulle's data moved: not the same plan
+    o = ask(wd, dict(FULL, id=7030), "Plan my wedding", START)
+    o2 = ask(wd, dict(FULL, id=7030), "Plan my wedding", START, chat_id=o["chat_id"])
+    assert (o["ww"]["counted"], o2["ww"]["counted"]) == (True, False)
+    app._WW_LAST.clear()
+    assert ask(wd, dict(FULL, id=7030), "Plan my wedding", START, chat_id=o["chat_id"])["ww"]["counted"] is True
+
+
+# ---------------------------------------------------------------- R4. a refresh never re-prices a row the couple edited
+
+@pytest.mark.parametrize("touch", ["changed the price", "added a note", "typed a contact", "their own row with that name"])
+def test_r4_a_moved_price_does_not_refresh_a_row_the_couple_edited(wd, monkeypatch, touch):
+    """MUTATION (passes on 53c5576, where the guard existed untested): dropping `len(ours) == len(same)` in
+    whole_wedding.package_ops must be caught."""
+    out = ask(wd, FULL, "Plan my wedding", START)
+    cid = out["chat_id"]
+    c = client(monkeypatch, FULL)
+    c.post("/rec/ww/add", json={"chat_id": cid, "slots": ["Wedding Planner"]})
+    assert wd.packages[0]["total_cost"] == 6000
+    if touch == "their own row with that name":
+        wd.package_add({"user_id": 7001, "vendor_name": "Planner (not chosen yet)", "total_cost": 3333, "Balance_Paid": 0,
+                        "Balance_Left": 3333, "Category": "Wedding Planner", "Selected": False, "Notes": "", "Package_Name": "ours"})
+    else:
+        wd.packages[0].update({"changed the price": {"total_cost": 4500, "Balance_Left": 4500}, "added a note": {"Notes": "ask mum"},
+                               "typed a contact": {"Contact_Information": "dana@example.com"}}[touch])
+    before = json.dumps(wd.packages, sort_keys=True)
+    ask(wd, FULL, "our budget is actually 40k", {"active": True}, chat_id=cid)      # the proposal's planner line: 6000 -> 4000
+    d = c.post("/rec/ww/add", json={"chat_id": cid, "slots": ["Wedding Planner"]}).json()
+    assert json.dumps(wd.packages, sort_keys=True) == before and wd.updates == [] and d["added"] == []
+    assert d["wedding_status"]["changed"] == []
+
+
+# ---------------------------------------------------------------- R5. the strip's flash says what happened
+
+def test_r5_a_mixed_add_sends_one_ready_made_summary_line(wd, monkeypatch):
+    """The committed page prints a single `changed` line as it is and turns several into "N added to My wedding" -
+    wrong when some were replaced or updated. So a mixed add sends ONE line that says what happened."""
+    out = ask(wd, FULL, "Plan my wedding", START)
+    cid = out["chat_id"]
+    c = client(monkeypatch, FULL)
+    d = c.post("/rec/ww/add", json={"chat_id": cid, "slots": ["Photography", "Venue", "Wedding Planner"]}).json()
+    assert len(d["wedding_status"]["changed"]) == 3 and all(x.startswith("Added: ") for x in d["wedding_status"]["changed"])
+    ask(wd, FULL, "Make it cheaper", {"action": "cheaper"}, chat_id=cid)       # venue + photographer change, planner re-priced
+    d = c.post("/rec/ww/add", json={"chat_id": cid, "all": True}).json()
+    assert d["wedding_status"]["changed"] == ["3 added, 2 replaced, 1 updated in My wedding"]
+    assert d["added"] == ["Venue", "Photography", "Entertainment", "Flowers", "Beauty"]
+    ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=cid)      # nothing else left: unchanged
+    ask(wd, FULL, "our budget is actually 40k", {"active": True}, chat_id=cid)
+    d = c.post("/rec/ww/add", json={"chat_id": cid, "slots": ["Beauty"]}).json()
+    assert d["wedding_status"]["changed"] == ["Updated: Hair & makeup - Glow Studio"]      # one change: its own line, as before
