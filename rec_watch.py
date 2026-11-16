@@ -72,10 +72,14 @@ def build(token, now=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     since_ms = (now - dt.timedelta(hours=24)).timestamp() * 1000
     days = {(now - dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in (0, 1)}
-    rows = _not_ww(_not_mcp(r for d in days for r in _rows_for_day(token, d) if (r.get("created_at") or 0) >= since_ms))
+    rows = _not_mcp(r for d in days for r in _rows_for_day(token, d) if (r.get("created_at") or 0) >= since_ms)
+    # Whole-wedding rows stay out of every existing number, but they are not dropped: their plans AND their errors get
+    # a line of their own (2026-11-16 - before, an error in the new flow was invisible in this 24h view).
+    ww_line = _ww_line(rows)
+    rows = _not_ww(rows)
     head = "*Recommendation engine* (last 24h)"
     if not rows:
-        return head + " - no usage yet."
+        return head + " - no usage yet." + (("\n" + ww_line) if ww_line else "")
     ok = [r for r in rows if r.get("status") == "ok"]
     users = {r.get("user_id") for r in rows}
     spend = sum(float(r.get("cost_usd") or 0) for r in ok)
@@ -97,6 +101,8 @@ def build(token, now=None):
         "Paywall shown: %d · daily-cap hits: %d · errors: %d · blocked by cap/kill switch: %d · Forever users at the "
         "300/month cap: %d · median %.1fs" % (paywall, daily_cap, errors, capped, monthly, (st.median(lat) / 1000) if lat else 0),
     ]
+    if ww_line:
+        lines.append(ww_line)
     return "\n".join(lines)
 
 

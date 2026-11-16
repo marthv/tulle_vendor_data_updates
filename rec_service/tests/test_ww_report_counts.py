@@ -74,8 +74,29 @@ def test_daily_brief_line_unchanged(monkeypatch):
         return mod.build("tok", NOW)
     base = build(rec_watch, PLANNER)
     assert "users (1 free), 1 opening + 2 refine" in base and "errors: 0" in base
-    assert build(rec_watch, PLANNER + WW) == base          # without the filter: more users, a free one, a slower median, an error
+    with_ww = build(rec_watch, PLANNER + WW)
+    # every existing number untouched (without the filter: more users, a free one, a slower median, an error) ...
+    assert _without_ww_line(with_ww) == base and with_ww != base
+    # ... and the flow's own rows of the last 24h - its ERRORS included - on a line of their own (fix 8, 2026-11-16)
+    assert with_ww.split("\n")[-1] == "• Whole-wedding plans: 5 by 5 couples (2 used a free question) · p50 35.0s · errors 1"
     assert build(_origin("rec_watch"), PLANNER) == base    # old code, same rows: the new code changed nothing
+
+
+def test_watch_24h_view_surfaces_whole_wedding_errors(monkeypatch):
+    """The 24h watch line used to drop every ww_ row, so a failing new flow was invisible there."""
+    def build(rows):
+        monkeypatch.setattr(rec_watch, "_rows_for_day", _by_day(rows))
+        return rec_watch.build("tok", NOW)
+    errs = [row(70 + i, "ww_proposal", status="error", model="whole_wedding", h_ago=1 + i) for i in range(4)]
+    out = build(PLANNER + errs)
+    assert "errors: 0" in out.split("\n")[1]                                    # the Planner's own error count: unmoved
+    assert out.split("\n")[-1] == "• Whole-wedding plans: 0 by 0 couples (0 used a free question) · p50 0.0s · errors 4"
+    assert build(PLANNER) == _without_ww_line(out) and "Whole-wedding" not in build(PLANNER)
+    # nothing but the new flow in the window: still not silent about its errors
+    only = build(errs + [row(80, "ww_proposal", h_ago=30, status="error")])     # the 30h-old one is outside the window
+    assert only == ("*Recommendation engine* (last 24h) - no usage yet.\n"
+                    "• Whole-wedding plans: 0 by 0 couples (0 used a free question) · p50 0.0s · errors 4")
+    assert build([]) == "*Recommendation engine* (last 24h) - no usage yet."
 
 
 def test_weekly_planner_unchanged_plus_its_own_line(monkeypatch):
