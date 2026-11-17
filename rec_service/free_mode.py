@@ -177,24 +177,56 @@ def widget(w):
 # Whole-wedding estimate rows that name a vendor (owner 2026-11-16: "a vendor is only listed on Tulle because Tulle holds
 # their pricing PDF" - what is missing is a number read out of it, not the pricing). Said ONLY when the vendor's PDF
 # list was read and has at least one PDF; otherwise the plain line, which claims nothing.
-WW_PDF_MEMBER = ("Tulle has their pricing PDF and their real prices are in it. The amount here is an estimate from your "
-                 "budget until you open it.")
-WW_PDF_PLAN = ("Tulle has their pricing PDF and their real prices are in it. Pricing PDFs come with a plan. The amount "
-               "here is an estimate from your budget.")
+# WHO IS READING decides how a pricing PDF is opened, and every row of one card says it the same way (2026-11-16 r4):
+#   "member"      can open any pricing PDF on their plan (app._pdf_entitled - the rule POST /rec/pdf applies)
+#   "free_views"  no plan, free PDF views left: they can open it now
+#   "free_none"   no plan, no free views left: opening one comes with a plan
+#   "free"        no plan, views left unknown: a line that is true either way
+WW_PDF_HEAD = "Tulle has their pricing PDF and their real prices are in it."
+WW_OPEN = {
+    "member": "Open their pricing PDF to see them.",
+    "free_views": "You can open their pricing PDF now with a free PDF view, and a plan opens every PDF.",
+    "free_none": "Opening their pricing PDF comes with a plan.",
+    "free": "A plan opens every pricing PDF.",
+}
+WW_EST = dict({s: "%s %s The amount here is an estimate from your budget." % (WW_PDF_HEAD, o) for s, o in WW_OPEN.items()},
+              member=WW_PDF_HEAD + " The amount here is an estimate from your budget until you open it.")
+WW_PDF_MEMBER, WW_PDF_PLAN = WW_EST["member"], WW_EST["free"]
 WW_EST_PLAIN = "The amount is an estimate from your budget."
+WW_NOT_SHOWN = "This figure is not shown without a plan."
 
 
-def proposal_wording(w, member):
-    """The estimate rows' PDF sentence for who is reading NOW: a couple without a plan never keeps the member line."""
-    if member or not isinstance(w, dict):
+def ww_reader(reader):
+    return reader if reader in WW_OPEN else "free"
+
+
+def _reword(text, reader):
+    for s in WW_OPEN:
+        if s != reader:
+            text = text.replace(WW_EST[s], WW_EST[reader])
+    for s in WW_OPEN:
+        if s != reader and WW_OPEN[reader] not in text:
+            text = text.replace(WW_OPEN[s], WW_OPEN[reader])
+    return text
+
+
+def proposal_wording(w, reader):
+    """Every "how you open their PDF" sentence on the card, for who is reading NOW (WW_OPEN): a card written for a
+    member, or for a couple who still had free views, never keeps that line once it stops being true."""
+    reader = ww_reader(reader)
+    if not isinstance(w, dict):
         return w
-    rows = [dict(r, why=r["why"].replace(WW_PDF_MEMBER, WW_PDF_PLAN))
-            if isinstance(r, dict) and isinstance(r.get("why"), str) and WW_PDF_MEMBER in r["why"] else r
-            for r in w.get("rows") or []]
-    return dict(w, rows=rows)
+    rows, moved = [], False
+    for r in w.get("rows") or []:
+        if isinstance(r, dict):
+            new = {k: _reword(r[k], reader) for k in ("why", "based_on") if isinstance(r.get(k), str)}
+            if any(new[k] != r[k] for k in new):
+                r, moved = dict(r, **new), True
+        rows.append(r)
+    return dict(w, rows=rows) if moved else w
 
 
-def proposal(w, member=False):
+def proposal(w, reader="free"):
     """A whole-wedding proposal (whole_wedding.py, 2026-11-15) safe for a couple with no plan: the plan's SHAPE - the
     picks, and the estimates that are only a share of their own budget (allowed, like the budget split) - with every
     figure that came from a vendor's pricing removed: real rows lose their amount and band and read "locked", the
@@ -205,12 +237,15 @@ def proposal(w, member=False):
     # their own budget (amount_from "split"). Everything else - a real price, AND an estimate Tulle worked out from a
     # vendor's data (a venue all-in that is part or all estimated, a florist's typical total) - is removed, whatever
     # its badge says. A row with no amount_from (an older shape) is treated as vendor-derived.
+    reader = ww_reader(reader)
     rows = []
-    for r in proposal_wording(w, member).get("rows") or []:
+    for r in proposal_wording(w, reader).get("rows") or []:
         r = dict(r)
         own = bool(r.get("booked")) or r.get("basis") == "yours"
         open_share = r.get("basis") == "estimate" and r.get("amount_from") == "split"
-        if not own and not open_share and r.get("basis") != "none":
+        if r.get("locked") and r.get("amount") is None and not own:
+            r["band"] = ""       # built locked: it never held a figure, and its sentences are the server's own
+        elif not own and not open_share and r.get("basis") != "none":
             r.update(amount=None, band="")
             for k in ("why", "based_on", "breaks"):
                 if has_price_talk(r.get(k)):
@@ -220,7 +255,13 @@ def proposal(w, member=False):
             else:
                 r.update(locked=True, badge={"real": "Real price from Tulle data · locked", "estimate": "Estimate · locked"}
                          .get(r.get("basis"), "Priced in Tulle data · locked"))
-                r["based_on"] = r.get("based_on") or "From their pricing PDF. Open the PDF, or unlock a plan to see it here."
+                if r.get("basis") == "real":
+                    # "real" is only ever set for a figure read from that vendor's own pricing PDF (venue_basis: every
+                    # priced line's source is the PDF; a package price), so the PDF is a checked fact for this row.
+                    said = r.get("based_on") or "From their pricing PDF."
+                    r["based_on"] = said if any(o in said for o in WW_OPEN.values()) else said + " " + WW_OPEN[reader]
+                else:            # an estimate worked out from their data: no claim about a PDF nobody checked
+                    r["based_on"] = r.get("based_on") or WW_NOT_SHOWN
         rows.append(r)
     return dict(w, rows=rows, detail="free", total=None, over_under=None, verdict="", total_locked=True,
                 total_note="Your total unlocks with the real prices.",

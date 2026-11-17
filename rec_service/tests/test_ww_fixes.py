@@ -675,9 +675,10 @@ def test_r31_couple_without_a_plan_is_told_the_pdf_comes_with_a_plan(wd, monkeyp
         monkeypatch.setattr(config, "FREE_PRICING", pricing)
         out = ask(wd, dict(FREE, id=7040 + len(pricing)), "Plan my wedding", START)
         rows = rows_of(out)
+        # this account's free PDF views are not known: the line that is true whether or not it has any left
         assert rows["Beauty"]["why"] == rows["Food and Beverage"]["why"] == free_mode.WW_PDF_PLAN == (
-            "Tulle has their pricing PDF and their real prices are in it. Pricing PDFs come with a plan. The amount here "
-            "is an estimate from your budget.")
+            "Tulle has their pricing PDF and their real prices are in it. A plan opens every pricing PDF. The amount "
+            "here is an estimate from your budget.")
         assert rows["Beauty"]["amount"] == 1200 and leaks(out) == []            # their own budget share stays; no vendor figure
         assert not any(g in t for t in _texts(out) for g in GONE) and "until you open it" not in json.dumps(out)
 
@@ -691,7 +692,8 @@ def test_r31_no_pdf_claim_without_a_known_pdf(wd, monkeypatch, case):
     for user in (FULL, FREE):
         be = rows_of(ask(wd, user, "Plan my wedding", START))["Beauty"]
         assert be["why"] == free_mode.WW_EST_PLAIN == "The amount is an estimate from your budget."
-        assert be["pdfs"] == (0 if case == "no PDF on file" else None) and "PDF" not in be["why"]
+        # known-none is said (pdfs 0: the page hides "Pricing PDF"); unknown is NOT said at all (the button stays)
+        assert (be.get("pdfs", "unknown") == (0 if case == "no PDF on file" else "unknown")) and "PDF" not in be["why"]
 
 
 def test_r31_other_estimate_rows_with_a_named_vendor_follow_the_same_rule(wd, monkeypatch):
@@ -809,3 +811,282 @@ def test_r35_rows_carry_the_listing_photo_and_nothing_else_new(wd):
     assert rows["Photography"]["image"] == "" and rows["Flowers"]["image"] == "" and rows["Wedding Planner"]["image"] == ""
     free = ask(wd, FREE, "Plan my wedding", START)
     assert rows_of(free)["Beauty"]["image"] == "https://img.example/glow.jpg" and leaks(free) == []
+
+
+# ================================================================ round 4 (verifier re-check of fa24a87, 2026-11-16)
+
+OPEN = getattr(free_mode, "WW_OPEN", {})      # (absent before round 4: those tests then fail one by one)
+READERS = {"member": FULL, "free_views": dict(FREE, FreeViewsRemaining=2), "free_none": dict(FREE, FreeViewsRemaining=0),
+           "free": FREE}                                           # FREE has no FreeViewsRemaining at all: unknown
+
+
+def _said(card):
+    return [str(r.get(k) or "") for r in card["rows"] for k in ("why", "based_on")]
+
+
+def _only_speaks_as(card, reader):
+    """Every "how you open their PDF" sentence on the card is this reader's - never another state's, never the old one."""
+    said = " | ".join(_said(card))
+    for other, phrase in OPEN.items():
+        if other != reader:
+            assert phrase not in said, (reader, other, said)
+            assert free_mode.WW_EST[other] not in said, (reader, other)
+    assert "unlock a plan" not in said and "come with a plan" not in said and "Open the PDF" not in said, said
+    return said
+
+
+# ---------------------------------------------------------------- R4.1 three states, one wording per card
+
+def test_r41_exact_wording_of_each_state():
+    head = "Tulle has their pricing PDF and their real prices are in it."
+    assert free_mode.WW_EST == {
+        "member": head + " The amount here is an estimate from your budget until you open it.",
+        "free_views": head + " You can open their pricing PDF now with a free PDF view, and a plan opens every PDF. "
+                             "The amount here is an estimate from your budget.",
+        "free_none": head + " Opening their pricing PDF comes with a plan. The amount here is an estimate from your budget.",
+        "free": head + " A plan opens every pricing PDF. The amount here is an estimate from your budget."}
+    assert OPEN["member"] == "Open their pricing PDF to see them."
+    assert not any(" - " in s or "\u2014" in s for s in list(OPEN.values()) + list(free_mode.WW_EST.values()))
+
+
+@pytest.mark.parametrize("reader", ["free_views", "free_none", "free"])
+@pytest.mark.parametrize("pricing", ["light", "none"])
+def test_r41_a_couple_without_a_plan_reads_one_consistent_state_on_every_row(wd, monkeypatch, reader, pricing):
+    monkeypatch.setattr(config, "FREE_PRICING", pricing)
+    user = READERS[reader]
+    assert app._ww_reader(user) == reader
+    out = ask(wd, user, "Plan my wedding", START)
+    rows = rows_of(out)
+    said = _only_speaks_as(proposal_of(out), reader)
+    assert rows["Beauty"]["why"] == rows["Food and Beverage"]["why"] == free_mode.WW_EST[reader]
+    assert rows["Venue"]["based_on"] == "Tulle has prices read from this venue's pricing PDF. " + OPEN[reader]
+    assert rows["Photography"]["based_on"] == rows["Entertainment"]["based_on"] == (
+        "Tulle has a package price read from their pricing PDF. " + OPEN[reader])
+    assert rows["Flowers"]["based_on"] == "Tulle has prices read from this florist's pricing PDF. " + OPEN[reader]
+    assert said.count(OPEN[reader]) == 6 and leaks(out) == []
+    assert all(rows[s]["locked"] and rows[s]["amount"] is None for s in ("Venue", "Photography", "Entertainment", "Flowers"))
+
+
+def test_r41_a_member_reads_the_member_line(wd):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    assert app._ww_reader(FULL) == "member" and rows_of(out)["Beauty"]["why"] == free_mode.WW_EST["member"]
+    _only_speaks_as(proposal_of(out), "member")
+
+
+def test_r41_the_views_our_own_last_write_left_win_over_a_lagging_profile(wd, monkeypatch):
+    user = dict(FREE, FreeViewsRemaining=3)
+    monkeypatch.setattr(app, "_PDF_LEFT", {7002: (0, app.time.time())})        # we just spent their last free view
+    assert app._ww_reader(user) == "free_none"
+    for junk in (None, "", "abc", [1]):
+        assert app._ww_reader(dict(FREE, FreeViewsRemaining=junk)) == "free"
+
+
+@pytest.mark.parametrize("views,reader", [(2, "free_views"), (0, "free_none"), (None, "free")])
+def test_r41_a_lapsed_member_follows_the_free_states_on_reopen_reaction_and_add(wd, monkeypatch, views, reader):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    cid = out["chat_id"]
+    wd.users["tok7001"].update(forever_access_purchased=False, **({} if views is None else {"FreeViewsRemaining": views}))
+    user = dict(wd.users["tok7001"])
+    assert app._ww_reader(user) == reader
+    # reopened chat
+    d = client(monkeypatch, user).get("/rec/chats/%d" % cid).json()
+    card = d["turns"][-1]["widgets"][0]
+    by = {r["slot"]: r for r in card["rows"]}
+    _only_speaks_as(card, reader)
+    assert by["Beauty"]["why"] == free_mode.WW_EST[reader] and leaks(d) == []
+    assert by["Venue"]["based_on"].endswith(OPEN[reader]) and by["Photography"]["based_on"].endswith(OPEN[reader])
+    # what "Add" and the status call are built from - with the server's memory of the card and without it
+    for clear in (False, True):
+        if clear:
+            app._WW_LAST.clear()
+        held = app._ww_chat_proposal(user, cid)
+        _only_speaks_as(held, reader)
+        assert {r["slot"]: r for r in held["rows"]}["Beauty"]["why"] == free_mode.WW_EST[reader] and leaks(held) == []
+    # a reaction: kept rows and newly built rows speak the same way
+    monkeypatch.setattr(config, "FREE_INITIAL_REFINES", 50)
+    o = ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=cid)
+    _only_speaks_as(proposal_of(o), reader)
+    r = rows_of(o)
+    assert r["Beauty"]["why"] == free_mode.WW_EST[reader] and r["Photography"]["name"] == "Lone Star Lens"
+    assert r["Photography"]["based_on"] == "Tulle has a package price read from their pricing PDF. " + OPEN[reader]
+    assert r["Venue"]["based_on"].endswith(OPEN[reader]) and leaks(o) == []
+    assert _only_speaks_as(xano.get_messages(cid)[-1]["widgets"][0], reader)
+
+
+def test_r41_wording_follows_the_reader_both_ways(wd):
+    """A card written while they had free views, read after the last one is spent - and after they buy a plan."""
+    out = ask(wd, READERS["free_views"], "Plan my wedding", START)
+    card = proposal_of(out)
+    for reader in ("free_none", "free", "member", "free_views"):
+        _only_speaks_as(free_mode.proposal_wording(card, reader), reader)
+        _only_speaks_as(app._ww_entitled(card, "light", reader), reader)
+    assert free_mode.proposal_wording(card, "free_views") is card            # nothing to change: the same object
+
+
+# ---------------------------------------------------------------- R4.2 a locked row claims a PDF only on a checked fact
+
+def test_r42_no_pdf_derived_price_on_the_row_means_no_locked_claim(wd, monkeypatch):
+    wd.pe["Photography"] = [dict(wd.pe["Photography"][0], from_price=None, price_range=None)]
+    wd.venues[:] = [dict(v, venue_fee_range=None, food_minimum=0) for v in wd.venues]
+    wd.listings["Flowers"] = [wd.listings["Flowers"][1]]                     # a florist with no typical total
+    wd.pdfs.update(P1=0, V2=0, F2=0)                                         # ...and none of them has a PDF on file
+    out = ask(wd, READERS["free_views"], "Plan my wedding", START)
+    rows = rows_of(out)
+    for s in ("Venue", "Photography", "Flowers"):
+        r = rows[s]
+        assert (r["locked"], r["basis"], r["badge"], r["amount_from"]) == (False, "estimate", ww.ESTIMATE, "split"), r
+        assert "PDF" not in r["why"] + r["based_on"] and r["why"].endswith(free_mode.WW_EST_PLAIN) and r["pdfs"] == 0
+    assert rows["Entertainment"]["locked"] and "package price read from their pricing PDF" in rows["Entertainment"]["based_on"]
+    wd.pdfs.update(P1=1)                                                      # with a PDF on file the estimate row may say so
+    r = rows_of(ask(wd, dict(READERS["free_views"], id=7071), "Plan my wedding", START))["Photography"]
+    assert r["why"].endswith(free_mode.WW_EST["free_views"]) and not r["locked"]
+
+
+@pytest.mark.parametrize("pricing", ["light", "none"])
+def test_r42_relocked_rows_claim_a_pdf_only_when_the_row_was_real(wd, monkeypatch, pricing):
+    monkeypatch.setattr(config, "FREE_PRICING", pricing)
+    # (a) every figure real: the relocked rows rest on "real" = read from that vendor's own PDF
+    out = ask(wd, FULL, "Plan my wedding", START)
+    card = free_mode.proposal(proposal_of(out), "free_none")
+    by = {r["slot"]: r for r in card["rows"]}
+    for s in ("Venue", "Photography", "Entertainment"):
+        assert by[s]["basis"] == "real" and by[s]["locked"] and by[s]["based_on"].endswith(OPEN["free_none"]), by[s]
+    assert by["Flowers"]["badge"] == "Estimate \u00b7 locked" and "price sheet" in by["Flowers"]["based_on"]
+    assert "pricing PDF" not in by["Flowers"]["based_on"] and leaks(card) == []
+    # (b) a venue whose all-in is entirely Tulle's estimate: locked, and no PDF is claimed for it
+    monkeypatch.setattr(xano, "cached_venue_pricing", est_only_pricing)
+    out = ask(wd, dict(FULL, id=7072), "Plan my wedding", START)
+    v = {r["slot"]: r for r in free_mode.proposal(proposal_of(out), "free_views")["rows"]}["Venue"]
+    assert v["locked"] and v["amount"] is None and v["badge"] == "Estimate \u00b7 locked"
+    assert "PDF" not in v["based_on"] and "PDF" not in v["why"] and v["based_on"]
+    # (c) an unmarked older row that loses its sentence gets the neutral default, not a PDF claim
+    odd = {"type": ww.PROPOSAL, "detail": "full", "rows": [{"slot": "Venue", "basis": "estimate", "amount": 9000,
+                                                             "why": "", "based_on": "About $9,000 all in.", "breaks": ""}]}
+    assert free_mode.proposal(odd)["rows"][0]["based_on"] == free_mode.WW_NOT_SHOWN == "This figure is not shown without a plan."
+
+
+# ---------------------------------------------------------------- R4.3 unknown is not "none", and a zero is never shared
+
+def test_r43_an_empty_or_failed_pdf_read_is_never_remembered(wd, monkeypatch):
+    wd.pdfs["B1"] = 0
+    a = rows_of(ask(wd, dict(FULL, id=7081), "Plan my wedding", START))["Beauty"]
+    assert a["pdfs"] == 0 and a["why"] == free_mode.WW_EST_PLAIN and ww._PDFS == {}
+    wd.pdfs["B1"] = 2                                              # another account, moments later: the list has PDFs
+    b = rows_of(ask(wd, dict(FULL, id=7082), "Plan my wedding", START))["Beauty"]
+    assert b["pdfs"] == 2 and b["why"] == free_mode.WW_EST["member"]
+    assert sum(1 for c in wd.calls if c == ("pdf_rows", "B1")) == 2
+    c = rows_of(ask(wd, dict(FULL, id=7083), "Plan my wedding", START))["Beauty"]       # a positive count IS shared
+    assert c["pdfs"] == 2 and sum(1 for x in wd.calls if x == ("pdf_rows", "B1")) == 2 and list(ww._PDFS) == ["B1"]
+    # a failed read: unknown for that account only, said as nothing, never stored
+    ww._PDFS.clear()
+    real = xano.pdf_rows
+    monkeypatch.setattr(xano, "pdf_rows", lambda tok, vid: (_ for _ in ()).throw(xano.XanoError("timeout")))
+    d = rows_of(ask(wd, dict(FULL, id=7084), "Plan my wedding", START))["Beauty"]
+    assert "pdfs" not in d and d["why"] == free_mode.WW_EST_PLAIN and ww._PDFS == {}
+    monkeypatch.setattr(xano, "pdf_rows", real)
+    e = rows_of(ask(wd, dict(FULL, id=7085), "Plan my wedding", START))["Beauty"]
+    assert e["pdfs"] == 2 and e["why"] == free_mode.WW_EST["member"]
+    assert ww.pdf_count("t", "") is None
+
+
+# ---------------------------------------------------------------- R4.4 a hanging PDF-list read cannot hold the plan
+
+def test_r44_a_slow_pdf_list_is_left_behind_and_the_plan_is_delivered_and_counted(wd, monkeypatch):
+    monkeypatch.setattr(ww, "PDF_CHECK_S", 0.2)
+    gate = threading.Event()
+    monkeypatch.setattr(xano, "pdf_rows", lambda tok, vid: (gate.wait(20), [{"PDF_Link": "x"}])[1])
+    t = time.time()
+    try:
+        out = ask(wd, FREE, "Plan my wedding", START)
+        took = time.time() - t
+    finally:
+        gate.set()
+    assert took < 3, took
+    rows = rows_of(out)
+    assert rows["Beauty"]["why"] == rows["Food and Beverage"]["why"] == free_mode.WW_EST_PLAIN
+    assert "pdfs" not in rows["Beauty"] and proposal_of(out)["rows"] and len(proposal_of(out)["rows"]) == 7
+    assert out["ww"]["counted"] is True and [(r["kind"], r["status"], r["counted_as_free"]) for r in wd.usage] == [(ww.KIND, "ok", True)]
+
+
+def test_r44_the_shipped_bound_is_a_few_seconds():
+    import importlib
+    assert 1.0 <= importlib.import_module("whole_wedding").PDF_CHECK_S <= 5.0
+
+
+# ---------------------------------------------------------------- R4.5 the plan cache: its key, and what it hands out
+
+def test_r45_cache_key_changes_with_everything_the_plan_depends_on():
+    ctx = {"reader": "member", "states": ["Texas"], "guests": 120, "budget": 60000, "area": "", "city": "", "date": "Jun 2027",
+           "filters": {}}
+    view = {"categories": [], "extras": [], "considering": []}
+    booked = {"categories": [{"key": "Venue", "booked": {"name": "The Old Mill", "price": 18500}, "quotes": []}], "extras": [], "considering": []}
+    base = app._ww_plan_key({"id": 1}, ctx, "full", view)
+    assert base == app._ww_plan_key({"id": 1}, dict(ctx), "full", dict(view))
+    others = {
+        "account": app._ww_plan_key({"id": 2}, ctx, "full", view),
+        "detail": app._ww_plan_key({"id": 1}, ctx, "light", view),
+        "reader": app._ww_plan_key({"id": 1}, dict(ctx, reader="free_views"), "full", view),
+        "reader none": app._ww_plan_key({"id": 1}, dict(ctx, reader="free_none"), "full", view),
+        "budget": app._ww_plan_key({"id": 1}, dict(ctx, budget=60001), "full", view),
+        "guests": app._ww_plan_key({"id": 1}, dict(ctx, guests=121), "full", view),
+        "state": app._ww_plan_key({"id": 1}, dict(ctx, states=["Ohio"]), "full", view),
+        "area": app._ww_plan_key({"id": 1}, dict(ctx, area="Dallas, Texas", city="Dallas"), "full", view),
+        "date": app._ww_plan_key({"id": 1}, dict(ctx, date="Jul 2027"), "full", view),
+        "filters": app._ww_plan_key({"id": 1}, dict(ctx, filters={"venue_types": ["Barn / Ranch"]}), "full", view),
+        "booked": app._ww_plan_key({"id": 1}, ctx, "full", booked),
+    }
+    assert len(set(others.values()) | {base}) == len(others) + 1, [k for k, v in others.items() if v == base]
+
+
+def test_r45_the_cache_hands_out_a_copy_and_only_to_a_fresh_plan(wd, monkeypatch):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    key = next(iter(app._WW_PLANS))
+    proposal_of(out)["rows"][0]["name"] = "changed after it was sent"      # the answer's own object is not the cached one
+    assert app._WW_PLANS[key][0]["rows"][0]["name"] == "Hackett House"
+    a, _ = app._ww_plan_get(key)
+    b, meta = app._ww_plan_get(key)
+    assert a == b and a is not b and a is not app._WW_PLANS[key][0] and a["rows"][0] is not b["rows"][0]
+    a["rows"][0]["name"] = "tampered"
+    a["rows"].pop()
+    assert app._ww_plan_get(key)[0] == b and meta.calls == 0
+    assert len(app._WW_PLANS) == 1
+    ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=out["chat_id"])       # a reaction is never cached...
+    assert len(app._WW_PLANS) == 1 and app._ww_plan_get(key)[0] == b
+    n = len(wd.calls)
+    ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=out["chat_id"])       # ...nor answered from the cache
+    assert len(wd.calls) > n
+
+
+def test_r45_spending_the_last_free_view_is_a_different_plan(wd):
+    user = dict(FREE, FreeViewsRemaining=1)
+    out = ask(wd, user, "Plan my wedding", START)
+    assert rows_of(out)["Beauty"]["why"] == free_mode.WW_EST["free_views"]
+    wd.users["tok7002"]["FreeViewsRemaining"] = 0
+    n = len(wd.calls)
+    o = ask(wd, user, "Plan my wedding", START, chat_id=out["chat_id"])
+    assert len(wd.calls) > n and rows_of(o)["Beauty"]["why"] == free_mode.WW_EST["free_none"]
+    _only_speaks_as(proposal_of(o), "free_none")
+
+
+# ---------------------------------------------------------------- R4.6 nothing internal in the payload
+
+@pytest.mark.parametrize("reader", sorted(READERS))
+def test_r46_rows_carry_no_internal_fields(wd, reader):
+    out = ask(wd, READERS[reader], "Plan my wedding", START)
+    for r in proposal_of(out)["rows"] + xano.get_messages(out["chat_id"])[-1]["widgets"][0]["rows"]:
+        assert not [k for k in r if k.startswith("_") or k == "why_lead"], r
+        assert "pdfs" not in r or (isinstance(r["pdfs"], int) and not isinstance(r["pdfs"], bool)), r   # only when it was read
+
+
+def test_r41_a_plan_that_opens_pdfs_keeps_the_member_line_on_reopen(wd, monkeypatch):
+    """A plan without full figures still opens every PDF: reopening a card made with full figures re-locks the
+    figures but must not tell them a PDF 'comes with a plan'."""
+    out = ask(wd, FULL, "Plan my wedding", START)
+    monkeypatch.setattr(xano, "beta_member", lambda u: False)
+    monkeypatch.setattr(xano, "has_paid_access", lambda u: True)
+    assert app._ww_reader(FULL) == "member"
+    d = client(monkeypatch, FULL).get("/rec/chats/%d" % out["chat_id"]).json()
+    card = d["turns"][-1]["widgets"][0]
+    by = {r["slot"]: r for r in card["rows"]}
+    _only_speaks_as(card, "member")
+    assert by["Beauty"]["why"] == free_mode.WW_EST["member"] and by["Venue"]["based_on"].endswith(OPEN["member"]) and leaks(d) == []

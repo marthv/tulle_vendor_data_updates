@@ -1599,12 +1599,15 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
     turns = xano.get_messages(chat["id"])
     if not xano.has_paid_access(user):   # e.g. a lapsed member's old chats: no prices once the plan ends
         turns = free_mode.sanitize_turns(turns)
+        for t in turns:                  # a whole-wedding card: its PDF sentences for this reader (free views left or not)
+            if any(isinstance(w, dict) and w.get("type") == whole_wedding.PROPOSAL for w in t.get("widgets") or []):
+                t["widgets"] = [free_mode.proposal_wording(w, _ww_reader(user)) for w in t["widgets"]]
     elif _detail(xano.beta_member(user), True) != "full":
         # A plan without full figures reopening a whole-wedding proposal made with them (2026-11-16): that card and
         # the sentences around it are re-locked. A chat with no such card is returned exactly as before.
         for t in turns:
             ws = t.get("widgets") or []
-            locked = [_ww_entitled(w, "light", True) for w in ws]
+            locked = [_ww_entitled(w, "light", _ww_reader(user)) for w in ws]
             if any(a is not b for a, b in zip(ws, locked)):
                 t["widgets"] = locked
                 t["text"] = free_mode.sanitize_text(t.get("text") or "")[0]
@@ -2393,19 +2396,32 @@ def _ww_recall(user_id, chat_id):
 _WW_RANK = {"free": 0, "light": 1, "full": 2}
 
 
-def _ww_entitled(widget, detail, member=False):
+def _ww_reader(user):
+    """Who is reading, for every "how you open their pricing PDF" sentence (free_mode.WW_OPEN) - the same facts
+    POST /rec/pdf acts on: a plan (_pdf_entitled) opens any PDF; without one, the free views left (FreeViewsRemaining,
+    never more than our own last write left - _pdf_views_now). No readable count = "free": wording true either way."""
+    if _pdf_entitled(user):
+        return "member"
+    try:
+        int(user.get("FreeViewsRemaining"))
+    except (TypeError, ValueError):
+        return "free"
+    return "free_views" if _pdf_views_now(user) > 0 else "free_none"
+
+
+def _ww_entitled(widget, detail, reader="free"):
     """An earlier proposal as THIS account may see it NOW. A proposal built while the couple had full figures keeps
     them in the stored chat and in _WW_LAST; once the plan lapses nothing built from it - a swap, a new budget, "we
     booked X", an add - may carry those figures on. So every reuse of a previous proposal passes through here first:
     a card made at a higher detail than the account has today is re-locked (free_mode.proposal) before anything is
     built, returned, stored, tracked or written from it. An unknown stored detail counts as "full".
-    member = the account can open pricing PDFs on its plan today; without it, an estimate row never keeps the line
-    written for a member ("until you open it")."""
+    reader (_ww_reader) = how this account opens a pricing PDF today; every such sentence on the card is rewritten
+    for it, so a line written for a member, or for a couple who still had free views, never outlives being true."""
     if not isinstance(widget, dict) or widget.get("type") != whole_wedding.PROPOSAL:
         return widget
     if _WW_RANK.get(widget.get("detail"), 2) <= _WW_RANK.get(detail, 0):
-        return free_mode.proposal_wording(widget, member)
-    return dict(free_mode.proposal(widget, member=member), detail=detail)
+        return free_mode.proposal_wording(widget, reader)
+    return dict(free_mode.proposal(widget, reader), detail=detail)
 
 
 # A plan just built, kept a few minutes per account: "Plan my wedding" again with the same details is answered from
@@ -2417,7 +2433,7 @@ WW_PLAN_TTL_S = 300
 def _ww_plan_key(user, ctx, detail, view):
     booked = sorted((s, str((v["booked"] or {}).get("name") or ""), whole_wedding._int((v["booked"] or {}).get("price")))
                     for s, v in whole_wedding.slot_items(view).items() if v["booked"])
-    return json.dumps([int(user["id"]), detail, bool(ctx.get("member")), ctx.get("states"), ctx.get("guests"),
+    return json.dumps([int(user["id"]), detail, ctx.get("reader"), ctx.get("states"), ctx.get("guests"),
                        ctx.get("budget"), ctx.get("area"), ctx.get("city"), ctx.get("date"), ctx.get("filters"), booked],
                       sort_keys=True, default=str)
 
@@ -2458,11 +2474,11 @@ class _ww_writing:
         return False
 
 
-def _ww_last(user_id, detail, member=False):
+def _ww_last(user_id, detail, reader="free"):
     """The newest proposal this account was shown, in any chat, while _WW_LAST still holds it - as it may see it now."""
     with _WW_LOCK:
         hit = _WW_LAST.get(int(user_id))
-    return _ww_entitled(hit[1], detail, member) if hit and time.time() - hit[2] <= WW_LAST_TTL_S else None
+    return _ww_entitled(hit[1], detail, reader) if hit and time.time() - hit[2] <= WW_LAST_TTL_S else None
 
 
 def _ww_view(token, user):
@@ -2567,7 +2583,8 @@ def _ww_refine(token, user, body, background, tracker):
     detail = _detail(paid, access)
     chat_id = chat["id"] if chat else 0
     prev = (_ww_recall(user["id"], chat_id) or whole_wedding.latest_proposal(hist())) if chat else None
-    prev = _ww_entitled(prev, detail, access)   # the CURRENT entitlement, on every action (a lapsed member's old card)
+    reader = _ww_reader(user)
+    prev = _ww_entitled(prev, detail, reader)   # the CURRENT entitlement, on every action (a lapsed member's old card)
     # A request we cannot carry out gets a short "couldn't do that" - never a fresh, counted plan in its place.
     cant = ""
     if action in ("cheaper", "nicer", "swap", "style", "budget", "booked") and not prev:
@@ -2700,7 +2717,7 @@ def _ww_refine(token, user, body, background, tracker):
                 except Exception as e:
                     print("ww merge_preferences failed:", repr(e)[:200])
             build_action = "base" if action in ("start", "context") else action
-            ctx = dict(ctx, member=bool(access))     # can open pricing PDFs on their plan: decides the estimate rows' wording
+            ctx = dict(ctx, reader=reader)           # how this account opens a pricing PDF: decides the rows' wording
             try:
                 view = _ww_view(token, user)
                 plan_key = _ww_plan_key(user, ctx, detail, view) if build_action == "base" else None
@@ -2725,7 +2742,7 @@ def _ww_refine(token, user, body, background, tracker):
                 _log_stopped(dict(base, kind=whole_wedding.KIND), whole_wedding.KIND, user, paid, access)
                 return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat_id or None)
             spent = bool(widget.get("changed"))          # a re-run that changed nothing is never charged
-            if build_action == "base" and whole_wedding.same_plan(_ww_last(user["id"], detail, access), widget):
+            if build_action == "base" and whole_wedding.same_plan(_ww_last(user["id"], detail, reader), widget):
                 spent = False                            # "Plan my wedding" again, same inputs, same plan: re-shown
             counted_free = counted_free and spent
             widgets = [widget]
@@ -2753,6 +2770,8 @@ def _ww_refine(token, user, body, background, tracker):
         result["chips"] = []
     elif detail == "free":    # our own fixed wording (and the couple's own number when they booked): lock the card only
         result.update(widgets=free_mode.widgets(result["widgets"]), price_locked=True)
+    # free_mode's own lock does not know this reader's free PDF views: the card's PDF sentences are set for them last
+    result["widgets"] = [free_mode.proposal_wording(w, reader) for w in result["widgets"]]
     result["ww"] = {"arm": arm, "action": action, "step": step, "counted": spent, "model_calls": 0,
                     "tool_calls": meta.calls if meta else 0, "ms": ms}
     search = slog.summary()
@@ -2829,7 +2848,7 @@ def _ww_chat_proposal(user, chat_id):
         if not chat:
             raise HTTPException(404, "conversation not found")
         w = whole_wedding.latest_proposal(xano.get_messages(chat["id"]))
-    return _ww_entitled(w, _detail(xano.beta_member(user), xano.has_paid_access(user)), xano.has_paid_access(user))
+    return _ww_entitled(w, _detail(xano.beta_member(user), xano.has_paid_access(user)), _ww_reader(user))
 
 
 def _ww_rows_added(widget, view):

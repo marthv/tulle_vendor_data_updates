@@ -488,21 +488,26 @@ def _estimate_row(slot, share, target, listing=None, why=""):
         r.update(badge="No estimate yet", basis="none", based_on="No estimate could be worked out this time.")
     if listing:
         r.update(name=listing.get("name") or "", vendor_id=str(listing.get("vendor_id") or ""),
-                 vendor_idx=listing.get("vendor_idx"), image=_image(listing), why_lead=why, pdfs=None,
+                 vendor_idx=listing.get("vendor_idx"), image=_image(listing), _lead=why,
                  why=" · ".join(x for x in (why, free_mode.WW_EST_PLAIN if r["amount"] else "") if x))
     else:
         r["why"] = why or "No pick yet. A starting number to plan around."
     return r
 
 
-_PDFS = {}                   # vendor_id -> (count, unix time): how many pricing PDFs the vendor page lists
+_PDFS = {}                   # vendor_id -> (count >= 1, unix time): vendors KNOWN to have a pricing PDF, nothing else
 _PDFS_TTL_S = 6 * 3600
 _PDFS_LOCK = threading.Lock()
+_PDF_POOL = ThreadPoolExecutor(max_workers=8)     # its own pool: a slow PDF-list read never holds a proposal's thread
+PDF_CHECK_S = 3.0            # all of one proposal's PDF-list reads together; past it the rows say nothing about a PDF
 
 
 def pdf_count(token, vendor_id, meta=None):
-    """How many pricing PDFs this vendor has (the vendor page's own list, ep93 - what "Pricing PDF" opens), or None
-    when it could not be read. Cached: the lists change a few times a week at most."""
+    """How many pricing PDFs this vendor has (the vendor page's own list, ep93 - what "Pricing PDF" opens):
+    n >= 1 = known to have one, 0 = this read came back empty, None = could not be read (unknown).
+    Only a positive count is cached (and shared between accounts: "this vendor has a PDF" is true for everyone). An
+    empty list or a failed read is never remembered, so one account's empty read cannot become "no PDF" for another
+    account or for the next six hours."""
     vid = str(vendor_id or "")
     if not vid:
         return None
@@ -517,38 +522,60 @@ def pdf_count(token, vendor_id, meta=None):
     except Exception as e:
         print("ww pdf count failed:", vid, repr(e)[:120])
         return None
-    with _PDFS_LOCK:
-        if len(_PDFS) > 5000:
-            _PDFS.clear()
-        _PDFS[vid] = (n, time.time())
+    if n > 0:
+        with _PDFS_LOCK:
+            if len(_PDFS) > 5000:
+                _PDFS.clear()
+            _PDFS[vid] = (n, time.time())
     return n
 
 
-def estimate_why(lead, pdfs, member, has_amount=True):
+def estimate_why(lead, pdfs, reader, has_amount=True):
     """What an estimate row with a named vendor says. "Tulle has their pricing PDF" ONLY when the PDF list was read
     and holds at least one (pdfs > 0); unknown or none -> the plain line, which claims nothing about the vendor."""
     if not has_amount:
         tail = ""
     elif pdfs and pdfs > 0:
-        tail = free_mode.WW_PDF_MEMBER if member else free_mode.WW_PDF_PLAN
+        tail = free_mode.WW_EST[free_mode.ww_reader(reader)]
     else:
         tail = free_mode.WW_EST_PLAIN
     return " · ".join(x for x in (lead or "", tail) if x)
 
 
-def say_estimates(token, rows, member, meta=None):
-    """Finish the estimate rows that name a vendor: check each one's PDF list (in parallel, cached; a row kept from an
-    earlier proposal already knows its count) and write the line a member / a couple without a plan reads."""
-    todo = [r for r in rows if r.get("vendor_id") and "why_lead" in r and not r.get("locked") and not r.get("booked")
-            and r.get("amount_from") in (FROM_SPLIT, "")]
-    need = [r for r in todo if r.get("pdfs") is None]
-    if need:
-        with ThreadPoolExecutor(max_workers=max(1, len(need))) as ex:
-            for r, n in zip(need, ex.map(lambda r: pdf_count(token, r["vendor_id"], meta), need)):
-                r["pdfs"] = n
+def say_estimates(token, rows, reader, meta=None):
+    """Finish the estimate rows built just now that name a vendor: read each one's PDF list (in parallel, together
+    bounded by PDF_CHECK_S - a read that is late counts as unknown and the plan is delivered without it) and write
+    the line this reader gets. Rows kept from an earlier proposal are not read again; proposal_wording keeps theirs
+    right. The payload carries `pdfs` ONLY when the list was read: 0 = known to have none (the page then hides
+    "Pricing PDF"), absent = unknown (the button stays). The internal lead-in never leaves this function."""
+    todo = [r for r in rows if "_lead" in r]
+    need = [r for r in todo if r.get("vendor_id") and not r.get("locked") and not r.get("booked")]
+    futs = [(r, _PDF_POOL.submit(pdf_count, token, r["vendor_id"], meta)) for r in need]
+    deadline = time.time() + PDF_CHECK_S
+    for r, f in futs:
+        try:
+            n = f.result(timeout=max(0.0, deadline - time.time()))
+        except Exception:      # late (or failed): unknown
+            n = None
+        if n is not None:
+            r["pdfs"] = n
+        r["why"] = estimate_why(r["_lead"], n, reader, bool(r.get("amount")))
     for r in todo:
-        r["why"] = estimate_why(r.get("why_lead"), r.get("pdfs"), member, bool(r.get("amount")))
+        r.pop("_lead", None)
     return rows
+
+
+def locked_why(fact, reader):
+    """A locked row's line: the checked fact that says a PDF-derived price exists, then how this reader opens it."""
+    return "%s %s" % (fact, free_mode.WW_OPEN[free_mode.ww_reader(reader)])
+
+
+def _has_pdf_price(v):
+    """True when the venue's search card itself carries a price read from its pricing PDF (table 11's fee range or
+    food-and-drink minimum) - the checked fact a locked venue row rests on."""
+    fee = v.get("venue_fee_range")
+    return bool((isinstance(fee, (list, tuple)) and any(isinstance(x, (int, float)) and x > 0 for x in fee))
+                or (isinstance(v.get("food_minimum"), (int, float)) and v["food_minimum"] > 0))
 
 
 def _over(amount, cap, label):
@@ -576,8 +603,8 @@ def venue_basis(e):
     if pdf:
         text = "%s from their price sheet; %s estimated by Tulle. Not a quote." % (", ".join(pdf), ", ".join(est))
         return "estimate", ESTIMATE, text[0].upper() + text[1:]
-    return "estimate", ESTIMATE, ("Tulle's estimate for venues this size. This venue's PDF doesn't give a rental or "
-                                  "food price. Not a quote.")
+    return "estimate", ESTIMATE, ("Tulle's estimate for venues this size. No rental or food price of this venue's own "
+                                  "is in it. Not a quote.")
 
 
 def choose(cands, cap, mode="base", prev_amount=None):
@@ -741,19 +768,20 @@ def _venue_rows(token, user, ctx, full, detail, cap, share, target, mode, prev_r
         fl = lines.get("Food and drink") or {}
         if (fl.get("amount") or 0) > 0:
             food = {"amount": int(fl["amount"]), "from_pdf": fl.get("source") == "this venue's PDF"}
-    elif full:
-        # Tulle has this venue's PDF but no all-in for it: a named pick, and the amount is the budget-split estimate.
-        # No all-in could be worked out for this venue (no cost inputs came back): a named pick, and the amount is the
-        # budget-split estimate. What it says about the venue's PDF is decided in say_estimates, after checking.
+    elif full or not _has_pdf_price(v):
+        # No all-in could be worked out for this venue (no cost inputs came back), or - for a couple without full
+        # figures - its card carries no PDF-derived price to lock: a named pick, and the amount is the budget-split
+        # estimate. What it says about the venue's PDF is decided in say_estimates, after reading its PDF list.
         est_row = _estimate_row("Venue", share, target, v, why=" · ".join(fit))
-        row.update({k: est_row[k] for k in ("amount", "amount_from", "basis", "badge", "based_on", "why_lead", "pdfs")})
+        row.update({k: est_row[k] for k in ("amount", "amount_from", "basis", "badge", "based_on", "_lead")})
         fit = [est_row["why"]]
     else:
         card = agent._with_rental(dict(v), p, guests, budget)
         band = (agent._light_card(card).get("price_band") or {}).get("label") if detail == "light" else ""
         # Not "real": without the figures we cannot know how much of this venue's all-in is its own price sheet.
+        # Backing for the claim: _has_pdf_price(v) - the search card carries a fee range / food minimum read from its PDF.
         row.update(basis="locked", locked=True, badge=PRICED_LOCKED, band=band or "",
-                   based_on="Tulle holds this venue's pricing PDF. Open the PDF, or unlock a plan to see the figure here.")
+                   based_on=locked_why("Tulle has prices read from this venue's pricing PDF.", ctx.get("reader")))
     row["why"] = " · ".join(fit)
     return row, food, relaxed
 
@@ -772,8 +800,9 @@ def _pe_row(token, slot, ctx, full, cap, share, target, mode, prev_row, exclude,
     v, amount = picked
     label = dict(SLOTS)[slot].lower()
     fit = " · ".join(x for x in (agent._pe_type_label(v), agent._hours_label(v)) if x).replace(" - ", ": ")
-    if full and not amount:
-        return _estimate_row(slot, share, target, v, why=fit)      # no package price came back for them
+    if not price(v):
+        # no package price came back for them: nothing to show AND nothing to lock - an estimate, for everyone
+        return _estimate_row(slot, share, target, v, why=fit)
     row = _row(slot, name=v.get("name") or "", image=_image(v), vendor_id=str(v.get("vendor_id") or ""), vendor_idx=v.get("vendor_idx"),
                basis="real", badge=REAL, why=fit)
     if full:
@@ -781,8 +810,9 @@ def _pe_row(token, slot, ctx, full, cap, share, target, mode, prev_row, exclude,
                    based_on="Their lowest %spackage in the pricing PDF Tulle holds. Other packages cost more." % (
                        "wedding-day " if slot == "Photography" else ""))
     else:
+        # Backing for the claim: price(v) - this vendor's from_price, the lowest package price read from their PDF.
         row.update(locked=True, badge=REAL_LOCKED,
-                   based_on="Package prices from their pricing PDF. Open the PDF, or unlock a plan to see them here.")
+                   based_on=locked_why("Tulle has a package price read from their pricing PDF.", ctx.get("reader")))
     return row
 
 
@@ -808,8 +838,8 @@ def _flowers_row(token, ctx, full, detail, cap, share, target, mode, prev_row, e
         band = agent._florist_note(v.get("florist_pricing"), "light") if detail == "light" else ""
         return _row("Flowers", name=v.get("name") or "", image=_image(v), vendor_id=str(v.get("vendor_id") or ""),
                     vendor_idx=v.get("vendor_idx"), basis="locked", badge=PRICED_LOCKED, locked=True, band=band or "",
-                    based_on="Tulle holds this florist's price sheet. Open the PDF, or unlock a plan to see a typical "
-                             "total here.")
+                    # Backing: total(v) - a typical total worked out from this florist's own pricing PDF (flt_fl_*).
+                    based_on=locked_why("Tulle has prices read from this florist's pricing PDF.", ctx.get("reader")))
     picked = choose([(v, total(v)) for v in vendors], cap, mode, _prev_amount(prev_row))
     if picked is None:
         return None if vendors or prev_row else _estimate_row("Flowers", share, target)
@@ -837,7 +867,7 @@ def _food_row(food, full):
         return _row("Food and Beverage", basis="included", badge=REAL if food["from_pdf"] else ESTIMATE,
                     why="Inside the venue's all-in above: %s of it is food and drink." % _money(food["amount"]),
                     based_on="From the venue's pricing PDF." if food["from_pdf"] else
-                    "Tulle's estimate for this venue. No food price came back from its pricing. Not a quote.")
+                    "Tulle's estimate for this venue. No food price of its own is in it. Not a quote.")
     return None
 
 
@@ -1018,7 +1048,7 @@ def build(token, user, ctx, detail, *, prev=None, action="base", category="", st
                  "why": ", ".join(names),
                  "based_on": "Tulle's typical budget split: %d%% of a %s budget. Not a quote." % (
                      sum(split[n]["pct"] for n in names), _money(target))}
-    say_estimates(token, rows, bool(ctx.get("member")), meta)
+    say_estimates(token, rows, ctx.get("reader"), meta)
     mark_added(rows, view)
     old_where = (prev or {}).get("where") or ""
     where = (old_where if one and not venue_redone and old_where else
