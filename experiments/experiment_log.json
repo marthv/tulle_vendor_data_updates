@@ -1432,7 +1432,7 @@
     },
     {
       "date": "2026-11-11",
-      "name": "Discovery publish: Ask Tulle bubble + Map|Ask Tulle phone dock, empty-results Ask Tulle banner (filtered_total == 0), vendor names wrap on phones, tour step 1 points at Ask Tulle",
+      "what": "Discovery publish: Ask Tulle bubble + Map|Ask Tulle phone dock, empty-results Ask Tulle banner (filtered_total == 0), vendor names wrap on phones, tour step 1 points at Ask Tulle",
       "affects": [
         "EXP-2026-11-ask-tulle-bubble",
         "EXP-2026-11-free-daily-question",
@@ -1441,7 +1441,7 @@
     },
     {
       "date": "2026-11-12",
-      "name": "ep7 Google sign-in: leftover TERMS_REQUIRED check removed (new Google users on Sign In were bounced since 10-24)",
+      "what": "ep7 Google sign-in: leftover TERMS_REQUIRED check removed (new Google users on Sign In were bounced since 10-24)",
       "affects": [
         "EXP-2026-10-signup-checkbox",
         "EXP-2026-11-ask-tulle-bubble",
@@ -1450,26 +1450,26 @@
     },
     {
       "date": "2026-11-12",
-      "name": "Ask Tulle bubble coral restyle (ww-planner-chat b5ab256; live after activate + publish) - REVERTED same day (d554ee8), never activated",
+      "what": "Ask Tulle bubble coral restyle (ww-planner-chat b5ab256; live after activate + publish) - REVERTED same day (d554ee8), never activated",
       "affects": [
         "EXP-2026-11-ask-tulle-bubble"
       ]
     },
     {
       "date": "2026-11-12",
-      "name": "/purchase-complete auto-sends confirmed buyers to the Planner after 2.5s (WeWeb editor; live after publish)",
+      "what": "/purchase-complete auto-sends confirmed buyers to the Planner after 2.5s (WeWeb editor; live after publish)",
       "affects": [
         "EXP-2026-11-ask-tulle-bubble"
       ]
     },
     {
       "date": "2026-11-12",
-      "name": "Daily brief: 'Gates -> paid' line (new members paid within 1 day; PDF + Planner limit hitters)",
+      "what": "Daily brief: 'Gates -> paid' line (new members paid within 1 day; PDF + Planner limit hitters)",
       "affects": []
     },
     {
       "date": "2026-11-12",
-      "name": "Save offer v4: two-plan 'too expensive' offer (4 weeks 20% + Forever 60%, stacked, prices as anchors) live 06:40 UTC; popup copy change awaits WeWeb publish",
+      "what": "Save offer v4: two-plan 'too expensive' offer (4 weeks 20% + Forever 60%, stacked, prices as anchors) live 06:40 UTC; popup copy change awaits WeWeb publish",
       "affects": [
         "EXP-2026-11-save-offer-60-forever",
         "EXP-2026-11-ask-tulle-bubble"
@@ -1477,7 +1477,7 @@
     },
     {
       "date": "2026-11-15",
-      "name": "WeWeb publish ~04:40 UTC: pricing page copy + Planner component 23d878c (PDF-count link, free-question note, quote check for everyone, stage starters) + editor cleanup (18 hidden elements, 20 unused library components removed)",
+      "what": "WeWeb publish ~04:40 UTC: pricing page copy + Planner component 23d878c (PDF-count link, free-question note, quote check for everyone, stage starters) + editor cleanup (18 hidden elements, 20 unused library components removed)",
       "affects": [
         "EXP-2026-11-ask-tulle-bubble",
         "EXP-2026-11-free-daily-question",

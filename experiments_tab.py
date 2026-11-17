@@ -80,6 +80,12 @@ def _verdict(r):
             f"difference 95% CI {r['ci_low']:+.2%} to {r['ci_high']:+.2%} · p = {r['p_value']:.3f} → {sig}")
 
 
+def _what(change):
+    """Text of a logged change. Seven entries (2026-11-11..15) were written with "name"
+    instead of "what" and the KeyError took every tab down - never index this directly."""
+    return change.get("what") or change.get("name") or "(no description)"
+
+
 def render_experiments_tab():
     try:
         log = _load()
@@ -112,7 +118,7 @@ def render_experiments_tab():
                 domain=STATUSES, range=["#CDD0D8", "#00A368", "#D97706", "#0D5C3A", "#C53030"])),
             tooltip=["experiment", "status", alt.Tooltip("start:T"), alt.Tooltip("end:T")],
         )
-        ch = pd.DataFrame([{"date": _d(c["date"]), "what": c["what"]} for c in changes if _d(c.get("date"))])
+        ch = pd.DataFrame([{"date": _d(c["date"]), "what": _what(c)} for c in changes if _d(c.get("date"))])
         layers = [bars]
         if not ch.empty:
             layers.append(alt.Chart(ch).mark_rule(color="#7E8189", strokeDash=[4, 3]).encode(
@@ -152,7 +158,7 @@ def render_experiments_tab():
                 for c in changes:
                     cs, ce = _d(c.get("date")), _d(c.get("end_date")) or _d(c.get("date"))
                     if cs and _overlaps(w, (cs, ce)):
-                        flagged.append(f"{c['date']}: {c['what']}")
+                        flagged.append(f"{c['date']}: {_what(c)}")
             noted = e.get("confounds_noted", [])
             if flagged or noted:
                 st.markdown("**Possible confounds**")
