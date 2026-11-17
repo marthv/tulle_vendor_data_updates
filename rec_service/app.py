@@ -42,6 +42,7 @@ about the couple live in rec_memory (80) and are fed into every later conversati
 """
 from typing import Optional
 import datetime as dt
+import copy
 import json
 import time
 import re
@@ -1603,7 +1604,7 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
         # the sentences around it are re-locked. A chat with no such card is returned exactly as before.
         for t in turns:
             ws = t.get("widgets") or []
-            locked = [_ww_entitled(w, "light") for w in ws]
+            locked = [_ww_entitled(w, "light", True) for w in ws]
             if any(a is not b for a, b in zip(ws, locked)):
                 t["widgets"] = locked
                 t["text"] = free_mode.sanitize_text(t.get("text") or "")[0]
@@ -2392,17 +2393,50 @@ def _ww_recall(user_id, chat_id):
 _WW_RANK = {"free": 0, "light": 1, "full": 2}
 
 
-def _ww_entitled(widget, detail):
+def _ww_entitled(widget, detail, member=False):
     """An earlier proposal as THIS account may see it NOW. A proposal built while the couple had full figures keeps
     them in the stored chat and in _WW_LAST; once the plan lapses nothing built from it - a swap, a new budget, "we
     booked X", an add - may carry those figures on. So every reuse of a previous proposal passes through here first:
     a card made at a higher detail than the account has today is re-locked (free_mode.proposal) before anything is
-    built, returned, stored, tracked or written from it. An unknown stored detail counts as "full"."""
+    built, returned, stored, tracked or written from it. An unknown stored detail counts as "full".
+    member = the account can open pricing PDFs on its plan today; without it, an estimate row never keeps the line
+    written for a member ("until you open it")."""
     if not isinstance(widget, dict) or widget.get("type") != whole_wedding.PROPOSAL:
         return widget
     if _WW_RANK.get(widget.get("detail"), 2) <= _WW_RANK.get(detail, 0):
-        return widget
-    return dict(free_mode.proposal(widget), detail=detail)
+        return free_mode.proposal_wording(widget, member)
+    return dict(free_mode.proposal(widget, member=member), detail=detail)
+
+
+# A plan just built, kept a few minutes per account: "Plan my wedding" again with the same details is answered from
+# here instead of running every lookup again (the first live test re-ran all of them for an uncounted repeat).
+_WW_PLANS = {}           # key (account + everything the plan was built from) -> (widget, categories, unix time)
+WW_PLAN_TTL_S = 300
+
+
+def _ww_plan_key(user, ctx, detail, view):
+    booked = sorted((s, str((v["booked"] or {}).get("name") or ""), whole_wedding._int((v["booked"] or {}).get("price")))
+                    for s, v in whole_wedding.slot_items(view).items() if v["booked"])
+    return json.dumps([int(user["id"]), detail, bool(ctx.get("member")), ctx.get("states"), ctx.get("guests"),
+                       ctx.get("budget"), ctx.get("area"), ctx.get("city"), ctx.get("date"), ctx.get("filters"), booked],
+                      sort_keys=True, default=str)
+
+
+def _ww_plan_get(key):
+    with _WW_LOCK:
+        hit = _WW_PLANS.get(key)
+    if not hit or time.time() - hit[2] > WW_PLAN_TTL_S:
+        return None
+    meta = whole_wedding._Meta()
+    meta.categories, meta.ms = list(hit[1]), {"total_ms": 0, "cached": 1}
+    return copy.deepcopy(hit[0]), meta
+
+
+def _ww_plan_put(key, widget, meta):
+    with _WW_LOCK:
+        if len(_WW_PLANS) > 500:
+            _WW_PLANS.clear()
+        _WW_PLANS[key] = (copy.deepcopy(widget), list(meta.categories), time.time())
 
 
 _WW_USER_LOCKS = [threading.Lock() for _ in range(64)]
@@ -2424,11 +2458,11 @@ class _ww_writing:
         return False
 
 
-def _ww_last(user_id, detail):
+def _ww_last(user_id, detail, member=False):
     """The newest proposal this account was shown, in any chat, while _WW_LAST still holds it - as it may see it now."""
     with _WW_LOCK:
         hit = _WW_LAST.get(int(user_id))
-    return _ww_entitled(hit[1], detail) if hit and time.time() - hit[2] <= WW_LAST_TTL_S else None
+    return _ww_entitled(hit[1], detail, member) if hit and time.time() - hit[2] <= WW_LAST_TTL_S else None
 
 
 def _ww_view(token, user):
@@ -2533,7 +2567,7 @@ def _ww_refine(token, user, body, background, tracker):
     detail = _detail(paid, access)
     chat_id = chat["id"] if chat else 0
     prev = (_ww_recall(user["id"], chat_id) or whole_wedding.latest_proposal(hist())) if chat else None
-    prev = _ww_entitled(prev, detail)        # the CURRENT entitlement, on every action (a lapsed member's old card)
+    prev = _ww_entitled(prev, detail, access)   # the CURRENT entitlement, on every action (a lapsed member's old card)
     # A request we cannot carry out gets a short "couldn't do that" - never a fresh, counted plan in its place.
     cant = ""
     if action in ("cheaper", "nicer", "swap", "style", "budget", "booked") and not prev:
@@ -2666,11 +2700,20 @@ def _ww_refine(token, user, body, background, tracker):
                 except Exception as e:
                     print("ww merge_preferences failed:", repr(e)[:200])
             build_action = "base" if action in ("start", "context") else action
+            ctx = dict(ctx, member=bool(access))     # can open pricing PDFs on their plan: decides the estimate rows' wording
             try:
                 view = _ww_view(token, user)
-                widget, meta = whole_wedding.build(token, user, ctx, detail, prev=None if build_action == "base" else prev,
-                                                   action=build_action, category=category, style=style, view=view,
-                                                   tracker=tracker, slog=slog)
+                plan_key = _ww_plan_key(user, ctx, detail, view) if build_action == "base" else None
+                cached = _ww_plan_get(plan_key) if plan_key else None
+                if cached:                           # the same plan, minutes ago: no lookup is run again
+                    widget, meta = cached
+                    whole_wedding.mark_added(widget["rows"], view)
+                else:
+                    widget, meta = whole_wedding.build(token, user, ctx, detail, prev=None if build_action == "base" else prev,
+                                                       action=build_action, category=category, style=style, view=view,
+                                                       tracker=tracker, slog=slog)
+                    if plan_key:
+                        _ww_plan_put(plan_key, widget, meta)
             except progress.Stopped:
                 _log_stopped(dict(base, kind=whole_wedding.KIND), whole_wedding.KIND, user, paid, access)
                 return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat_id or None)
@@ -2682,7 +2725,7 @@ def _ww_refine(token, user, body, background, tracker):
                 _log_stopped(dict(base, kind=whole_wedding.KIND), whole_wedding.KIND, user, paid, access)
                 return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat_id or None)
             spent = bool(widget.get("changed"))          # a re-run that changed nothing is never charged
-            if build_action == "base" and whole_wedding.same_plan(_ww_last(user["id"], detail), widget):
+            if build_action == "base" and whole_wedding.same_plan(_ww_last(user["id"], detail, access), widget):
                 spent = False                            # "Plan my wedding" again, same inputs, same plan: re-shown
             counted_free = counted_free and spent
             widgets = [widget]
@@ -2733,7 +2776,9 @@ def _ww_refine(token, user, body, background, tracker):
         # No search_engine / search_ms on this row: the Railway-search comparison (rec_watch.search_rows) reads every
         # row that has them, and a whole plan's latency is not one venue search's. The Mixpanel event carries them.
         # ww_arm is dropped by Xano until table 79 has that column, so the arm also rides in `tools`.
-        _submit_usage(dict(base, kind=whole_wedding.KIND, status="ok", counted_as_free=counted_free, model="whole_wedding",
+        # chat_id: the gate ran before the conversation existed (0 for a new chat) - the row records the real one.
+        _submit_usage(dict(base, chat_id=chat["id"], kind=whole_wedding.KIND, status="ok", counted_as_free=counted_free,
+                           model="whole_wedding",
                            input_tokens=0, cache_read_tokens=0, cache_write_tokens=0, output_tokens=0,
                            tool_calls=meta.calls, cost_usd=0, latency_ms=ms,
                            tools=("ww:%s,arm:%s" % (action, arm))[:500], categories=",".join(meta.categories)[:200],
@@ -2784,7 +2829,7 @@ def _ww_chat_proposal(user, chat_id):
         if not chat:
             raise HTTPException(404, "conversation not found")
         w = whole_wedding.latest_proposal(xano.get_messages(chat["id"]))
-    return _ww_entitled(w, _detail(xano.beta_member(user), xano.has_paid_access(user)))
+    return _ww_entitled(w, _detail(xano.beta_member(user), xano.has_paid_access(user)), xano.has_paid_access(user))
 
 
 def _ww_rows_added(widget, view):

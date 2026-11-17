@@ -124,7 +124,13 @@ def w(monkeypatch):
     monkeypatch.setattr(app.sheet_log, "event", lambda *a, **k: None)
     monkeypatch.setattr(agent, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("the model must not be called")))
     app._WW_LAST.clear()
+    app._WW_PLANS.clear()
+    ww._PDFS.clear()
     m = monkeypatch.setattr
+    # the vendor page's PDF list (ep93): every mocked vendor has one pricing PDF unless a test says otherwise (wd.pdfs)
+    wd.pdfs = {}
+    m(xano, "pdf_rows", lambda tok, vid: wd.calls.append(("pdf_rows", vid)) or [
+        {"id": i + 1, "PDF_Link": "https://x/%s-%d.pdf" % (vid, i)} for i in range(wd.pdfs.get(vid, 1))])
     m(xano, "user_usage", lambda uid: [r for r in wd.usage if r.get("user_id") == uid])
     m(xano, "spend_today", lambda: (0.0, 0.0))
     m(xano, "log_usage", lambda row: wd.usage.append(dict(row, usage_day=xano.today())))
@@ -404,12 +410,16 @@ def test_full_proposal_structure_amounts_and_labels(w):
 def test_lookups_per_proposal_and_timings(w):
     out = ask(w, FULL, "Plan my wedding", {"action": "start", "skip": ["area"]})
     kinds = [c[0] for c in w.calls]
-    # 1 split + 1 venue search + 3 venue pricing + 2 P/E + 4 listing searches = 11 lookups, 0 model calls
-    assert sorted(kinds) == sorted(["split", "search_venues"] + ["pricing"] * 3 + ["search_pe"] * 2 + ["search_listings"] * 4)
-    assert out["ww"]["tool_calls"] == 11 and w.usage[0]["tool_calls"] == 11 and w.usage[0]["model"] == "whole_wedding"
+    # 1 split + 1 venue search + 3 venue pricing + 2 P/E + 4 listing searches + 1 PDF-list check (the one estimate row
+    # that names a vendor: Glow Studio) = 12 lookups, 0 model calls
+    assert sorted(kinds) == sorted(["split", "search_venues"] + ["pricing"] * 3 + ["search_pe"] * 2 + ["search_listings"] * 4
+                                   + ["pdf_rows"])
+    assert ("pdf_rows", "B1") in w.calls
+    assert out["ww"]["tool_calls"] == 12 and w.usage[0]["tool_calls"] == 12 and w.usage[0]["model"] == "whole_wedding"
+    assert w.usage[0]["chat_id"] == out["chat_id"] and out["chat_id"] > 0     # the conversation it was delivered in, not 0
     assert ("search_pe", "Photography", ["Wedding Day"]) in w.calls
     ev = [p for e, p in w.mp if p.get("kind") == ww.KIND][0]
-    assert ev["ww_arm"] == "ww" and ev["model_calls"] == 0 and ev["tool_calls"] == 11 and ev["counted"] is True
+    assert ev["ww_arm"] == "ww" and ev["model_calls"] == 0 and ev["tool_calls"] == 12 and ev["counted"] is True
     assert {"ww_split_ms", "ww_venue_search_ms", "ww_venue_pricing_ms", "ww_lookups_ms", "ww_total_ms"} <= set(ev)
     assert w.usage[0]["tools"] == "ww:start,arm:ww" and w.usage[0]["ww_arm"] == "ww" and w.usage[0]["cost_usd"] == 0
     assert w.usage[0]["categories"] == "venue,photography,food and beverage,entertainment,flowers,wedding planner,beauty"
@@ -430,7 +440,7 @@ def test_no_venue_fits_says_so_and_shows_the_closest_with_what_breaks(w):
     w.venues[:] = []
     out = ask(w, dict(FULL, id=7012), "Plan my wedding", {"action": "start", "skip": ["area"]})
     v = rows_of(out)["Venue"]
-    assert v["name"] == "" and v["basis"] == "none" and "no venue there" in out["text"]
+    assert v["name"] == "" and v["basis"] == "none" and "could not find a venue there" in out["text"] and v["badge"] == "No venue found"
     assert rows_of(out)["Food and Beverage"]["basis"] == "estimate" and rows_of(out)["Food and Beverage"]["name"] == "Fork & Flame"
 
 
@@ -516,7 +526,7 @@ def test_cheaper_then_nicer_rerun_with_an_adjusted_target_and_say_what_changed(w
     ch = " | ".join(p["changes"])
     assert "Aimed 15% lower: a $51,000 target instead of $60,000" in ch
     assert "Venue: Rosewood Barn ($15,852) instead of Hackett House ($21,012)" in ch
-    assert "Music: nothing cheaper in Tulle's data here - kept DJ Spin" in ch
+    assert "Music: I found nothing cheaper here, so I kept DJ Spin" in ch
     assert out["text"].startswith("Made it cheaper.") and "$41,412" in out["text"] and out["ww"]["counted"] is True
     out = ask(w, FULL, "something nicer please", {"active": True}, chat_id=cid)       # typed, reacts to the cheaper plan
     p, rows = proposal_of(out), rows_of(out)
@@ -538,7 +548,7 @@ def test_swap_changes_one_category_and_keeps_the_rest(w):
     assert proposal_of(out)["exclude"] == {"Photography": ["P1"]} and "Passed on Jane Doe Photo for their photographer" in w.notes
     out = ask(w, FULL, "Swap this one", {"action": "swap", "category": "Photography"}, chat_id=cid)
     assert rows_of(out)["Photography"]["name"] == "Lone Star Lens" and out["ww"]["counted"] is False     # nothing left to swap in
-    assert "nothing else in Tulle's data here - kept Lone Star Lens" in out["text"] and len(w.usage) == 2  # ...and not charged
+    assert "I found no other match here, so I kept Lone Star Lens" in out["text"] and len(w.usage) == 2  # ...and not charged
     out = ask(w, FULL, "Swap this one", {"action": "swap", "category": "Food and Beverage"}, chat_id=cid)
     assert "swap the venue to change it" in out["text"] and rows_of(out)["Food and Beverage"]["basis"] == "included"
     out = ask(w, FULL, "a different venue please", {"active": True}, chat_id=cid)
@@ -586,7 +596,7 @@ def test_adds_land_in_table_33_as_considering_and_the_strip_matches_the_screen(w
     assert [(q["name"], q["price"], q["vendor_id"]) for q in venue["quotes"]] == [("Hackett House", 21012, "V1")]
     assert venue["quotes"][0]["package"] == "Tulle Planner proposal · real price from Tulle data"
     s = d["wedding_status"]
-    assert s["label"] == "My wedding: 1 of 7 categories started · $21,012 of $60,000 planned"
+    assert s["label"] == "In My wedding so far: 1 of 7 categories · $21,012 of your $60,000 budget"
     assert s["changed"] == ["Added: Venue - Hackett House"] and s["action"] == "Open my wedding"
     assert (s["booked_total"], s["budget"]) == (v["booked_total"], v["budget"]) and s == dict(ww.strip(v), changed=s["changed"])
     # add all: every other row with a pick or an estimate; never the same vendor twice
@@ -640,7 +650,7 @@ def test_already_booked_is_stored_as_booked_with_the_couples_own_number(w):
     assert r["Food and Beverage"]["basis"] == "none"            # the proposed venue's food line no longer applies
     assert proposal_of(out)["total"] == 18500 + 4550 + 2550 + 4150 + 6000 + 1200 + 11400
     s = out["wedding_status"]
-    assert s["label"] == "My wedding: 1 of 7 categories started · $18,500 of $60,000 planned"
+    assert s["label"] == "In My wedding so far: 1 of 7 categories · $18,500 of your $60,000 budget"
     assert s["changed"] == ["Booked: Venue - The Old Mill"] and s["booked_total"] == v["booked_total"]
     assert len(w.usage) == n_usage and out["ww"]["counted"] is False            # telling us is not a question
     # later re-runs never replace what they booked
@@ -671,7 +681,7 @@ def test_strip_is_derived_only_from_the_view():
     assert s["booked_total"] == v["booked_total"] == 19200 and s["budget"] == v["budget"] == 60000
     # planned = everything booked + the NEWEST still-deciding item of each open slot (never both photographers)
     assert s["planned"] == 19200 + 9000 + 900 and s["started"] == 3 and s["of"] == 7
-    assert s["label"] == "My wedding: 3 of 7 categories started · $29,100 of $60,000 planned"
+    assert s["label"] == "In My wedding so far: 3 of 7 categories · $29,100 of your $60,000 budget"
     assert [x["state"] for x in s["slots"]] == ["booked", "considering", "open", "open", "open", "open", "considering"]
     assert ww.strip({"enabled": False}) is None and ww.strip(None) is None
     assert ww.strip(wedding.view({}, [], [], True))["label"] == "My wedding: nothing added yet"

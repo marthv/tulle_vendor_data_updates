@@ -14,7 +14,9 @@ data) or "estimate" (Tulle's typical budget split of the couple's own budget, co
   Photography, Music    xano.search_pe: the vendor's lowest matching package price from their PDF
   Flowers               xano.search_listings; a florist with flt_fl_* pricing gives its typical total, else an estimate
   Catering              inside the venue's all-in when that estimate has a food and drink line; else listing + estimate
-  Planner, Hair & makeup  xano.search_listings (names only - Tulle holds no prices) + an estimate
+  Planner, Hair & makeup  xano.search_listings (a name; the search returns no figure for them) + an estimate from the
+                        couple's budget. The row says "Tulle has their pricing PDF" only after the vendor's PDF
+                        list (xano.pdf_rows, ep93) was read and holds one - see say_estimates
   Everything else       the other budget-split categories (attire, rentals, stationery ...) as one estimate line
 Tiers: figures only at detail "full". Anyone else gets the plan's SHAPE - names and estimates of their own budget, real
 prices locked (never fetched from the paid endpoint, never put in the payload); "light" adds the rounded bands the chat's
@@ -40,6 +42,7 @@ import agent
 import config
 import cost_tools
 import estimate
+import free_mode
 import plan
 import prefs
 import profile_questions
@@ -459,30 +462,93 @@ def split_amounts(token):
 
 def _row(slot, **k):
     base = {"slot": slot, "label": dict(SLOTS).get(slot, slot), "name": "", "vendor_id": "", "vendor_idx": None,
-            "amount": None, "amount_from": "", "basis": "none", "badge": "Nothing in Tulle's data yet", "locked": False,
+            "amount": None, "amount_from": "", "basis": "none", "badge": "No pick yet", "locked": False, "image": "",
             "band": "",
             "why": "", "based_on": "", "breaks": "", "added": False, "booked": False, "changed": False}
     base.update(k)
     return base
 
 
+def _image(v):
+    """The vendor's listing photo (table 11 image_1 - on every card the chat shows, for free couples too), or ""."""
+    u = (v or {}).get("image")
+    return u.strip()[:500] if isinstance(u, str) and u.strip().lower().startswith("https://") else ""
+
+
 def _estimate_row(slot, share, target, listing=None, why=""):
     """A budget line that is NOT a quote: Tulle's typical split of the couple's own target, with a named listing when
-    Tulle lists one. share = {"amount", "pct"} or None (no split available: the row says so, no number)."""
+    Tulle lists one. share = {"amount", "pct"} or None (no split available: the row says so, no number).
+    With a listing, `why` is only the lead-in (how they fit); say_estimates adds the sentence about their pricing PDF
+    once it has checked that they have one."""
     r = _row(slot, basis="estimate", badge=ESTIMATE)
     if share and share.get("amount"):
         r.update(amount=int(share["amount"]), amount_from=FROM_SPLIT)
         r["based_on"] = "Tulle's typical budget split: %d%% of a %s budget. Not a quote." % (share["pct"], _money(target))
     else:
-        r.update(badge="No estimate yet", basis="none",
-                 based_on="Tulle has no budget split to estimate this from right now.")
+        r.update(badge="No estimate yet", basis="none", based_on="No estimate could be worked out this time.")
     if listing:
         r.update(name=listing.get("name") or "", vendor_id=str(listing.get("vendor_id") or ""),
-                 vendor_idx=listing.get("vendor_idx"),
-                 why=why or "Listed on Tulle. Tulle holds no price for them yet, so the amount is an estimate.")
+                 vendor_idx=listing.get("vendor_idx"), image=_image(listing), why_lead=why, pdfs=None,
+                 why=" · ".join(x for x in (why, free_mode.WW_EST_PLAIN if r["amount"] else "") if x))
     else:
-        r["why"] = why or "No pick yet - a starting number to plan around."
+        r["why"] = why or "No pick yet. A starting number to plan around."
     return r
+
+
+_PDFS = {}                   # vendor_id -> (count, unix time): how many pricing PDFs the vendor page lists
+_PDFS_TTL_S = 6 * 3600
+_PDFS_LOCK = threading.Lock()
+
+
+def pdf_count(token, vendor_id, meta=None):
+    """How many pricing PDFs this vendor has (the vendor page's own list, ep93 - what "Pricing PDF" opens), or None
+    when it could not be read. Cached: the lists change a few times a week at most."""
+    vid = str(vendor_id or "")
+    if not vid:
+        return None
+    with _PDFS_LOCK:
+        hit = _PDFS.get(vid)
+    if hit and time.time() - hit[1] < _PDFS_TTL_S:
+        return hit[0]
+    try:
+        if meta:
+            meta.call()
+        n = int(xano.pdf_summary(xano.pdf_rows(token, vid))["count"])
+    except Exception as e:
+        print("ww pdf count failed:", vid, repr(e)[:120])
+        return None
+    with _PDFS_LOCK:
+        if len(_PDFS) > 5000:
+            _PDFS.clear()
+        _PDFS[vid] = (n, time.time())
+    return n
+
+
+def estimate_why(lead, pdfs, member, has_amount=True):
+    """What an estimate row with a named vendor says. "Tulle has their pricing PDF" ONLY when the PDF list was read
+    and holds at least one (pdfs > 0); unknown or none -> the plain line, which claims nothing about the vendor."""
+    if not has_amount:
+        tail = ""
+    elif pdfs and pdfs > 0:
+        tail = free_mode.WW_PDF_MEMBER if member else free_mode.WW_PDF_PLAN
+    else:
+        tail = free_mode.WW_EST_PLAIN
+    return " · ".join(x for x in (lead or "", tail) if x)
+
+
+def say_estimates(token, rows, member, meta=None):
+    """Finish the estimate rows that name a vendor: check each one's PDF list (in parallel, cached; a row kept from an
+    earlier proposal already knows its count) and write the line a member / a couple without a plan reads."""
+    todo = [r for r in rows if r.get("vendor_id") and "why_lead" in r and not r.get("locked") and not r.get("booked")
+            and r.get("amount_from") in (FROM_SPLIT, "")]
+    need = [r for r in todo if r.get("pdfs") is None]
+    if need:
+        with ThreadPoolExecutor(max_workers=max(1, len(need))) as ex:
+            for r, n in zip(need, ex.map(lambda r: pdf_count(token, r["vendor_id"], meta), need)):
+                r["pdfs"] = n
+    for r in todo:
+        r["why"] = estimate_why(r.get("why_lead"), r.get("pdfs"), member, bool(r.get("amount")))
+    return rows
 
 
 def _over(amount, cap, label):
@@ -648,7 +714,7 @@ def _venue_rows(token, user, ctx, full, detail, cap, share, target, mode, prev_r
         return None, None, relaxed
     (v, p, e), amount = picked
     seats = _int(v.get("max_capacity_seated"))
-    row = _row("Venue", name=v.get("name") or "", vendor_id=str(v.get("vendor_id") or ""), vendor_idx=v.get("vendor_idx"),
+    row = _row("Venue", name=v.get("name") or "", image=_image(v), vendor_id=str(v.get("vendor_id") or ""), vendor_idx=v.get("vendor_idx"),
                basis="real", badge=REAL)
     fit = []
     if seats:
@@ -656,7 +722,7 @@ def _venue_rows(token, user, ctx, full, detail, cap, share, target, mode, prev_r
     if v.get("distance_miles") is not None and has_city and "area" not in relaxed:
         fit.append("%s miles from %s" % (v["distance_miles"], ctx["city"]))
     if "guests" in relaxed and seats and guests and seats < guests:
-        row["breaks"] = "Seats %d and you have %d guests. No venue in Tulle's data seats %d here." % (seats, guests, guests)
+        row["breaks"] = "Seats %d and you have %d guests. I found no venue that seats %d here." % (seats, guests, guests)
     if "area" in relaxed and has_city:
         fit.append("nothing fits within %d miles of %s, so this is elsewhere in %s" % (
             NEAR_MILES, ctx["city"], _state1(v.get("state")) or "the state"))
@@ -677,10 +743,11 @@ def _venue_rows(token, user, ctx, full, detail, cap, share, target, mode, prev_r
             food = {"amount": int(fl["amount"]), "from_pdf": fl.get("source") == "this venue's PDF"}
     elif full:
         # Tulle has this venue's PDF but no all-in for it: a named pick, and the amount is the budget-split estimate.
-        est_row = _estimate_row("Venue", share, target, v, why="Tulle has this venue's pricing PDF but no all-in figure "
-                                "for it yet, so the amount is an estimate. Open the PDF for its real prices.")
-        row.update({k: est_row[k] for k in ("amount", "amount_from", "basis", "badge", "based_on")})
-        fit.append(est_row["why"])
+        # No all-in could be worked out for this venue (no cost inputs came back): a named pick, and the amount is the
+        # budget-split estimate. What it says about the venue's PDF is decided in say_estimates, after checking.
+        est_row = _estimate_row("Venue", share, target, v, why=" · ".join(fit))
+        row.update({k: est_row[k] for k in ("amount", "amount_from", "basis", "badge", "based_on", "why_lead", "pdfs")})
+        fit = [est_row["why"]]
     else:
         card = agent._with_rental(dict(v), p, guests, budget)
         band = (agent._light_card(card).get("price_band") or {}).get("label") if detail == "light" else ""
@@ -704,11 +771,10 @@ def _pe_row(token, slot, ctx, full, cap, share, target, mode, prev_row, exclude,
         return None
     v, amount = picked
     label = dict(SLOTS)[slot].lower()
-    fit = " · ".join(x for x in (agent._pe_type_label(v), agent._hours_label(v)) if x)
+    fit = " · ".join(x for x in (agent._pe_type_label(v), agent._hours_label(v)) if x).replace(" - ", ": ")
     if full and not amount:
-        return _estimate_row(slot, share, target, v, why=(fit + " · " if fit else "") +
-                             "no package price read from their PDF yet, so the amount is an estimate")
-    row = _row(slot, name=v.get("name") or "", vendor_id=str(v.get("vendor_id") or ""), vendor_idx=v.get("vendor_idx"),
+        return _estimate_row(slot, share, target, v, why=fit)      # no package price came back for them
+    row = _row(slot, name=v.get("name") or "", image=_image(v), vendor_id=str(v.get("vendor_id") or ""), vendor_idx=v.get("vendor_idx"),
                basis="real", badge=REAL, why=fit)
     if full:
         row.update(amount=amount, amount_from=FROM_VENDOR, breaks=_over(amount, cap, label),
@@ -740,7 +806,7 @@ def _flowers_row(token, ctx, full, detail, cap, share, target, mode, prev_row, e
         if not total(v):
             return _estimate_row("Flowers", share, target, v)
         band = agent._florist_note(v.get("florist_pricing"), "light") if detail == "light" else ""
-        return _row("Flowers", name=v.get("name") or "", vendor_id=str(v.get("vendor_id") or ""),
+        return _row("Flowers", name=v.get("name") or "", image=_image(v), vendor_id=str(v.get("vendor_id") or ""),
                     vendor_idx=v.get("vendor_idx"), basis="locked", badge=PRICED_LOCKED, locked=True, band=band or "",
                     based_on="Tulle holds this florist's price sheet. Open the PDF, or unlock a plan to see a typical "
                              "total here.")
@@ -751,7 +817,7 @@ def _flowers_row(token, ctx, full, detail, cap, share, target, mode, prev_row, e
     if not amount:
         return _estimate_row("Flowers", share, target, v)
     fp = v.get("florist_pricing") or {}
-    return _row("Flowers", name=v.get("name") or "", vendor_id=str(v.get("vendor_id") or ""),
+    return _row("Flowers", name=v.get("name") or "", image=_image(v), vendor_id=str(v.get("vendor_id") or ""),
                 vendor_idx=v.get("vendor_idx"), amount=amount, amount_from=FROM_VENDOR, basis="estimate", badge=ESTIMATE,
                 why=("%s tier" % fp["tier"]) if fp.get("tier") else "",
                 # Not a price on their sheet: Tulle's typical order priced from it. So an estimate, and it says so.
@@ -771,7 +837,7 @@ def _food_row(food, full):
         return _row("Food and Beverage", basis="included", badge=REAL if food["from_pdf"] else ESTIMATE,
                     why="Inside the venue's all-in above: %s of it is food and drink." % _money(food["amount"]),
                     based_on="From the venue's pricing PDF." if food["from_pdf"] else
-                    "Tulle's estimate for this venue - its PDF doesn't give a food price. Not a quote.")
+                    "Tulle's estimate for this venue. No food price came back from its pricing. Not a quote.")
     return None
 
 
@@ -924,23 +990,25 @@ def build(token, user, ctx, detail, *, prev=None, action="base", category="", st
             row = out.get(slot)
             if row is None and old:
                 row = dict(old)
-                kept_why = (("no %s venue fits in Tulle's data here" % style.split(" / ")[0].lower()) if action == "style" else
-                            "nothing else in Tulle's data here" if action == "swap" else
-                            "nothing cheaper in Tulle's data here" if mode == "cheaper" else
-                            "nothing nicer that still fits in Tulle's data here" if mode == "nicer" else "")
+                # only what this search checked: it found no other match (it reads the top results, not everything)
+                kept_why = (("I found no %s venue that fits here" % style.split(" / ")[0].lower()) if action == "style" else
+                            "I found no other match here" if action == "swap" else
+                            "I found nothing cheaper here" if mode == "cheaper" else
+                            "I found nothing nicer that still fits here" if mode == "nicer" else "")
             elif row is None and slot == "Venue":
-                row = _row("Venue", why="No venue in Tulle's data for %s yet." % (" and ".join(ctx["states"]) or "this area"))
+                row = _row("Venue", badge="No venue found", why="I could not find a venue for %s this time." % (
+                    " and ".join(ctx["states"]) or "this area"))
             elif row is None:
-                row = _estimate_row(slot, share(slot), target, why="Tulle has no %s to suggest here yet. A starting "
-                                    "number to plan around." % label.lower())
+                row = _estimate_row(slot, share(slot), target, why="I could not find a %s to suggest here this time. "
+                                    "A starting number to plan around." % label.lower())
         else:
             row = dict(old or _row(slot))
         row["changed"] = bool(prev and old and _changed(old, row))
         if row["changed"]:
             changes.append(_change_line(label, old, row))
         elif prev and old and slot in redo and (one or (kept_why and _prev_amount(old) is not None)):
-            changes.append("%s: %s%s" % (label, kept_why or "nothing else in Tulle's data here",
-                                         (" - kept %s" % old["name"]) if old.get("name") else ""))
+            changes.append("%s: %s%s" % (label, kept_why or "I found no other match here",
+                                         (", so I kept %s" % old["name"]) if old.get("name") else ""))
         rows.append(row)
     names = [n for n in split if n not in SLOT_KEYS]
     other_amount = sum(split[n]["amount"] for n in names)
@@ -950,6 +1018,7 @@ def build(token, user, ctx, detail, *, prev=None, action="base", category="", st
                  "why": ", ".join(names),
                  "based_on": "Tulle's typical budget split: %d%% of a %s budget. Not a quote." % (
                      sum(split[n]["pct"] for n in names), _money(target))}
+    say_estimates(token, rows, bool(ctx.get("member")), meta)
     mark_added(rows, view)
     old_where = (prev or {}).get("where") or ""
     where = (old_where if one and not venue_redone and old_where else
@@ -964,6 +1033,7 @@ def build(token, user, ctx, detail, *, prev=None, action="base", category="", st
     elif action == "budget" and prev and old_target != target:
         changes.insert(0, "Planned to %s instead of %s" % (_money(target), _money(old_target)))
     widget = {"type": PROPOSAL, "v": V, "title": "Your wedding, proposed", "detail": detail, "mode": action,
+              "total_label": "This plan's total",
               "guests": ctx["guests"], "budget": budget, "target": target, "where": where, "when": ctx.get("date") or "",
               "states": list(ctx["states"]), "area": ctx.get("area") or "", "rows": rows, "other": other,
               "exclude": exclude, "changes": changes,
@@ -1047,17 +1117,17 @@ def text_for(widget, action="base"):
                 "budget": "Re-planned to your new budget.", "booked": "Noted, and saved to My wedding as booked."}[action]
         s = lead + " " + ". ".join(changes[:4]) + "."
         if full and widget.get("total"):
-            s += " The plan now comes to about %s%s." % (_money(widget["total"]), (" - " + widget["total_note"]) if widget.get("total_note") else "")
+            s += " The plan now comes to about %s%s." % (_money(widget["total"]), (", " + widget["total_note"]) if widget.get("total_note") else "")
         return s
     if not venue.get("name"):
-        s = "Here's %s, but Tulle has no venue there to build it around yet - the other lines are a start." % head
+        s = "Here's %s. I could not find a venue there to build it around this time, so the other lines are a start." % head
     elif venue.get("breaks"):
-        s = "Here's %s. No venue in Tulle's data fits everything, so %s is the closest: %s." % (
+        s = "Here's %s. No venue I found fits everything, so %s is the closest: %s." % (
             head, venue["name"], venue["breaks"][0].lower() + venue["breaks"][1:].rstrip("."))
     else:
         s = "Here's %s, built around %s, with a pick or an estimate for every category." % (head, venue["name"])
     if full and widget.get("total"):
-        s += " It comes to about %s%s." % (_money(widget["total"]), (" - " + widget["total_note"]) if widget.get("total_note") else "")
+        s += " It comes to about %s%s." % (_money(widget["total"]), (", " + widget["total_note"]) if widget.get("total_note") else "")
         s += " Each line says whether it's a real price from Tulle's data or an estimate."
     else:
         s += (" Vendors' real figures stay locked on your plan: open a pick's PDF to see them, or unlock a plan to "
@@ -1230,11 +1300,13 @@ def strip(view, changed=()):
             slots.append({"slot": key, "label": label, "state": "open", "name": ""})
     started = sum(1 for s in slots if s["state"] != "open")
     budget = _int(view.get("budget")) or None
-    label = ("My wedding: %d of %d categories started" % (started, len(SLOTS))) if started else "My wedding: nothing added yet"
+    # "In My wedding so far" - what the couple already saved or booked there, NOT the proposal's total above it (the
+    # first live test showed "$17,650 of $12,345 planned" beside a $12,905 plan and read as one number contradicting the other).
+    label = ("In My wedding so far: %d of %d categories" % (started, len(SLOTS))) if started else "My wedding: nothing added yet"
     if planned and budget:
-        label += " · %s of %s planned" % (_money(planned), _money(budget))
+        label += " · %s of your %s budget" % (_money(planned), _money(budget))
     elif planned:
-        label += " · %s planned" % _money(planned)
+        label += " · %s" % _money(planned)
     return {"started": started, "of": len(SLOTS), "planned": planned, "booked_total": _int(view.get("booked_total")),
             "budget": budget, "label": label, "slots": slots, "changed": [c for c in changed if c][:6],
             "action": "Open my wedding"}

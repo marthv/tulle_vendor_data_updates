@@ -164,7 +164,7 @@ def test_2_mutation_add_relocks_for_a_lapsed_account(wd, monkeypatch):
     full card, added row by row, writes no vendor figure."""
     out = ask(wd, FULL, "Plan my wedding", START)
     user = lapse(wd)
-    monkeypatch.setattr(app, "_ww_entitled", lambda widget, detail: widget)     # isolate the endpoint's own relock
+    monkeypatch.setattr(app, "_ww_entitled", lambda widget, detail, member=False: widget)     # isolate the endpoint's own relock
     d = client(monkeypatch, user).post("/rec/ww/add", json={"chat_id": out["chat_id"], "all": True}).json()
     assert leaks(d) == [] and leaks(wd.packages) == [] and len(wd.packages) == 6
     assert {p["Category"]: p["total_cost"] for p in wd.packages}["Venue"] == 0
@@ -339,7 +339,7 @@ def test_4_rebooking_the_same_vendor_at_a_new_price_updates_the_stored_price(wd)
     booked = [(p["vendor_name"], p["total_cost"], p["Balance_Left"]) for p in wd.packages if p["Selected"]]
     assert booked == [("The Old Mill", 25000, 25000)]
     assert rows_of(o)["Venue"]["amount"] == 25000 and view_of(wd, FULL)["booked_total"] == 25000
-    assert o["wedding_status"]["label"] == "My wedding: 1 of 7 categories started · $25,000 of $60,000 planned"
+    assert o["wedding_status"]["label"] == "In My wedding so far: 1 of 7 categories · $25,000 of your $60,000 budget"
     # a category whose bookings the screen files under "other costs" (no main slot) is found by name too
     ask(wd, FULL, "we already booked our planner: Day Of Dana for $2,000", {"active": True}, chat_id=cid)
     ask(wd, FULL, "we already booked our planner: Day Of Dana for $2,400", {"active": True}, chat_id=cid)
@@ -642,3 +642,170 @@ def test_r5_a_mixed_add_sends_one_ready_made_summary_line(wd, monkeypatch):
     ask(wd, FULL, "our budget is actually 40k", {"active": True}, chat_id=cid)
     d = c.post("/rec/ww/add", json={"chat_id": cid, "slots": ["Beauty"]}).json()
     assert d["wedding_status"]["changed"] == ["Updated: Hair & makeup - Glow Studio"]      # one change: its own line, as before
+
+
+# ================================================================ round 3 (owner's first live test, 2026-11-16)
+
+GONE = ("holds no price", "Listed on Tulle", "Nothing in Tulle's data", "Tulle has no ", "names only", "in Tulle's data here")
+
+
+def _texts(out):
+    """Every sentence a couple reads on the card's rows, plus the reply around it."""
+    p = proposal_of(out)
+    return [out["text"]] + [str(r.get(k) or "") for r in p["rows"] for k in ("badge", "why", "based_on", "breaks")]
+
+
+# ---------------------------------------------------------------- R3.1 what an estimate row may claim
+
+def test_r31_member_estimate_row_says_tulle_has_their_pdf_only_after_checking(wd):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    be = rows_of(out)["Beauty"]
+    assert ("pdf_rows", "B1") in wd.calls and be["pdfs"] == 1                    # the claim rests on the PDF list read
+    assert be["why"] == free_mode.WW_PDF_MEMBER == (
+        "Tulle has their pricing PDF and their real prices are in it. The amount here is an estimate from your budget "
+        "until you open it.")
+    assert (be["badge"], be["amount"], be["amount_from"]) == (ww.ESTIMATE, 1200, "split")
+    for t in _texts(out):
+        assert not any(g in t for g in GONE), t
+        assert " - " not in t and "\u2014" not in t and "\u2013" not in t, t       # no dash used as punctuation
+
+
+def test_r31_couple_without_a_plan_is_told_the_pdf_comes_with_a_plan(wd, monkeypatch):
+    for pricing in ("light", "none"):
+        monkeypatch.setattr(config, "FREE_PRICING", pricing)
+        out = ask(wd, dict(FREE, id=7040 + len(pricing)), "Plan my wedding", START)
+        rows = rows_of(out)
+        assert rows["Beauty"]["why"] == rows["Food and Beverage"]["why"] == free_mode.WW_PDF_PLAN == (
+            "Tulle has their pricing PDF and their real prices are in it. Pricing PDFs come with a plan. The amount here "
+            "is an estimate from your budget.")
+        assert rows["Beauty"]["amount"] == 1200 and leaks(out) == []            # their own budget share stays; no vendor figure
+        assert not any(g in t for t in _texts(out) for g in GONE) and "until you open it" not in json.dumps(out)
+
+
+@pytest.mark.parametrize("case", ["no PDF on file", "PDF list could not be read"])
+def test_r31_no_pdf_claim_without_a_known_pdf(wd, monkeypatch, case):
+    if case == "no PDF on file":
+        wd.pdfs["B1"] = 0
+    else:
+        monkeypatch.setattr(xano, "pdf_rows", lambda tok, vid: (_ for _ in ()).throw(xano.XanoError("timeout")))
+    for user in (FULL, FREE):
+        be = rows_of(ask(wd, user, "Plan my wedding", START))["Beauty"]
+        assert be["why"] == free_mode.WW_EST_PLAIN == "The amount is an estimate from your budget."
+        assert be["pdfs"] == (0 if case == "no PDF on file" else None) and "PDF" not in be["why"]
+
+
+def test_r31_other_estimate_rows_with_a_named_vendor_follow_the_same_rule(wd, monkeypatch):
+    # a photographer whose package price did not come back, a florist without a typical total, a venue with no all-in
+    wd.pe["Photography"] = [dict(wd.pe["Photography"][0], from_price=None)]
+    wd.listings["Flowers"] = [wd.listings["Flowers"][1]]
+    monkeypatch.setattr(xano, "cached_venue_pricing", lambda *a, **k: {"vendor_id": a[1], "guest_minimum": 0, "lines": [], "cost_inputs": None})
+    wd.pdfs["F2"] = 0
+    rows = rows_of(ask(wd, FULL, "Plan my wedding", START))
+    ph, fl, v = rows["Photography"], rows["Flowers"], rows["Venue"]
+    assert ph["basis"] == "estimate" and ph["why"].endswith(free_mode.WW_PDF_MEMBER) and ph["why"] != free_mode.WW_PDF_MEMBER
+    assert fl["why"] == free_mode.WW_EST_PLAIN and fl["name"] == "Petal Works"
+    assert v["basis"] == "estimate" and v["why"] == "Seats 300 \u00b7 " + free_mode.WW_PDF_MEMBER
+    assert rows["Wedding Planner"]["why"] == "No pick yet. A starting number to plan around." and "pdfs" not in rows["Wedding Planner"]
+
+
+def test_r31_a_lapsed_member_never_keeps_the_member_line(wd, monkeypatch):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    cid = out["chat_id"]
+    assert free_mode.WW_PDF_MEMBER in json.dumps(xano.get_messages(cid))
+    user = lapse(wd)
+    d = client(monkeypatch, user).get("/rec/chats/%d" % cid).json()                 # reopened
+    assert "until you open it" not in json.dumps(d) and free_mode.WW_PDF_PLAN in json.dumps(d)
+    o = ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=cid)       # a reaction keeps the Beauty row
+    assert rows_of(o)["Beauty"]["why"] == free_mode.WW_PDF_PLAN and "until you open it" not in json.dumps(o)
+    n = sum(1 for c in wd.calls if c == ("pdf_rows", "B1"))
+    assert n == 1                                                                    # the kept row was not looked up again
+
+
+def test_r31_nothing_found_says_only_that(wd):
+    wd.venues[:] = []
+    out = ask(wd, FULL, "Plan my wedding", START)
+    v = rows_of(out)["Venue"]
+    assert (v["badge"], v["why"]) == ("No venue found", "I could not find a venue for Texas this time.")
+    assert rows_of(out)["Wedding Planner"]["badge"] == ww.ESTIMATE
+    assert not any(g in t for t in _texts(out) for g in GONE)
+
+
+# ---------------------------------------------------------------- R3.2 the usage row records the real conversation
+
+def test_r32_usage_row_carries_the_chat_it_was_delivered_in(wd):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    assert out["chat_id"] > 0 and [r["chat_id"] for r in wd.usage] == [out["chat_id"]]
+    o = ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=out["chat_id"])
+    assert [r["chat_id"] for r in wd.usage] == [out["chat_id"]] * 2 and o["chat_id"] == out["chat_id"]
+
+
+# ---------------------------------------------------------------- R3.3 two totals, each named
+
+def test_r33_the_strip_and_the_plan_total_say_which_is_which(wd):
+    user = dict(FULL, id=7050, Wedding_Budget=12345)
+    for i, (name, cat, cost, sel) in enumerate((("Old Hall", "Venue", 9000, True), ("Snap", "Photography", 5000, False),
+                                                ("Band", "Entertainment", 3650, False))):
+        wd.package_add({"user_id": 7050, "vendor_name": name, "total_cost": cost, "Balance_Paid": 0, "Balance_Left": cost,
+                        "Category": cat, "Selected": sel, "Notes": "", "Package_Name": "theirs"})
+    out = ask(wd, user, "Plan my wedding", START)
+    assert out["wedding_status"]["label"] == "In My wedding so far: 3 of 7 categories \u00b7 $17,650 of your $12,345 budget"
+    p = proposal_of(out)
+    assert p["total_label"] == "This plan's total" and p["total"] and "planned" not in out["wedding_status"]["label"]
+    assert ww.strip(view_of(wd, dict(FULL, id=7051)))["label"] == "My wedding: nothing added yet"
+
+
+# ---------------------------------------------------------------- R3.4 an identical repeat runs no lookup again
+
+def test_r34_an_identical_repeat_is_answered_from_the_cache_without_lookups(wd, monkeypatch):
+    out = ask(wd, FULL, "Plan my wedding", START)
+    cid, n_calls = out["chat_id"], len(wd.calls)
+    assert out["ww"]["tool_calls"] == 12
+    o = ask(wd, FULL, "Plan my wedding", START, chat_id=cid)
+    assert len(wd.calls) == n_calls and o["ww"]["tool_calls"] == 0 and o["ww"]["counted"] is False and len(wd.usage) == 1
+    assert ww.same_plan(proposal_of(o), proposal_of(out)) and o["text"] == out["text"]
+    # what My wedding holds is read fresh, never from the cache
+    client(monkeypatch, FULL).post("/rec/ww/add", json={"chat_id": cid, "slots": ["Venue"]})
+    o = ask(wd, FULL, "Plan my wedding", START, chat_id=cid)
+    assert len(wd.calls) == n_calls and rows_of(o)["Venue"]["added"] is True and o["wedding_status"]["started"] == 1
+    # a reaction changes the card on screen, not the cached plan
+    ask(wd, FULL, "swap the photographer", {"active": True}, chat_id=cid)
+    n_calls = len(wd.calls)
+    o = ask(wd, FULL, "Plan my wedding", START, chat_id=cid)
+    assert len(wd.calls) == n_calls and rows_of(o)["Photography"]["name"] == "Jane Doe Photo"
+    assert o["ww"]["counted"] is True                 # not the card they were last shown: a new answer, with no lookups
+    # anything the plan is built from changes the key: other details, another account, a booking, the entitlement
+    for user, msg in ((FULL, "Plan my wedding for 90 guests"), (dict(FULL, id=7060), "Plan my wedding")):
+        n_calls = len(wd.calls)
+        ask(wd, user, msg, {"skip": ["area"]})
+        assert len(wd.calls) > n_calls
+    ask(wd, FULL, "we already booked our dj: Bob for $900", {"active": True}, chat_id=cid)
+    n_calls = len(wd.calls)
+    o = ask(wd, FULL, "Plan my wedding", START, chat_id=cid)
+    assert len(wd.calls) > n_calls and rows_of(o)["Entertainment"]["basis"] == "yours"
+    lapse(wd)
+    n_calls = len(wd.calls)
+    o = ask(wd, FULL, "Plan my wedding", START, chat_id=cid)
+    assert len(wd.calls) > n_calls and leaks(o) == [] and proposal_of(o)["detail"] == "light"
+
+
+def test_r34_the_cache_is_short_lived(wd, monkeypatch):
+    ask(wd, FULL, "Plan my wedding", START)
+    n_calls = len(wd.calls)
+    real = app.time.time
+    monkeypatch.setattr(app.time, "time", lambda: real() + app.WW_PLAN_TTL_S + 1)
+    ask(wd, FULL, "Plan my wedding", START)
+    assert len(wd.calls) > n_calls and app.WW_PLAN_TTL_S <= 600
+
+
+# ---------------------------------------------------------------- R3.5 a photo per row, when the lookup already has one
+
+def test_r35_rows_carry_the_listing_photo_and_nothing_else_new(wd):
+    wd.venues[1]["image"] = "https://img.example/hackett.jpg"
+    wd.pe["Photography"][0]["image"] = "http://img.example/not-https.jpg"
+    wd.listings["Beauty"][0]["image"] = "https://img.example/glow.jpg"
+    wd.listings["Flowers"][0]["image"] = "javascript:alert(1)"
+    rows = rows_of(ask(wd, FULL, "Plan my wedding", START))
+    assert rows["Venue"]["image"] == "https://img.example/hackett.jpg" and rows["Beauty"]["image"] == "https://img.example/glow.jpg"
+    assert rows["Photography"]["image"] == "" and rows["Flowers"]["image"] == "" and rows["Wedding Planner"]["image"] == ""
+    free = ask(wd, FREE, "Plan my wedding", START)
+    assert rows_of(free)["Beauty"]["image"] == "https://img.example/glow.jpg" and leaks(free) == []

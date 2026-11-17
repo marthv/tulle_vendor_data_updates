@@ -174,7 +174,27 @@ def widget(w):
                 locked=True, reason="unlock_pdf_pricing")
 
 
-def proposal(w):
+# Whole-wedding estimate rows that name a vendor (owner 2026-11-16: "a vendor is only listed on Tulle because Tulle holds
+# their pricing PDF" - what is missing is a number read out of it, not the pricing). Said ONLY when the vendor's PDF
+# list was read and has at least one PDF; otherwise the plain line, which claims nothing.
+WW_PDF_MEMBER = ("Tulle has their pricing PDF and their real prices are in it. The amount here is an estimate from your "
+                 "budget until you open it.")
+WW_PDF_PLAN = ("Tulle has their pricing PDF and their real prices are in it. Pricing PDFs come with a plan. The amount "
+               "here is an estimate from your budget.")
+WW_EST_PLAIN = "The amount is an estimate from your budget."
+
+
+def proposal_wording(w, member):
+    """The estimate rows' PDF sentence for who is reading NOW: a couple without a plan never keeps the member line."""
+    if member or not isinstance(w, dict):
+        return w
+    rows = [dict(r, why=r["why"].replace(WW_PDF_MEMBER, WW_PDF_PLAN))
+            if isinstance(r, dict) and isinstance(r.get("why"), str) and WW_PDF_MEMBER in r["why"] else r
+            for r in w.get("rows") or []]
+    return dict(w, rows=rows)
+
+
+def proposal(w, member=False):
     """A whole-wedding proposal (whole_wedding.py, 2026-11-15) safe for a couple with no plan: the plan's SHAPE - the
     picks, and the estimates that are only a share of their own budget (allowed, like the budget split) - with every
     figure that came from a vendor's pricing removed: real rows lose their amount and band and read "locked", the
@@ -186,7 +206,7 @@ def proposal(w):
     # vendor's data (a venue all-in that is part or all estimated, a florist's typical total) - is removed, whatever
     # its badge says. A row with no amount_from (an older shape) is treated as vendor-derived.
     rows = []
-    for r in w.get("rows") or []:
+    for r in proposal_wording(w, member).get("rows") or []:
         r = dict(r)
         own = bool(r.get("booked")) or r.get("basis") == "yours"
         open_share = r.get("basis") == "estimate" and r.get("amount_from") == "split"
