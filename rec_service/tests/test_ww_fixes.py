@@ -1108,3 +1108,14 @@ def test_r51_locked_sentence_follows_reader():
     full = wwm.text_for(dict(w, detail="full", total=12000), "base", "free_none")
     assert "It comes to about" in full
     assert not any(line.strip() in full for line in wwm._LOCKED_LINE.values())
+
+
+# 11-17: listing photos arrive as Xano file records; the row keeps only an https url.
+def test_r52_image_from_file_record():
+    import whole_wedding as wwm
+    rec = {"image": {"access": "public", "url": "https://xqtb-2ma7-ijfy.n7e.xano.io/vault/x/vendor_7196.jpg", "mime": "image/jpeg"}}
+    assert wwm._image(rec) == "https://xqtb-2ma7-ijfy.n7e.xano.io/vault/x/vendor_7196.jpg"
+    assert wwm._image({"image": "https://a.example/p.jpg"}) == "https://a.example/p.jpg"
+    assert wwm._image({"image": {"url": "http://insecure.example/p.jpg"}}) == ""
+    assert wwm._image({"image": {"url": "javascript:alert(1)"}}) == ""
+    assert wwm._image({"image": None}) == "" and wwm._image({}) == ""

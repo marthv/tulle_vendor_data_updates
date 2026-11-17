@@ -472,6 +472,10 @@ def _row(slot, **k):
 def _image(v):
     """The vendor's listing photo (table 11 image_1 - on every card the chat shows, for free couples too), or ""."""
     u = (v or {}).get("image")
+    # 11-17: table 11 image_1 is a Xano file record ({"url": "https://...vault/...jpg", ...}), not a bare link -
+    # every proposal row came back with no photo. Take its url.
+    if isinstance(u, dict):
+        u = u.get("url") or ""
     return u.strip()[:500] if isinstance(u, str) and u.strip().lower().startswith("https://") else ""
 
 
