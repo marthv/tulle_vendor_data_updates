@@ -1338,6 +1338,37 @@
       "risks": [],
       "owner": "Vivek",
       "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-whole-wedding-planner",
+      "what": "Planner 'Plan my wedding' (whole-wedding proposal) for every couple, no holdout",
+      "status": "approved",
+      "themes": [
+        "planner",
+        "engagement",
+        "my-wedding"
+      ],
+      "goal": "Owner 11-15 ('Odessia for Tulle') and 11-17 ('open it up to every single couple, we want to go live'): one tap proposes the whole wedding - a venue plus a pick or labelled estimate per category, total vs budget - and couples add it to My wedding. Does it make couples plan inside Tulle (My wedding rows, return visits) and buy more often? No size of lift was predicted.",
+      "primary_metric": "Adoption: couples who start 'Plan my wedding' per day (table 79 kind ww_proposal, Mixpanel rec_ww_entry_clicked / rec_ww_proposal_shown); share of them who add 1+ row to My wedding (rec_ww_row_added / rec_ww_add_all); 7-day return of proposal couples.",
+      "guardrail": "Purchases/day and free-couple PDF opens not down vs the 14 days before; Planner errors and answer latency unchanged (proposal = ~12 lookups, no model call, 3 s cap on PDF-list reads); no vendor price shown to couples without paid access (free_mode.proposal).",
+      "start_date": null,
+      "end_date": null,
+      "review_date": null,
+      "dates_note": "Server switched on for all couples 2026-11-17 16:20 UTC (REC_WHOLE_WEDDING=1, REC_WHOLE_WEDDING_PCT=100 on rec-engine). Nothing visible until the owner publishes WeWeb with ww-planner-chat 03d4ff5 (or later) active and wholeWedding on (Planner page + Ask Tulle bar instances). start_date = verified publish time; review_date = start + 14 days.",
+      "design": "Everyone, no A/B (owner 11-17). Read as adoption + before/after; ww_arm on every event ('pct' for couples, 'forced' for the internal account).",
+      "baseline": "To pull at start: purchases/day, free-couple PDF open rate, Planner couples/day, My wedding rows added/day for the 14 days before publish (internal accounts excluded).",
+      "results": [
+        {
+          "date": "2026-11-17",
+          "note": "Approved by owner; server on at 100%. Open before calling: free/no-views wording fixed 3780d11; photos fixed d1483bc; known gaps - per-process locks, second booked row when the couple edited a considering row, one pick per category, no-model design (owner decisions)."
+        }
+      ],
+      "stat_sig": null,
+      "decision": null,
+      "confounds_noted": "Ships in the same publish as the Tulle Price Report (replaces Pricing Intelligence card), Meta landing pages + pixel, /connect-claude, Back to Planner, sticky-bar Ask Tulle removal - before/after cannot be credited to this alone.",
+      "risks": "Proposal quality (picks, estimates for categories without extracted prices); Xano load from ~12 lookups per proposal; strip total vs plan total confusion.",
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
     }
   ],
   "changes": [
@@ -1483,6 +1514,18 @@
         "EXP-2026-11-free-daily-question",
         "EXP-2026-11-save-offer-60-forever",
         "EXP-2026-11-planner-my-wedding-plan"
+      ]
+    },
+    {
+      "date": "2026-11-17",
+      "what": "rec-engine REC_WHOLE_WEDDING_PCT 0 -> 100 at 16:20 UTC (whole-wedding flow for every couple; visible after the next WeWeb publish with ww-planner-chat 03d4ff5+ active). Server fixes same day: 3780d11 (locked-plan sentence per reader), d1483bc (row photos).",
+      "affects": [
+        "EXP-2026-11-whole-wedding-planner",
+        "EXP-2026-11-planner-my-wedding-plan",
+        "EXP-2026-11-ask-tulle-bubble",
+        "EXP-2026-11-free-daily-question",
+        "EXP-2026-11-pi-first-vendor-free",
+        "EXP-2026-11-quote-check-everyone"
       ]
     }
   ]
