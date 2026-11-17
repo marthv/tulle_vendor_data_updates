@@ -1090,3 +1090,21 @@ def test_r41_a_plan_that_opens_pdfs_keeps_the_member_line_on_reopen(wd, monkeypa
     by = {r["slot"]: r for r in card["rows"]}
     _only_speaks_as(card, "member")
     assert by["Beauty"]["why"] == free_mode.WW_EST["member"] and by["Venue"]["based_on"].endswith(OPEN["member"]) and leaks(d) == []
+
+
+# 11-17 verifier r5 defect 1: the sentence above a card without full figures follows the reader, like the rows do.
+def test_r51_locked_sentence_follows_reader():
+    import whole_wedding as wwm
+    w = {"detail": "free", "guests": 100, "where": "in Texas", "rows": [{"slot": "Venue", "name": "Barn A"}], "total": None}
+    member = wwm.text_for(w, "base", "member")
+    views = wwm.text_for(w, "base", "free_views")
+    none = wwm.text_for(w, "base", "free_none")
+    unknown = wwm.text_for(w, "base", "free")
+    assert "Open a pick's pricing PDF" in member and "free PDF view" not in member
+    assert "free PDF view" in views
+    assert "which come with a plan" in none and "free PDF view" not in none and "open a pick" not in none.lower()
+    assert "A plan opens every one" in unknown
+    assert wwm.text_for(w) == unknown                       # default reader = the line true either way
+    full = wwm.text_for(dict(w, detail="full", total=12000), "base", "free_none")
+    assert "It comes to about" in full
+    assert not any(line.strip() in full for line in wwm._LOCKED_LINE.values())

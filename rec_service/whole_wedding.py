@@ -1134,7 +1134,19 @@ def apply_booked(widget, slot, name, price):
     return total_up(w)
 
 
-def text_for(widget, action="base"):
+# 11-17 (verifier r5 defect 1): the sentence above a card without full figures said "open a pick's PDF to see them,
+# or unlock a plan" to everyone, while the rows (free_mode.WW_OPEN) say "comes with a plan" to a free couple with no
+# PDF views left. One sentence per reader (app._ww_reader), each true for that reader; unknown = true either way.
+_LOCKED_LINE = {
+    "member": " Open a pick's pricing PDF to see their real prices. The whole total here comes with a plan upgrade.",
+    "free_views": (" Vendors' real prices are in their pricing PDFs: open one with a free PDF view, or get a plan to "
+                   "open them all and see the whole total here."),
+    "free_none": " Vendors' real prices are in their pricing PDFs, which come with a plan. A plan also shows the whole total here.",
+    "free": " Vendors' real prices are in their pricing PDFs. A plan opens every one of them and shows the whole total here.",
+}
+
+
+def text_for(widget, action="base", reader="free"):
     """The 2-3 sentences around the card. Figures only at full detail; never a price for anyone else."""
     rows = widget.get("rows") or []
     venue = next((r for r in rows if r.get("slot") == "Venue"), {})
@@ -1160,8 +1172,7 @@ def text_for(widget, action="base"):
         s += " It comes to about %s%s." % (_money(widget["total"]), (", " + widget["total_note"]) if widget.get("total_note") else "")
         s += " Each line says whether it's a real price from Tulle's data or an estimate."
     else:
-        s += (" Vendors' real figures stay locked on your plan: open a pick's PDF to see them, or unlock a plan to "
-              "see the whole total here.")
+        s += _LOCKED_LINE.get(reader, _LOCKED_LINE["free"])
     s += " Add what you like to My wedding, or tell me what's wrong and I'll change it."
     return s
 

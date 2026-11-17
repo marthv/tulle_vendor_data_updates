@@ -2655,7 +2655,7 @@ def _ww_refine(token, user, body, background, tracker):
             whole_wedding.mark_added(widget["rows"], view)
             widgets = [widget]
             strip = whole_wedding.strip(view, ["Booked: %s - %s" % (dict(whole_wedding.SLOTS)[slot], name)])
-            out_text = whole_wedding.text_for(widget, "booked")
+            out_text = whole_wedding.text_for(widget, "booked", reader)
             memory_notes.append(whole_wedding.booked_note(label, name))
             saved_lines = ["Already booked their %s: %s" % (label, name)]
     elif action == "budget" and not new_budget:
@@ -2747,7 +2747,7 @@ def _ww_refine(token, user, body, background, tracker):
             counted_free = counted_free and spent
             widgets = [widget]
             strip = whole_wedding.strip(view)
-            out_text = whole_wedding.text_for(widget, build_action)
+            out_text = whole_wedding.text_for(widget, build_action, reader)
             if action in ("cheaper", "nicer"):
                 note = "Asked for a %s version of their whole-wedding plan" % action
                 memory_notes.append(note)
