@@ -322,6 +322,193 @@ def pilot(rows, out_dir, pdf_dir, models, workers=4, log=print):
     return total
 
 
+# ── BATCH (50% price) + INGEST into Xano tables 92 / 93 ───────────────────────
+TAG = {"catering": "c", "beauty": "b", "planner": "p"}
+CAT_BY_TAG = {v: k for k, v in TAG.items()}
+XANO_BASE = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:GynP5T1B/pdfdata/"
+BATCH_MODEL = "claude-sonnet-5-5"
+
+
+def submit_batch(rows, pdf_dir, model=BATCH_MODEL, log=print):
+    """Upload each PDF to the Files API and submit one Batch API job. Returns (batch_id, pdf_map)."""
+    import anthropic
+    from datetime import datetime, timezone
+    from extract_extras import _upload
+    client = anthropic.Anthropic()
+    drive, reqs, pm = {}, [], {}
+    ts = datetime.now(timezone.utc).isoformat()
+    for i, row in enumerate(rows):
+        pid = row["PDF_ID"]
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,60}", pid):
+            log(f"  skip {pid!r}: bad custom_id")
+            continue
+        data, err = load_pdf(row, pdf_dir, drive)
+        if not data:
+            log(f"  [{i+1}/{len(rows)}] {pid} download failed: {err}")
+            continue
+        if len(data) > 30 * 1024 * 1024:
+            log(f"  [{i+1}/{len(rows)}] {pid} too large - skipped")
+            continue
+        fid = _upload(client, data, f"{pid}.pdf")
+        p = build_params(row["cat"], model, "", pid, row.get("Name", ""))
+        p["messages"][0]["content"][0] = {"type": "document",
+                                          "source": {"type": "file", "file_id": fid}}
+        reqs.append({"custom_id": f"{pid}__{TAG[row['cat']]}", "params": p})
+        pm[pid] = {"PDF_ID": pid, "Vendor_ID": row["Vendor_ID"], "Name": row.get("Name", ""),
+                   "state": row.get("state", ""), "cat": row["cat"], "file_id": fid,
+                   "model": model, "timestamp": ts}
+        log(f"  [{i+1}/{len(rows)}] {pid} uploaded")
+    b = client.messages.batches.create(requests=reqs)
+    log(f"batch {b.id}: {len(reqs)} requests")
+    return b.id, pm
+
+
+def fetch_batch(batch_id, pdf_map):
+    """Ended batch -> {pdf_id: outcome} using the same outcome shape as run_one."""
+    import anthropic
+    client = anthropic.Anthropic()
+    b = client.messages.batches.retrieve(batch_id)
+    if b.processing_status != "ended":
+        raise RuntimeError(f"batch {batch_id} is {b.processing_status} {b.request_counts}")
+    out = {}
+    for r in client.messages.batches.results(batch_id):
+        pid, tag = r.custom_id.rsplit("__", 1)
+        meta = pdf_map.get(pid, {})
+        if r.result.type != "succeeded":
+            out[pid] = {"status": "failed", "error": str(getattr(r.result, "error", r.result.type))[:300]}
+            continue
+        msg = r.result.message
+        usage = {"input": msg.usage.input_tokens, "output": msg.usage.output_tokens}
+        oc = {"usage": usage, "cost_usd": round(cost_of(meta.get("model", BATCH_MODEL), usage) * 0.5, 5),
+              "stop_reason": msg.stop_reason}
+        if msg.stop_reason in ("refusal", "max_tokens"):
+            out[pid] = {**oc, "status": "failed", "error": f"stop_reason={msg.stop_reason}"}
+            continue
+        try:
+            parsed = json.loads(_text(msg))
+        except Exception:
+            out[pid] = {**oc, "status": "failed", "error": "json parse failed"}
+            continue
+        out[pid] = {**oc, "status": "wrong_category" if parsed.get("vendor_type") == "other" else "ok",
+                    "raw": parsed}
+    return out
+
+
+def _num(v):
+    s = str(v if v is not None else "").strip()
+    s = re.sub(r"[$€£%\s,]|usd", "", s, flags=re.I)
+    if not s or re.search(r"\d-\d", s):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        m = re.fullmatch(r"(\d+(?:\.\d+)?)[kK]", s)
+        return float(m.group(1)) * 1000 if m else None
+
+
+def _int(v):
+    n = _num(v)
+    return int(round(n)) if n is not None else None
+
+
+def _t(v, limit=2000):
+    return str(v or "").strip()[:limit]
+
+
+def to_rows(meta, raw):
+    """Model output -> (quote_row, item_rows) keyed by table 92 / 93 column names."""
+    q = raw.get("quote") or {}
+    base = {"PDF_ID": meta["PDF_ID"], "Vendor_ID": meta["Vendor_ID"], "category": meta["cat"]}
+    yr = _int(q.get("pricing_year"))
+    quote = {**base,
+             "vendor_name": _t(q.get("vendor_name")) or _t(meta.get("Name")),
+             "state": _t(meta.get("state")),
+             "document_type": _t(raw.get("document_type")),
+             "pricing_year": yr if yr and 2000 <= yr <= 2035 else None,
+             "currency": _t(q.get("currency")) or "USD",
+             "minimum_spend": _num(q.get("minimum_spend")),
+             "minimum_spend_conditions": _t(q.get("minimum_spend_conditions")),
+             "guest_minimum": _int(q.get("guest_minimum")),
+             "service_charge_pct": _num(q.get("service_charge_pct")),
+             "gratuity_pct": _num(q.get("gratuity_pct")),
+             "tax_rate_pct": _num(q.get("tax_rate_pct")),
+             "travel_fee_text": _t(q.get("travel_fee_text")),
+             "deposit_text": _t(q.get("deposit_text")),
+             "typical_spend_text": _t(q.get("typical_spend_text")),
+             "typical_spend_low": _num(q.get("typical_spend_low")),
+             "typical_spend_high": _num(q.get("typical_spend_high")),
+             "total": _num(q.get("total")),
+             "total_notes": _t(q.get("total_notes")),
+             "contact_email": _t(q.get("contact_email"), 200),
+             "confidentiality_risk": _t(q.get("confidentiality_risk")),
+             "confidentiality_evidence": _t(q.get("confidentiality_evidence"), 200),
+             "confidence": _t(q.get("confidence")),
+             "model": meta.get("model", BATCH_MODEL),
+             "extracted_at": meta.get("timestamp"),
+             "raw_json": raw}
+    items = []
+    for it in raw.get("items") or []:
+        p, lo, hi = _num(it.get("price")), _num(it.get("price_low")), _num(it.get("price_high"))
+        if p is not None and lo is None and hi is None:
+            lo = hi = p
+        if lo is not None and hi is not None and lo > hi:
+            lo, hi = hi, lo
+        items.append({**base,
+                      "item_key": _t(it.get("item_key")),
+                      "item_name": _t(it.get("item_name"), 300),
+                      "price_low": lo, "price_high": hi,
+                      "is_starting_at": it.get("starting_at") == "yes",
+                      "pricing_unit": _t(it.get("pricing_unit")),
+                      "service_style": "" if it.get("service_style") in ("not_applicable", None)
+                      else _t(it.get("service_style")),
+                      "hours": _num(it.get("hours")),
+                      "min_quantity": _num(it.get("min_quantity")),
+                      "inclusion": _t(it.get("inclusion")),
+                      "included_text": _t(it.get("included_text"), 1000),
+                      "notes": _t(it.get("notes"), 1000),
+                      "confidence": _t(it.get("confidence"))})
+    return quote, items
+
+
+def _xano(method, table, secret, body=None, q=None):
+    import urllib.request
+    import urllib.parse
+    qs = urllib.parse.urlencode({**(q or {}), **({"secret": secret} if method == "DELETE" else {})})
+    url = XANO_BASE + table + (f"?{qs}" if qs else "")
+    data = json.dumps({**body, "secret": secret}).encode() if body is not None else None
+    for a in range(4):
+        try:
+            req = urllib.request.Request(url, data=data, method=method,
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.loads(r.read() or b"null")
+        except Exception as e:
+            if a == 3:
+                raise
+            time.sleep(2 * (a + 1))
+
+
+def ingest(outcomes, pdf_map, secret, log=print):
+    """Purge-then-insert per PDF. Only status ok rows are written."""
+    stats = {"pdfs": 0, "items": 0, "skipped": 0}
+    for pid, oc in outcomes.items():
+        if oc.get("status") != "ok":
+            stats["skipped"] += 1
+            continue
+        quote, items = to_rows(pdf_map[pid], oc["raw"])
+        for t in ("vendor_price_items", "vendor_price_quotes"):
+            _xano("DELETE", t, secret, q={"pdf_id": pid})
+        _xano("POST", "vendor_price_quotes", secret, body={"rows": [quote]})
+        for i in range(0, len(items), 200):
+            r = _xano("POST", "vendor_price_items", secret, body={"rows": items[i:i + 200]})
+            if (r or {}).get("inserted") != len(items[i:i + 200]):
+                raise RuntimeError(f"{pid}: items insert returned {r}")
+        stats["pdfs"] += 1
+        stats["items"] += len(items)
+    log(json.dumps(stats))
+    return stats
+
+
 def load_env_file(path):
     with open(path, encoding="utf-8") as fh:
         for line in fh:
@@ -344,9 +531,55 @@ def main(argv=None):
     p.add_argument("--models", default="claude-sonnet-5-5,claude-haiku-5-5")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--limit", type=int, default=0)
+    s = sub.add_parser("submit")
+    s.add_argument("--rows", required=True)
+    s.add_argument("--pdf-dir", required=True)
+    s.add_argument("--map-out", required=True)
+    st = sub.add_parser("status")
+    st.add_argument("batch_id")
+    ig = sub.add_parser("ingest")
+    ig.add_argument("--map", required=True)
+    ig.add_argument("--out-dir", required=True)
+    ig.add_argument("--secret-env-file", required=True)
+    ig.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     if a.env_file:
         load_env_file(a.env_file)
+    if a.cmd == "submit":
+        with open(a.rows, encoding="utf-8") as fh:
+            rows = json.load(fh)
+        bid, pm = submit_batch(rows, a.pdf_dir)
+        with open(a.map_out, "w", encoding="utf-8") as fh:
+            json.dump({"batch_id": bid, "pdf_map": pm}, fh, indent=1)
+        print(bid)
+        return 0
+    if a.cmd == "status":
+        import anthropic
+        b = anthropic.Anthropic().messages.batches.retrieve(a.batch_id)
+        print(b.processing_status, b.request_counts)
+        return 0
+    if a.cmd == "ingest":
+        with open(a.map, encoding="utf-8") as fh:
+            m = json.load(fh)
+        outcomes = fetch_batch(m["batch_id"], m["pdf_map"])
+        os.makedirs(a.out_dir, exist_ok=True)
+        with open(os.path.join(a.out_dir, f"outcomes_{m['batch_id']}.json"), "w", encoding="utf-8") as fh:
+            json.dump(outcomes, fh, ensure_ascii=False)
+        cnt = {}
+        for o in outcomes.values():
+            cnt[o["status"]] = cnt.get(o["status"], 0) + 1
+        cost = sum(o.get("cost_usd", 0) for o in outcomes.values())
+        print(f"outcomes {cnt}  batch cost ${cost:.2f}")
+        if a.dry_run:
+            return 0
+        env = {}
+        with open(a.secret_env_file, encoding="utf-8") as fh:
+            for line in fh:
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    env[k] = v.strip().strip('"').strip("'")
+        ingest(outcomes, m["pdf_map"], env["XANO_PDFDATA_SECRET"])
+        return 0
     with open(a.rows, encoding="utf-8") as fh:
         rows = json.load(fh)
     if a.limit:
