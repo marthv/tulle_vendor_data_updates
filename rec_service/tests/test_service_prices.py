@@ -54,10 +54,11 @@ def test_beauty_bride_trial_assumed_party_and_gratuity():
     assert "4 bridal-party services at $165 (an assumption" in t["based_on"] and "Not a quote" in t["based_on"]
 
 
-def test_catering_per_guest_median_bar_fees_and_minimum():
+def test_catering_per_guest_median_fees_and_minimum_bar_left_out():
     t = sp.typical("Food and Beverage", "C1", guests=120, by_vendor=IDX)
-    assert t["amount"] == round((87 + 23) * 120 * 1.22 * 1.0825)
+    assert t["amount"] == round(87 * 120 * 1.22 * 1.0825)
     assert "$87 a guest for food" in t["based_on"] and "22% service and 8.25% tax" in t["based_on"]
+    assert "Bar, rentals" in t["based_on"]
     small = sp.typical("Food and Beverage", "C1", guests=20, by_vendor=IDX)
     assert small["amount"] == 5000 and "raised to their $5,000 minimum" in small["based_on"]
     assert sp.typical("Food and Beverage", "C1", guests=None, by_vendor=IDX) is None    # no guests -> no per-guest maths
@@ -69,6 +70,19 @@ def test_planner_tier_order_percent_fee_and_currency():
     assert sp.typical("Wedding Planner", "W2", by_vendor=IDX) is None                    # EUR sheet: never shown as $
     assert sp.typical("Wedding Planner", "W3", target=60000, by_vendor=IDX)["amount"] == 7200
     assert sp.typical("Wedding Planner", "W3", target=None, by_vendor=IDX) is None
+
+
+def test_catering_ignores_upcharges_and_buyout_minimums():
+    idx = sp.index({"quotes": [
+        {"Vendor_ID": "U1", "category": "catering", "currency": "USD", "created_at": 1},
+        {"Vendor_ID": "R1", "category": "catering", "currency": "USD", "minimum_spend": 75000, "created_at": 1,
+         "minimum_spend_conditions": "Food and beverage minimum for 1st floor/patio buyout based on 150 guests"}],
+        "items": [item("U1", "catering", "entree_per_person", 5, "per_person"),
+                  item("U1", "catering", "package_per_person", 9, "per_person"),
+                  item("R1", "catering", "package_per_person", 60, "per_person")]})
+    idx["U1"]["items"][1]["item_name"] = "Filet upgrade"
+    assert sp.typical("Food and Beverage", "U1", guests=100, by_vendor=idx) is None      # $5 upcharge, upgrade line
+    assert sp.typical("Food and Beverage", "R1", guests=100, by_vendor=idx)["amount"] == 6000   # buyout min ignored
 
 
 def test_wrong_category_or_unknown_vendor_gives_nothing():

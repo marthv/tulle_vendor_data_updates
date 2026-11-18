@@ -12,6 +12,7 @@ Nothing is returned when the sheet does not support a number (non-USD, no per-gu
 Paid data: whole_wedding only puts the amount in a row at detail "full"; everyone else gets the locked row.
 """
 import json
+import re
 import statistics
 import threading
 import time
@@ -108,8 +109,16 @@ def _fees(q, sub):
     return sub * (1 + svc / 100) * (1 + tax / 100), words
 
 
+_VENUE_MIN = re.compile(r"buy-?out|exclusive|private dining|whole (restaurant|venue)|full (restaurant|venue)", re.I)
+_ADDON = re.compile(r"upcharge|upgrade|add-?on|\badd\b|supplement|per additional", re.I)
+
+
 def _with_min(q, amount, words):
+    """Raise to the vendor's minimum - except a room or buyout minimum (a restaurant's '1st floor buyout $75,000'),
+    which is the price of hiring the space, not of catering a wedding of this size."""
     m = q.get("minimum_spend")
+    if _VENUE_MIN.search(q.get("minimum_spend_conditions") or ""):
+        return amount
     if isinstance(m, (int, float)) and m > amount and m < 10 ** 6:
         words.append("raised to their %s minimum" % _money(m))
         return float(m)
@@ -119,23 +128,20 @@ def _with_min(q, amount, words):
 def _catering(q, items, guests):
     if not guests:
         return None
-    pp = _low(items, ("package_per_person",), ("per_person",), 5, 500) or \
-        _low(items, ("entree_per_person",), ("per_person",), 5, 500)
+    meals = [it for it in items if not _ADDON.search(it.get("item_name") or "")]
+    # A whole package can be cheap (a drop-off buffet at $12); a single entree line under $12 is an upcharge.
+    pp = _low(meals, ("package_per_person",), ("per_person",), 8, 500) or \
+        _low(meals, ("entree_per_person",), ("per_person",), 12, 500)
     if not pp:
         return None
     food = statistics.median(pp)
-    bar = _low(items, ("bar_package",), ("per_person",), 3, 200)
-    bar_pp = min(bar) if bar else 0
-    sub = (food + bar_pp) * guests
-    amount, fees = _fees(q, sub)
-    words = ["%s a guest for food" % _money(food)]
-    if bar_pp:
-        words.append("%s a guest for their lowest bar package" % _money(bar_pp))
-    words = ["%s x %d guests" % (" + ".join(words), guests)] + (["plus " + " and ".join(fees)] if fees else [])
+    amount, fees = _fees(q, food * guests)
+    words = ["%s a guest for food x %d guests" % (_money(food), guests)] + (["plus " + " and ".join(fees)] if fees else [])
     amount = _with_min(q, amount, words)
-    return {"amount": int(round(amount)), "note": "about %s a guest" % _money(food + bar_pp),
-            "based_on": "Worked out from this caterer's own price sheet: %s. Rentals, staffing and anything else on "
-                        "their sheet are not in it. Not a quote." % ", ".join(words)}
+    # Bar is left out: sheets mix open bars, upgrades, wine pairings and add-ons, so no one bar line is "the" bar.
+    return {"amount": int(round(amount)), "note": "about %s a guest for food" % _money(food),
+            "based_on": "Worked out from this caterer's own price sheet: %s. Bar, rentals, staffing and anything else "
+                        "on their sheet are not in it. Not a quote." % ", ".join(words)}
 
 
 def _beauty(q, items):
