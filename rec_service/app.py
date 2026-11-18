@@ -958,7 +958,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     """The fast answer for "look up <venue>", or None (not a lookup, or unsure -> the model answers as before)."""
     if not config.NAME_LOOKUP:
         return None
-    q = lookup.detect(text, last_assistant)
+    q = lookup.detect(text, last_assistant, v2=config.NAME_MATCH_V2)
     if not q:
         return None
     t0 = time.time()

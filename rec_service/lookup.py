@@ -75,7 +75,44 @@ def _best(t, toks, floor=0.75):
     return s if s >= floor else 0.0
 
 
-def score(query, name, location=""):
+# ---- name match v2 (config.NAME_MATCH_V2, 2026-11-18; #feedback 11-17, chat 2544) ----
+# "Holly Hedge" / "Holly Hedge Estate" were reported missing: the listing is "HollyHedge Estate" (Pennsylvania, checked
+# read-only through ep119 on 2026-11-18). The search matches whole words, so "holly hedge", "holly" and "hedge" never
+# return it, and score() compares word by word, so "holly"/"hedge" vs "hollyhedge" scored low even when it was there.
+# Rule: the couple's DISTINCTIVE words (stop words and venue-type words dropped), at least two of them and at least 6
+# letters joined, must spell - joined, case / punctuation / spacing ignored - a run of WHOLE consecutive words of the
+# stored name ("hollyhedge" = word 1 of "HollyHedge Estate"; "holly"+"hedge" = words 1-2 of "Holly Hedge Estate &
+# Gardens"). Whole-word alignment means "Holly Hedge" never matches "Hollyhedgerow" or "The Holly Farm", and the
+# two-distinctive-word minimum means "The", "Estate", "Barn", "Holly Estate" or "The Barn at" never over-match.
+JOIN_MIN_WORDS = 2
+JOIN_MIN_CHARS = 6
+
+
+def _distinctive(s):
+    return [t for t in tokens(s) if t not in GENERIC]
+
+
+def joined_match(query, name):
+    """True when the query's 2+ distinctive words, joined, equal a run of whole consecutive words of the name."""
+    qd = _distinctive(query)
+    if len(qd) < JOIN_MIN_WORDS:
+        return False
+    want = "".join(qd)
+    if len(want) < JOIN_MIN_CHARS:
+        return False
+    ct = tokens(name)
+    for i in range(len(ct)):
+        run = ""
+        for j in range(i, len(ct)):
+            run += ct[j]
+            if run == want:
+                return True
+            if len(run) >= len(want) or not want.startswith(run):
+                break
+    return False
+
+
+def score(query, name, location="", v2=False):
     """How well a candidate's name matches what the couple typed (0..1). Location words they gave ("Ashton Gardens,
     Atlanta") count as covering the same words in the candidate's name ("Ashton Gardens | Atlanta")."""
     if not name:
@@ -98,14 +135,18 @@ def score(query, name, location=""):
     # in "The Harold Pratt House and Peterson Hall"; "Royal Palm" in "royal palm mansion") is a near-certain match.
     if len(cd) >= 2 and not extra and " %s " % " ".join(cd) in " %s " % " ".join(qd):
         base = max(base, 0.9)
+    if v2 and joined_match(query, name):
+        base = max(base, 0.9)
     return base
 
 
-def strong(query, name):
+def strong(query, name, v2=False):
     """Every distinctive word they typed matches a word of the name nearly exactly (exact, plural or one swap).
     A one-word message with no lookup cue must be this strong: "Khols" -> Kohl Mansion yes, "summer" -> Summerour no."""
     qt, ct = tokens(query), tokens(name)
     qd = [t for t in qt if t not in GENERIC] or qt
+    if v2 and joined_match(query, name):
+        return True
     return bool(qd and ct) and all(_best(t, ct, 0.9) for t in qd)
 
 
@@ -320,13 +361,41 @@ def vendor_hint(name):
     return (core, cat) if cat and tokens(core) else (name, "")
 
 
-def detect(text, last_assistant=""):
+# Area / location constraints (v2, 2026-11-18, chat 2565): "Stick to the Miami area, no further north than Davie. No
+# further south than Homestead." and "The cities include Davie, Miramar, Pembroke Pines, Hialeah, ..." were each read as
+# a venue name and answered "We don't have ... in Tulle yet". Each pattern is something a venue name doesn't say.
+# "area" counts only at the end of a phrase ("the Miami area,"), so "Area Four" and "Bay Area Discovery Museum" pass.
+_AREA = re.compile(
+    r"\b(?:no|not)\s+(?:further|farther|more)\s+(?:north|south|east|west)\b"
+    r"|\b(?:further|farther)\s+(?:north|south|east|west)\s+than\b"
+    r"|\b(?:north|south|east|west)\s+of\s+(?!the\b)\w"
+    r"|\b(?:cities|towns|areas|neighbou?rhoods|counties|suburbs|regions)\s+(?:include|including|like|such as|are)\b"
+    r"|\b(?:within|inside)\s+(?:an?\s+)?\d+\s*(?:miles?|mi|minutes?|mins?|hours?|hrs?|km)\b"
+    r"|\b\d+\s*(?:miles?|mi|minutes?|mins?|km)\s+(?:from|of|away)\b"
+    r"|\b(?:stick|keep it|stay|staying)\s+(?:to|in|within|around|near|close to)\b"
+    r"|\w\s+area\b(?=\s*(?:[,.;:!?]|$))", re.I)
+
+
+def area_request(text):
+    """True when the message reads as an area / location constraint rather than one venue's name: one of _AREA's
+    phrases, or a list of 4+ short comma-separated items ("Davie, Miramar, Pembroke Pines, Hialeah"). Short = at most
+    3 words, so "Il Sereno, the hotel in Torno on Lake Como, Italy, listed ...?" (3 commas) is still a name."""
+    t = " ".join(str(text or "").replace("’", "'").split())
+    if _AREA.search(t):
+        return True
+    items = [x.strip(" .?!") for x in re.split(r"\s*,\s*|\s+(?:and|or)\s+", t)]
+    return sum(1 for x in items if x and len(x.split()) <= 3) >= 4
+
+
+def detect(text, last_assistant="", v2=False):
     """{"name", "location", "alt_name", "alt_location", "cue"} when the message looks like "look up <venue name>",
     else None. Conservative on purpose: anything that reads like a search or a follow-up goes to the model.
     last_assistant: the previous assistant message - a bare reply to its question ("Austin") is never a lookup."""
     raw = " ".join(str(text or "").split())
     if not raw or len(raw) > 200:
         return None
+    if v2 and area_request(raw):
+        return None          # an area / location constraint: the model's area search reads it (chat 2565)
     if conversational(raw) and not _CUE.search(raw):
         return None
     # "Is Il Sereno ... listed in Tulle's vendor directory? What is its pricing?" -> the first sentence.
@@ -405,8 +474,11 @@ def detect(text, last_assistant=""):
         # only when the search actually finds one and otherwise hands the text to the model exactly as before.
         if (last_assistant or "").strip().endswith("?"):
             after_question = True
-    return {"name": name, "location": location, "alt_name": alt_name, "alt_location": alt_location, "cue": cue,
-            "words": len(words), "after_question": after_question, "category": category}
+    out = {"name": name, "location": location, "alt_name": alt_name, "alt_location": alt_location, "cue": cue,
+           "words": len(words), "after_question": after_question, "category": category}
+    if v2:
+        out["v2"] = True      # find / resolve use the joined-words match (absent = exactly as before)
+    return out
 
 
 # ---------------------------------------------------------------- retrieval + ranking
@@ -423,7 +495,7 @@ def _variants(tok):
     return list(dict.fromkeys(out))
 
 
-def first_queries(name, alt_name=""):
+def first_queries(name, alt_name="", v2=False):
     """Stage 1 key searches: the whole name key, then each distinctive token (longest first)."""
     qs = []
     for n in (name, alt_name):   # the whole name as words ("kohl mansion"): the search matches whole words
@@ -438,6 +510,14 @@ def first_queries(name, alt_name=""):
         qs += [" ".join(od[:2]), " ".join(od)]
     d = [t for t in tokens(name) if t not in GENERIC and (len(t) >= 4 or any(c.isdigit() for c in t))]
     qs += sorted(d, key=len, reverse=True)[:3]
+    if v2 and len(od) >= JOIN_MIN_WORDS and len("".join(od)) >= JOIN_MIN_CHARS:
+        # The distinctive words joined ("hollyhedge" for "Holly Hedge Estate" -> HollyHedge Estate): the search
+        # matches whole words, so a listing that spells them as one word is only found this way. Kept inside the
+        # same 6-search round (it replaces the last single-word search when the round is full).
+        joined = "".join(od[:2]) if len(od) > 2 else "".join(od)
+        qs = list(dict.fromkeys(qs))
+        if joined not in qs:
+            qs = qs[:5] + [joined]
     return list(dict.fromkeys(qs))[:6]
 
 
@@ -455,18 +535,19 @@ def _rank(rows, q):
         vid = r.get("vendor_id")
         if not vid:
             continue
-        s = max(score(q["name"], r.get("name"), q.get("location")),
-                score(q["name"], r.get("google_name"), q.get("location")))
+        v2 = bool(q.get("v2"))
+        s = max(score(q["name"], r.get("name"), q.get("location"), v2),
+                score(q["name"], r.get("google_name"), q.get("location"), v2))
         if q.get("alt_name"):
-            s = max(s, score(q["alt_name"], r.get("name"), q.get("alt_location")),
-                    score(q["alt_name"], r.get("google_name"), q.get("alt_location")))
+            s = max(s, score(q["alt_name"], r.get("name"), q.get("alt_location"), v2),
+                    score(q["alt_name"], r.get("google_name"), q.get("alt_location"), v2))
         loc = tokens(q.get("location") or q.get("alt_location") or "")
         if loc:
             hay = set(tokens("%s %s" % (r.get("address") or "", r.get("state") or "")))
             if all(_best(t, hay, 0.9) for t in loc if t not in STATE_ABBR) or state_of(
                     q.get("location") or q.get("alt_location")) == (r.get("state") or "") != "":
                 s = min(1.0, s + 0.06)    # in the place they named: a tie-break, never a match on its own
-        if q.get("solo") and not (strong(q["name"], r.get("name")) or strong(q["name"], r.get("google_name"))):
+        if q.get("solo") and not (strong(q["name"], r.get("name"), v2) or strong(q["name"], r.get("google_name"), v2)):
             continue
         if s > best.get(vid, (0, None))[0]:
             best[vid] = (s, r)
@@ -496,7 +577,8 @@ def _promote_single(q, status, matches):
         return status, matches
     m = matches[0]
     names = [q.get("name") or ""] + ([q["alt_name"]] if q.get("alt_name") else [])
-    if any(strong(n, m.get("name")) or strong(n, m.get("google_name")) for n in names if n):
+    v2 = bool(q.get("v2"))
+    if any(strong(n, m.get("name"), v2) or strong(n, m.get("google_name"), v2) for n in names if n):
         return "found", matches
     return status, matches
 
@@ -526,7 +608,7 @@ def find(q, search, workers=6):
         if terms and len(errors) == len(terms):
             raise LookupFailed(str(errors[0])[:200])
 
-    terms = first_queries(q["name"], q.get("alt_name"))
+    terms = first_queries(q["name"], q.get("alt_name"), bool(q.get("v2")))
     if not terms:
         return {"status": "not_found", "matches": [], "queries": [], "scores": []}
     run(terms)
@@ -586,11 +668,13 @@ def resolve(q, res, prefer_states=()):
             return dict(res, status="not_found", matches=[])
         ms = here
     names = [n for n in (q.get("name"), q.get("alt_name")) if n]
-    if not any(strong(n, m.get("name")) or strong(n, m.get("google_name")) for m in ms for n in names):
+    v2 = bool(q.get("v2"))
+    if not any(strong(n, m.get("name"), v2) or strong(n, m.get("google_name"), v2) for m in ms for n in names):
         return dict(res, status="not_found", matches=[])
     # Every word they typed, the venue-type word included ("Ashton GARDENS"): those matches beat ones sharing only the
     # distinctive word (2026-11-07 live: "Ashton gardens" listed Ashton Farm and Ashton Place as matches).
     full = [m for m in ms if any(all(_best(t, tokens(m.get(f) or ""), 0.9) for t in tokens(n))
+                                 or (v2 and joined_match(n, m.get(f) or ""))
                                  for n in names for f in ("name", "google_name"))]
     if full:
         ms = full

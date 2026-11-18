@@ -93,6 +93,12 @@ PROFILE_QUESTIONS = os.environ.get("REC_PROFILE_QUESTIONS", "1") == "1"
 # Venue name lookup fast path (owner decision 2026-10-26, lookup.py): "oheka castle" / "Khol mansion" / "is X listed?"
 # is answered from table 11 in code, without the model. 0 = off (every message goes to the model, as before).
 NAME_LOOKUP = os.environ.get("REC_NAME_LOOKUP", "1") == "1"
+# Name match v2 (2026-11-18, #feedback 11-17): 1 = (a) a typed name whose 2+ distinctive words, joined, line up with
+# whole words of a stored name resolves to it ("Holly Hedge" -> "HollyHedge Estate", chat 2544; "Holly Hedge" ->
+# "Holly Hedge Estate & Gardens"), and the joined words are also searched ("hollyhedge"); (b) an area / location
+# constraint ("Stick to the Miami area, no further north than Davie", "The cities include Davie, Miramar, ...",
+# chat 2565) is never a venue-name lookup - it goes to the model's area search. 0 = lookup.py exactly as before.
+NAME_MATCH_V2 = os.environ.get("REC_NAME_MATCH_V2", "0") == "1"
 # Missing venues ("We don't have X in Tulle yet") are posted to the feedback Slack channel for the data team.
 VENUE_REQUEST_SLACK = os.environ.get("REC_VENUE_REQUEST_SLACK", "1") == "1"
 # Railway search (owner decision 2026-10-26): this % of assistant users (stable per user, see railway_search.arm)
