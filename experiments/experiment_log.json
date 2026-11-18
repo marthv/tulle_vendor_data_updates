@@ -1373,6 +1373,40 @@
       "risks": "Proposal quality (picks, estimates for categories without extracted prices); Xano load from ~12 lookups per proposal; strip total vs plan total confusion.",
       "owner": "Vivek",
       "launched_by": "Claude Code"
+    },
+    {
+      "id": "EXP-2026-11-price-report-vs-pi-card",
+      "what": "Tulle Price Report (ww-price-report) replaces the Pricing Intelligence card on both vendor pages, no holdout",
+      "status": "live",
+      "themes": [
+        "paywall",
+        "pricing-intelligence",
+        "vendor-page"
+      ],
+      "goal": "Owner hypothesis (11-16/17): a compact report-card view of the same PI data (neutral price level out of 100 with 'How we got this', one line per cost, guest slider, locked view for free couples) is easier to read than the old card, so more vendor-page visitors tap Unlock and buy. Des's counter-hypothesis (11-17 #product-development): it reads like 'a word problem' with too many numbers, and past tests found that previewing PI to free couples lowers the payment rate. Bar: unlock-click rate per vendor-page visitor at or above the old card's baseline (14.9%) with purchases/day not down.",
+      "primary_metric": "Unique clicked_membership_for_pricing_venue_price_report / unique viewed_vendor_page per day (Mixpanel 3963130), vs the old card's clicked_membership_for_pricing_venue_pricing_intelligence / viewed_vendor_page.",
+      "guardrail": "Purchases/day (payment log table 16; Mixpanel membership_purchase_confirmed) not below the 14 days before; signed_up -> viewed_vendor_pdf share not down; no paid figure visible to free couples in the report's locked view.",
+      "start_date": "2026-11-17",
+      "end_date": null,
+      "review_date": "2026-12-01",
+      "dates_note": "Live with WeWeb publish cacheVersion 1398, 2026-11-17 16:47 UTC (ww-price-report 888aaf3; old card hidden, not deleted, restore steps in tulletogether .claude/xano_backups/weweb_pi_card_pre_replace_by_price_report_2026-11-17.json). review_date = start + 14 days. Registered retroactively 2026-11-18 (the launch was only logged as a confound in changes[] 2026-11-17).",
+      "design": "pre/post, everyone (no A/B). Read rates per day, not counts; exclude internal accounts at read time.",
+      "baseline": "2026-11-04..11-16 (13 days, Mixpanel unique users, internal NOT excluded): old-card unlock clicks 254 / vendor-page visitors 1,700 = 14.9% (daily 8-36 clicks); purchases ~3.6/day (membership_purchase_confirmed 45 in 13 days); weekly purchases 15-35 since Aug. 2026-11-17 (mixed day, switch at 16:47 UTC): old card 7 + report 20 = 27 / 153 visitors = 17.6%; purchases 3.",
+      "results": [
+        {
+          "date": "2026-11-18",
+          "note": "Entry created. One mixed day only - not readable. The 11-17 'payments dropped' worry (2 Stripe payments in the 24h Slack summary vs 7 the day before) is inside normal day-to-day range: pricing-page views 66 vs 72, checkout clicks 7 vs 4, purchases 3 vs 4 (Mixpanel)."
+        }
+      ],
+      "stat_sig": "not computed",
+      "decision": "",
+      "confounds_noted": [
+        "Same publish (1398): Plan my wedding for every couple, Meta pixel, landing pages, Back to Planner, Ask Tulle off the phone sticky bar",
+        "Overlaps EXP-2026-11-pi-first-vendor-free (call 11-23): the report is what free couples now see on their first and later vendors",
+        "A simplified report version (fewer numbers, clearer total - Des's feedback) is being built 11-18; if it ships before 12-01 it changes the treatment mid-test - log it in changes[] and read the two periods separately"
+      ],
+      "owner": "Vivek",
+      "launched_by": "Claude Code (registered 2026-11-18)"
     }
   ],
   "changes": [
