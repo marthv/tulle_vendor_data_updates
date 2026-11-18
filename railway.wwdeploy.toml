@@ -1,0 +1,22 @@
+# WeWeb staging publish -> #deployment Slack note. Point a Railway service's Config File at
+# this to run weweb_deploy_notify.py every 5 minutes (Railway's shortest cron).
+#
+# Most runs are one ~75 KB GET of the staging home page and exit 0. Only a new staging build
+# triggers the full read (main.js + 24 page data files) + one Claude call + one Slack post.
+#
+# Needs a VOLUME mounted at /data: the previous build's snapshot lives there, because a cron
+# container keeps no state between runs. Without it every run looks like a first run and
+# nothing ever posts.
+#
+# Variables:
+#     DEPLOY_SLACK_WEBHOOK_URL = incoming webhook for #deployment (Tulle workspace)
+#     ANTHROPIC_API_KEY        = ${{Tulle Admin Dash.ANTHROPIC_API_KEY}} (or the rec engine's)
+#     (optional) DEPLOY_NOTIFY_MODEL, WW_STAGING_HOST, SNAPSHOT_DIR
+#
+# Exit 2 = the check could not run (staging unreachable, page format changed, CDN still
+# serving the old data, Slack post failed). The snapshot is NOT advanced on exit 2, so the
+# next run retries and the publish is not lost.
+[deploy]
+startCommand = "python weweb_deploy_notify.py"
+restartPolicyType = "NEVER"
+cronSchedule = "*/5 * * * *"
