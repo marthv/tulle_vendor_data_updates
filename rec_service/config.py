@@ -344,3 +344,10 @@ WHOLE_WEDDING = os.environ.get("REC_WHOLE_WEDDING", "0").strip() == "1"
 WHOLE_WEDDING_PCT = _pct(os.environ.get("REC_WHOLE_WEDDING_PCT", "0"))
 WHOLE_WEDDING_USER_IDS = _int_set(os.environ.get("REC_WHOLE_WEDDING_USER_IDS", ""))
 WHOLE_WEDDING_STEP_PCT = max(1, min(50, _pct(os.environ.get("REC_WHOLE_WEDDING_STEP_PCT", "15")) or 15))
+# Catering / hair & makeup / planner prices in "Plan my wedding" from the vendors' own PDFs (owner 2026-11-18;
+# service_prices.py, Xano tables 92/93 via GET pdfdata/vendor_prices). OFF by default: with REC_WW_SERVICE_PRICES=0
+# those rows stay a listing + Tulle's budget-split estimate, exactly as before. REC_VENDOR_PRICES_SECRET = the
+# endpoint's read-only secret (never the pdfdata write secret); unset = off.
+WW_SERVICE_PRICES = os.environ.get("REC_WW_SERVICE_PRICES", "0").strip() == "1"
+VENDOR_PRICES_SECRET = os.environ.get("REC_VENDOR_PRICES_SECRET", "").strip()
+VENDOR_PRICES_URL = API_SEARCH_GROUP + "/pdfdata/vendor_prices"

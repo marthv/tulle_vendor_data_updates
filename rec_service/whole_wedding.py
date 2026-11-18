@@ -46,6 +46,7 @@ import free_mode
 import plan
 import prefs
 import profile_questions
+import service_prices
 import wedding
 import xano
 
@@ -820,10 +821,10 @@ def _pe_row(token, slot, ctx, full, cap, share, target, mode, prev_row, exclude,
     return row
 
 
-def _listing_pick(token, slot, ctx, exclude, slog, meta):
+def _listing_pick(token, slot, ctx, exclude, slog, meta, page_size=8):
     meta.call()
     try:
-        r = xano.search_listings(token, slot, states=ctx["states"], page_size=8, search_log=slog)
+        r = xano.search_listings(token, slot, states=ctx["states"], page_size=page_size, search_log=slog)
     except Exception as e:
         print("ww listing search failed:", slot, repr(e)[:200])
         return []
@@ -863,6 +864,44 @@ def _flowers_row(token, ctx, full, detail, cap, share, target, mode, prev_row, e
 def _listing_row(token, slot, ctx, share, target, exclude, slog, meta):
     vendors = _listing_pick(token, slot, ctx, exclude, slog, meta)
     return _estimate_row(slot, share, target, vendors[0] if vendors else None)
+
+
+SERVICE_PAGE = 24            # listings read per service slot: enough to reach the vendors whose PDFs Tulle has priced
+SERVICE_WORD = {"Food and Beverage": "catering", "Beauty": "hair and makeup", "Wedding Planner": "planner"}
+
+
+def _service_row(token, slot, ctx, full, cap, share, target, mode, prev_row, exclude, slog, meta):
+    """Catering / hair & makeup / planner with REC_WW_SERVICE_PRICES on: like the florist row, a vendor whose own
+    pricing PDF supports a number (service_prices.typical) gives Tulle's working from that sheet - an ESTIMATE that
+    says what it was worked out from - else the listing + budget-split estimate exactly as before."""
+    vendors = _listing_pick(token, slot, ctx, exclude, slog, meta, page_size=SERVICE_PAGE)
+    priced = service_prices.priced_ids(slot)
+    vendors = ([v for v in vendors if str(v["vendor_id"]) in priced] +
+               [v for v in vendors if str(v["vendor_id"]) not in priced])
+    calc = lambda v: service_prices.typical(slot, v.get("vendor_id"), ctx.get("guests"), target)
+    if not vendors:
+        return _estimate_row(slot, share, target)
+    if not full:
+        v = vendors[0]
+        if not calc(v):
+            return _estimate_row(slot, share, target, v)
+        return _row(slot, name=v.get("name") or "", image=_image(v), vendor_id=str(v.get("vendor_id") or ""),
+                    vendor_idx=v.get("vendor_idx"), basis="locked", badge=PRICED_LOCKED, locked=True,
+                    # Backing: calc(v) - a figure worked out from this vendor's own pricing PDF (tables 92/93).
+                    based_on=locked_why("Tulle has prices read from this vendor's pricing PDF.", ctx.get("reader")))
+    worked = {str(v["vendor_id"]): calc(v) for v in vendors[:8]}
+    picked = choose([(v, (worked.get(str(v["vendor_id"])) or {}).get("amount")) for v in vendors[:8]], cap, mode,
+                    _prev_amount(prev_row))
+    if picked is None:
+        return None if prev_row else _estimate_row(slot, share, target, vendors[0])
+    v, amount = picked
+    if not amount:
+        return _estimate_row(slot, share, target, v)
+    t = worked[str(v["vendor_id"])]
+    return _row(slot, name=v.get("name") or "", image=_image(v), vendor_id=str(v.get("vendor_id") or ""),
+                vendor_idx=v.get("vendor_idx"), amount=amount, amount_from=FROM_VENDOR, basis="estimate",
+                badge=ESTIMATE, why=t.get("note") or "", based_on=t["based_on"],
+                breaks=_over(amount, cap, SERVICE_WORD.get(slot, slot.lower())))
 
 
 def _food_row(food, full):
@@ -982,7 +1021,10 @@ def build(token, user, ctx, detail, *, prev=None, action="base", category="", st
             fut["Flowers"] = pool.submit(_flowers_row, token, ctx, full, detail, cap_of("Flowers"), share("Flowers"),
                                          target, mode, prev_rows.get("Flowers"), ex("Flowers"), slog, meta)
         for s in LISTING_SLOTS:
-            if s in redo:
+            if s in redo and config.WW_SERVICE_PRICES and config.VENDOR_PRICES_SECRET:
+                fut[s] = pool.submit(_service_row, token, s, ctx, full, cap_of(s), share(s), target, mode,
+                                     prev_rows.get(s), ex(s), slog, meta)
+            elif s in redo:
                 fut[s] = pool.submit(_listing_row, token, s, ctx, share(s), target, ex(s), slog, meta)
         for s, f in fut.items():
             try:
