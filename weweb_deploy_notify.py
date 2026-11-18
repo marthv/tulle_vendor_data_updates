@@ -111,8 +111,26 @@ def visibility(obj: dict) -> str | None:
     return " | ".join(sorted(out)) or None
 
 
+FMT = 2   # snapshot format: 2 = hashes ignore WeWeb's image cache-buster (_wwcv=<n>) + tour step text captured
+
+
 def h(x) -> str:
-    return hashlib.sha1(json.dumps(x, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    # WeWeb rewrites every project image URL's ?_wwcv=<n> on each publish: hashing it made ~44 "image tweaks" per
+    # publish (first real post, 2026-11-18). Strip the number so only a real change of image counts.
+    s = re.sub(r"_wwcv=\d+", "_wwcv=", json.dumps(x, sort_keys=True, default=str))
+    return hashlib.sha1(s.encode()).hexdigest()[:16]
+
+
+def step_text(content: dict) -> str | None:
+    """Tour elements keep their copy inside a `steps` formula, not in _ww-text_text. Pull the human-readable strings
+    (titles / bodies) so a tour copy change is quoted like any text change."""
+    steps = (content.get("default") or {}).get("steps")
+    if steps is None:
+        return None
+    src = steps.get("code", "") if isinstance(steps, dict) else json.dumps(steps)
+    strs = re.findall(r"'([^'\n]{12,})'|\"([^\"\n]{12,})\"", src)
+    words = [a or b for a, b in strs if re.search(r"[A-Za-z]{3,} [A-Za-z]", a or b) and "[" not in (a or b) and "_" not in (a or b)]
+    return (" | ".join(words))[:600] or None
 
 
 def items_of(coll) -> list[tuple[str, dict]]:
@@ -168,7 +186,7 @@ def build_snapshot(cv: int, entry: str) -> dict:
                     content = o.get("content") or {}
                     rec = objects[uid] = {
                         "name": o.get("name") or "",
-                        "text": plain_text(((content.get("default") or {}).get("_ww-text_text"))),
+                        "text": plain_text(((content.get("default") or {}).get("_ww-text_text"))) or step_text(content),
                         "vis": visibility(o),
                         "hash": h([o.get("name"), content, o.get("_state")]),
                         "content_hash": h(content),
@@ -187,7 +205,7 @@ def build_snapshot(cv: int, entry: str) -> dict:
                         logic[kind][iid]["pages"].append(pname)
     if stale:
         raise RuntimeError(f"{len(stale)} page data files not yet at cacheVersion {cv} (CDN catching up) - retry next run")
-    return {"cv": cv, "entry": entry, "taken_at": int(time.time()), "pages": pages,
+    return {"fmt": FMT, "cv": cv, "entry": entry, "taken_at": int(time.time()), "pages": pages,
             "chunks": chunks, "objects": objects, "logic": logic}
 
 
@@ -368,6 +386,11 @@ def main(argv: list[str]) -> int:
     snap_path = d / "staging_snapshot.json.gz"
     prev = load(snap_path)
     key, cv, entry = build_id()
+    if prev and prev.get("fmt") != FMT and f'{prev["cv"]}:{prev["entry"]}' == key:
+        # New snapshot format on an unchanged build: re-take it silently so the next diff compares like with like.
+        save(snap_path, build_snapshot(cv, entry))
+        print(f"[deploy-notify] snapshot format {prev.get('fmt', 1)} -> {FMT} re-taken at build {cv} (no post)")
+        return 0
     if prev and f'{prev["cv"]}:{prev["entry"]}' == key and "--dry-run" not in argv:
         print(f"[deploy-notify] no new staging build (still {cv})")  # heartbeat: proves the run happened + the snapshot persisted
         return 0
