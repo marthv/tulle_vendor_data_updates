@@ -23,7 +23,7 @@ per re-extraction, so descending id makes "first non-empty" mean *newest extract
 ASC was tried first and surfaced stale copy: V3 resolved to a description containing "hosts up
 to 350 guests", which violates the current prompt's no-guest-count rule, i.e. it came from an
 older prompt version. The fix also corrected V37's `contact_information` from
-`[email]` (a different business) to `[email]`.
+`summerbereton@upperline.nyc` (a different business) to `info@99scott.com`.
 
 When diffing endpoint responses before/after a change, compare lists as **sets** first — an
 order-only diff is usually this, not a regression.

@@ -35,15 +35,15 @@ review_ask_backfill_batch2_2026-10-27.json (chunks of 25), then DELETE fn 104. O
 **10-24 owner TEST (after 2 warnings incl. FTC review-gating guidance):** NPS Trustpilot ask only at 5 stars - prop reviewMinScore (default 5; 1 = everyone) pushed ww-nps-survey 7964bf1; owner must activate. Revert = set prop to 1. Brevo email stays all-buyers.
 
 **2026-11-03 AFS EMAIL BUILT (switch OFF):** owner asked for an email after a 5-star in-app rating that BCCs Trustpilot AFS
-([email]) so Trustpilot sends its verified invite. Told the owner it is selective
+(tulletogether.com+f43884eb79@invite.trustpilot.com) so Trustpilot sends its verified invite. Told the owner it is selective
 inviting under Trustpilot rules; owner's call = 5-star (`$tp_min_score` 5; set 1 for everyone). ep308 v6 LIVE 05:08 UTC:
 email looked up from table user by user_id (never client email), Brevo /v3/smtp/email, tag trustpilot-invite, once per user
-since `$tp_since_ms`. `$tp_enabled=false` -> only [email] gets it, WITHOUT the BCC. Test 11-03: response
+since `$tp_since_ms`. `$tp_enabled=false` -> only vivek.marthi@gmail.com gets it, WITHOUT the BCC. Test 11-03: response
 `sent_test_no_bcc`, email landed in owner Gmail; test row 76 deleted, row 24 created_at shifted -5d for the test and restored.
 Backups: .claude/xano_backups/ep308_nps_response_pre_trustpilot_invite_2026-11-03.xs (rollback) + _v6_ file.
 FLIP (needs explicit owner yes): $tp_enabled=true AND $tp_since_ms=flip time. BCC path itself untested until flip.
 Owner told to set AFS frequency to max once / 12 months.
 **11-03 copy v2 (05:13 UTC):** subject "Thanks for rating Tulle Together!"; greeting "Hi <first word of user.name>," only when name present, else body starts at "Thank you". Test delivered (Gmail Updates tab). ~8% of names are lowercase -> "Hi sarah,"; no-name path untested.
 **11-03 05:15 UTC SWITCH ON (owner "yes, start sending"):** $tp_enabled=true, $tp_since_ms=1793682915796, min score 5; verified in live script. Pre-flip copy: ep308_nps_response_v6_pre_flip_on_2026-11-03.xs (switch-off rollback). Status is NOT stored in table 77 - check = 5-star rows since since_ms vs Brevo tag trustpilot-invite vs Trustpilot invitation history.
-**11-03 05:2x UTC real-path test:** owner alt account user 31619 [email] (name Vivek Marthi = INTERNAL, exclude from real-user numbers) -> ep308 returned trustpilot "sent" (Brevo 2xx WITH BCC). Test row 78 in table 77 (page claude-test-trustpilot) - delete after owner confirms the Trustpilot invite arrived (deleting it lets 31619 be invited again on a future 5-star).
+**11-03 05:2x UTC real-path test:** owner alt account user 31619 soccerdog333@gmail.com (name Vivek Marthi = INTERNAL, exclude from real-user numbers) -> ep308 returned trustpilot "sent" (Brevo 2xx WITH BCC). Test row 78 in table 77 (page claude-test-trustpilot) - delete after owner confirms the Trustpilot invite arrived (deleting it lets 31619 be invited again on a future 5-star).
 **11-03 ~05:30 UTC VERIFIED END-TO-END:** owner set AFS timing Immediately; Trustpilot invite email arrived for 31619. Test row 78 DELETED. AFS frequency left at "every purchase" (our code caps once/user); 1-week reminder ON. Quota 150/mo (100 extra expire Feb 1); 90-day window to CSV-invite past customers (offered, not done). 1-star review by "Logan" 11-02: homepage says 60,000+ couples / 20,000+ vendors vs methodology page 45,000+ / 8,000+ (canonical = 50,000+), asks about PDF retention/deletion, notes profile is all 5-star + "not recently invited" warning.

@@ -15,14 +15,14 @@ metadata:
 **State 11-04 ~05:15 UTC:**
 - Portal branch `vendor-network` = 4009dab + 76a5dc5, LOCAL. `git push` was blocked by the auto-mode classifier -> owner must run it. Not deployed (main = d959e3f).
 - Xano LIVE: table 66 kind enum +2 (backups `.claude/xano_backups/table66_*_pre_network_kinds_2026-11-04.json`, 8 rows verified unchanged); group 13 eps **562** venue_partners, **563** businesses (SLOW 3.6-5.8 s; ep244 also 2-4 s), **564** signup, **565** intel (venue must be Category "Venue", NO claim gate), **566** listings, **567** business. Live-tested incl. 400/401/403 paths + full UI run against prod Xano (The Aviator V14516).
-- QA rows left: vendor_account 4 + submissions 9/10 ([email]), plus UI-run account [email].
+- QA rows left: vendor_account 4 + submissions 9/10 (network-qa-...@tulle-qa.example), plus UI-run account network-ui-qa-1793768658@tulle-qa.example.
 - **No review screen:** the Streamlit Vendor Portal tab was removed deliberately (tulle_vendor_data_updates 17578c8) - don't re-add without asking.
 - Open: business-search latency (needs index), tag confirm/invite emails promised but unbuilt, "Founding vendor" undefined, couple-facing display out of scope.
 - Repo also has owner's UNCOMMITTED calendar WIP (actions.ts, mock.ts, xano.ts, types.ts, api.ts, ics, calendar page) - untouched.
 
 Related: [[project_vendor_portal]] [[project_vendor_network_recommended_by]] [[project_partner_vendors]]
 
-**2026-11-04 05:33 UTC DEPLOYED (owner pushed vendor-network -> main, 76a5dc5).** Railway deploy SUCCESS; live checks: / new copy, /signup 307 -> /get-listed, /dashboard 307 -> /login, APIs 200; full Playwright run on https://tulle-vendor-portal.up.railway.app passed (QA [email], The Aviator listing). Rollback: Railway redeploy of the 2026-08-18 d959e3f deployment, or push --force d959e3f:main. Still open: tag-confirm/invite emails + "Founding vendor" copy promises, no review screen, ~5 s business search.
+**2026-11-04 05:33 UTC DEPLOYED (owner pushed vendor-network -> main, 76a5dc5).** Railway deploy SUCCESS; live checks: / new copy, /signup 307 -> /get-listed, /dashboard 307 -> /login, APIs 200; full Playwright run on https://tulle-vendor-portal.up.railway.app passed (QA network-prod-qa-1793770587@tulle-qa.example, The Aviator listing). Rollback: Railway redeploy of the 2026-08-18 d959e3f deployment, or push --force d959e3f:main. Still open: tag-confirm/invite emails + "Founding vendor" copy promises, no review screen, ~5 s business search.
 
 **2026-11-04 ~05:45 UTC CUSTOM DOMAIN LIVE: https://vendors.tulletogether.app** (owner added in Railway, target port 8080 = app port; Cloudflare DNS for tulletogether.app, proxied; verified 200 via cloudflare -> x-railway-edge). tulletogether.com DNS is WordPress, not Cloudflare. Stale: layout.tsx metadata description still "Claim your venue..." (one-line fix, not done).
 
@@ -36,7 +36,7 @@ Related: [[project_vendor_portal]] [[project_vendor_network_recommended_by]] [[p
 
 **11-04 06:27 UTC DEPLOYED b23a887 (main).** Live-verified on vendors.tulletogether.app: help page new topics (no venue field); guide rule (disabled without link/PDF, non-PDF error); live QA submission #27 with PDF upload -> full Slack notice in #tulle-vendors incl. PDF link. QA rows now span accounts 4-15 (@tulle-qa.example) - offer cleanup.
 
-**11-04 ~06:45 UTC QA CLEANUP DONE (owner OK):** deleted vendor_account 1,2,4-7,9-15 (@tulle-qa.example), vendor_submission 1-6,9-16,19-27 (23), vendor_claim 1,2, vendor_message 1, Xano files 44404-44406 (QA PDFs). Full-row backup .claude/xano_backups/vendor_portal_qa_rows_pre_delete_2026-11-04.json. KEPT owner test accounts 3 ([email]) + 8 ([email], 1 Hotel Brooklyn Bridge test listing) + claim 3 + submissions 7,8,17,18. Slack QA messages #25/#27 in #tulle-vendors left for owner.
+**11-04 ~06:45 UTC QA CLEANUP DONE (owner OK):** deleted vendor_account 1,2,4-7,9-15 (@tulle-qa.example), vendor_submission 1-6,9-16,19-27 (23), vendor_claim 1,2, vendor_message 1, Xano files 44404-44406 (QA PDFs). Full-row backup .claude/xano_backups/vendor_portal_qa_rows_pre_delete_2026-11-04.json. KEPT owner test accounts 3 (test@gmail.com) + 8 (vivek.marthi@gmail.com, 1 Hotel Brooklyn Bridge test listing) + claim 3 + submissions 7,8,17,18. Slack QA messages #25/#27 in #tulle-vendors left for owner.
 
 **11-04 replay-cron (tulle search) failing since 10-28 - DIAGNOSED, owner must fix in Railway (my env edit blocked by classifier):** (1) MEILI_URL still http://meilisearch.railway.internal:7700 (service deleted 10-27 23:13) -> crash at "could not store run: POST /indexes transport error"; set to http://meilisearch-b.railway.internal:7700 (master key already matches meili-b). (2) REC_TEST_TOKEN in Railway expired (401 on every search-api call); local ~/.tulle_rec.env token works (200). Tokens last 14 days -> durable fix = replay job uses the X-Admin-Secret operator path (main.py:302) instead of a user token; checking secrets was blocked [Credential Exploration].
 

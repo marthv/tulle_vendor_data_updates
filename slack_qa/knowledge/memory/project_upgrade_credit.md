@@ -118,8 +118,8 @@ page genuinely serves. (Price strings are NOT in the raw HTML — Checkout rende
 real session, which is what routes ep30 down its existing membership branch.
 
 **`customer_email` risk is CLEARED.** The leading-whitespace emails are a table-16 (Make-era)
-artifact only; table 1 emails are clean (checked real eligible users 28697 `[email]`,
-28460 `[email]`). fn63's lambda already `.trim()`s `Client_Reference_ID` for the same
+artifact only; table 1 emails are clean (checked real eligible users 28697 `smclain22@yahoo.com`,
+28460 `dlainag@gmail.com`). fn63's lambda already `.trim()`s `Client_Reference_ID` for the same
 reason.
 
 **Still unproven: only the final webhook** — no one has actually paid, so ep30 granting Forever
@@ -174,7 +174,7 @@ regardless of how the session was created — but it has never happened. Closing
 purchase; watching the first organic upgrade is sufficient given ep30's unhandled-event alarm.
 Confirm via a payment-log row `Type:"forever"` at $74/$99 plus `forever_access_purchased` flipping.
 
-## 2026-09-07 LIVE TEST on the owner's own account (user 14998, [email])
+## 2026-09-07 LIVE TEST on the owner's own account (user 14998, vivek.marthi@gmail.com)
 
 Bought a 1-week pass at 20:13:22 UTC ($32.66 with NY tax). fn63 then returns
 **eligible:true, credit 32.66, final_price 96.34, final_price_cents 9634** — confirmed both by
@@ -276,7 +276,7 @@ real body, so `already_forever` and `payment_count` stay true for any surface re
 ## fn63 v2 — CREDIT ONLY THE CURRENT ACCESS PERIOD (shipped + live 2026-09-11)
 
 **The v1 rule (sum every non-roadmap payment in a rolling 120 days) was wrong and is gone.**
-`/tulle view-as` caught it: [name] (13023) had five passes bought over five months, $190
+`/tulle view-as` caught it: Isabelle (13023) had five passes bought over five months, $190
 lifetime, and was being offered **Forever for $15** — the 120-day sum hit the `forever_price - 15`
 cap. **That caps a repeat buyer's LTV at the Forever price.** Des: *"if their month expired the $$
 amount of forever should reset… not capping is ideal."* The user also flagged that PDF-submission
@@ -307,11 +307,11 @@ tiers buy no timed coverage, so they neither start nor extend a period.
 ### Verified against real production users 2026-09-11 (runWorkspaceFunction)
 | user | shape | v1 | v2 |
 |---|---|---|---|
-| 13023 [name] | 5 passes, months apart, $30 today | credit 114 → **$15** | credit **30 → $99** |
-| 29045 [name] | one 4wk $55, live | 55 → $74 | 55 → **$74** (unchanged) |
+| 13023 Isabelle | 5 passes, months apart, $30 today | credit 114 → **$15** | credit **30 → $99** |
+| 29045 Edward | one 4wk $55, live | 55 → $74 | 55 → **$74** (unchanged) |
 | 27271 / 28151 | 1wk $30 **then** 4wk $55 seconds later | — | credit **85 → $44** (stacking) |
-| 25886 [name] Korch | two 1wk passes **9 days apart**, both expired | — | **eligible:false, $129** (reset) |
-| 25168 [name] | 4wk $55 then upgraded | — | `already_forever:true` (no double-dip) |
+| 25886 Alyssa Korch | two 1wk passes **9 days apart**, both expired | — | **eligible:false, $129** (reset) |
+| 25168 Kayla | 4wk $55 then upgraded | — | `already_forever:true` (no double-dip) |
 
 The PDF-submission case is structural, not separately testable: those users have **no payment-log
 row at all**, so `credit_raw` is 0. A PDF extension can only raise `access_live`, which is an AND

@@ -117,7 +117,7 @@ the target's entitlement and profile but overwrite `id`, `email` and `role` back
   `date_until_access`/`total_payments`/`total_amount_paid` and had none.
 - Audit rows go to **admin_audit (table 72)**, actions `mirror_start` / `mirror_stop`.
 - Admins are `role = "admin"` on table 1: **14998, 2333, 5622, 118**.
-  `[email]` has NO account — 118 `[email]` is Des's real one.
+  `desiree@tulletogether.com` has NO account — 118 `desi.gaddis@gmail.com` is Des's real one.
 
 ## Verified end-to-end 2026-09-11 (real HTTP, real token)
 

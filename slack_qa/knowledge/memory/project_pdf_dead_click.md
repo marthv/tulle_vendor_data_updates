@@ -36,12 +36,12 @@ bypass by moving the mobile open after the check — that would break mobile the
 
 ## Why the user evidence fits
 
-- [name] (28708): `forever_access_purchased: true`, `date_until_access: 3000-01-01`,
+- Brianna (28708): `forever_access_purchased: true`, `date_until_access: 3000-01-01`,
   `total_amount_paid: 129`. Paid branch is CORRECT for her, so 0 limit popups is expected,
   not a fall-through. `total_pdf_views: 47` — the PATCH ran every time; only the open
   no-oped. 46 `viewed_vendor_pdf` events because that tracking fires *after* Go to Page
   regardless of whether a tab opened.
-- [name] (28586): `FreeViewsRemaining: 1`, `total_pdf_views: 2`, unpaid. The gate ALLOWED
+- Krista (28586): `FreeViewsRemaining: 1`, `total_pdf_views: 2`, unpaid. The gate ALLOWED
   her — she **burned free views on dead clicks**.
 - Deborah: no user row — **RESOLVED: she deleted her account.** Not a data bug.
 
@@ -68,7 +68,7 @@ paths have the same defect, so the discriminator is browser/latency, not state.
 
 ## ⚠️ CORRECTION 2026-09-07 — THE DIAGNOSIS BELOW DOES NOT COVER BRIANNA
 
-**Brianna was on an iPhone.** Mixpanel "Event Volume by Device" for [email]
+**Brianna was on an iPhone.** Mixpanel "Event Volume by Device" for brimccormick9@gmail.com
 is essentially all iPhone (avg 3.8 events/hr iPhone vs 0.2 "not set"). On iPhone she gets the
 **mobile** button `bd4d43da` ("View Details") — the desktop "See Pricing" `94885c62` is hidden
 below 480px — and **the mobile workflow ALREADY opened the PDF as its first action.** So the

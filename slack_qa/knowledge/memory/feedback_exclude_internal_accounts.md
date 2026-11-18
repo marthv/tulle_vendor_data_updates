@@ -10,7 +10,7 @@ metadata:
 
 When reporting real-user data (goals, NPS, assistant usage, signups, buyers, A/B arms), drop internal accounts:
 - any email containing `vivek.marthi` (owner signs up as vivek.marthi+<tag>@gmail.com) or ending `@tulletogether.com`;
-- ids 14998 (owner rec test account), 30614 (vivek.marthi+test_pi), 32636 (onboarding goals test 2026-10-12), 31619 ([email], owner alt "Vivek Marthi", found 2026-11-03);
-- team (owner 2026-10-27): **118** Desiree O'Riley / [name] ([email], admin), **5622** Kate Beckman ([email], admin); their test/old accounts 34249 ("Des", desi.gaddis…@gmail.com), 33167 ("Katest", kstebeckman.kb+485), 185 (katekingsings, old Kate).
+- ids 14998 (owner rec test account), 30614 (vivek.marthi+test_pi), 32636 (onboarding goals test 2026-10-12), 31619 (soccerdog333@gmail.com, owner alt "Vivek Marthi", found 2026-11-03);
+- team (owner 2026-10-27): **118** Desiree O'Riley / Gaddis (desi.gaddis@gmail.com, admin), **5622** Kate Beckman (katebeckman.kb@gmail.com, admin); their test/old accounts 34249 ("Des", desi.gaddis…@gmail.com), 33167 ("Katest", kstebeckman.kb+485), 185 (katekingsings, old Kate).
 **Why:** 2026-10-12 owner asked to remove his own test signup from a goals count; 2026-10-27 asked to add Desiree and Kate after they turned up in the Railway search A/B arm.
 **How to apply:** filter by email when the data has it; when it doesn't (Mixpanel by distinct_id), filter these ids. Code copy: tulle_rec_planner/rec_watch.py INTERNAL_USER_IDS.

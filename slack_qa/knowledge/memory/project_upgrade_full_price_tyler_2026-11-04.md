@@ -1,6 +1,6 @@
 ---
 name: project_upgrade_full_price_tyler_2026-11-04
-description: "[name] (34862, [name] hub) paid $39 1wk then $149 Forever via the REGULAR Forever link 41 min later - no upgrade discount; ep284 401s 30% of calls; Forever card button never applies credit"
+description: "Tyler Dozier (34862, Intl hub) paid $39 1wk then $149 Forever via the REGULAR Forever link 41 min later - no upgrade discount; ep284 401s 30% of calls; Forever card button never applies credit"
 metadata:
   node_type: memory
   type: project

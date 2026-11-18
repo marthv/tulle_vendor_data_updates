@@ -41,7 +41,7 @@ Service charge   - "assume around 20% on top"
 
 - **3,518 of 14,681 vendors are non-venues** (11,161 are `Venue`).
 - Sampled 56 of them against live ep231: **18 (~32%) returned a rendered panel.**
-- Category vocabulary: Venue 11161, [name] 1998, Entertainment 1144, Flowers 162,
+- Category vocabulary: Venue 11161, Photography 1998, Entertainment 1144, Flowers 162,
   Food and Beverage 124, Beauty 73, Wedding Planner 9, plus singletons.
   **`Both` is NOT a venue - it means photo+video** (V2860 Susan Shek, V3131). The test is
   `Category` contains `venue`, case-insensitive; equality would be wrong the moment a

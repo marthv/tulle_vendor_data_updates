@@ -394,7 +394,7 @@ size they were not having. (Separately, 6,645 of ~25,843 users have `Wedding_Gue
 **A '25 guests' reading is NOT a bug in the fallback chain.** The live WeWeb binding is
 `variables['323efbd0'] || user.Wedding_Guest_Count || payload.default_guests || 100`,
 clamped `Math.max(25, Math.min(400, ...))` — it correctly uses `||`, so 0 falls through.
-25 only appears when the user has a REAL count of 1-24. The `[email]` test
+25 only appears when the user has a REAL count of 1-24. The `hello@tulletogether.com` test
 account has **Wedding_Guest_Count: 10**, which is why the panel read "Assumes 25 guests" in
 every screenshot. Set that account to ~100 before judging the panel.
 `PRICING_INTELLIGENCE_WEWEB_WIRING.md:62` still documents `?? 50`, which is STALE and

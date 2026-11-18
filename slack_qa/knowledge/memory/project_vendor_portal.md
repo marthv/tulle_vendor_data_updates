@@ -94,7 +94,7 @@ return the number; Xano stores timestamps as epoch ms.
   Single-use, 1h expiry, and redeeming burns every other outstanding token for the account.
   The request endpoint ALWAYS returns ok for any address — anything else is an
   account-enumeration oracle. Email is raw HTML via Brevo `/v3/smtp/email` (fn51 is
-  template-only), sender `[email]` — **sender and domain VERIFIED, delivery
+  template-only), sender `hello@tulletogether.com` — **sender and domain VERIFIED, delivery
   PROVEN end to end 2026-08-18**: Brevo 201 + messageId, and `/v3/smtp/statistics/events`
   shows `delivered`. The config was never the problem.
 - **File uploads store metadata only** (`filename`/`size`), not bytes — Xano file storage
@@ -106,7 +106,7 @@ return the number; Xano stores timestamps as epoch ms.
   **never executed in production**. Rows are always written before the ping;
   `slack_delivered=false` is surfaced in the review tab.
 - **QA rows are still in the tables** — accounts 1/2 (`@tulle-qa.example`), account 3
-  (`[email]`, the user's own), 3 claims, 6 submissions, 1 message.
+  (`test@gmail.com`, the user's own), 3 claims, 6 submissions, 1 message.
 - `vendor_claim.vendor_account_id` has `tableref_id: 0` (the table link did not resolve).
   Cosmetic — no addons depend on it; fixing needs `updateTableSchema`, which **strips
   validators** ([[reference_xano_mcp_quirks]]).

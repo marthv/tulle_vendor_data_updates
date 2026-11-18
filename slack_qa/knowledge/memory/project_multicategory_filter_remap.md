@@ -36,7 +36,7 @@ WeWeb must not send it while filters are active, or must read `is_fallback`.
 **Gap:** ep121 (map) has **no `vibes` input** — Included filter is list-only.
 
 **Prod endpoints are 119 + 121.** ep201/ep204 (`..._v1`/`_v2`) are
-[email]'s optimization work — both have ZERO production request history.
+rimal@infiwebsolutions.com's optimization work — both have ZERO production request history.
 ep204 is behind 119 (at v8: no include_facets/fallback_all/sort_by) but adds `min_capacity`
 and `external_sorting`. Don't build against them; check with the user before assuming a
 migration. See [[reference_xano_mcp_quirks]], [[project_wptp_search_joins]].

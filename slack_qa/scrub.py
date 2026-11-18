@@ -1,17 +1,18 @@
-"""Secret / PII scrubber shared by sync_knowledge.py (before anything is written to the repo), the
+"""Secret scrubber shared by sync_knowledge.py (before anything is written to the repo), the
 service's input side (Slack history, GitHub commits before they reach Claude) and its output side
 (every reply, as a second line of defence before chat.postMessage).
 
-Deliberately over-eager: a false positive costs a "[redacted]" in a Slack answer, a false negative
+Scope (owner, 2026-11-18): SECRETS ONLY - tokens, keys, passwords, webhook URLs, Stripe ids, private keys,
+long random strings - plus phone numbers. Customer names, emails, user/account ids and anecdotes are
+allowed and are NOT scrubbed.
+
+Deliberately over-eager on secrets: a false positive costs a "[redacted]" in a Slack answer, a false negative
 leaks a credential into a channel. Each rule is a (name, pattern, replacement) so tests can name it.
 """
 from __future__ import annotations
 
 import math
 import re
-
-# Team first names are never treated as customer names.
-TEAM_NAMES = {"Vivek", "Marthi", "Des", "Desiree", "Kate", "Claude", "Tulle"}
 
 _RULES: list[tuple[str, re.Pattern, str]] = [
     # Webhook URLs first (they contain long tokens the generic rules would only partly catch).
@@ -24,8 +25,6 @@ _RULES: list[tuple[str, re.Pattern, str]] = [
     ("url_secret_param", re.compile(
         r"([?&](?:token|access_token|refresh_token|key|api_key|apikey|secret|client_secret|sig|signature|password|pwd|auth|code)=)(?!\[)[^&\s#>\"'`]+",
         re.I), r"\1[redacted]"),
-    # Emails.
-    ("email", re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}"), "[email]"),
     # Auth headers / bearer tokens.
     # Bearer/Basic credentials (value must contain a digit so "basic setup" prose survives).
     ("bearer", re.compile(r"\b((?i:bearer|basic))\s+(?!\[)(?=[A-Za-z0-9._~+/=\-]*\d)[A-Za-z0-9._~+/=\-]{8,}"),
@@ -59,24 +58,6 @@ _RULES: list[tuple[str, re.Pattern, str]] = [
     ("phone_intl", re.compile(r"(?<![\w+])\+\d{1,3}[\s.\-]?\(?\d{1,4}\)?(?:[\s.\-]?\d{2,4}){2,4}(?!\w)"), "[phone]"),
     ("phone_na", re.compile(r"(?<![\w\-./:])\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b(?![\-./]\d)"), "[phone]"),
 ]
-
-# Customer names: a capitalised two/three-word name right after a "this is a person" keyword, or
-# right before an id in parentheses ("Jane Doe (id 31234)").
-_NAME = r"([A-Z][a-z'\-]+(?:\s+(?:[A-Z]\.|[A-Z][a-z'\-]+)){1,2})"
-_NAME1 = r"([A-Z][a-z'\-]+(?:\s+(?:[A-Z]\.|[A-Z][a-z'\-]+)){0,2})"
-_NAME_AFTER = re.compile(
-    r"\b((?:user|customer|couple|bride|groom|member|buyer|purchaser|subscriber|rater|reviewer|signup|sign-up|payer|refunded)s?\b\s*(?:#?\d{2,}\s*)?[(:\-,]?\s*)"
-    + _NAME1)
-# "23866 Ojars": a 5-6 digit user id followed by a capitalised word.
-_ID_THEN_NAME = re.compile(r"\b(\d{5,6},?\s+)([A-Z][a-z]{2,})\b")
-# Capitalised words that follow "user"/"member" etc. but are products or UI, not people.
-NOT_NAMES = {"Xano", "WeWeb", "Stripe", "Google", "Mixpanel", "Slack", "Brevo", "Planner", "Railway",
-             "Make", "Meta", "Chrome", "Gmail", "Trustpilot", "Sign", "Pro", "Free", "Paid", "Lifetime",
-             "Discovery", "Admin", "Test", "Settings", "Profile", "Table", "Id", "The", "This", "That",
-             "Mobile", "Desktop", "Safari", "Android", "Apple", "Facebook", "Instagram", "Pricing", "Venue",
-             "Vendor", "Budget", "Ask", "Wedding", "Unlock", "View", "Plans", "Nov", "Oct", "Sep", "Dec",
-             "Bearer", "Basic", "Auth", "Tulle", "Claude", "Sonnet", "Haiku", "Opus", "PDF", "Home"}
-_NAME_BEFORE_ID = re.compile(r"\b" + _NAME1 + r"(\s*\((?:id\s*|user\s*|#)?\d{3,}[,;)\s]|\s*\(\[email\])")
 
 _TOKEN_RUN = re.compile(r"[A-Za-z0-9+=_\-]{24,}")
 
@@ -112,39 +93,14 @@ def _scrub_token_runs(text: str) -> str:
     return _TOKEN_RUN.sub(repl, text)
 
 
-def _scrub_names(text: str) -> str:
-    def after(m: re.Match) -> str:
-        name = m.group(2)
-        words = name.split()
-        if words[0] in TEAM_NAMES or words[-1] in TEAM_NAMES or words[0] in NOT_NAMES:
-            return m.group(0)
-        return m.group(1) + "[name]"
-
-    def before(m: re.Match) -> str:
-        name = m.group(1)
-        if name.split()[0] in TEAM_NAMES or name.split()[0] in NOT_NAMES:
-            return m.group(0)
-        return "[name]" + m.group(2)
-
-    def id_name(m: re.Match) -> str:
-        if m.group(2) in TEAM_NAMES or m.group(2) in NOT_NAMES:
-            return m.group(0)
-        return m.group(1) + "[name]"
-
-    text = _NAME_AFTER.sub(after, text)
-    text = _ID_THEN_NAME.sub(id_name, text)
-    return _NAME_BEFORE_ID.sub(before, text)
-
-
 def scrub(text: str | None) -> str:
-    """Return text with secrets / PII replaced by placeholders. Idempotent."""
+    """Return text with secrets (and phone numbers) replaced by placeholders. Idempotent."""
     if not text:
         return text or ""
     out = text
     for _name, pat, rep in _RULES:
         out = pat.sub(rep, out)
     out = _scrub_token_runs(out)
-    out = _scrub_names(out)
     return out
 
 
@@ -156,46 +112,26 @@ def findings(text: str) -> list[str]:
     return hits
 
 
-# --- personal / interpersonal content (owner rule 2026-11-18: the bot says nothing personal) ------------
-# Lines that describe feelings, blame, complaints about someone, family / health / home life, or addresses.
-# Used to DROP whole lines from the memory notes at sync time and from other channels' Slack history, and to
-# block a reply that still contains such wording.
-PERSONAL = re.compile(
+# --- interpersonal content (owner rule 2026-11-18) -----------------------------------------------------------
+# Opinions about people, blame, motives, feelings, team disagreements. Used to keep such questions out of scan
+# mode and to block a reply that contains such wording. Names, emails, ids and anecdotes are NOT covered here.
+INTERPERSONAL = re.compile(
     r"\b(?:frustrat\w*|annoyed|annoying|upset|angry|mad at|unhappy|disappointed|"
-    r"complain(?:ed|s|ing)? about (?:him|her|them|me|Des|Desiree|Kate|Vivek)|blam(?:ed|es|ing) (?:me|him|her|them|Des|Desiree|Kate|Vivek)|"
-    r"(?:his|her|their|my) fault|rampant|worried (?:im|i'm|i am|that)|rude|yell(?:ed|ing)|furious|irritated|vent(?:ed|ing)|fed up|pissed|"
-    r"felt (?:that|like|I|we|he|she|they)|feels like (?:I|we|he|she|they)|stressed|anxious|nervous|tension between|"
-    r"offended|personality|wife|husband|girlfriend|boyfriend|spouse|"
-    r"(?:my|his|her|their) (?:kids?|children|son|daughter|mom|dad|mother|father|parents|baby|house|apartment|"
-    r"home|family|health|partner)|pregnan\w*|hospital|doctor's|had surgery|therapy|funeral|illness|"
-    r"(?:is|was|got|feeling) sick|divorce|birthday|vacation|home address|street address|"
-    r"lives (?:in|at) \d|moved (?:house|apartment))\b",
+    r"complain(?:ed|s|ing)? about (?:him|her|them|me|Des|Desiree|Kate|Vivek)|"
+    r"blam(?:e|ed|es|ing) (?:me|him|her|them|Des|Desiree|Kate|Vivek)|(?:his|her|their|my) fault|"
+    r"rude|yell(?:ed|ing)|furious|irritated|vent(?:ed|ing)|fed up|pissed|offended|"
+    r"tension between|falling out|not getting along|disagree(?:s|d|ment)? with (?:him|her|them|Des|Desiree|Kate|Vivek)|"
+    r"(?:is|was) (?:lazy|incompetent|wrong about)|great job|amazing work|brilliant|genius)\b",
     re.I)
 
 
-def is_personal(text: str | None) -> bool:
-    return bool(PERSONAL.search(text or ""))
+def is_interpersonal(text: str | None) -> bool:
+    return bool(INTERPERSONAL.search(text or ""))
 
 
-def drop_personal_lines(text: str | None) -> tuple[str, int]:
-    """Remove every line that matches PERSONAL. Returns (text, lines_dropped)."""
-    if not text:
-        return text or "", 0
-    kept, dropped = [], 0
-    for line in text.splitlines():
-        if PERSONAL.search(line):
-            dropped += 1
-            continue
-        kept.append(line)
-    return "\n".join(kept) + ("\n" if text.endswith("\n") else ""), dropped
-
-
-_USER_ID_REF = re.compile(r"\b(?:user|account|acct|id)\s*#?\s*\d{4,6}\b", re.I)
 _SLACK_MENTION = re.compile(r"<@[UW][A-Z0-9]+(?:\|[^>]*)?>")
 
 
 def scrub_output(text: str | None) -> str:
-    """Reply-side scrub: secrets/PII (scrub) + user ids tied to people + Slack @-mentions of people."""
-    out = scrub(text)
-    out = _USER_ID_REF.sub("a user", out)
-    return _SLACK_MENTION.sub("someone", out)
+    """Reply-side scrub: secrets (scrub) + Slack @-mentions (so an answer never pings anyone)."""
+    return _SLACK_MENTION.sub("someone", scrub(text))

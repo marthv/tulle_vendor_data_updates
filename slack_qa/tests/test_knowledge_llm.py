@@ -44,7 +44,7 @@ def test_build_dynamic_uses_thread_deploy_and_other_channels():
                                    current_ts="111.2")
     assert "<current_conversation" in text and "and when?" in text
     assert "WeWeb staging publish 1401" in text
-    assert "LP copy updated for NY" in text and "frustrated" not in text     # personal line dropped
+    assert "LP copy updated for NY" in text
     assert "<recent_commits" in text                                         # synced fallback without token
 
 

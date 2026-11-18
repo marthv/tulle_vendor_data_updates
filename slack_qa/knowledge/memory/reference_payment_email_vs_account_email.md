@@ -5,8 +5,8 @@ metadata:
   type: reference
 ---
 
-2026-10-28 (Marta Zewdu): paid $129 forever 10-14 as [email] at Stripe, but her account was user 32920
-[email] (credited correctly via client_reference_id). On 10-27 she Google-signed-in as marta.zewdu@ ->
+2026-10-28 (Marta Zewdu): paid $129 forever 10-14 as marta.zewdu@gmail.com at Stripe, but her account was user 32920
+nigelandmarta@gmail.com (credited correctly via client_reference_id). On 10-27 she Google-signed-in as marta.zewdu@ ->
 brand-new empty account 34460 -> "I paid but it says free plan". Searching table 1 by the Slack/payment-log email finds
 the WRONG row. Always resolve via table 16 `Client_Reference_ID`. Nothing links a later sign-up under the checkout email
 to the paid account (product gap; ideas: flag new sign-ups whose email is in table 16, put account email in the Slack ping).

@@ -331,7 +331,7 @@ server streaming (owner said no 10-16) and the free-tier limits ("open up the Pl
   1-5 stars posted on tap to /rec/feedback text '[after pdf|save]'; <=3 stars asks "What could make the experience better?"
   = a 2nd /rec/feedback row with the comment; Mixpanel rec_value_rated / rec_value_feedback; valueChoice removed). Owner
   activates + publishes. SERVER: branch **rec-slack-emails 4a400be** (off live main 935c628) = Slack lines show the email
-  '[name] ([email], user 31469, [name])' via notify._who(); suite 569; PUSHED TO MAIN 11-01 ~17:00 ET (owner pasted the push command) = Railway rec-engine deploy 8, SUCCESS 21:42:39 UTC (eac305ad). Not yet seen on a real Slack notice. Tracking audit
+  'Maria (maria@x.com, user 31469, Forever)' via notify._who(); suite 569; PUSHED TO MAIN 11-01 ~17:00 ET (owner pasted the push command) = Railway rec-engine deploy 8, SUCCESS 21:42:39 UTC (eac305ad). Not yet seen on a real Slack notice. Tracking audit
   11-01: production Mixpanel has NONE of the new component events yet (rec_pdf_opened, rec_answer_loaded, rec_value_*
   absent 30d) because the new chat UI is not published; viewed_vendor_pdf ~550-590 uniques/wk flat 6 wks,
   membership_purchased 30-41/wk (34, 31 last two), rec_page_viewed uniques 16->149/wk since 09-28.
@@ -399,7 +399,7 @@ lookup rows tools='lookup:<status>'; /rec/pdf writes a 'pdf' usage row status pa
 have MA/NJ coords); 03c035c rec_watch.planner_daily in daily_brief after the Assistant line (rendered live: 24h
 39 people, opening p50 6.0 s vs 7d 9.0, question p50 9.7 vs 10.7, instant 0.3 s; 9 'we don't have' answers; 48% of
 questions need 3+ tool calls). Suite 585 (test_prefetch_cache is a PRE-EXISTING order flake: card ids ['V2','V1']).
-PUSH MUST LAND BEFORE 13:30 UTC 11-03 or AFTER 13:40 (brief cron window). Table-11 COORDINATE AUDIT DONE (clean, sorted by id, deduped): 13,061 validated venues, 269 (2.1%) have lat/lng outside their own [name] (248 with pricing), 12 zero coords; top: V3478 Prospect Park Boathouse placed in [name] (450 clicks), V2304 Pendry Natirar in Chicago. Export .claude/exports/table11_bad_geocodes_2026-11-02.json (bad + zero rows with Place_ID) -> fix = re-geocode by Place_ID (needs Google key, pipeline repo). I first told the owner ~2,000 - WRONG (unstable paging duplicated rows + Category filter ignored); corrected to 269. WeWeb publish NOT verified (www.tulletogether.app unreachable from this machine, HTTP 000).
+PUSH MUST LAND BEFORE 13:30 UTC 11-03 or AFTER 13:40 (brief cron window). Table-11 COORDINATE AUDIT DONE (clean, sorted by id, deduped): 13,061 validated venues, 269 (2.1%) have lat/lng outside their own State (248 with pricing), 12 zero coords; top: V3478 Prospect Park Boathouse placed in Hawaii (450 clicks), V2304 Pendry Natirar in Chicago. Export .claude/exports/table11_bad_geocodes_2026-11-02.json (bad + zero rows with Place_ID) -> fix = re-geocode by Place_ID (needs Google key, pipeline repo). I first told the owner ~2,000 - WRONG (unstable paging duplicated rows + Category filter ignored); corrected to 269. WeWeb publish NOT verified (www.tulletogether.app unreachable from this machine, HTTP 000).
 
 **11-02 03:25 UTC deploy 203d780e SUCCESS (03c035c LIVE). Live replay of the dead end NOT done: REC_TEST_TOKEN in
 ~/.tulle_rec.env is EXPIRED (Xano auth/me: "This token is expired"; it was the owner's account 14998, 14-day life).

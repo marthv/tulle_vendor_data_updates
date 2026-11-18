@@ -12,10 +12,10 @@ Owner decision 2026-11-11: replace the 20%-off/30-min "too expensive" offer with
 
 - **ep313 `paywall/save_offer` v3 LIVE** 2026-11-11 05:14:44 UTC (apigroup 4, ws 1). Codes `TT60-XXXXXX`; Stripe coupon `tulle_save60_forever` (60%, once), promo code max_redemptions 1, expires_at +12h, min $100 (blocks 4-week, max $69). Forever only: NY/baseline $135 -> $54, CA/Intl $149 -> $59.60.
 - Eligibility: never paid (`total_amount_paid` 0), not forever, no live access, one TT60 per account ever. Old TT20 holders who never paid ARE eligible once. Internal excluded except emails containing `+offer60test`.
-- Email sent from ep313 itself via Brevo smtp/email (sender [email]), skipped if Brevo contact blacklisted. NO Make scenario, NO reminder email (deferred: needs a table-1 column + task).
+- Email sent from ep313 itself via Brevo smtp/email (sender hello@tulletogether.com), skipped if Brevo contact blacklisted. NO Make scenario, NO reminder email (deferred: needs a table-1 column + task).
 - Rollback: `.claude/xano_backups/api313_ep313_save_offer_LIVE_pre_60forever_2026-11-11.xs`.
 - WeWeb popup "What Stopped You" (53f82e59): Offer Title, Offer Timer (H:MM:SS), Offer Fine Print (mentions email only if email_status accepted/not_new) edited IN EDITOR - owner must publish. Editor demo in Pick Reason workflow action o1 still shows TT20-DEMO sample (editor only).
-- Smoke test 2026-11-11: internal token -> `internal`; test acct **user 35757 [email]** (internal, exclude from numbers) -> TT60-UC36AL, 12.0 h, $135->$54, email accepted, 2nd call reuses. NOT verified: Stripe checkout actually applies the code (owner said Forever links allow promo codes), email delivery, 4-week rejection.
+- Smoke test 2026-11-11: internal token -> `internal`; test acct **user 35757 vivek.marthi+offer60test@gmail.com** (internal, exclude from numbers) -> TT60-UC36AL, 12.0 h, $135->$54, email accepted, 2nd call reuses. NOT verified: Stripe checkout actually applies the code (owner said Forever links allow promo codes), email delivery, 4-week rejection.
 - Context: 20% offer converted 1 real person of ~33 offered (Jess, $48 4-week). Expected value of new offer ~$30-40/week. Success read after ~3 weeks: >=3 buyers in ~25 offers; watch "too expensive" share of what_stopped_you (~47%) for gaming.
 
 Related: [[project_paywall_popup_redesign]] [[feedback_exclude_internal_accounts]]

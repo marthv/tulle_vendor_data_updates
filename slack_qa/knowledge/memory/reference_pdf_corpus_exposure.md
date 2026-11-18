@@ -91,7 +91,7 @@ what is publicly linked.
 Traversal starts in that untracked region — the first 490 files the sweep fixed had **zero**
 matches in Xano. Verified live: 4 swept ids flipped to "protected"; Zumbro Falls Golf Club,
 Zorba Villas Tulum, Zoetry Marigot Bay and Oasis Party Venue were still DOWNLOADABLE and
-awaiting later runs. [name] (167 Events, protected beforehand) was unaffected.
+awaiting later runs. Control (167 Events, protected beforehand) was unaffected.
 
 **Throughput: ~490 files per 4.5-minute run (~0.57s/file), so ~20 hourly runs to finish.**
 A likely cause of the slowness is `setRestricted_()` attempting the 4-arg
@@ -150,7 +150,7 @@ customers, because the app hands users the raw Drive link. The real fix is an
 entitlement-checked signed-URL path, not a Drive toggle. **The two roots have no common
 ancestor**, so any sweep must be pointed at BOTH — one root silently covers half the corpus
 and still reports a clean pass. Service account is
-`[email]`; it needs Editor on both
+`venue-extractor@tulle-technologies.iam.gserviceaccount.com`; it needs Editor on both
 (the Claude Drive connection CANNOT grant this — "caller does not have permission").
 A service account needs no console scope change: it requests the Drive scope at token time,
 so Drive-level sharing is the only gate. See [[project_endpoint_auth_audit]].

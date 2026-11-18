@@ -11,21 +11,21 @@ it posts replies in threads and never changes code, settings or data.
 | `@Tulle Bot <question>` | Always replies in thread. If the knowledge doesn't cover it: "I don't have that ... Vivek can confirm." |
 | `@Tulle Bot mute` / `unmute` / `status` / `help` | Per-channel setting, saved on the volume. |
 | Channel **muted** (default) | Only @-mentions are answered. |
-| Channel **unmuted** | Every human message is screened: rules (looks like a question, not personal) -> Haiku triage (category + confidence) -> Sonnet answer. It replies only if triage confidence >= `QA_SCAN_THRESHOLD` (0.75) **and** the answer call says the knowledge answers it with the same confidence. Otherwise silent. |
+| Channel **unmuted** | Every human message is screened: rules (looks like a question, not interpersonal) -> Haiku triage (category + confidence) -> Sonnet answer. It replies only if triage confidence >= `QA_SCAN_THRESHOLD` (0.75) **and** the answer call says the knowledge answers it with the same confidence. Otherwise silent. |
 | Message from Vivek (`U05UJMCHUV6`) | Never auto-answered in scan mode; answered when he @-mentions the bot. |
 | Bot posts (incl. the #deployment notifier), edits, deletes, joins, DMs | Ignored. |
-| Personal / interpersonal / owner-decision questions | Silent in scan mode; on @-mention: "I only cover product changes, experiments and their outcomes". |
+| Interpersonal questions (opinions about people, blame, motives, team disagreements) or owner decisions | Silent in scan mode; on @-mention: "I only cover product changes, experiments and their outcomes ...". Facts from the notes - including customer names, emails, account ids and who said what - are allowed. |
 
 Every answer ends with an "Automated answer from Tulle Bot ... Vivek can confirm" footer and a Sources line
 (registry id, #deployment post time, commit hash, note title). Replies are capped at ~160 words and passed through
-`scrub.scrub_output` (tokens, keys, webhook URLs, emails, phone numbers, user ids, @-mentions) before posting.
+`scrub.scrub_output` (tokens, keys, passwords, webhook URLs, Stripe ids, phone numbers; Slack @-mentions are neutralised so answers never ping anyone) before posting.
 
 ## Knowledge
 
 * `experiments/experiment_log.json` - the registry, whole, in the prompt-cached static block (with MEMORY.md's
   "PICK UP HERE" section). Railway watch paths include it, so a registry push redeploys the bot.
 * Slack, live (cached 3 min): the thread or channel being answered, #deployment's last 30 posts, and the last 15
-  messages (7 days) of every other channel the bot is in, minus personal lines.
+  messages (7 days) of every other channel the bot is in.
 * GitHub, live when `GITHUB_TOKEN` is set (cached 5 min): last 14 days of commits on the default branch of
   `marthv/tulle_vendor_data_updates`, `marthv/ww-price-report`, `marthv/ww-planner-chat`, plus the file list/stat of
   up to 3 commits the question names or clearly matches. Without the token: the synced commit logs.
@@ -39,11 +39,11 @@ python slack_qa/sync_knowledge.py
 git add slack_qa/knowledge && git commit -m "chore(slack-qa): refresh knowledge" && git push
 ```
 
-The script drops personal/interpersonal lines, scrubs secrets/PII, re-checks every file, and refuses to replace
+The script scrubs SECRETS only (tokens, keys, passwords, webhook URLs, Stripe ids, private keys, long random strings; also phone numbers) - customer names, emails, ids and anecdotes are kept (owner 2026-11-18). It re-checks every file and refuses to replace
 anything if a secret-looking string survives (exit 1). Check before committing:
 
 ```
-grep -rEn '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}|eyJ[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]|xox[abposr]-|ghp_|hooks\.slack\.com/' slack_qa/knowledge
+grep -rEn 'eyJ[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]|xox[abposr]-|ghp_|hooks\.slack\.com/' slack_qa/knowledge
 ```
 
 ## Environment variables

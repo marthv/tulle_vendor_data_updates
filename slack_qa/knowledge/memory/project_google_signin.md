@@ -79,7 +79,7 @@ First-time slowness is mostly Google's one-time consent screen (human time), not
 already cached from Sign Up) - my earlier "1.7 MB download" explanation was wrong.
 Onboarding popup: user fixed missing `return`. STAGING CONFIRMED by user 2026-09-28: loader + popup work
 (gauntlet items 1-7 pass; continuing from item 8).
-Gauntlet 8-17 PASS (user, 2026-09-28). Verified in Xano: phone signup user 31012 ([email])
+Gauntlet 8-17 PASS (user, 2026-09-28). Verified in Xano: phone signup user 31012 (vivek.marthi@gethealthie.com)
 FreeViews 3, TC_Agreement_Time set, google_oauth linked; Mixpanel signed_up method=google distinct_id 31012 (1 event).
 Desktop Google signups (31006/31007, user-deleted soccerdog333 test accts) sent NO signed_up - cause unknown
 (ad blocker on desktop Chrome suspected, unverified). #18 Instagram in-app browser WORKS (no disallowed_useragent) - no need to hide the button.

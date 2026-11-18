@@ -10,7 +10,7 @@ Pre-existing, NOT caused by that day's publish (same message on 2026-08-30 and 2
 
 ## Who it hit
 
-**Meredith, user 27221, [email].** iPhone, T-Mobile IP `172.56.166.2`.
+**Meredith, user 27221, merspencewedding@gmail.com.** iPhone, T-Mobile IP `172.56.166.2`.
 ep216 401'd at 18:17:06 UTC then 200'd at 18:17:10 (the pre-auth race). She clicked buy
 **8 times in 18 seconds** (forever x2, then 4 weeks x6) starting 18:17:51, and
 `last_active_at` shows her still browsing 2m23s later. `total_payments: 0`,

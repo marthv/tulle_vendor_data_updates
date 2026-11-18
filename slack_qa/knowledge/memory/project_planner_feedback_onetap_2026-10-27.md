@@ -12,7 +12,7 @@ REC_FREE_REFINES=2 since 10-24 and paid check-in was after 3 questions, which al
 
 Shipped 10-27 ~23:56 UTC (owner yes): rec-engine 49d3c83 on main (rating alone accepted; Slack "(rating only)"),
 Railway REC_BETA_FEEDBACK_AFTER 3 -> 2, REC_FREE_FEEDBACK_BONUS 0 -> 1 (one more question for the rating).
-Verified live with test acct 34429 ([email]; 1027 without b is unused):
+Verified live with test acct 34429 (fbtest+freelimit1027b@tulletogether.com; 1027 without b is unused):
 rating-only 200, questions_left 0 -> 1, Slack post landed. WeWeb Planner page (dae212b5) EDITOR ONLY, needs publish:
 tap a pill = send (unless "Tell us more" open), Send needs rating only, body "Tap a rating to unlock 1 more question",
 text label "Anything else? (optional)". Backup .claude/weweb_backups/planner_feedback_card_pre_onetap_2026-10-27.md.

@@ -1,7 +1,8 @@
-# Commit log: tulle_vendor_data_updates (last 60 days, synced 2026-11-18T07:32:40+00:00)
+# Commit log: tulle_vendor_data_updates (last 60 days, synced 2026-11-18T07:36:45+00:00)
 
 Subject lines from every local branch and remote ref (`git log --all`), newest first. The [ref] is the branch the commit was found on: main / origin/main is deployed or deployable; other refs may be unmerged work in progress. A coded-component commit is only live after the owner activates it in WeWeb and publishes.
 
+- 2026-11-18 07:33 UTC `19add15` [slack-qa] feat(slack-qa): Tulle Bot Slack Q&A service (read-only answers about recent changes)
 - 2026-11-18 07:00 UTC `d8294b8` [rec-venue-log] fix(ops): deploy-notify ignores WeWeb image cache-buster (_wwcv) changes and quotes tour step text; silent re-snapshot on format change
 - 2026-11-18 06:48 UTC `51d74d4` [registry-price-report] registry: production publish 1401 verified 06:47 UTC 11-18 (price report v2 + locked card, estimate what-if + home button, NY LP, LP copy, tour copy); price report period 2 starts
 - 2026-11-18 05:51 UTC `afd174a` [registry-price-report] registry: ask-tulle-bubble 11-18 read - question drop is confounded by the Discovery entry removal in the same publish
@@ -113,7 +114,7 @@ Subject lines from every local branch and remote ref (`git log --all`), newest f
 - 2026-11-02 00:48 UTC `6314a17` [rec-slack-emails] rec: a 'which one did you mean?' lookup no longer prices every match first
 - 2026-11-02 00:34 UTC `f580592` [rec-slack-emails] rec: a venue name typed right after the Planner's own question is still looked up
 - 2026-11-01 23:42 UTC `7a35a25` [rec-slack-emails] rec: venue lookup reads a bare trailing state ('Bear brook nj') as name + location
-- 2026-11-01 21:38 UTC `4a400be` [origin/rec-slack-emails] rec: Slack notices name the couple by email - '[name] ([email], user 31469, [name])' on beta feedback, thumbs up/down, still-looking and venue-not-in-Tulle lines (owner 2026-11-01: 'we want the user emails on this, not just their ids'); one _who() helper, suite 569
+- 2026-11-01 21:38 UTC `4a400be` [origin/rec-slack-emails] rec: Slack notices name the couple by email - 'Maria (maria@x.com, user 31469, Forever)' on beta feedback, thumbs up/down, still-looking and venue-not-in-Tulle lines (owner 2026-11-01: 'we want the user emails on this, not just their ids'); one _who() helper, suite 569
 - 2026-11-01 21:07 UTC `935c628` [rec-notes-still-looking] rec: a dead-end line is not a thumbs down - /rec/notes sends the team a quiet "still looking for" Slack line (notify.still_looking, with source + chat) instead of the thumbs-down notice; tests (owner 2026-11-01)
 - 2026-11-01 20:53 UTC `3f94095` [rec-notes-still-looking] rec: POST /rec/notes - a dead-end answer's "what were you after?" is kept as the couple's memory note ("Still looking for: ...") instead of only a thumbs-down (owner 2026-11-01: couples read it as "save this for next time")
 - 2026-11-01 18:39 UTC `d41adce` [planner-weekly-digest] brief: weekly digest - drop the temperature argument the installed anthropic SDK rejects

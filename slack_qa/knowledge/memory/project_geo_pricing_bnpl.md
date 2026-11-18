@@ -236,7 +236,7 @@ time (bnpl_watch 93c1ee1 reports pre / phase 1 / phase 2 rev/day, rev/buyer, pla
 ## 2026-10-06: "NY payment rate cliff" checked - NOT supported
 User wanted to change NY pricing. NY 1.79 -> 1.20 buys/day (7 vs 10.4 expected, P=0.19); 28d pre window was an unusually
 strong NY September; NY signups flat 17.7->18.0/day; CA/Intl same prices rose ~3x; raised arm rev $227 -> $332/day.
-Screenshot (hub ny, signups [name] 1-6, 4/75 payers) was a complete pre-experiment cohort, 4 payers. Rec: no change; re-check
+Screenshot (hub ny, signups Aug 1-6, 4/75 payers) was a complete pre-experiment cohort, 4 payers. Rec: no change; re-check
 ~10-22 (pre-commit: NY rev < ~$110/day while baseline holds -> NY-only revert, which needs a NEW WeWeb rule; kill switch hits all raised).
 **Phase 2 actually went live ~10-02 20:43 UTC** (first $69 session), not ~10-05 -> BNPL_PHASE2_FROM_MS must match that.
 Possible double charge: user 25790 paid $69 twice 17s apart ([stripe-id] / [stripe-id]).

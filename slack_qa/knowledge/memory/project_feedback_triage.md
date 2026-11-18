@@ -82,7 +82,7 @@ extracted data instead of fixing the bug. V3488 Raritan Inn = case 3 (6500 fee, 
 
 **Replies send through Brevo, not Gmail.** `ep278 POST /admin/send_feedback_reply`. Nothing
 had to be configured: **Xano already holds `$env.brevo_api_key`**, and
-**[email] is already a verified, active Brevo sender** (id 1, "Des & Kate" —
+**hello@tulletogether.com is already a verified, active Brevo sender** (id 1, "Des & Kate" —
 the only sender on the account). `replyTo` is hello@ so answers reach the shared inbox.
 
 **fn51 `integrations/send_brevo_email` could NOT be reused — it is template-only**
@@ -107,14 +107,14 @@ channel that would fail.
 
 ## (superseded) EMAIL — the Gmail-first plan
 
-Owner chose Gmail from `[email]` (not Brevo). Modal has from/to/subject/body.
+Owner chose Gmail from `hello@tulletogether.com` (not Brevo). Modal has from/to/subject/body.
 **Railway has GOOGLE_CLIENT_ID/SECRET + GOOGLE_SERVICE_ACCOUNT_JSON but NO Gmail send
 credential**, so sending is inert today — the modal drafts, warns honestly, and offers
 "Mark as replied". Two paths, tried in order:
 1. `GMAIL_SEND_REFRESH_TOKEN` — run **`mint_gmail_token.py`** once, signed in as hello@.
    Needs, in Google Cloud Console on the SAME OAuth client: Gmail API enabled, scope
    `gmail.send` added, and redirect URI `http://localhost:8765/`. No Workspace admin needed.
-2. `GMAIL_IMPERSONATE=[email]` + domain-wide delegation on the service account
+2. `GMAIL_IMPERSONATE=hello@tulletogether.com` + domain-wide delegation on the service account
    (needs a Workspace admin).
 
 **`last_email_at` is stamped only on a real Gmail message id**, never on intent — a timestamp
@@ -127,7 +127,7 @@ The first build assumed feedback was about vendors. **It is not** — the fix li
 row far more often than on a vendor:
 
     38  paid but still locked out          the biggest bucket by a wide margin
-    20  internal test rows                 noise (rimal@ / [email],
+    20  internal test rows                 noise (rimal@ / ayush+test@infiwebsolutions.com,
                                            plus Des/Kate/Vivek's own rows)
     13  refund / billing                   several genuinely double-charged
     11  feature requests
@@ -139,19 +139,19 @@ row far more often than on a vendor:
      1  account detail change
 
 **Verified account states, spot-checked live** — these are the ones worth acting on:
-- **#85 [email]** (user 19628): $60 across **2 payments**, `forever=False`,
+- **#85 erinhouli14@gmail.com** (user 19628): $60 across **2 payments**, `forever=False`,
   access **EXPIRED 2026-06-19**. A real double charge with nothing to show for it.
-- **#108 [email]** (23652): $60 / **2 payments**, expired
+- **#108 aliciaandjoshsantanawedding@gmail.com** (23652): $60 / **2 payments**, expired
   2026-08-07. Same shape.
-- **#91 [email]**: **NO user row exists for that address.** She paid for a
+- **#91 kaylabrendon2027@gmail.com**: **NO user row exists for that address.** She paid for a
   four-week plan. Either she signed up under a different email or the account was never
   created — worth chasing, because ep30 logs a payment with `client_reference_id` null as
   "paid, zero access" ([[reference_stripe_payment_webhook]]).
 - **#104, #111, #92** were fixed at some point since — all now `forever=True`. Close and reply.
-- **#79 [email]** — Union Station Dallas, "inaccurate, take it down
-  immediately". The venue's own domain. **#63 [email]** (Alexander Mansion),
+- **#79 courtney.fairbanks@hyatt.com** — Union Station Dallas, "inaccurate, take it down
+  immediately". The venue's own domain. **#63 laura@hpdarch.com** (Alexander Mansion),
   **#59** (Director of Events, University of Miami) are the same class.
-- **#39 [email]**: *"i randomly have access to your admin dashboard just a
+- **#39 eamon.levesque@gmail.com**: *"i randomly have access to your admin dashboard just a
   heads up"* — a security report nobody ever answered.
 - Oddity: `FreeViewsRemaining` is **-1** on users 11742 and 6685. Negative should not occur.
 

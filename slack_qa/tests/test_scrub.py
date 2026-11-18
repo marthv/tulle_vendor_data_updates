@@ -4,8 +4,6 @@ from scrub import findings, scrub
 
 SECRETS = [
     # (input, substring that must NOT survive)
-    ("mail me at jane.doe+wedding@gmail.com today", "jane.doe"),
-    ("owner: Vivek.Marthi@TulleTogether.com", "TulleTogether.com"),
     ("token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", "eyJhbGci"),
     ("eyJhbGciOiJIUzI1NiJ9 alone", "eyJhbGciOiJIUzI1NiJ9"),
     ("ANTHROPIC_API_KEY=sk-" "ant-api03-AbCdEf1234567890_xyzXYZ-0987", "sk-" "ant-api03"),
@@ -38,14 +36,6 @@ SECRETS = [
     ("random Zx8Kq2LmN4pR7sT1vW3yB6cD9fG0hJ5k blob", "Zx8Kq2LmN4pR7sT1vW3yB6cD9fG0hJ5k"),
     ("call me at (212) 555-0147 or 646.555.0199", "555-0147"),
     ("intl +44 20 7946 0958 office", "7946 0958"),
-    ("customer Jane Doe asked for a refund", "Jane Doe"),
-    ("user 31234 (Maria Lopez) paid twice", "Maria Lopez"),
-    ("Maria Lopez (id 31234) paid twice", "Maria Lopez"),
-    ("user Chinaza emailed support", "Chinaza"),
-    ('description: "Tyler Dozier (34862, Austin hub) paid $39"', "Tyler Dozier"),
-    ("'Maria (maria@x.com, user 31469, Lee)' on beta feed", "Maria"),
-    ("e.g. user 23879 Laura, 23866 Ojars, both paid", "Ojars"),
-    ("e.g. user 23879 Laura, 23866 Ojars, both paid", "Laura"),
     ("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\n-----END RSA PRIVATE KEY-----", "MIIEpAIBAAKCAQEA"),
 ]
 
@@ -71,6 +61,12 @@ KEEP = [
     "a basic setup with Bearer auth",
     "16% of the day's user Xano time",
     "team member Kate checked it",
+    # Allowed by the owner (2026-11-18): customer names, emails, user/account ids, anecdotes.
+    "customer Jane Doe asked for a refund",
+    "user 31234 (Maria Lopez) paid twice; jane.doe+wedding@gmail.com",
+    "e.g. user 23879 Laura, 23866 Ojars, both paid",
+    'description: "Tyler Dozier (34862, Austin hub) paid $39"',
+    "Kate said in the 11-14 touchbase she prefers the green CTA; the venue is at 12 Elm St",
 ]
 
 
@@ -83,7 +79,8 @@ def test_idempotent_and_findings():
     raw = "a@b.co xo" "xb-123456789-abc pi_3AbCdEf1234567"
     once = scrub(raw)
     assert scrub(once) == once
-    assert "email" in findings(raw) and "slack_token" in findings(raw)
+    assert "slack_token" in findings(raw) and "stripe" in findings(raw)
+    assert "a@b.co" in once                                     # emails are allowed
     assert findings(once) == []
 
 
@@ -92,41 +89,36 @@ def test_none_and_empty():
     assert scrub("") == ""
 
 
-from scrub import drop_personal_lines, is_personal, scrub_output  # noqa: E402
+from scrub import is_interpersonal, scrub_output  # noqa: E402
 
-PERSONAL_LINES = [
-    'User 10-04: "worried im letting you run a little rampant" -> ask before anything live or paid.',
-    "user felt I ran rampant on 10-04",
+INTERPERSONAL = [
     "Des was frustrated with Kate about the copy review",
-    "Kate is out - her daughter is sick this week",
-    "Vivek is on vacation until Monday",
-    "He lives at 12 Elm St with his family",
+    "why is Kate upset with Des?",
     "Des complained about Vivek in the meeting",
-    "his wife thinks the app is slow",
+    "it was her fault the publish broke",
+    "great job Kate on the LP",
 ]
-WORK_LINES = [
+FACTUAL = [
     "EXP-2026-11-price-report-vs-pi-card live 2026-11-17; unlock-click bar 14.9%",
     "1 spam complaint / ~8k sends 30d (0.03%)",
-    "WeWeb element children re-render on every keystroke",
-    "the logic lives in rec_service/plan.py",
-    "NY $149 hurt conversion / $135 ok",
+    "user 31469 (Maria Lopez) reported the PDF wall on 11-12",
+    "Des's counter-hypothesis: it reads like a word problem",
     "Owner decision 11-14: Meta ads first, ads live by 11-30",
+    "customer lives at 12 Elm St and prefers email",
 ]
 
 
-@pytest.mark.parametrize("line", PERSONAL_LINES)
-def test_personal_line_dropped(line):
-    out, n = drop_personal_lines(f"keep this\n{line}\nand this\n")
-    assert n == 1 and line not in out and "keep this" in out and "and this" in out
-    assert is_personal(line)
+@pytest.mark.parametrize("text", INTERPERSONAL)
+def test_interpersonal_detected(text):
+    assert is_interpersonal(text)
 
 
-@pytest.mark.parametrize("line", WORK_LINES)
-def test_work_line_kept(line):
-    out, n = drop_personal_lines(line)
-    assert n == 0 and out == line
+@pytest.mark.parametrize("text", FACTUAL)
+def test_factual_not_interpersonal(text):
+    assert not is_interpersonal(text)
 
 
-def test_scrub_output_removes_user_ids_and_mentions():
-    out = scrub_output("user 31469 paid; ping <@U05UJMCHUV6|vivek> or mail a@b.com")
-    assert "31469" not in out and "<@U05" not in out and "a@b.com" not in out
+def test_scrub_output_keeps_ids_and_emails_but_not_secrets_or_mentions():
+    out = scrub_output("user 31469 paid; ping <@U05UJMCHUV6|vivek>; mail a@b.com; key xo" "xb-1234567890-abcdef")
+    assert "31469" in out and "a@b.com" in out
+    assert "<@U05" not in out and "xo" "xb-" not in out

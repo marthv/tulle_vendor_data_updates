@@ -17,4 +17,4 @@ Related: [[project_two_slack_apps]]
 updates must be sent by the **Tulle Ops** bot (token = [redacted] var REC_SLACK_BOT_TOKEN on rec-engine) via conversations.open U05UJMCHUV6.
 **Owner preference 2026-10-17: send Tulle status updates as a DM to the owner (U05UJMCHUV6, DM channel D05TSPS8J4D) - NOT to C07D9U0FZF0.** DM verified working after re-auth. Tulle Ops app is the other acceptable sender (token only in Railway; don't pull it locally).
 
-**2026-11-03:** root cause of the drift = personal.bat and healthie.bat shared one ~/.claude, so the Slack plugin login was shared. Fixed with separate profiles ([[reference_launcher_profiles]]); this profile re-authed to the Tulle workspace and verified (profile shows "Tulle", [email]).
+**2026-11-03:** root cause of the drift = personal.bat and healthie.bat shared one ~/.claude, so the Slack plugin login was shared. Fixed with separate profiles ([[reference_launcher_profiles]]); this profile re-authed to the Tulle workspace and verified (profile shows "Tulle", vivek.marthi@gmail.com).

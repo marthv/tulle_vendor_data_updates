@@ -26,7 +26,7 @@ Moved verbatim from the MEMORY.md index on 2026-10-16. Newest first.
 - **10-13:** 1437 cost fix LOCAL 00744ee+38c0e30 (tulle_rec_fix, rec-consistent-costs): 3 replays pass ($1.26 total), budget Q now code-computed (budget_check); awaiting deploy OK. WeWeb EDITOR (unpublished): 'Maybe later' no longer posts to #feedback (only answers do; it's the wall's ONLY dismiss); Other Vendors page twin now counts + asks too. Discount: only on 'too_expensive' answer, dedicated code - user wants to think first. [[project_ai_recommendation_engine]]
 - **10-12:** prod publish VERIFIED (sign-up page has goals->ep311 + 7 options; assistant P/E cards live; rec-engine 8bbf263 live). Preferred-vendor sizing done [[project_preferred_vendors]]. Read first real what_stopped_you / goals answers.
 
-- **10-11 late:** `/` (Sign In) page-load LOGS OUT signed-in users (live-verified) -> ~11% of new sign-ups re-login in hour 1; fix drafted, awaiting user OK. Onboarding goals question + "What Stopped You" popup built UNPUBLISHED. [name] (19303) signed up 06-08. [[project_home_page_logout_2026-10-11]]
+- **10-11 late:** `/` (Sign In) page-load LOGS OUT signed-in users (live-verified) -> ~11% of new sign-ups re-login in hour 1; fix drafted, awaiting user OK. Onboarding goals question + "What Stopped You" popup built UNPUBLISHED. Zanele (19303) signed up 06-08. [[project_home_page_logout_2026-10-11]]
 
 - **10-11:** forced NPS (return card, 2nd PDF, acct >=1d, star + 10-char comment) PUSHED 029a74c - user to activate + publish, then verify live. First-hour buyers = 63% (purchase events only exist from 08-04); 44% of sign-ups open no PDF in hour 1; user wants first-day feedback + first-hour conversion. [[project_nps_survey]] [[project_engagement_baselines_2026-10-09]]
 
@@ -55,7 +55,7 @@ Moved verbatim from the MEMORY.md index on 2026-10-16. Newest first.
 - Map address search LIVE 10-01 04:27 UTC; compare map_place_search vs hub chips ~10-15 before retiring chips. [[project_map_address_search]] [[project_map_address_search]]
 - **XANO IS TOO BIG — wants a breakdown doc. Remind every session.** [[project_endpoint_auth_audit]] [[feedback_simplify_not_stack]]
 - Parked 10-11: Tulle-hosted wedding mailbox -> website -> AI vendor negotiation (friend's idea) [[project_wedding_mailbox_negotiation_idea]]
-- Parked 10-15: self-serve interactive demo before sign-up ([name]) instead of free tier [[project_interactive_demo_idea]]
+- Parked 10-15: self-serve interactive demo before sign-up (Healthie-style) instead of free tier [[project_interactive_demo_idea]]
 - Parked 10-14: REA self-mapping of live pages -> Xano eps [[project_rea_app_mapping_parked]]
 - Parked by user: dark mode toggle [[project_dark_mode_parked]]; "ask someone to pay" (until BNPL reads out) [[project_ask_someone_to_pay]]; category/culture filters [[project_category_breadth_culture_filters]]; A/B framework 0% live [[project_experimentation_framework]]; partner "Show all" [[project_partner_vendors]].
 - Settled, don't re-raise: admin mirror/view-as abandoned [[project_admin_mirror_mode]]; upgrade path $129/$55/$30 [[project_upgrade_credit]]; ep20 fixed (41/51 writers unreviewed) [[project_ep20_delete_any_account]]; Google sign-in live [[project_google_signin]]; auth splash live [[project_auth_page_speed]]; Mixpanel payer props [[project_mixpanel_payment_profiles]]; known-open list [[project_known_open_items]]; perf numbers need Referer scoping [[project_perf_baseline_digest]].

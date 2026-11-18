@@ -2,13 +2,13 @@
 
     python slack_qa/sync_knowledge.py          # then commit + push slack_qa/knowledge/
 
-1. Copies (minus personal / interpersonal lines, see scrub.drop_personal_lines) the Claude Code memory notes (every *.md, incl. MEMORY.md and index_overflow.md) into
+1. Copies the Claude Code memory notes (every *.md, incl. MEMORY.md and index_overflow.md) into
    knowledge/memory/.
 2. Writes the last ~60 days of commit subjects (hash, date, ref, subject) for each repo to
    knowledge/commits_<repo>.md. `git log --all --source` so branches that are not merged/pushed (e.g. the
    ww-planner-chat remote inside tulletogether) show up, labelled with the ref they came from.
 
-Every file is passed through scrub.scrub() BEFORE it is written, then re-checked with scrub.findings();
+Every file is passed through scrub.scrub() (secrets only) BEFORE it is written, then re-checked with scrub.findings();
 the script exits 1 (and deletes nothing it has not already replaced) if anything secret-looking survives.
 Paths can be overridden with --memory-dir / --repo name=path.
 """
@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from scrub import drop_personal_lines, findings, scrub  # noqa: E402
+from scrub import findings, scrub  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "knowledge"
@@ -87,15 +87,10 @@ def main(argv: list[str] | None = None) -> int:
 
     problems: list[str] = []
     manifest = {"synced_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "memory": {}, "commits": {}}
-    dropped_total = 0
     for f in sorted(a.memory_dir.glob("*.md")):
-        # Owner rule 2026-11-18: nothing personal. Drop feelings / blame / family / health / address lines
-        # first, then scrub secrets and PII from what is left.
-        text, dropped = drop_personal_lines(f.read_text(encoding="utf-8", errors="replace"))
-        dropped_total += dropped
-        n = write_scrubbed(staging / "memory" / f.name, text, problems)
+        # Secrets only (owner 2026-11-18): names, emails, ids and anecdotes stay.
+        n = write_scrubbed(staging / "memory" / f.name, f.read_text(encoding="utf-8", errors="replace"), problems)
         manifest["memory"][f.name] = n
-    manifest["personal_lines_dropped"] = dropped_total
 
     for name, path in repos.items():
         try:
@@ -126,8 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     shutil.rmtree(staging, ignore_errors=True)
     manifest["memory_total_bytes"] = sum(manifest["memory"].values())
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
-    print(f"memory: {len(manifest['memory'])} files, {manifest['memory_total_bytes'] / 1024:.0f} KB, "
-          f"{dropped_total} personal lines dropped")
+    print(f"memory: {len(manifest['memory'])} files, {manifest['memory_total_bytes'] / 1024:.0f} KB")
     for k, v in manifest["commits"].items():
         print(f"commits {k}: {v['commits']} commits, {v['bytes'] / 1024:.0f} KB")
     return 0

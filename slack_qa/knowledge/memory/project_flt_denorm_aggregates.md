@@ -39,7 +39,7 @@ map filtered ~2.6s (was 8s); cached 0.25s.
 
 **Race hazard (from parallel session f559550a):** a "continue" prompt spawned a second background
 session mid-build. Before making Xano changes on this project, check `getWorkspaceAuditLogs` for
-creations/updates in the last ~10 min by [email]; if present, another session is
+creations/updates in the last ~10 min by hello@tulletogether.com; if present, another session is
 live — stand down or coordinate. Pre-denorm endpoint snapshots also committed on branch
 `xano-backups-pre-denorm-snapshots`.
 
@@ -71,7 +71,7 @@ Backup: `.claude/xano_backups/fn21_v3_pre_capdesc_sync_2026-07-16.xs`. Verified:
 written, V1000 existing 800 preserved.
 
 **PENDING as of 2026-07-16 08:00 UTC:** extraction run STALLED at table-10 id 10567 (Rockwood
-Manor, 07:17 UTC) — 447 new-import PDFs (ids 10568-11014, [name]→Yosemite, all Drive links,
+Manor, 07:17 UTC) — 447 new-import PDFs (ids 10568-11014, Rockwoods→Yosemite, all Drive links,
 0 attempts) + ~506 older stragglers (mostly non-Drive links, auto-filtered) still unextracted.
 Vivek to relaunch from Railway dashboard: DEFAULT row-range run, start 10568 (or 1), NOT
 force-all — dedup by PDF_ID vs table 36 (extract_core.py:2160) makes re-runs duplicate-safe.

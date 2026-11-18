@@ -258,6 +258,7 @@ flt_venue_types 96% filled (Barn / Ranch 1,435, Estate / Mansion 1,526...), flt_
   ignored). Runtime-verified with test token. Backups ep11x_*_pre_ownership_2026-10-04.xs. Recheck real-user 401s
   in request log ~15:35 UTC. Round 14 (My Wedding: Still owed = contracted - paid, bar colours) editor only.
   Example packages seeded by onboarding Finish wf cbb346d5 - actions already disabled; ~17k example rows exist.
+- User 10-04: "worried im letting you run a little rampant" -> ask before anything live or paid.
 - 10-04 ~15:38 UTC packages log check (1h after lock): ep112 live signed-in 7x200, 9x401 tokenless with NO user_id
   (pre-auth page loads; used to get []), staging/editor 13x200. NO real-user POST/PATCH since the lock (only my
   smoke test) -> add/edit path still unexercised by real users; re-check tomorrow.
@@ -293,7 +294,7 @@ flt_venue_types 96% filled (Barn / Ranch 1,435, Estate / Mansion 1,526...), flt_
   none/unknown, kept; ~18% of venues have a known F&B min). Prompt: no guest count -> ask. Replay: openings ask
   guests; after "6 people" no-minimum picks only. p50 latency 14.1s -> 16.1s.
 
-## 2026-10-05: beta feedback #2 (user 31762, [name], 1/5 "i need more breakdown of full costs")
+## 2026-10-05: beta feedback #2 (user 31762, Forever, 1/5 "i need more breakdown of full costs")
 - Chat 24: asked "breakdown howey mansion in a realistic way" -> got ONE sentence ("about $21,000-$28,000 ...
   open its PDF"), though the prior reply had every line item. Cause: tool doc "message: 1-3 short sentences" +
   80-140 word rule + "one job = open a PDF". Des's chat 20 shows the same thin "Open X PDF first" pattern.
@@ -403,7 +404,7 @@ WeWeb: preference card before first picks + "Added to what Tulle Assistant knows
   -> no card), notes_saved kept on turns (685f59e1, 0fa17e11). One chip row on opening: per-turn chips 2ca9f6e8 hidden
   while starter row 2c615764 shows; starter row = opening's server chips. Backup assistant_prefs_pre_2026-10-08.json.
   Gap: Rec Load Chat (reopened chats) doesn't show the memory line. Order: push rec-preferences -> deploy -> publish.
-- 10-08 13:38 UTC: 4c11f7a LIVE (pushed main as marthv, gh back on vmarthi17; GET /rec/preferences 404 -> 401). Awaiting user [name]Web publish.
+- 10-08 13:38 UTC: 4c11f7a LIVE (pushed main as marthv, gh back on vmarthi17; GET /rec/preferences 404 -> 401). Awaiting user WeWeb publish.
 - 10-08 16:08 UTC: aaa863e (Show 3 more chips + never-empty chips) pushed to main; deploy 00e0a97b QUEUED at writing. 14998 chats cleared (16 chats/102 msgs, backup xano_backups/rec_chats_user14998_pre_clear_2026-10-08.json).
 - 10-08 prefs v2: 062557b on branch rec-prefs-v2 (LOCAL): 14 venue types (+University/College, Zoo/Aquarium in VENUE_TYPES), soft 'feel' question, POST/GET carry context (= user_context). WeWeb stepper (1 question/step, +N more, final notes textarea) -> editor agent, backup assistant_prefs_v2_pre_2026-10-08.json. Push server BEFORE publishing the stepper.
 - 10-08 16:24 UTC: 062557b pushed to main (deploy 95cb4530 QUEUED at writing; gh back on vmarthi17).

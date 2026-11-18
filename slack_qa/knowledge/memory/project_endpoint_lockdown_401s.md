@@ -94,7 +94,7 @@ attributing them to users - `10.0.224.169` with no User-Agent is this task.
 
 **Fix (no ep119 changes, per the standing decision):**
 - Dedicated system account **user 29130**, `role: "system"`,
-  `[email]` (reserved TLD, can never receive mail).
+  `system+cache-warmer@tulletogether.invalid` (reserved TLD, can never receive mail).
   Deliberately NOT a real person's row, which would silently kill the task if deleted.
 - Task 8 mints a 900s token for it via `security.create_auth_token` and sends a bearer header.
 - **Only valid because ep119 has `cache.auth = false`** - the response cache is not keyed per

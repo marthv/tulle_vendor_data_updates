@@ -9,14 +9,14 @@ import re
 import config
 import knowledge
 from llm import Claude
-from scrub import is_personal, scrub_output
+from scrub import is_interpersonal, scrub_output
 from slack_api import Slack
 from state import RateLimiter, State
 
 log = logging.getLogger("slack_qa.bot")
 
 FOOTER = "_Automated answer from Tulle Bot (read-only; from the experiment registry, #deployment, commit logs and notes). Can be wrong - Vivek can confirm._"
-OUT_OF_SCOPE = "I only cover product changes, experiments and their outcomes - Vivek can confirm anything else."
+OUT_OF_SCOPE = "I only cover product changes, experiments and their outcomes (no opinions about people or decisions that are Vivek's call) - Vivek can confirm anything else."
 HELP = ("I'm Tulle Bot (automated, read-only). I answer questions about recent changes: what shipped, experiments "
         "(hypothesis, metric, status, results), deploys, what's on or off.\n"
         "`@Tulle Bot mute` - only answer when @-mentioned here.\n"
@@ -114,7 +114,7 @@ class Bot:
         if cmd in ("mute", "unmute", "status", "help", ""):
             return self.command(cmd or "help", channel, ev.get("user", ""), reply_ts)
         question = MENTION.sub("", text).strip()
-        if is_personal(question):
+        if is_interpersonal(question):
             self.post(channel, OUT_OF_SCOPE, reply_ts)
             return "mention:out-of-scope-rule"
         if self.state.over_budget():
@@ -154,8 +154,8 @@ class Bot:
             return "scan:owner"
         if not looks_like_question(text):
             return "scan:not-a-question"
-        if is_personal(text):
-            return "scan:personal"
+        if is_interpersonal(text):
+            return "scan:interpersonal"
         if self.state.over_budget():
             return "scan:over-budget"
         tri, usd = self.claude.triage(text, self.know.headlines())
@@ -187,10 +187,10 @@ class Bot:
         if mode == "scan":
             if not in_scope or not answerable or not text or conf < config.scan_threshold():
                 return f"scan:answer-withheld:{conf:.2f}"
-            if is_personal(text):
-                return "scan:answer-personal-blocked"
+            if is_interpersonal(text):
+                return "scan:answer-interpersonal-blocked"
         else:
-            if not in_scope or is_personal(text):
+            if not in_scope or is_interpersonal(text):
                 self.post(channel, OUT_OF_SCOPE, reply_ts)
                 return "mention:out-of-scope"
             if not text:

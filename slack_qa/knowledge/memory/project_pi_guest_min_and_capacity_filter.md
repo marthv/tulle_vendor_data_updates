@@ -8,7 +8,7 @@ metadata:
   modified: 2026-09-24T03:16:32.235Z
 ---
 
-**PI "inaccurate" complaint = [name] (user 30207, [email]), #feedback 2026-09-20,
+**PI "inaccurate" complaint = Christina (user 30207, li.christina33@gmail.com), #feedback 2026-09-20,
 refund request, "$60k for a venue closer to $120k".** Guest count 0 → panel default 100. Last viewed
 V122 AMNH (fav V28). **V122 Milstein Hall has `guest_min` 200 but the panel priced 100 guests**:
 paid total $87,644 @100 vs ~$146k @200. Exact screen she saw is UNVERIFIED (neither venue = $60k @100).

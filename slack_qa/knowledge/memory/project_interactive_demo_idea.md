@@ -54,6 +54,7 @@ fixed, raise with user.
   Vivek.marthi@gmail; tulletogether.app zone is NOT in that account -> custom domain/Access on demo.tulletogether.app need
   the other CF account. Interim: Access app on tulle-demo.tulletogether.workers.dev + enable workers.dev.
 - 10-15 LIVE at demo.tulletogether.app (Worker in the CF account that owns tulletogether.app; Access login verified via curl 302,
+  workers.dev off). User: "we want everyone and their mother to access this page" -> told them to delete/Bypass the Access app.
   Still: noindex kept + NO links from app until ~10-28; OSM tiles -> Mapbox key if traffic grows. User said demo "doesn't look
   like the app" -> agent doing option A (slim banner, real counts, pagination/sort/assistant bar, descriptions, gallery,
   breakdown below PDF box w/ guest stepper). Pushes to main auto-deploy LIVE.

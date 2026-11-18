@@ -110,7 +110,7 @@ var.update $model { value = $model|set:"items":$enriched_items }
 response = $model
 ```
 
-## [name] (119)
+## Performance (119)
 
 - page_size=12 + full 14-field enrichment: **~230-280ms** warm. ~24 extra db.queries per request (12 PDF + 12 venue_pricing).
 - Btree index `9cf4f0e3` on `Extracted_PDF_Data.VENDOR_ID` keeps lookups fast. Don't drop it.

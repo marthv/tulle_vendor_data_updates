@@ -6,11 +6,11 @@ STATIC (identical bytes for every request until the next deploy -> prompt-cached
 DYNAMIC (per question, after the cache breakpoint):
   * the conversation being answered (thread replies or recent channel messages)
   * #deployment's last ~30 messages (WeWeb staging publish summaries)
-  * recent messages from every other channel the bot is in (personal lines dropped)
+  * recent messages from every other channel the bot is in
   * recent commits: live from GitHub when GITHUB_TOKEN is set, else the synced commit logs,
     plus a file-list summary of up to 3 commits the question is clearly about
   * the most relevant memory-note / commit-log chunks by BM25 (the notes are ~1.4 MB, too big for one prompt)
-Everything dynamic is scrubbed (secrets/PII) before it reaches Claude.
+Everything dynamic is scrubbed for secrets before it reaches Claude.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from collections import Counter
 from pathlib import Path
 
 import config
-from scrub import is_personal, scrub
+from scrub import scrub
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
@@ -207,14 +207,13 @@ def build_dynamic(question: str, channel: str, thread_ts: str | None, slack, git
         parts.append(_block("deployment_channel", f'channel="{dep}" note="#deployment: WeWeb publish summaries"',
                             [scrub(x) for x in slack.render(slack.history(dep, limit=30, days=21)[-30:], 900)]))
 
-    # 3. Other channels the bot is in (work context only: personal lines dropped).
+    # 3. Other channels the bot is in.
     if slack is not None:
         budget = 12000
         for ch in slack.member_channels():
             if ch["id"] in (channel, dep) or budget <= 0:
                 continue
-            lines = [scrub(x) for x in slack.render(slack.history(ch["id"], limit=50, days=7)[-15:], 300)
-                     if not is_personal(x)]
+            lines = [scrub(x) for x in slack.render(slack.history(ch["id"], limit=50, days=7)[-15:], 300)]
             text = "\n".join(lines)[:min(4000, budget)]
             budget -= len(text)
             parts.append(_block("other_channel", f'channel="#{ch["name"]}"', text))

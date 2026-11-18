@@ -1,6 +1,6 @@
 ---
 name: referrals-self-referral
-description: "2026-08-26 ROOT CAUSE + PARTIAL FIX — referrals were BROKEN, not abused: the Aug-13/16 hardening made ep145+ep66 ignore their user_id path param, so every referral credited the NEW SIGNUP. Xano ep270 POST /referral/credit is BUILT AND TESTED, [name] (27479) retro-credited, row 444 corrected. THE WEWEB REWIRE IS STILL OUTSTANDING and must be done by hand"
+description: "2026-08-26 ROOT CAUSE + PARTIAL FIX — referrals were BROKEN, not abused: the Aug-13/16 hardening made ep145+ep66 ignore their user_id path param, so every referral credited the NEW SIGNUP. Xano ep270 POST /referral/credit is BUILT AND TESTED, Melissa (27479) retro-credited, row 444 corrected. THE WEWEB REWIRE IS STILL OUTSTANDING and must be done by hand"
 metadata: 
   node_type: memory
   type: project
@@ -55,8 +55,8 @@ Every referral row before this is normal (distinct ids). **Row 444 is the FIRST 
 the hardening, and the only one where the ids match:**
 
 ```
-443  2026-07-14  uid=6627   ruid=23267           [email]
-444  2026-08-27  uid=27480  ruid=27480   SELF    [email]
+443  2026-07-14  uid=6627   ruid=23267           byorswedding@gmail.com
+444  2026-08-27  uid=27480  ruid=27480   SELF    lindseyypapa@gmail.con
 ```
 
 Only **1** referral row exists since 2026-08-16, so exactly one referrer has been cheated so
@@ -67,7 +67,7 @@ The Slack alert's "Referring User Email / Name" also read back her own details, 
 bind to `bcfa33f9` too. `Referring User Source undefined` is a field that does not exist on the
 response at all.
 
-The `.con` typo (`[email]`) is real and stored in both tables — Xano's `email`
+The `.con` typo (`lindseyypapa@gmail.con`) is real and stored in both tables — Xano's `email`
 type validates shape, not TLD — but it is incidental to this bug.
 
 ## The fix — SERVER SIDE DONE, FRONTEND STILL OUTSTANDING
@@ -91,12 +91,12 @@ referrer instead of re-reading the broken lookup.
 
 **DONE: retro-credit.** The real referrer was recoverable only from the API request history:
 `PATCH .../userfreeviews/27479?user_id=27479` returning `{"id":27480,...}` — the write landing
-on the wrong account, in one line. That is **user 27479, [name] ([email])**,
+on the wrong account, in one line. That is **user 27479, Melissa (melissaa.izzio5@gmail.com)**,
 a genuinely different person (New England hub, TikTok, 33 vendor views) who had been left on
 **0 free views**. Credited to **3**. Referrals row 444 corrected to name her as the referrer;
 `referred_user_id` stays 27480.
 
-[name] (27480) keeps the 3 free views she was wrongly given — she did nothing wrong and the
+Lindsey (27480) keeps the 3 free views she was wrongly given — she did nothing wrong and the
 cost is 3 PDF views. Not clawed back.
 
 ## WeWeb rewire — DONE BY HAND 2026-08-27 (user), verified

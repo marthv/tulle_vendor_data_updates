@@ -10,7 +10,7 @@ metadata:
 
 Set up 2026-11-03 so the owner never has to switch accounts by hand.
 
-- `Desktop\personal.bat` (Tulle): clears CLAUDE_CONFIG_DIR -> default `~\.claude` (this memory, Xano/WeWeb/Mixpanel/Stripe, Slack plugin should be the TULLE workspace). Sets `GH_TOKEN` = `gh auth token -u marthv` for the window. Checks `railway whoami` = [email] and warns otherwise.
+- `Desktop\personal.bat` (Tulle): clears CLAUDE_CONFIG_DIR -> default `~\.claude` (this memory, Xano/WeWeb/Mixpanel/Stripe, Slack plugin should be the TULLE workspace). Sets `GH_TOKEN` = `gh auth token -u marthv` for the window. Checks `railway whoami` = vivek.marthi@gmail.com and warns otherwise.
 - `Desktop\healthie.bat` -> `healthie-launcher.ps1`: `CLAUDE_CONFIG_DIR=~\.claude-healthie` (own Slack = Healthie workspace, Notion, Healthie project memory copied 11-03), `GH_TOKEN` for vmarthi17, Anthropic API key (plaintext in the bat - owner told to rotate/move).
 - Global `gh auth switch` state no longer matters; don't run `gh auth switch` to fix pushes - check GH_TOKEN instead.
 - Railway CLI holds ONE login (`~\.railway\config.json`, OAuth accessToken, no `token`). `railway login` fails under `!` (non-interactive) -> owner runs it in a normal terminal. `railway logs` prints nothing non-interactively; use GraphQL `httpLogs`/`deploymentLogs` with the accessToken (read via Python). `railway delete --project <id>` said "not found" -> used GraphQL `projectDelete`.

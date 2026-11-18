@@ -153,19 +153,19 @@ def test_scan_skips_non_questions_without_claude(make_bot):
     assert b.claude.triage_calls == []
 
 
-def test_scan_skips_personal_questions(make_bot):
+def test_scan_skips_interpersonal_questions(make_bot):
     b = make_bot()
     b.state.set_muted("C065B5YEG1G", False)
-    assert b.handle(msg("was Des frustrated about the copy change?")) == "scan:personal"
+    assert b.handle(msg("was Des frustrated about the copy change?")) == "scan:interpersonal"
     assert b.claude.triage_calls == []
 
 
-def test_scan_blocks_personal_answer(make_bot):
+def test_scan_blocks_interpersonal_answer(make_bot):
     claude = FakeClaude(answer={"in_scope": True, "answerable": True, "confidence": 0.95,
                                 "answer": "Kate was frustrated so the copy changed.", "sources": ["x"]})
     b = make_bot(claude=claude)
     b.state.set_muted("C065B5YEG1G", False)
-    assert b.handle(msg("why did the copy change?")) == "scan:answer-personal-blocked"
+    assert b.handle(msg("why did the copy change?")) == "scan:answer-interpersonal-blocked"
     assert b.slack.posts == []
 
 
@@ -196,8 +196,9 @@ def test_output_scrubbed_before_posting(make_bot):
     b = make_bot(claude=claude)
     b.handle(mention("what changed?"))
     text = b.slack.posts[-1]["text"]
-    for bad in ("hooks.slack.com", "31469", "jane@x.com", "xo" "xb-"):
+    for bad in ("hooks.sl" "ack.com", "xo" "xb-"):
         assert bad not in text
+    assert "31469" in text and "jane@x.com" in text        # ids/emails allowed (owner 2026-11-18)
 
 
 def test_long_answer_capped(make_bot):

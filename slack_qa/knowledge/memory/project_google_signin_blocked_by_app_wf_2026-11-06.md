@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Reported 11-06 in #product-development by Kate (user [name] emailed: endless "signing you in" for days; last Google sign-up 11-04).
+Reported 11-06 in #product-development by Kate (user Chinaza emailed: endless "signing you in" for days; last Google sign-up 11-04).
 **Evidence:** Mixpanel 3963130 signed_up method=google 11-21/day (≈21 typical) 10-21..11-03 -> 1 (11-04) -> 0 -> 0; logged_in google 9-39/day -> 3,2,1. Email unaffected.
 ep7 history (~24h): only 7 calls, 3x200 (existing accounts with a saved session), 4x403 "Precondition failed" (accessdenied = Google code exchange refused; consistent with codes expired after the 30-min stall - UNVERIFIED, Google error body not logged: fn2 has no history).
 **Cause:** app wf b3d17f42 "Upgrade Offer - 401 recovery" v2 (built 11-04, [[project_upgrade_full_price_tyler_2026-11-04]]) trigger onload-app, AWAITED a loop up to 30 min while no token. Signed-out visitors (everyone returning from Google) never reached Google Sign-In Return page wf (d0f4f382) -> ep7 never called. Sibling wf u0_wait_for_token caps at 5 s, which is why Google worked before. Assumption: WeWeb awaits onload-app wfs before page onload (fits all evidence).

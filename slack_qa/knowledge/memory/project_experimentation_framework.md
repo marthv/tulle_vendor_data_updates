@@ -368,7 +368,7 @@ checkout at the right price on BOTH desktop and iPhone SE. The purchase path is 
 trailing NEWLINE instead. This is Xano data, untouched by any WeWeb publish.
 
 **Attribution trap that cost time:** distinct_id `29566` in Mixpanel is the OWN TEST ACCOUNT
-`[email]`, not a customer. A session replay showing a 14-second
+`vivek.marthi+test_pricing@gmail.com`, not a customer. A session replay showing a 14-second
 `/pricing` navigation and an immediate bounce was that test, and was briefly misread as
 customer behaviour. **Check a distinct_id against `client_reference_id` in the Stripe URL
 before treating a replay as a real user.**
