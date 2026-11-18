@@ -1412,6 +1412,10 @@
         {
           "date": "2026-11-18",
           "note": "Treatment change (pending owner activation + publish): ww-price-report f646150 simpler rows + 'Adds up to' total; 2201271 locked view shows nothing but one unlock card (no sealed score, area band, cost names or total). Server: no free first vendor from 05:39:52 UTC, so every free couple now sees the locked report. Read the periods separately."
+        },
+        {
+          "date": "2026-11-18",
+          "note": "Period 2 starts 06:47 UTC (publish 1401): simpler report for paid couples + fully locked card for everyone unpaid (and no free first vendor since 05:39 UTC). Read 11-17 16:47..11-18 06:47 (period 1, ~14 h) and 11-18 06:47 onward (period 2) separately; the 12-01 call reads period 2 against the old card's 14.9% baseline."
         }
       ],
       "stat_sig": "not computed",
@@ -1609,6 +1613,16 @@
         "EXP-2026-11-pi-first-vendor-free",
         "EXP-2026-11-price-report-vs-pi-card",
         "EXP-2026-11-pricing-page-copy"
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "what": "WeWeb production publish cacheVersion 1401, verified live 06:47 UTC (staging 06:44 UTC, #deployment bot posted): ww-price-report 2201271 (simpler rows + 'Adds up to' total; locked = one unlock card, nothing else), ww-planner-chat fbce08d (estimate card guests+state what-if, rec_estimate_whatif; Planner home 'What will my wedding cost?' -> rec_free_tool via=home), /lp/new-york rebuilt from Des's mockup, 'real pricing documents' copy on /lp/real-prices + /lp/ask-tulle + NY lead, shorter tour copy (step 2 no longer promises a free first venue), old PI card locked-averages block hidden. Server same morning: ep230 no free first vendor (05:39 UTC), REC_NAME_MATCH_V2=1 (~05:36 UTC).",
+      "affects": [
+        "EXP-2026-11-price-report-vs-pi-card",
+        "EXP-2026-11-pricing-page-copy",
+        "EXP-2026-10-chat-cost-cards",
+        "EXP-2026-11-whole-wedding-planner"
       ]
     }
   ]
