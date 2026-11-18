@@ -7,3 +7,7 @@ extraction_log.json
 logs/
 _*.py
 .xano_cache/
+
+# slack_qa local state fallback (Railway uses the /data volume)
+slack_qa/.state/
+slack_qa/knowledge/.staging/

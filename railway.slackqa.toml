@@ -1,0 +1,33 @@
+# Tulle Bot Slack Q&A (slack_qa/). Always-on web service (NOT a cron): Slack Events API -> answers in thread.
+# See slack_qa/README.md for the Slack app setup.
+#
+# NOTE: Railway rejects a config-file path on NEW services (2026-10-03, see railway.rec.toml), so set these on the
+# service by hand; this file documents them:
+#     Root directory : /  (repo root - the service reads experiments/experiment_log.json)
+#     Build          : pip install -r slack_qa/requirements.txt
+#     Start          : cd slack_qa && uvicorn app:app --host 0.0.0.0 --port $PORT
+#     Healthcheck    : /health
+#     Volume         : mount at /data  (mute settings + daily spend ledger; STATE_DIR=/data)
+#     Watch paths    : slack_qa/**, experiments/experiment_log.json  (registry edits redeploy the bot)
+#     Public domain  : generate one; Slack Request URL = https://<domain>/slack/events
+#
+# Variables:
+#     SLACK_SIGNING_SECRET = Tulle Bot app -> Basic Information -> Signing Secret
+#     SLACK_BOT_TOKEN      = Tulle Bot app -> OAuth & Permissions -> Bot User OAuth Token (xoxb-...)
+#     ANTHROPIC_API_KEY    = separate key recommended so spend is visible
+#     STATE_DIR            = /data
+#     QA_ENABLED           = 1      (0 = kill switch, no deploy needed)
+#     QA_DEFAULT_MUTED     = 1      (channels answer @-mentions only until someone says "@Tulle Bot unmute")
+#     QA_DAILY_USD         = 2      (estimated Claude spend cap per UTC day)
+#     (optional) GITHUB_TOKEN (fine-grained, read-only Contents on the 3 repos), QA_SCAN_THRESHOLD=0.75,
+#     QA_CHANNEL_HOURLY=6, QA_MODEL=claude-sonnet-5-5, QA_TRIAGE_MODEL=claude-haiku-5-5, QA_EFFORT=low,
+#     QA_USER_NAMES, QA_GITHUB_REPOS, QA_DEPLOY_CHANNEL=C0AML8KKF4Z, QA_OWNER_USER_ID=U05UJMCHUV6
+[build]
+builder = "NIXPACKS"
+buildCommand = "pip install -r slack_qa/requirements.txt"
+watchPatterns = ["slack_qa/**", "experiments/experiment_log.json"]
+
+[deploy]
+startCommand = "cd slack_qa && uvicorn app:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+restartPolicyType = "ON_FAILURE"

@@ -1,0 +1,260 @@
+# Commit log: tulle_vendor_data_updates (last 60 days, synced 2026-11-18T07:32:40+00:00)
+
+Subject lines from every local branch and remote ref (`git log --all`), newest first. The [ref] is the branch the commit was found on: main / origin/main is deployed or deployable; other refs may be unmerged work in progress. A coded-component commit is only live after the owner activates it in WeWeb and publishes.
+
+- 2026-11-18 07:00 UTC `d8294b8` [rec-venue-log] fix(ops): deploy-notify ignores WeWeb image cache-buster (_wwcv) changes and quotes tour step text; silent re-snapshot on format change
+- 2026-11-18 06:48 UTC `51d74d4` [registry-price-report] registry: production publish 1401 verified 06:47 UTC 11-18 (price report v2 + locked card, estimate what-if + home button, NY LP, LP copy, tour copy); price report period 2 starts
+- 2026-11-18 05:51 UTC `afd174a` [registry-price-report] registry: ask-tulle-bubble 11-18 read - question drop is confounded by the Discovery entry removal in the same publish
+- 2026-11-18 05:42 UTC `2699111` [registry-price-report] registry: pi-first-vendor-free ENDED early 11-18 (owner; ep230 allowance removed 05:39 UTC) with final payment-log read; price report treatment change noted
+- 2026-11-18 05:37 UTC `67c8729` [registry-price-report] registry: name match v2 ON 11-18 ~05:36 UTC (changes[] + planner-name-lookup result)
+- 2026-11-18 05:18 UTC `04e9776` [rec-name-match] feat(rec): name match v2 behind REC_NAME_MATCH_V2 (default off) - joined-word venue names + area constraints are not venue lookups
+- 2026-11-18 05:13 UTC `6166f57` [rec-name-match] registry: EXP-2026-11-price-report-vs-pi-card (live 11-17 16:47 UTC, call 12-01; bar = unlock-click rate >= 14.9% baseline, purchases not down); notes the 11-17 payments dip is in normal range
+- 2026-11-18 04:56 UTC `1576c60` [rec-est-inputs] feat(rec): estimate widget carries state_options (exact table-4 names with an average) for the card's what-if picker; widget only, not in facts
+- 2026-11-18 04:20 UTC `4b5e0aa` [rec-est-inputs] chore(ops): deploy-notify logs one heartbeat line when there is no new staging build
+- 2026-11-18 03:55 UTC `279ab16` [rec-est-inputs] feat(ops): WeWeb staging publish -> #deployment Slack note (what changed vs the previous staging build)
+- 2026-11-17 16:48 UTC `ccb08b0` [worktrees/tulle_registry_ww/HEAD] registry: Plan my wedding LIVE 16:47 UTC 11-17 (call 12-01); publish 1398 noted as a confound (Price Report replaces PI card mid first-vendor-free test, pixel, landing pages)
+- 2026-11-17 16:25 UTC `6ba256a` [worktrees/tulle_registry_ww/HEAD] registry: whole-wedding 'Plan my wedding' approved for every couple - server on at 100% 16:20 UTC 11-17, starts at the next verified WeWeb publish
+- 2026-11-17 16:24 UTC `d1483bc` [rec-whole-wedding] fix(planner): whole-wedding rows show the listing photo - image_1 is a Xano file record, take its url
+- 2026-11-17 16:21 UTC `3780d11` [rec-whole-wedding] fix(planner): whole-wedding sentence above a locked plan follows the reader (verifier r5 defect 1)
+- 2026-11-17 06:40 UTC `32a46a4` [rec-whole-wedding] fix(experiments-tab): a change entry keyed 'name' instead of 'what' no longer takes the whole admin dashboard down
+- 2026-11-17 04:59 UTC `7242add` [rec-whole-wedding] fix(planner): whole-wedding round 4 - PDF wording true for every reader
+- 2026-11-17 04:42 UTC `fa24a87` [rec-whole-wedding] fix(planner): whole-wedding round 3 - owner's first live test
+- 2026-11-16 14:47 UTC `91b9660` [rec-whole-wedding] fix(planner): whole-wedding verifier round 2 (flow still off by default)
+- 2026-11-16 14:44 UTC `5b2d593` [ep177-secret-gate] chore(security): ep177 wptp_venue_categories is secret-gated - health probe sends the secret, baseline no longer lists it as anonymous
+- 2026-11-16 07:24 UTC `53c5576` [ep177-secret-gate] fix(planner): whole-wedding verifier fixes 1-7 (flow still off by default)
+- 2026-11-16 07:24 UTC `d8479f8` [ep177-secret-gate] fix(rec-watch): 24h watch line no longer drops whole-wedding rows - their plans and errors get their own line (verifier fix 8)
+- 2026-11-16 04:56 UTC `1cc23b1` [ep177-secret-gate] feat(planner): whole-wedding proposal flow behind REC_WHOLE_WEDDING (off by default)
+- 2026-11-15 20:30 UTC `6eed125` [rec-mcp-data-policy] fix(rec): MCP pre-push review G1-G3 - refresh grace window, configurable global ceiling, hidden rows show no number
+- 2026-11-15 20:14 UTC `29ebd08` [rec-mcp-data-policy] fix(rec): MCP security review F1-F7 - rate limits, key handling, exact client ids, single-use approval, name match
+- 2026-11-15 20:08 UTC `4b0ed59` [rec-mcp-data-policy] test(rec): MCP OAuth - second tamper case that could be a no-op (first character already 'A')
+- 2026-11-15 20:06 UTC `b1f5ce3` [rec-mcp-data-policy] test(rec): MCP OAuth - a tamper case that was a no-op on tokens without a '-' (flaky about 1 run in 50)
+- 2026-11-15 20:03 UTC `b481246` [rec-mcp-data-policy] test(rec): MCP panels - the no-price check no longer trips on a regex anchor
+- 2026-11-15 20:02 UTC `7ec4964` [rec-mcp-data-policy] feat(rec): Tulle panels for the MCP connector (MCP Apps) - My wedding and Vendors
+- 2026-11-15 19:51 UTC `0bd23b3` [rec-mcp-data-policy] fix(rec): MCP verifier findings V1-V5 - hide Tulle-prefilled amounts, atomic lookup cap, strong name match only
+- 2026-11-15 19:41 UTC `f435696` [rec-mcp-data-policy] feat(rec): "Sign in with Tulle" - /mcp as an OAuth-protected resource Claude can add as a connector
+- 2026-11-15 19:28 UTC `221fb7d` [rec-mcp-data-policy] feat(rec): MCP data policy - no pricing at all, public cards only, by-name lookup with a daily cap
+- 2026-11-15 19:04 UTC `8c6349f` [rec-mcp-prototype] fix(reports): gates line ignores MCP rows (an MCP tool error is not a Planner limit hit)
+- 2026-11-15 18:37 UTC `6d0b272` [rec-mcp-prototype] fix(reports): leave MCP tool calls (rec_usage kind mcp_*) out of Planner usage counts
+- 2026-11-15 18:37 UTC `de743f9` [rec-mcp-prototype] fix(rec): MCP prototype - gate in front of the SDK, figures for full members only, required host allowlist
+- 2026-11-15 18:17 UTC `10c9ddf` [rec-mcp-prototype] feat(rec): read-only MCP prototype behind REC_MCP (off by default)
+- 2026-11-15 17:20 UTC `6829c02` [planner-context-first] registry: 11-15 reads - save offer 2 of 10 bought Forever; free daily question shows no return lift yet
+- 2026-11-15 04:55 UTC `8569889` [planner-context-first] registry: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone live 2026-11-15 ~04:40 UTC; context-first test planned
+- 2026-11-15 02:30 UTC `cfc56b3` [planner-context-first] feat(rec): quote check open to everyone (REC_QUOTE_AUDIENCE, default all)
+- 2026-11-15 00:46 UTC `53d9a72` [planner-context-first] feat(rec): /rec/pdf-counts for the Planner card + context-first test fit chip on venue lookups
+- 2026-11-12 06:40 UTC `7c8f428` [registry-two-plan-offer] registry + brief: save offer v4 two-plan (4w 20% + Forever 60%) live 2026-11-12 06:40 UTC; offers_line counting note
+- 2026-11-12 04:37 UTC `4ee7794` [registry-coral-revert] registry: coral bubble restyle reverted before activation (d554ee8 = 6a6194c)
+- 2026-11-12 04:20 UTC `56e646f` [gates-brief-2026-11-12] brief: 'Gates -> paid' line (new members paid within 1 day; PDF + Planner limit hitters vs prior week; Mixpanel board link) + registry: ep7 TERMS_REQUIRED fix, bubble day-1 read + owner's purchases-first bar, coral restyle, purchase-complete -> Planner (owner 2026-11-12)
+- 2026-11-11 07:26 UTC `f09b9a3` [reg-bubble] experiments: Ask Tulle bubble LIVE 11-11 (call 11-25, bar +15% Planner askers/day), change entry for the 11-11 Discovery publish
+- 2026-11-11 07:03 UTC `d45e8de` [rec-surface] rec: read the request surface when a usage write is QUEUED (_submit_usage) - pool threads don't inherit contextvars, so live rows had surface '' (verified 11-11 07:01 UTC)
+- 2026-11-11 07:00 UTC `e762ebc` [rec-surface] daily brief: Ask Tulle bubble line (couples using it, bubble vs Planner-page questions, questions/day since launch vs the week before, from table 79 surface); registry: bubble metric (owner 2026-11-11)
+- 2026-11-11 06:59 UTC `beb1cf1` [rec-surface] rec: record the request surface (?surface=planner | bubble:<path> from the planner-chat component) on every usage row (table 79 'surface', added 11-11) and as 'via Ask Tulle (<path>)' in the Planner sheet's Flag column - owner wants Ask Tulle adoption + whether it adds messages (2026-11-11)
+- 2026-11-11 05:49 UTC `8a41ea2` [brief-experiments] experiments: log 'Ask Tulle' bubble (planned until activate + publish)
+- 2026-11-11 05:35 UTC `e8305ed` [brief-experiments] experiments: log NPS comment-optional-on-4-5-stars (built 11-11, planned until the owner activates + publishes; call 11-25)
+- 2026-11-11 05:27 UTC `996a012` [brief-experiments] daily brief: 'Calls to make' from the experiment registry (overdue review dates, just-live experiments without a call date/bar, live 14d+ with no date, planned-but-started); registry: My wedding plan live 11-08 (call 11-22), free-assistant + tours-v2 superseded (owner 2026-11-11)
+- 2026-11-11 05:21 UTC `90eec8d` [brief-experiments] daily brief: Experiments block - free daily Planner question (3-day return, new vs pre cohort), 60%-off Forever save offer (offers/buyers), NPS + Trustpilot prompt, new-member PDF opens + questions per couple (owner 2026-11-11); registry: free-daily-question + save-offer-60 entries, Trustpilot 0-clicks reading
+- 2026-11-09 14:50 UTC `138f883` [brief-experiments] experiments: 11-09 tours are final at 2 auto tours (Discovery + vendor page PDFs step); Planner/My wedding intros picker-only
+- 2026-11-09 14:46 UTC `06a0180` [brief-experiments] experiments: log EXP-2026-11-pi-first-vendor-free (PI free on the first vendor only, live 2026-11-09 14:12 UTC) + 11-09 change entry (tours, locked PI averages, Ask Tulle fix)
+- 2026-11-09 06:38 UTC `3e3f3ae` [pdf-gate] daily brief: purchases-since-PDF-fix line (last 7 days vs pre-leak 5.5/day $394/day; grey until the window is fully post-fix; decision if still flat a week on) until 2026-11-23 (owner 2026-11-09)
+- 2026-11-09 06:28 UTC `889e449` [admin-cloudflare] admin-api: pricing snapshot every 6h, not 30 min (~48 full ep199 pulls/day was too heavy on Xano)
+- 2026-11-09 05:52 UTC `893e58e` [admin-cloudflare] admin_api: fastapi + uvicorn for the Railway admin-api service
+- 2026-11-09 05:40 UTC `c097c6c` [admin-cloudflare] feat(admin-cf): Venue Pricing tab - background ep199 snapshot (30 min), browser-side filters/estimates/State x Type grid/drill/breakdown + PDFs; exact parity with dashboard._vp_compute_vendors on 5 filter combos (12,171 venues, Python half-even rounding); AI summary on demand (Sonnet 5.5)
+- 2026-11-09 05:34 UTC `7cc0cba` [admin-cloudflare] feat(admin-cf): Experiments tab - registry, timeline with change lines, computed confounds, two-proportion z-test (matches experiments_tab.py to 1e-7); list fields tolerate plain strings in the hand-edited log
+- 2026-11-09 05:21 UTC `b7b6d21` [admin-cloudflare] feat(admin-cf): Health tab - endpoint health, daily report, history, perf digest as background jobs (poll; double-clicks join the running job); endpoint_health imports pandas/streamlit lazily so the API can reuse it
+- 2026-11-08 16:35 UTC `1681213` [admin-cloudflare] fix(admin-cf): track admin_api/__init__.py (repo ignores _*.py)
+- 2026-11-08 16:34 UTC `ad0e811` [admin-cloudflare] feat(admin-cf): Cloudflare admin page foundation + Cohorts tab
+- 2026-11-09 05:11 UTC `88bc4d4` [pdf-gate] daily brief: PDF gate section - leak watch (free couples past 3 PDFs still showing views left, active since the ep21 fix; Planner over-limit free opens from table 79) + the 10-28 -> 11-09 incident note until 11-16 (owner 2026-11-09)
+- 2026-11-09 03:51 UTC `9bfd2f9` [pdf-gate] rec: PDF gate - free views can't be reused by rapid opens (per-couple lock, free-view write before the URL is returned, last written count remembered 30 min so a stale auth/me can't hand out a spent view). Owner 2026-11-09: a free account opened 6 PDFs, 5 in 15 s, all 'free'.
+- 2026-11-09 01:11 UTC `e29f61a` [wedding-v2] rec: free couples get 3 questions for life, then 1 a day with no accumulation (owner rule 2026-11-08; free_phase on every tier payload); 'Open my budget' chip -> 'Open my wedding' (old label still resolves); My wedding reads/writes table-33 vendor_id
+- 2026-11-08 23:05 UTC `04d86fd` [wedding-v2] rec: attachment read - drop thinking {type: disabled} (Sonnet 5.5 rejects it with a 400; every screenshot read failed live)
+- 2026-11-08 22:57 UTC `ad921ca` [wedding-v2] rec: attachments answer the couple's own question (not always 'is this a good deal?'); POST /rec/attachment/read reads a pasted screenshot/image with Sonnet 5.5 into the parse-vendor-pdf shape + summary (Forever only) (owner 2026-11-08)
+- 2026-11-08 22:09 UTC `dc568a0` [wedding-v2] rec: budget_split carries every focus's split (by_focus) so the page switches focus with no request (owner: chips froze, 2026-11-08)
+- 2026-11-08 21:18 UTC `ada9224` [wedding-v2] rec: quote check - Forever couples send a parsed vendor quote with 'Is this a good deal?' (/rec/refine quote, model-only context, 403 for non-Forever); /rec/status forever flag; prompt points to My wedding + in-chat tools instead of the removed tabs (owner 2026-11-08)
+- 2026-11-08 20:48 UTC `c9fe829` [wedding-v2] rec: free tools just ask for what's missing ('What's your total wedding budget?' / 'How many guests?') - the card takes the answer inline (owner 2026-11-08)
+- 2026-11-08 20:42 UTC `8434d1c` [wedding-v2] rec: My wedding v3 - the couple's existing Budget-tab packages show up (unselected = quotes still deciding, by category + 'Still deciding'); Booked flips the same row (POST /rec/wedding/item selected) - no copies (owner 2026-11-08)
+- 2026-11-08 20:23 UTC `5b27899` [wedding-v2] rec: My wedding v2 fix - Xano vault folders can end in '..' (attach was 400 on every real upload); unknown item -> 404 not 500 (live check 2026-11-08)
+- 2026-11-08 19:45 UTC `3f76a4f` [wedding-v2] rec: My wedding v2 - couple's notes + file on booked items, per-category pie slices, POST /rec/wedding/item (owner 2026-11-08)
+- 2026-11-08 16:08 UTC `1cea241` [rec-wedding] rec: 'My wedding' endpoints - GET /rec/wedding, POST /rec/wedding/book, /unbook (owner 2026-11-08)
+- 2026-11-08 03:20 UTC `1f994f7` [rec-free-daily] rec: REC_PLAN_AB_PCT=0 turns the plan off for everyone, internal accounts included (owner rollback 2026-11-07)
+- 2026-11-08 03:18 UTC `dfdff4f` [rec-free-daily] daily brief: no plan block while the plan is off (REC_PLAN_AB_PCT=0, owner rollback 2026-11-07)
+- 2026-11-08 03:14 UTC `29dfb81` [rec-free-daily] rec: free daily mode counts questions only (openings and clarifying lookups never); 'Next for your wedding' suggestion OFF (owner 2026-11-07)
+- 2026-11-08 02:43 UTC `fb52e54` [rec-plan] rec: 'My wedding' plan for every couple - no A/B (owner 2026-11-07); brief shows plan adoption instead of a scoreboard
+- 2026-11-08 02:38 UTC `81f5fa9` [rec-plan] daily brief: compact by default - revenue + sign-ups, the plan A/B scoreboard, alerts only when they need the owner (owner 2026-11-07); BRIEF_MODE=full restores the long brief
+- 2026-11-08 02:35 UTC `ce340c1` [rec-plan] rec: a question from a fresh screen (no chat_id, no history) starts a new chat - never the one from the last 30 min (owner screenshot 2026-11-07); registry: plan A/B entry
+- 2026-11-08 02:28 UTC `6aad63d` [rec-plan] rec: "My wedding" plan (table 90 rec_wedding_plan) behind a 50/50 A/B by user id (owner 2026-11-07)
+- 2026-11-08 02:19 UTC `c4ad97d` [rec-vendor-lookup] rec: instant lookup for photographers, entertainers, florists, caterers, beauty and planners by name (owner 2026-11-07)
+- 2026-11-08 02:14 UTC `461b380` [rec-sources] rec: web search OFF by default (owner 2026-11-07: a 19 s answer is too long); sourced answers stay on
+- 2026-11-08 02:09 UTC `05fda81` [rec-sources] rec: venue questions beyond price with clear sources; web search for full members, verified URLs only; thumbs-down remembered (owner 2026-11-07)
+- 2026-11-08 01:43 UTC `189912e` [rec-lookup-best] rec: lookup fixes from the live check - all typed words beat a shared first word; a named place we can't locate is never swapped for the profile state; place labels skip 'GA 30518' / 'USA'
+- 2026-11-08 01:19 UTC `92f42e5` [rec-lookup-best] rec: no more "which one did you mean?" - same-name venues are shown as cards; a name with no real match is "we don't have it" (owner 2026-11-07)
+- 2026-11-08 01:12 UTC `9ebd33c` [rec-lookup-best] rec: November real-chat eval set + refine router behind REC_REFINE_ROUTER (default OFF)
+- 2026-11-08 01:03 UTC `0ebda4d` [rec-lookup-best] rec: "which one did you mean?" / "we don't have it" lookups don't spend a free question; they still count toward the rating card (owner 2026-11-07)
+- 2026-11-08 00:47 UTC `16f2464` [rec-lookup-best] rec: venue lookup answers with the likely venue instead of "which one did you mean?" (owner 2026-11-07)
+- 2026-11-07 17:40 UTC `e80a904` [rec-open-ended] rec: open-ended replies - no trailing question, no chips, no profile questions (owner 2026-11-07)
+- 2026-11-07 05:11 UTC `d076d45` [rec-planner-five] rec: a reason to come back, first slice - returning couples open on their shortlist; check cheaper dates before calling a venue a no
+- 2026-11-07 05:08 UTC `f02acca` [rec-planner-five] rec: florists carry their real pricing in the Planner; an empty vendor type offers the nearest state that has it
+- 2026-11-07 05:03 UTC `7d90a6f` [rec-planner-five] rec: no Forever in the Planner's first message; LIGHT gets one rounded price band per venue
+- 2026-11-07 04:59 UTC `7f2bbba` [rec-planner-five] rec: Planner dead ends from the team's activity log (11-03..06) - one chat per opening, no phrase-as-venue, named venues always shown, nothing-new shows the best already-seen
+- 2026-11-03 23:03 UTC `e303ca7` [rec-vibe-lookup] rec: Planner sheet log - Device + Browser columns (N:O, after the team's Category + Notes) from each request's User-Agent; in-app browsers (Instagram, Facebook, TikTok, Pinterest, Snapchat) named first; Apps Script writes A:K + N:O and fills missing header cells; old script keeps working (ignores the extra cells) (owner 2026-11-03)
+- 2026-11-03 22:58 UTC `9bc1444` [rec-vibe-lookup] rec: sheet log - soccerdog333 (31619) no longer skipped, so the owner can test the Planner Google Sheet with it (owner 2026-11-03)
+- 2026-11-03 20:36 UTC `5b103e1` [rec-vibe-lookup] rec: planner_sheet.gs - the Google Sheet's Apps Script receiver for sheet_log (secret-checked, formula-safe, header + Category dropdown via setup())
+- 2026-11-03 20:36 UTC `ba871e4` [rec-vibe-lookup] rec: Planner activity log for the team's Google Sheet - one row per question, suggested-reply tap, opening, Show more, quick action, rating, thumbs, still-looking note, PDF open, and (new POST /rec/event) vendor click / save; plan at the time, vendors shown, filters used, flag (not in Tulle / no vendors / slow / blocked); internal accounts skipped; queued off the request path and batched to an Apps Script web app. OFF until REC_SHEET_WEBHOOK_URL + REC_SHEET_SECRET are set (owner 2026-11-03)
+- 2026-11-03 20:13 UTC `cd4b209` [rec-vibe-lookup] rec: style / needs requests are no longer read as venue names - 'Only gardens and nature please' told the couple 'We don't have Only gardens and nature please in Tulle yet' (chat 1170, 2026-11-03); a message made only of kind-of-place / need words goes to the model, which filters on venue types and vibes; garden/nature mapping spelled out in search_venues
+- 2026-11-02 19:16 UTC `3a7ad85` [rec-prewarm] rec: POST /rec/prewarm - generate the couple's opening in the background (first trigger: onboarding finish) so the Planner serves it with no model wait; an opening that finds a same-inputs run in flight waits for it (also collapses the page's double-mount openings into one run); reuse_miss logged (Railway line + table 79 key + Mixpanel) to read why repeat visits regenerate; prewarm rows (kind prewarm) never count toward any allowance, the opening served from one writes the normal opening row once (owner 2026-11-02: time-to-value)
+- 2026-11-02 04:00 UTC `1518511` [rec-slack-emails] rec: a destination name typed after the Planner's own question keeps the coverage line
+- 2026-11-02 03:45 UTC `05dcfa1` [rec-slack-emails] rec: the next-step ladder - a Planner answer always ends with a real next step, backed by what we hold in the state
+- 2026-11-02 03:00 UTC `03c035c` [rec-slack-emails] brief: a daily Tulle Planner block - speed by request type, misses in the couple's words, lookups, PDFs, categories, ratings
+- 2026-11-02 02:55 UTC `267d8a7` [rec-slack-emails] rec: radius searches leave out venues whose coordinates fall outside their own state
+- 2026-11-02 02:53 UTC `388b564` [rec-slack-emails] rec: a missing venue is no longer a dead end; lookups and PDF opens reach the usage log
+- 2026-11-02 01:25 UTC `0694462` [rec-slack-emails] rec: the pricing warmer lists venues through the metadata token (ep119 is auth=user)
+- 2026-11-02 01:20 UTC `4976ae8` [rec-slack-emails] rec: pricing cache 1 h -> 12 h and a background warmer for the top venues per state
+- 2026-11-02 01:15 UTC `846b564` [rec-slack-emails] rec: tools_used comes from the tools that actually ran (pre-search included), not the model's tool_use blocks
+- 2026-11-02 01:14 UTC `4a3b08a` [rec-slack-emails] rec: every answer logs which tools ran, which vendor categories they touched, and thinking chars
+- 2026-11-02 00:48 UTC `88fb9c0` [rec-slack-emails] rec: a venue the couple named is found even outside their style filters and caps
+- 2026-11-02 00:48 UTC `6314a17` [rec-slack-emails] rec: a 'which one did you mean?' lookup no longer prices every match first
+- 2026-11-02 00:34 UTC `f580592` [rec-slack-emails] rec: a venue name typed right after the Planner's own question is still looked up
+- 2026-11-01 23:42 UTC `7a35a25` [rec-slack-emails] rec: venue lookup reads a bare trailing state ('Bear brook nj') as name + location
+- 2026-11-01 21:38 UTC `4a400be` [origin/rec-slack-emails] rec: Slack notices name the couple by email - '[name] ([email], user 31469, [name])' on beta feedback, thumbs up/down, still-looking and venue-not-in-Tulle lines (owner 2026-11-01: 'we want the user emails on this, not just their ids'); one _who() helper, suite 569
+- 2026-11-01 21:07 UTC `935c628` [rec-notes-still-looking] rec: a dead-end line is not a thumbs down - /rec/notes sends the team a quiet "still looking for" Slack line (notify.still_looking, with source + chat) instead of the thumbs-down notice; tests (owner 2026-11-01)
+- 2026-11-01 20:53 UTC `3f94095` [rec-notes-still-looking] rec: POST /rec/notes - a dead-end answer's "what were you after?" is kept as the couple's memory note ("Still looking for: ...") instead of only a thumbs-down (owner 2026-11-01: couples read it as "save this for next time")
+- 2026-11-01 18:39 UTC `d41adce` [planner-weekly-digest] brief: weekly digest - drop the temperature argument the installed anthropic SDK rejects
+- 2026-11-01 18:38 UTC `676814b` [planner-weekly-digest] brief: weekly Tulle Planner digest on Mondays (rec_watch.weekly_planner) - who used it, who came back, dead ends, check-in card answers, and the week's questions grouped into themes by Sonnet when ANTHROPIC_API_KEY is set (owner 2026-11-01: 'are we collecting all the feedback we need?')
+- 2026-11-01 18:48 UTC `c46dd90` [rec-profile-write] rec: chat-name tests - a question keeps its question mark; the stale-chat test expects the capitalised name
+- 2026-11-01 18:46 UTC `b01b5f5` [rec-profile-write] rec: descriptive chat names - an opening is titled after its picks and area ('Scottsdale · Clayton House, The Willow, Gainey Ranch'), a typed question is tidied, the vendor-page 'Ask Tulle' template becomes 'About <vendor>' (owner 2026-11-01: 'Your chats' all read the same); suite 566
+- 2026-11-01 18:39 UTC `5a552b4` [origin/planner-weekly-digest] brief: weekly digest - drop the temperature argument the installed anthropic SDK rejects
+- 2026-11-01 18:38 UTC `865ecbb` [origin/planner-weekly-digest] brief: weekly Tulle Planner digest on Mondays (rec_watch.weekly_planner) - who used it, who came back, dead ends, check-in card answers, and the week's questions grouped into themes by Sonnet when ANTHROPIC_API_KEY is set (owner 2026-11-01: 'are we collecting all the feedback we need?')
+- 2026-11-01 17:16 UTC `56619ec` [rec-profile-write] rec: pricing waves stop at 5 fitting venues, not 8 (SHOWN_MIN) - Mixpanel 14d: openings priced a median 13 venues (two waves) for a 3-pick answer; one wave ~1.0 s, two ~2.2 s, three ~4.3 s; the rest still prices in the background for Show 3 more; suite 561 (one order-flaky prefetch test unrelated)
+- 2026-11-01 17:14 UTC `c89bd0e` [rec-profile-write] experiments: 2026-11-01 Tulle Planner day (deploy 5, free questions 2 -> 10, planner-chat v32+, WeWeb menu/layout/Ask Tulle)
+- 2026-11-01 14:08 UTC `1aca5e9` [rec-profile-write] rec: 3 picks per answer, never more - extras are cut and lead the Show 3 more pool (owner 2026-11-01: a 4th card sat alone under the row of 3); prompt + tool text say 3; suite 561
+- 2026-11-01 05:09 UTC `a680ee6` [rec-profile-write] rec: POST /rec/pdf - the Planner card's 'Open pricing PDF' opens the vendor's primary PDF with the vendor page's accounting
+- 2026-11-01 05:04 UTC `c15ee5f` [rec-profile-write] rec: pre-search - the opening's first search_venues call runs from the profile before the first model call and reaches the model as a finished tool call (one model turn instead of two)
+- 2026-10-31 23:49 UTC `e30eff2` [rec-profile-write] rec: _opening_chips regexes written cleanly (word boundaries restored); suite 539
+- 2026-10-31 23:49 UTC `64d9925` [rec-profile-write] rec: fix the two regex literals in _opening_chips (shell mangled the escapes in the previous commit)
+- 2026-10-31 23:48 UTC `0ec76c9` [rec-profile-write] rec: opening chips are the likely answers to the closing question (Near <city> for the area question, the model's answers otherwise), starters fill the rest
+- 2026-10-31 23:24 UTC `aa49294` [rec-profile-write] rec: present_recommendations accepts a call without reasons/chips - the model sometimes omits chips and the pydantic rejection cost a whole extra model turn (live log 2026-10-31 23:15 UTC)
+- 2026-10-31 23:17 UTC `fc89421` [rec-profile-write] chore: drop stray fn63 scratch file that slipped into the previous commit
+- 2026-10-31 23:16 UTC `4728e48` [rec-profile-write] rec: own-wedding budget talk is answered briefly then guided to the Budget / Cost tools tab with the matching action chip; vendor search stays in the chat (owner 2026-10-31)
+- 2026-10-31 23:02 UTC `78623b0` [brief-trim] brief: shorter daily brief - green health lines collapse, pricing Checks line dropped, Railway block only when red; assistant line shows free spend vs the $30 pool and $60 cap, daily-cap hits
+- 2026-10-31 18:13 UTC `b1882ea` [brief-trim] chore(experiments): Texas-only Forever $89 built with switch off (fn63 + table 17 row 16 parked)
+- 2026-10-31 23:08 UTC `6497a7a` [brief-trim] rec: closing question leans yes/no so a tap answers it; chips are its answers (owner 2026-10-31)
+- 2026-10-31 23:02 UTC `fb89537` [brief-trim] feat(rec): open planner - free users get a 40/day allowance (no lifetime limit, feedback optional), light pricing with one broad state average, capped not paywalled; every reply ends with the next question
+- 2026-10-31 18:13 UTC `f10a945` [main] chore(experiments): Texas-only Forever $89 built with switch off (fn63 + table 17 row 16 parked)
+- 2026-10-31 18:02 UTC `09abc2f` [origin/rec-profile-write] feat(rec): stream the answer text while the model writes it (REC_STREAM_TEXT)
+- 2026-10-31 17:54 UTC `946fe30` [origin/rec-profile-write] feat(rec): POST /rec/profile - quick profile edit from the Planner chat
+- 2026-10-28 04:31 UTC `caa8bd8` [rotate-export-secret] security: drop hardcoded export-secret fallback; read ANALYTICS_EXPORT_SECRET only
+- 2026-10-27 23:55 UTC `49d3c83` [rec-feedback-one-tap] feat(rec): one-tap Planner feedback - rating alone is enough, free bonus question
+- 2026-10-27 20:04 UTC `0029299` [rec-feedback-one-tap] chore(experiments): florals v2 ranges + min-spend filter live, benchmarks endpoint
+- 2026-10-27 17:54 UTC `883dbfa` [rec-feedback-one-tap] chore(experiments): florals promoted to ep119 v1, Meilisearch moved to meilisearch-b, breaker probe results
+- 2026-10-27 16:11 UTC `ca32555` [rec-feedback-one-tap] chore(experiments): Discovery Railway search 50 -> 100% (ep119), Meilisearch freeze diagnosis + redeploy
+- 2026-10-27 05:59 UTC `8ea92b2` [planner-speed-2a] chore(experiments): log 2026-10-27 Planner speed 2a launch (prefetch caches, Railway 100% + breaker, opening reuse) + first live check
+- 2026-10-27 05:32 UTC `12add68` [planner-speed-2a] perf(rec): prefetch caches, Railway search breaker, reuse today's opening
+- 2026-10-27 01:43 UTC `6502f41` [planner-speed-2a] chore(rec_watch): exclude team accounts 118 (Desiree), 5622 (Kate) and their test accounts
+- 2026-10-27 01:43 UTC `2842612` [planner-v3] chore(rec_watch): exclude team accounts 118 (Desiree), 5622 (Kate) and their test accounts
+- 2026-10-27 00:10 UTC `7196fcb` [planner-speed-2a] chore(experiments): log 2026-10-26 night - Railway search 50% + breaker + Meili freeze fix, Planner v3 (name lookup, price upsell card, profile questions, listings, speed), free-user PDF-first, vendor PDF order (planned), checkbox day-1 read
+- 2026-10-26 23:24 UTC `ac172c7` [planner-v3] feat(rec): free users - PDF first where they can open one, upgrade card when they can't
+- 2026-10-26 23:17 UTC `c4ec678` [planner-v3] fix(rec): a venue we don't have + no area named -> no profile-state 'similar' venues
+- 2026-10-26 23:10 UTC `fb25c41` [planner-v3] fix(rec): name lookup via the venue search (Railway, ep119 fallback), not a table-11 scan
+- 2026-10-26 23:01 UTC `dfed4a9` [planner-v3] fix(rec): answers to our thin-profile questions don't spend a free question
+- 2026-10-26 23:00 UTC `9131e7d` [planner-v3] merge planner-more-vendors into planner-v3
+- 2026-10-26 23:00 UTC `0096572` [planner-v3] merge planner-name-lookup into planner-v3 (profile answers skip the lookup fast path)
+- 2026-10-26 23:00 UTC `1e18aec` [planner-v3] Merge branch 'planner-upsell-prefs' into planner-v3
+- 2026-10-26 22:59 UTC `3db2f49` [planner-name-lookup] feat(rec): instant venue name lookup in the Planner (no model)
+- 2026-10-26 22:55 UTC `40b4745` [planner-upsell-prefs] feat(rec): price questions -> Forever upsell card; thin profile -> 2 tap questions saved to memory
+- 2026-10-26 22:52 UTC `ab73284` [planner-more-vendors] feat(rec): Planner searches florists, hair and makeup, caterers and planners (listings only)
+- 2026-10-26 22:51 UTC `7aaa96f` [planner-speed] perf(rec): cross-request venue pricing cache + per-model-call timing
+- 2026-10-26 01:56 UTC `601b2b6` [planner-name-lookup] chore(experiments): Railway search 15% -> 20% (assistant + Discovery); planner card trim logged
+- 2026-10-26 01:10 UTC `22537e9` [planner-name-lookup] chore(experiments): Railway search for the assistant live at 15%
+- 2026-10-26 01:07 UTC `292d826` [rec-railway-search] feat(rec): REC_RAILWAY_SEARCH_FORCE_USER_IDS always on Railway search; brief excludes internal accounts
+- 2026-10-26 01:03 UTC `9140fa2` [rec-railway-search] fix(rec-engine): Railway search timeout = connect 1.0s, read REC_RAILWAY_SEARCH_TIMEOUT_S (worst case ~4s, was ~6s)
+- 2026-10-26 01:02 UTC `3b22792` [rec-railway-search] feat(rec-engine): Railway search for the assistant behind REC_RAILWAY_SEARCH_PCT, ep119 fallback, daily brief block
+- 2026-10-26 00:41 UTC `ca96c54` [dash-experiments] chore(experiments): log the 2026-10-26 publish - 4 experiments live, 3 new (chat cost cards, next-step chips, stop/progress)
+- 2026-10-25 21:39 UTC `c12433d` [dash-experiments] chore(brief,experiments): pricing decided - keep prices; stop the brief's keep/revert prompts
+- 2026-10-26 00:06 UTC `86f4495` [rec-progress-stop] feat(rec): live progress labels + Stop for assistant answers
+- 2026-10-25 23:49 UTC `bd2535b` [rec-next-step-chips] fix(rec): next-step chips blend in - no arrows, softer NEXT PLANNING STEP prompt
+- 2026-10-25 23:12 UTC `ebb7d73` [rec-next-step-chips] feat(rec): next-planning-step chips - action chips, cost-widget guarantee, /rec/tool chips
+- 2026-10-25 21:54 UTC `da6a917` [rec-cost-tools] feat(rec): REC_COST_TOOLS_IN_CHAT flag (default off) for cost tools in the chat
+- 2026-10-25 21:50 UTC `dcbcc35` [rec-cost-tools] feat(rec): cost tools inside the assistant - widgets, POST /rec/tool quick actions
+- 2026-10-25 21:10 UTC `7b9a167` [rec-cost-tools] feat(dash): simpler Experiments UI (Running/Past/All, one table, latest result) + 9 historical experiments
+- 2026-10-25 21:08 UTC `19d3400` [rec-cost-tools] feat(dash): Experiments tab - registry, timeline, auto confounds, significance check
+- 2026-10-21 04:33 UTC `74c9eec` [rec-byo-caterer] fix(rec): "bring our own caterer" searches Raw Space OR Semi-Inclusive, not Raw Space alone
+- 2026-10-21 03:35 UTC `54e7ae6` [rec-near-radius] feat(rec): search near a town by distance; ask which city when the profile only has a state
+- 2026-10-19 16:59 UTC `6142652` [extract-florals-facts] fix(extract-extras): florals typical spend - whole-wedding statements only, per-unit stays text, never derived
+- 2026-10-19 05:14 UTC `377af96` [extract-florals-facts] docs(extract-extras): table 86 name in module docstring
+- 2026-10-19 05:14 UTC `6ec3df8` [extract-florals-facts] feat(extract-extras): map rows to Xano tables 84-87 (pdfdata/* bulk POST + DELETE purge)
+- 2026-10-19 04:48 UTC `584ff09` [extract-florals-facts] fix(extract-extras): downsample >30MB PDFs like the main pipeline instead of skipping
+- 2026-10-19 04:31 UTC `f8ddee6` [extract-florals-facts] feat(extract): florals (__f) and venue facts (__v) batch jobs on Sonnet 5.5
+- 2026-10-17 02:18 UTC `b233d3c` [rec-speed] perf(rec): one 60-result search instead of 3 parallel pages; price the model's 8 first; shorter answers; per-tool timing
+- 2026-10-16 06:48 UTC `156e2d4` [rec-speed] feat(rec): thumbs up also posts to Slack #feedback (vote=up, comment optional)
+- 2026-10-16 06:36 UTC `4aa76a4` [rec-speed] feat(rec): POST /rec/answer-feedback posts thumbs-down comments to Slack #feedback
+- 2026-10-16 06:22 UTC `51a230f` [rec-speed] perf(rec): stop as soon as the answer is accepted (skip a throwaway model turn); per-step timing
+- 2026-10-16 03:48 UTC `a5e95f5` [rec-optional-feedback] fix(rec): keep feedback_required as the paid check-in prompt (never enforced); page locks input for free tier only
+- 2026-10-16 03:34 UTC `3b31303` [rec-optional-feedback] feat(rec): every chat starts free; paid feedback check-in is optional
+- 2026-10-14 20:22 UTC `a2e1052` [rec-quality-oct14] fix(rec): hiding shown venues reads 3 search pages so follow-ups still find new ones
+- 2026-10-14 20:12 UTC `0ed0502` [rec-quality-oct14] feat(rec): no repeats, sticky constraints, more and differentiated picks
+- 2026-10-14 07:09 UTC `54f2d14` [rec-free-mode] merge: consistent costs (00744ee, 38c0e30) into free mode
+- 2026-10-14 06:05 UTC `6f14a58` [rec-free-mode] feat(rec): free users get 1 question (was 3), then feedback, then paywall
+- 2026-10-14 06:01 UTC `616e5ff` [rec-free-mode] feat(rec evals): --free mode reports raw price talk and leaks after the free_mode guard
+- 2026-10-14 06:01 UTC `8c806ba` [rec-free-mode] feat(rec): free mode - 3 questions, one required feedback, then paywall; no prices for free users
+- 2026-10-13 13:39 UTC `38c0e30` [rec-consistent-costs] fix(rec): answer "how much should we budget" with code-computed figures
+- 2026-10-13 05:05 UTC `00744ee` [rec-consistent-costs] fix(rec): one set of numbers - venue totals computed in code, benchmarks for the couple's size, figure check
+- 2026-10-12 21:43 UTC `9d5e453` [rec-chat-persist] fix(rec): save questions asked without a chat; no-state profiles still get picks; glasshouse -> Greenhouse
+- 2026-10-12 03:48 UTC `8bbf263` [rec-pe-categories] feat(rec): photographers + entertainment in the Tulle Assistant
+- 2026-10-08 16:22 UTC `062557b` [rec-free-feedback-unlock] feat(rec): preferences v2 - all 14 venue types, soft 'overall feel', notes field
+- 2026-10-08 14:16 UTC `aaa863e` [rec-more-chips] fix(rec): Show 3 more replies carry follow-up chips; no reply ever has zero chips
+- 2026-10-08 13:06 UTC `4c11f7a` [rec-preferences] feat(rec): preference questions -> saved to memory, used as search filters
+- 2026-10-08 02:33 UTC `0d11b5c` [rec-preferences] fix(rec): bare access date expires at the START of the day, not the end
+- 2026-10-08 02:24 UTC `0183cb5` [rec-preferences] feat(rec): beta open to every paid plan (REC_BETA_AUDIENCE=paid); feedback names the plan
+- 2026-10-08 02:02 UTC `3f7f9c5` [rec-card-price-starters] fix(rec): card price = the rental the reply quotes; starter prompts on the opening
+- 2026-10-07 03:38 UTC `42da6b7` [rec-show-more-pool] feat(rec): Show 3 more spends a question (POST /rec/more) + 16-venue pool
+- 2026-10-07 03:21 UTC `63cf397` [rec-show-more] feat(rec): "Show 3 more" cards from the same searches, no model call
+- 2026-10-07 03:10 UTC `626f3b6` [rec-show-more] feat(bnpl_watch): NY tier section + NY routing check
+- 2026-10-06 23:53 UTC `985bf70` [dash-lazy-load] perf(dashboard): load Venue Pricing only on click
+- 2026-10-05 17:39 UTC `0a247b8` [dash-lazy-load] Revert "feat(rec-engine): budget planner for the assistant's Budget panel (no AI, OFF by default)"
+- 2026-10-05 17:22 UTC `64881a9` [dash-lazy-load] feat(rec-engine): budget planner for the assistant's Budget panel (no AI, OFF by default)
+- 2026-10-05 13:52 UTC `931fe54` [dash-lazy-load] fix(rec-engine): short replies by default; itemized breakdown only on an explicit ask
+- 2026-10-05 13:13 UTC `4670597` [dash-lazy-load] feat(rec-engine): itemized cost breakdowns for Forever, fuller answers, cards for earlier venues
+- 2026-10-05 02:23 UTC `fac0bbb` [dash-lazy-load] feat(rec-engine): small weddings - drop venues whose known minimums don't fit, ask for guest count
+- 2026-10-05 01:59 UTC `b40907f` [dash-lazy-load] docs(data wishlist): re-scrape = top 3,000 + at least 10 per state/country (all if fewer)
+- 2026-10-05 01:56 UTC `d278260` [dash-lazy-load] docs(data wishlist): first real-user assistant feedback - elopements, missing venues, question log
+- 2026-10-05 01:47 UTC `e77dfed` [dash-lazy-load] fix(rec-engine): multi-state search, chip de-dupe, less repetition
+- 2026-10-04 15:39 UTC `83dd540` [dash-lazy-load] feat(health DM): short daily brief - TL;DR + Decisions, pricing test cut to 2 lines
+- 2026-10-04 14:12 UTC `4f4b668` [dash-lazy-load] feat(rec-engine): answerable chips, outdoor ceremony filter, venue_details (menus, off-peak, reviews)
+- 2026-10-04 03:27 UTC `b6deaba` [dash-lazy-load] fix(rec-engine evals): ignore commas when matching the couple's own numbers
+- 2026-10-04 03:26 UTC `8eb6e87` [dash-lazy-load] feat(rec-engine): non-Forever answers are fit-only, no figures (DETAIL: LIGHT)
+- 2026-10-04 03:24 UTC `0440196` [dash-lazy-load] feat(rec-engine): post beta feedback as Tulle Bot via its #feedback webhook (REC_FEEDBACK_SLACK_WEBHOOK)
+- 2026-10-04 03:13 UTC `f50fa69` [dash-lazy-load] feat(rec-engine): post Tulle Assistant beta feedback to Slack #feedback
+- 2026-10-04 02:55 UTC `0122be3` [dash-lazy-load] feat(rec-engine): beta is Forever-only end to end (REC_FOREVER_ONLY, 402 forever_only)
+- 2026-10-03 23:30 UTC `74b2fa3` [dash-lazy-load] feat(rec-engine): Forever beta feedback check-in after 5 questions (table 81) + venue-only scope
+- 2026-10-03 22:53 UTC `74be9e2` [rec-engine] feat(rec-engine): Kate's staging feedback - peak-Saturday framing, PDF-views-aware wording, profile updates, 3 free
+- 2026-10-03 22:13 UTC `e4d40fe` [rec-engine] fix(rec-engine): split comma-packed states in opening chat titles
+- 2026-10-03 22:13 UTC `098966a` [rec-engine] feat(rec-engine): descriptive titles for opening chats ('Venue picks · Arizona, 80 guests')
+- 2026-10-03 21:57 UTC `1956400` [rec-engine] feat(rec-engine): couple-editable context, read into every conversation
+- 2026-10-03 21:52 UTC `03772c6` [rec-engine] feat(rec-engine): quiet 300/month cap for Forever (blocked_monthly_cap, 429 with resets_on)
+- 2026-10-03 21:47 UTC `b629e15` [rec-engine] fix(rec-engine): assistant sees the couple's saved vendors (from user.favorited_vendors)
+- 2026-10-03 21:24 UTC `64c1f3a` [rec-engine] fix(rec-engine): search uses the real style tags (venue types, attributes, pricing model)
+- 2026-10-03 21:15 UTC `572821b` [rec-engine] test(rec-engine): guard tests read FREE_REFINES from config instead of hard-coding 3
+- 2026-10-03 21:15 UTC `b18cb5f` [rec-engine] feat(rec-engine): 5 free questions (was 3); expose free_limit so the page never hard-codes it
+- 2026-10-03 20:42 UTC `84fc752` [rec-engine] feat(rec-engine): server-side Mixpanel event per AI request (rec_server_request)
+- 2026-10-03 20:02 UTC `06eee9a` [rec-engine] feat(rec-engine): expose forever_left_today / forever_daily_limit for the page
+- 2026-10-03 20:02 UTC `4f2d974` [rec-engine] feat(rec-engine): Forever = 40 prompts/day (openings + questions combined)
+- 2026-10-03 19:58 UTC `c40a80a` [rec-engine] feat(rec-engine): unlimited Planning Assistant on Forever only
+- 2026-10-03 19:39 UTC `1d5ab90` [rec-engine] fix(rec-engine): create the chat only after an opening is allowed and succeeds
+- 2026-10-03 19:24 UTC `2df11da` [rec-engine] feat(rec-engine): lifetime free cap (opening + 3 questions) + expert, sourced answers
+- 2026-10-03 19:18 UTC `e8c2695` [rec-engine] feat(rec-engine): saved conversations + long-term memory
+- 2026-10-03 18:25 UTC `864407d` [rec-engine] fix(rec-engine): cards carry vendor_idx; opening leads with fit, caveats last
+- 2026-10-03 18:09 UTC `cfaf9e1` [rec-engine] feat(rec-engine): daily health DM section (rec_watch) + note live Railway settings
+- 2026-10-03 18:07 UTC `c32ee1a` [rec-engine] feat(rec-engine): AI recommendation service (FastAPI on Railway)
+- 2026-10-03 01:35 UTC `dca981d` [rec-engine] fix(dashboard): Sign out actually signs out
+- 2026-10-03 01:26 UTC `571df4f` [rec-engine] feat(extract): reuse Files-API uploads from the last 24h on batch re-submit
+- 2026-10-03 01:20 UTC `cb8d433` [rec-engine] fix(extract): skip PDFs whose PDF_ID can't be a Batch API custom_id
+- 2026-10-02 16:40 UTC `93c1ee1` [rec-engine] feat(bnpl-watch): phase-2 split, revenue/day + revenue/buyer per arm, 1w/4w routing, Poisson note
+- 2026-10-02 16:14 UTC `90561d6` [rec-engine] fix(health): signed-in reliability headline; real client IP from X-Forwarded-For
+- 2026-09-30 12:52 UTC `dfb04a7` [rec-engine] feat(health): geo-pricing/BNPL experiment section in the daily DM
+- 2026-09-27 22:15 UTC `db241e9` [rec-engine] fix(health): DM via the existing conversation id, not the user id
+- 2026-09-27 21:54 UTC `a21ed64` [rec-engine] feat(health): DM the daily report to one person instead of the channel
+- 2026-09-27 21:45 UTC `cca741c` [rec-engine] fix(health): judge warmer buckets against the new 30s timeout, not 10s
+- 2026-09-27 21:31 UTC `786c84a` [rec-engine] feat(health): short traffic-light Slack post, full detail on the dashboard
+- 2026-09-27 21:29 UTC `d68c0c5` [rec-engine] feat(dashboard): move health panels into their own Health tab
+- 2026-09-27 21:17 UTC `7eea267` [rec-engine] fix(health): stop the daily report 502ing on Xano's history API
+- 2026-09-27 20:18 UTC `eefe1d0` [rec-engine] fix(health): dashboard crash - backslash in f-string on Python 3.11
+- 2026-09-27 20:12 UTC `18bffe5` [rec-engine] feat(health): daily ep119/ep121 health report + perf digest
+- 2026-09-27 19:46 UTC `3152020` [rec-engine] chore(dashboard): remove the Roadmap Orders tab

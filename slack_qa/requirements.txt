@@ -1,0 +1,6 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+anthropic>=1.11   # output_config + server-side fallbacks params verified on 1.11.0 (2026-11-18)
+requests>=2.31
+pydantic>=2.6
+# tests only: pytest, httpx (fastapi TestClient)
