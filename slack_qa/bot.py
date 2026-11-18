@@ -56,6 +56,11 @@ def should_ignore(ev: dict, bot_uid: str | None) -> str | None:
         return "dm"
     if not ev.get("channel"):
         return "no-channel"
+    if ev.get("channel") in config.blocked_channels():
+        return "blocked-channel"
+    ut = ev.get("user_team") or ev.get("team")
+    if ut and config.team_id() and ut != config.team_id():
+        return "external-user"
     return None
 
 

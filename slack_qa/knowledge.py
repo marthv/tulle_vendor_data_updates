@@ -211,7 +211,7 @@ def build_dynamic(question: str, channel: str, thread_ts: str | None, slack, git
     if slack is not None:
         budget = 12000
         for ch in slack.member_channels():
-            if ch["id"] in (channel, dep) or budget <= 0:
+            if ch["id"] in (channel, dep) or ch["id"] in config.blocked_channels() or budget <= 0:
                 continue
             lines = [scrub(x) for x in slack.render(slack.history(ch["id"], limit=50, days=7)[-15:], 300)]
             text = "\n".join(lines)[:min(4000, budget)]

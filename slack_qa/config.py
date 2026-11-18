@@ -69,6 +69,14 @@ def deploy_channel() -> str:           # #deployment (WeWeb staging publish note
     return _s("QA_DEPLOY_CHANNEL", "C0AML8KKF4Z")
 
 
+def blocked_channels() -> set[str]:    # never answer or read here (outside people). Default: #ext-rimal-tulle
+    return {c.strip() for c in _s("QA_BLOCKED_CHANNELS", "C0AM6UJHA5A").split(",") if c.strip()}
+
+
+def team_id() -> str:                  # messages from another workspace (Slack Connect / external users) are ignored
+    return _s("QA_TEAM_ID", "T05U8AWH14Z")
+
+
 def answer_model() -> str:
     return _s("QA_MODEL", "claude-sonnet-5-5")
 
