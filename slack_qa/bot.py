@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import time
 
 import config
 import knowledge
@@ -26,6 +28,9 @@ IGNORED_SUBTYPES_OK = {None, "thread_broadcast", "file_share"}
 QUESTION_START = re.compile(
     r"^\s*(why|what|whats|what's|when|how|is|are|was|were|did|does|do|can|could|who|where|which|has|have|should|"
     r"will|would|any|anyone|anybody)\b", re.I)
+REPORT_HINT = re.compile(
+    r"\b(report|export|csv|spreadsheet|download|how many|count of|number of|revenue|payments?|sign-?ups?|pay rate|"
+    r"nps|ratings?|planner usage|usage|venue (?:requests?|lookups?)|save offer|tt60|tt20|table \d+|pull)\b", re.I)
 MENTION = re.compile(r"<@[UW][A-Z0-9]+(?:\|[^>]*)?>")
 MAX_WORDS = 160
 
@@ -68,7 +73,8 @@ def cap_words(text: str, n: int = MAX_WORDS) -> str:
 
 class Bot:
     def __init__(self, slack: Slack | None = None, claude: Claude | None = None, state: State | None = None,
-                 limiter: RateLimiter | None = None, github=None, know=knowledge):
+                 limiter: RateLimiter | None = None, github=None, know=knowledge, xano=None,
+                 working_after: float = 5.0):
         self.slack = slack or Slack()
         self.claude = claude or Claude()
         self.state = state or State()
@@ -78,6 +84,11 @@ class Bot:
             github = GitHub()
         self.github = github
         self.know = know
+        if xano is None:
+            from xano_ro import ReadOnlyXano
+            xano = ReadOnlyXano()
+        self.xano = xano
+        self.working_after = working_after
 
     # --- entry point -------------------------------------------------------------------------------------
     def handle_safe(self, payload: dict) -> str:
@@ -123,7 +134,70 @@ class Bot:
             return "mention:over-budget"
         if not self.limiter.allow(channel):
             return "mention:rate-limited"
+        if REPORT_HINT.search(question) and getattr(self.xano, "enabled", False):
+            out = self.report(question, ev)
+            if out is not None:
+                return out
         return self.answer(question, ev, mode="mention")
+
+    # --- Xano reports (@-mention only; read-only) -----------------------------------------------------------
+    def report(self, question: str, ev: dict) -> str | None:
+        """Route to a named report, run it read-only, post summary + CSV. None = not a report request."""
+        import reports
+        channel = ev["channel"]
+        reply_ts = ev.get("thread_ts") or ev.get("ts")
+        context = question
+        if ev.get("thread_ts") and ev.get("thread_ts") != ev.get("ts"):
+            prior = [m.get("text") or "" for m in self.slack.replies(channel, ev["thread_ts"])][-6:]
+            context = "Earlier in this thread:\n" + "\n".join(prior) + "\n\nLatest request:\n" + question
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        route, usd = self.claude.route(context, today)
+        self.state.add_spend(usd)
+        name = route.get("report") or "none"
+        if name == "none":
+            return None
+        if name == "clarify":
+            self.post(channel, route.get("clarifying_question") or "Which report do you want: payments, sign-ups "
+                      "and pay rate, Planner usage, venue requests, save offer, NPS, or an export of one table?",
+                      reply_ts, footer=False)
+            return "report:clarify"
+        if self.state.reports_today() >= config.daily_report_cap():
+            self.post(channel, f"I've run today's {config.daily_report_cap()} reports (UTC day cap). "
+                               "Try again tomorrow or ask Vivek to raise QA_DAILY_REPORTS.", reply_ts, footer=False)
+            return "report:cap"
+        self.state.add_report()
+        params = {k: route.get(k) for k in ("start_date", "end_date", "group_by", "plan", "table", "columns",
+                                            "include_internal") if route.get(k) not in (None, "", [])}
+        timer = threading.Timer(self.working_after, lambda: self.post(
+            channel, f"Working on the {name.replace('_', ' ')} report - reading Xano (read-only)...", reply_ts,
+            footer=False))
+        timer.daemon = True
+        timer.start()
+        try:
+            rep = reports.run(name, params, self.xano, int(time.time() * 1000))
+        except PermissionError as e:
+            timer.cancel()
+            self.post(channel, f"I can't export that: {e}. Exportable tables: users (1), payment_log (16), "
+                               "nps_response (77), rec_usage (79), venue_lookup_log.", reply_ts, footer=False)
+            return "report:denied"
+        except Exception:  # noqa: BLE001
+            timer.cancel()
+            log.exception("report %s failed", name)
+            self.post(channel, "I couldn't read Xano just now, so no report. Try again in a few minutes.",
+                      reply_ts, footer=False)
+            return "report:error"
+        timer.cancel()
+        comment = scrub_output(f"{rep.summary}\n_Tulle Bot automated report (read-only Xano)._")
+        if not rep.rows:
+            self.slack.post_message(channel, comment, thread_ts=reply_ts)
+            return f"report:{name}:empty"
+        fname = f"tulle_{name}_{params.get('start_date', 'all')}_{params.get('end_date', today)}.csv"
+        up = self.slack.upload_file(channel, reply_ts, fname, rep.csv_bytes(), title=fname, comment=comment)
+        if not up.get("ok"):
+            self.slack.post_message(channel, comment + f"\n(CSV upload failed: {up.get('error')} - the app may "
+                                    "need the files:write scope.)", thread_ts=reply_ts)
+            return f"report:{name}:upload-failed"
+        return f"report:{name}"
 
     def command(self, cmd: str, channel: str, user: str, reply_ts: str | None) -> str:
         if cmd == "mute":

@@ -40,6 +40,13 @@ class FakeClaude:
         self.triage_usd, self.answer_usd = triage_usd, answer_usd
         self.triage_calls, self.answer_calls = [], []
 
+    route_result = {"report": "none"}
+    route_calls = []
+
+    def route(self, text, today):
+        self.route_calls = self.route_calls + [text]
+        return dict(self.route_result), 0.0005
+
     def triage(self, message, headlines):
         self.triage_calls.append(message)
         return dict(self.triage_result), self.triage_usd

@@ -129,6 +129,9 @@ class Claude:
             self._client = anthropic.Anthropic(max_retries=2, timeout=90)
         return self._client
 
+    def route(self, text: str, today: str) -> tuple[dict, float]:
+        return route_report(self, text, today)
+
     def triage(self, message: str, recent_headlines: str) -> tuple[dict, float]:
         model = config.triage_model()
         resp = self.client.messages.create(
@@ -179,3 +182,65 @@ class Claude:
         if getattr(resp, "stop_reason", None) in ("refusal", "max_tokens"):
             return {"in_scope": True, "answerable": False, "confidence": 0.0, "answer": "", "sources": []}, usd
         return _json_text(resp), usd
+
+
+# --- report routing (Xano reports, @-mention only) -----------------------------------------------------------
+ROUTER_SYSTEM = """You route Slack requests for read-only data reports at Tulle Together to ONE named report and its \
+parameters. Answer only with the JSON schema.
+
+Reports:
+- payments: payment log (table 16): count and dollars by day/week/plan. params: start_date, end_date, group_by \
+(day|week|plan), plan ("1 week"|"4 weeks"|"forever"|"").
+- signups_and_pay_rate: sign-ups (table 1) by week + share with a first payment within 7 days. params: dates.
+- planner_usage: Planner usage (table 79): couples per day, questions per couple, by surface. params: dates, \
+group_by (day|week|surface).
+- venue_requests: venue lookup log (what venues couples asked for, outcomes). params: dates.
+- save_offer: TT60/TT20 save-offer codes and purchases after the code. params: dates.
+- nps: ratings / NPS responses (table 77). params: dates.
+- export: raw rows (CSV) of one table: users (1), payment_log (16), nps_response (77), rec_usage (79), \
+venue_lookup_log. params: table, dates, columns (optional list).
+
+Rules:
+- report="none" if the message is not asking for data/report/export/numbers from these tables (e.g. a question about \
+what shipped or why something changed).
+- report="clarify" with a ONE-line clarifying_question if it clearly wants data but you cannot tell which report or \
+which table, or the request is ambiguous in a way that changes the numbers. Do NOT clarify just because dates are \
+missing: default to the last 14 days ending today for summaries, and all time for exports only if the user says so \
+(otherwise last 30 days).
+- Dates: YYYY-MM-DD (UTC), inclusive. Resolve relative dates ("last week", "since Monday", "yesterday") from TODAY.
+- include_internal=true only if the user explicitly asks to include internal/team/test accounts.
+- Use "" / [] for parameters that don't apply."""
+
+ROUTER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "report": {"type": "string", "enum": ["payments", "signups_and_pay_rate", "planner_usage", "venue_requests",
+                                              "save_offer", "nps", "export", "clarify", "none"]},
+        "start_date": {"type": "string"},
+        "end_date": {"type": "string"},
+        "group_by": {"type": "string"},
+        "plan": {"type": "string"},
+        "table": {"type": "string"},
+        "columns": {"type": "array", "items": {"type": "string"}},
+        "include_internal": {"type": "boolean"},
+        "clarifying_question": {"type": "string"},
+    },
+    "required": ["report", "start_date", "end_date", "group_by", "plan", "table", "columns", "include_internal",
+                 "clarifying_question"],
+    "additionalProperties": False,
+}
+
+
+def route_report(claude: "Claude", text: str, today: str) -> tuple[dict, float]:
+    model = config.triage_model()
+    resp = claude.client.messages.create(
+        model=model,
+        max_tokens=1024,
+        system=ROUTER_SYSTEM,
+        messages=[{"role": "user", "content": f"TODAY: {today}\n<request>\n{text[:2000]}\n</request>"}],
+        output_config={"effort": "low", "format": {"type": "json_schema", "schema": ROUTER_SCHEMA}},
+    )
+    usd = cost_usd(model, resp.usage)
+    if getattr(resp, "stop_reason", None) == "refusal":
+        return {"report": "none"}, usd
+    return _json_text(resp) or {"report": "none"}, usd

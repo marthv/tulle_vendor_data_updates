@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import threading
 import time
@@ -92,6 +93,37 @@ class Slack:
         if thread_ts:
             params["thread_ts"] = thread_ts
         return self._call("chat.postMessage", http="POST", **params)
+
+    def upload_file(self, channel: str, thread_ts: str | None, filename: str, content: bytes,
+                    title: str = "", comment: str = "") -> dict:
+        """Slack's external upload flow (files:write): getUploadURLExternal -> POST bytes -> completeUploadExternal."""
+        if not self.token:
+            return {"ok": False, "error": "no_token"}
+        headers = {"Authorization": f"Bearer {self.token}"}
+        try:
+            r = self.http.post(API + "files.getUploadURLExternal", headers=headers, timeout=20,
+                               data={"filename": filename, "length": str(len(content))})
+            step1 = r.json()
+            if not step1.get("ok"):
+                log.warning("files.getUploadURLExternal -> %s", step1.get("error"))
+                return step1
+            up = self.http.post(step1["upload_url"], files={"file": (filename, content, "text/csv")}, timeout=60)
+            if up.status_code != 200:
+                return {"ok": False, "error": f"upload_http_{up.status_code}"}
+            files = [{"id": step1["file_id"], "title": title or filename}]
+            data = {"files": json.dumps(files), "channel_id": channel}
+            if thread_ts:
+                data["thread_ts"] = thread_ts
+            if comment:
+                data["initial_comment"] = comment
+            r3 = self.http.post(API + "files.completeUploadExternal", headers=headers, timeout=20, data=data)
+            out = r3.json()
+            if not out.get("ok"):
+                log.warning("files.completeUploadExternal -> %s", out.get("error"))
+            return out
+        except (requests.RequestException, ValueError, KeyError) as e:
+            log.warning("file upload failed: %s", type(e).__name__)
+            return {"ok": False, "error": "upload_failed"}
 
     # --- read -------------------------------------------------------------------------------------
     def history(self, channel: str, limit: int = 50, days: int = 7) -> list[dict]:

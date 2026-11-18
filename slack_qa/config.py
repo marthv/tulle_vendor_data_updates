@@ -45,6 +45,10 @@ def channel_hourly_cap() -> int:       # QA_CHANNEL_HOURLY: max bot replies per 
     return int(_f("QA_CHANNEL_HOURLY", 6))
 
 
+def daily_report_cap() -> int:         # QA_DAILY_REPORTS: Xano report runs per UTC day
+    return int(_f("QA_DAILY_REPORTS", 30))
+
+
 def signing_secret() -> str:
     return _s("SLACK_SIGNING_SECRET")
 

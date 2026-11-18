@@ -20,6 +20,41 @@ Every answer ends with an "Automated answer from Tulle Bot ... Vivek can confirm
 (registry id, #deployment post time, commit hash, note title). Replies are capped at ~160 words and passed through
 `scrub.scrub_output` (tokens, keys, passwords, webhook URLs, Stripe ids, phone numbers; Slack @-mentions are neutralised so answers never ping anyone) before posting.
 
+## Xano reports + CSV exports (@-mention only)
+
+`@Tulle Bot <data request>` routes (Haiku, structured output) to one named report, reads Xano **read-only**, and
+posts a short summary + the CSV in the thread. Never from scan mode. Ambiguous request -> one-line question.
+
+| Report | Data | Params |
+|---|---|---|
+| `payments` | table 16 (Amount = dollars, Type 1 week / 4 weeks / forever) | dates, `group_by` day/week/plan, `plan` |
+| `signups_and_pay_rate` | table 1 sign-ups by week + share with a first table-16 payment within 7 days | dates |
+| `planner_usage` | table 79: couples, questions (opening/refine, status ok), per couple, `counted_as_free`, kinds | dates, `group_by` day/week/surface |
+| `venue_requests` | `venue_lookup_log` (looked up by name; "not available yet" if missing) | dates |
+| `save_offer` | table 1 TT60-/TT20- codes + table 16 purchases after the offer (offer time = expiry - 12 h) | dates |
+| `nps` | table 77 ratings: count, average, 1-5 distribution, rows with comments | dates |
+| `export` | raw rows of an allowlisted table: users (1), payment_log (16), nps_response (77), rec_usage (79), venue_lookup_log | `table`, dates, `columns` |
+
+* Internal/test accounts are excluded by default (ids 14998, 30614, 32636, 31619, 118, 5622, 35757, 2333, 34429,
+  36173, 35866, 34249, 33167, 185 + `QA_INTERNAL_IDS`; emails `vivek.marthi*` and `@tulletogether.com`); say
+  "include internal" to keep them. The reply says how many rows were excluded.
+* Never exported or shown: `password`, `token_session`, `token_session_axpires`, `magic_link`, `google_oauth` and any
+  column whose name contains token / secret / password / oauth / hash (even if asked for). Customer names and emails are
+  allowed. CSV string cells also pass through the secret scrubber.
+* Read-only by construction: `xano_ro.py` only calls `session.get`, and only on `/table`, `/table/{id}/schema`,
+  `/table/{id}/content` (anything else raises before a request). Rows are read 500/page and cached 10 min.
+* CSV capped at `QA_REPORT_MAX_ROWS` (50,000) - the reply says so if truncated. "Working on it" is posted if a report
+  takes more than 5 s. `QA_DAILY_REPORTS` (30) runs per UTC day; the routing call counts toward `QA_DAILY_USD`.
+
+Example requests:
+* `@Tulle Bot payments by day for the last 2 weeks`
+* `@Tulle Bot revenue by plan since Nov 1, include internal`
+* `@Tulle Bot sign-ups and 7-day pay rate by week for October`
+* `@Tulle Bot planner usage by surface last week`
+* `@Tulle Bot how did the TT60 save offer do?`
+* `@Tulle Bot export nps responses since 11-01 as csv`
+* `@Tulle Bot export rec_usage for yesterday, columns user_id, kind, status, surface`
+
 ## Knowledge
 
 * `experiments/experiment_log.json` - the registry, whole, in the prompt-cached static block (with MEMORY.md's
@@ -63,6 +98,11 @@ grep -rEn 'eyJ[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]|xox[abposr]-|ghp_|hooks\.slack\.
 | `GITHUB_TOKEN` | unset | Fine-grained, read-only (Contents: read, Metadata: read) on the 3 repos. |
 | `QA_GITHUB_REPOS` | the 3 repos above | Comma list `owner/repo`. |
 | `QA_USER_NAMES` | `U05UJMCHUV6=Vivek` | `Uxxx=Name,...` fallback if `users:read` is not granted. |
+| `XANO_METADATA_TOKEN` | unset (reports off) | Xano metadata token (`${{Tulle Admin Dash.XANO_METADATA_TOKEN}}`); used GET-only. |
+| `XANO_META_BASE` / `XANO_WORKSPACE_ID` | Tulle `api:meta` / `1` | Only if Xano moves. |
+| `QA_DAILY_REPORTS` | `30` | Report runs per UTC day. |
+| `QA_REPORT_MAX_ROWS` | `50000` | CSV row cap. |
+| `QA_INTERNAL_IDS` | (none) | Extra internal user ids to exclude, comma separated. |
 | `QA_DEPLOY_CHANNEL` / `QA_OWNER_USER_ID` / `SLACK_BOT_USER_ID` | `C0AML8KKF4Z` / `U05UJMCHUV6` / from event | Overrides. |
 
 ## Slack app setup (owner, by hand)
@@ -72,7 +112,7 @@ OAuth Token** (OAuth & Permissions page). If not, adding the scopes below and re
 
 1. api.slack.com/apps -> Tulle Bot -> **OAuth & Permissions** -> Bot Token Scopes: `app_mentions:read`,
    `channels:history`, `groups:history`, `chat:write`, `channels:read`, `groups:read` (list the channels the bot is
-   in), `users:read` (first names in conversation context; optional).
+   in), `files:write` (CSV attachments for reports), `users:read` (first names in conversation context; optional).
 2. **Event Subscriptions** -> ON. Request URL `https://<railway domain>/slack/events` (the service must be deployed
    with `SLACK_SIGNING_SECRET` set first, so the url_verification challenge passes). Subscribe to bot events:
    `message.channels`, `message.groups`, `app_mention`. Save.
@@ -81,6 +121,7 @@ OAuth Token** (OAuth & Permissions page). If not, adding the scopes below and re
    `SLACK_BOT_TOKEN`.
 5. In Slack: `/invite @Tulle Bot` in #deployment and #product-development (and any other channel to cover).
 6. Optional: create a fine-grained GitHub token (read-only, the 3 repos) -> Railway `GITHUB_TOKEN`.
+   For reports: Railway `XANO_METADATA_TOKEN = ${{Tulle Admin Dash.XANO_METADATA_TOKEN}}`.
 7. Test: `@Tulle Bot status`, then `@Tulle Bot what shipped yesterday?`. `@Tulle Bot unmute` to start scanning.
 
 ## Tests

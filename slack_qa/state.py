@@ -67,6 +67,20 @@ class State:
             self._save()
             return spend[day]
 
+    def reports_today(self) -> int:
+        with self._lock:
+            return int(self._data.get("reports", {}).get(utc_day(), 0))
+
+    def add_report(self) -> int:
+        with self._lock:
+            rep = self._data.setdefault("reports", {})
+            day = utc_day()
+            rep[day] = int(rep.get(day, 0)) + 1
+            for old in sorted(rep)[:-30]:
+                rep.pop(old, None)
+            self._save()
+            return rep[day]
+
     def over_budget(self) -> bool:
         return self.spent_today() >= config.daily_usd_cap()
 
