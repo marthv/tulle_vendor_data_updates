@@ -102,11 +102,27 @@ def test_failed_read_keeps_last_copy_and_backs_off(monkeypatch):
     monkeypatch.setattr(config, "VENDOR_PRICES_SECRET", "s")
     monkeypatch.setattr(sp, "_CACHE", {"at": 0.0, "failed_at": 0.0, "by_vendor": {}})
     monkeypatch.setattr(sp, "_fetch", lambda: PAYLOAD)
-    assert "B1" in sp.vendors(now=10_000_000)
+    assert "B1" in sp.vendors(now=10_000_000, block=True)
     calls = []
     monkeypatch.setattr(sp, "_fetch", lambda: calls.append(1) or (_ for _ in ()).throw(OSError("down")))
     later = 10_000_000 + sp.TTL_S + 1
-    assert "B1" in sp.vendors(now=later) and "B1" in sp.vendors(now=later + 5) and len(calls) == 1
+    assert "B1" in sp.vendors(now=later, block=True) and "B1" in sp.vendors(now=later + 5, block=True)
+    assert len(calls) == 1
+
+
+def test_stale_cache_is_served_while_refresh_runs_in_background(monkeypatch):
+    import threading
+    monkeypatch.setattr(config, "WW_SERVICE_PRICES", True)
+    monkeypatch.setattr(config, "VENDOR_PRICES_SECRET", "s")
+    monkeypatch.setattr(sp, "_CACHE", {"at": 0.0, "failed_at": 0.0, "by_vendor": {"OLD": {}}})
+    gate, done = threading.Event(), threading.Event()
+    monkeypatch.setattr(sp, "_fetch", lambda: gate.wait(5) and PAYLOAD)
+    orig = sp._refresh
+    monkeypatch.setattr(sp, "_refresh", lambda now: (orig(now), done.set()))
+    assert sp.vendors(now=10_000_000) == {"OLD": {}}           # returns at once, the read is still waiting
+    assert sp.vendors(now=10_000_001) == {"OLD": {}}           # no second refresh while one is running
+    gate.set()
+    assert done.wait(5) and "B1" in sp.vendors(now=10_000_002)
 
 
 # ---------------------------------------------------------------- in the proposal

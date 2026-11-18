@@ -59,26 +59,46 @@ def _fetch():
         return json.loads(r.read() or b"{}")
 
 
-def vendors(now=None):
-    """The cached index. Refreshes every TTL_S; a failed read keeps the last good copy and retries after FAIL_RETRY_S."""
+def _refresh(now):
+    try:
+        idx = index(_fetch())
+        with _LOCK:
+            _CACHE.update(at=now, by_vendor=idx, busy=False)
+        print("vendor prices loaded:", len(idx), "vendors")
+    except Exception as e:
+        print("vendor prices read failed:", repr(e)[:200])
+        with _LOCK:
+            _CACHE.update(failed_at=now, busy=False)
+
+
+def vendors(now=None, block=False):
+    """The cached index. Refreshes every TTL_S IN THE BACKGROUND (the read is ~1.7 MB / ~2.5 s, never in a couple's
+    request): a stale or empty cache is returned as it is while one refresh thread runs. A failed read keeps the last
+    good copy and retries after FAIL_RETRY_S. block=True refreshes inline (startup warm-up, tests)."""
     if not (config.WW_SERVICE_PRICES and config.VENDOR_PRICES_SECRET):
         return {}
     now = time.time() if now is None else now
     with _LOCK:
         fresh = now - _CACHE["at"] < TTL_S
         backoff = now - _CACHE["failed_at"] < FAIL_RETRY_S
-        if fresh or backoff:
-            return _CACHE["by_vendor"]
-    try:
-        idx = index(_fetch())
-        with _LOCK:
-            _CACHE.update(at=now, by_vendor=idx)
-    except Exception as e:
-        print("vendor prices read failed:", repr(e)[:200])
-        with _LOCK:
-            _CACHE["failed_at"] = now
+        start = not (fresh or backoff or _CACHE.get("busy"))
+        if start:
+            _CACHE["busy"] = True
+    if start:
+        if block:
+            _refresh(now)
+        else:
+            threading.Thread(target=_refresh, args=(now,), daemon=True).start()
     with _LOCK:
         return _CACHE["by_vendor"]
+
+
+def warm():
+    """Startup: load once so the first proposal after a deploy already has prices. Never raises."""
+    try:
+        threading.Thread(target=vendors, kwargs={"block": True}, daemon=True).start()
+    except Exception as e:
+        print("vendor prices warm failed:", repr(e)[:200])
 
 
 def _low(items, keys, units, lo=0, hi=10 ** 7):

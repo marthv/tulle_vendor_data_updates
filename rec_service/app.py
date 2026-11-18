@@ -71,6 +71,7 @@ import re as _re
 
 import prefs
 import pricing_warm
+import service_prices
 import profile_questions
 import progress
 import railway_search
@@ -87,6 +88,12 @@ app = FastAPI(title="Tulle recommendations")
 def _start_pricing_warm():
     """Fill the free-tier pricing cache for the top venues per state in the background (pricing_warm.py, 2026-11-02)."""
     pricing_warm.start()
+
+
+@app.on_event("startup")
+def _start_service_prices_warm():
+    """Load catering / hair & makeup / planner prices once in the background (service_prices.py; no-op when off)."""
+    service_prices.warm()
 # The live app, plus WeWeb's editor/preview hosts so the page can be tested before publishing.
 # Every request still needs a valid user token; CORS only decides which pages may call us.
 app.add_middleware(CORSMiddleware, allow_origins=config.ALLOWED_ORIGINS,
