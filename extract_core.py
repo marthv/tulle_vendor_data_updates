@@ -66,6 +66,12 @@ CAT_VENUE         = "Venue"
 CAT_PHOTOGRAPHY   = "Photography"
 CAT_ENTERTAINMENT = "Entertainment"
 SUPPORTED_CATEGORIES = (CAT_VENUE, CAT_PHOTOGRAPHY, CAT_ENTERTAINMENT)
+# Flowers is NOT in SUPPORTED_CATEGORIES on purpose: florist PDFs must never take the
+# venue merged path (__m) or the P/E package path (__k), both of which write table 36.
+# They are extracted only by the separate florals job (extract_extras.py, pass tag __f),
+# which writes floral_quotes / floral_items. Same for the venue facts job (__v).
+CAT_FLOWERS       = "Flowers"
+EXTRA_JOBS        = ("florals", "facts")
 
 # Statuses that `rerun_failed` re-picks up. 'skipped_non_venue' is included as of
 # 2026-07-27: ~484 Photography/Entertainment PDFs were parked under that status by
@@ -2530,6 +2536,7 @@ def run_extraction_batch(
     pdf_ids: list | None = None,
     rerun_failed: bool = False,
     merged: bool = None,
+    job: str | None = None,
 ):
     """Submit a Batch API job for PDF extraction (50% cost discount, async).
     Downloads PDFs sequentially with a streaming log, then submits all Claude
@@ -2544,6 +2551,10 @@ def run_extraction_batch(
     if merged is None:
         merged = os.environ.get("EXTRACT_MERGED", "").strip().lower() in ("1", "true", "yes")
     log = []
+
+    if job in EXTRA_JOBS:
+        yield from _run_extra_job_batch(job, pdf_ids)
+        return
 
     def emit(line):
         log.append(line)
@@ -2789,6 +2800,76 @@ def run_extraction_batch(
            "pdf_count": len(pdf_map), "pdf_map": pdf_map}
 
 
+def _run_extra_job_batch(job, pdf_ids):
+    """Submit a florals (__f) or venue-facts (__v) batch. Explicit pdf_ids only - neither job
+    has an implicit 'everything' selection. Never touches table 36/37 and never marks the
+    venue PDFs' extraction_status (facts is an extra pass over already-extracted PDFs)."""
+    import extract_extras
+    if not pdf_ids:
+        yield f"ABORT: job={job} needs an explicit pdf_ids list"
+        yield {"batch_submitted": False, "error": "pdf_ids_required"}
+        return
+    want = {str(p).strip() for p in pdf_ids}
+    rows = []
+    for rows, _page in _fetch_xano_pages(os.environ.get("XANO_GET_ENDPOINT", "")):
+        pass
+    rows = [r for r in rows if str(r.get('PDF_ID') or '').strip() in want
+            and str(r.get('PDF_Link') or '').strip()]
+    yield f"{len(rows)} of {len(want)} requested PDFs found with links (job={job})"
+    lines = []
+    try:
+        batch_id, pdf_map = extract_extras.submit_job(job, rows, log=lines.append)
+    except Exception as e:
+        for l in lines:
+            yield l
+        yield {"batch_submitted": False, "error": str(e)}
+        return
+    for l in lines:
+        yield l
+    try:
+        from job_status import post_job_status as _post_job_status
+        _post_job_status("extraction", "completed",
+                         os.environ.get("LOGGED_IN_USER", "extraction-batch"),
+                         result_summary={"batch_submitted": True, "batch_id": batch_id,
+                                         "pdf_count": len(pdf_map), "pdf_map": pdf_map,
+                                         "submitted_as": f"{len(pdf_map)} PDFs (job={job})"},
+                         batch_id=batch_id)
+    except Exception as e:
+        yield (f"WARNING: could not persist the job record ({e}). Recover with: "
+               f"python extract_extras.py ingest {batch_id} --map <map.json>")
+    yield {"batch_submitted": True, "batch_id": batch_id, "pdf_count": len(pdf_map),
+           "pdf_map": pdf_map}
+
+
+def _process_extra_job_results(batch_id, pdf_map):
+    """Ingest an ended florals/facts batch into its own tables (purge-before-insert by
+    PDF_ID). Florals PDFs get their table-10 status updated; facts PDFs do not (their
+    status belongs to the main venue extraction)."""
+    import extract_extras
+    outcomes = extract_extras.fetch_outcomes(batch_id, pdf_map)
+    lines = []
+    summary = extract_extras.ingest_outcomes(outcomes, out_dir=os.environ.get(
+        "EXTRA_LOCAL_OUT_DIR", "."), log=lines.append)
+    for l in lines:
+        yield l
+    total = 0.0
+    for pid, (job, oc) in outcomes.items():
+        cost = extract_extras.batch_cost(oc.get("usage") or {})
+        total += cost
+        if job != "florals":
+            continue
+        xano_id = (pdf_map.get(pid) or {}).get("xano_id")
+        status = {"ok": "extracted", "wrong_category": "category_mismatch"}.get(oc["status"], "failed")
+        if oc["status"] == "ok" and pid in summary["errors"]:
+            status = "partial"
+        _update_pdf_status(xano_id, status, error=oc.get("error", ""), cost_usd=cost)
+    yield f"Done - {summary['pdfs_ok']} ok, {summary['pdfs_failed']} failed, "           f"{summary['pdfs_wrong_category']} wrong category; ${total:.4f}"
+    yield {"batch_done": True, "ok": summary["pdfs_ok"], "partial": 0,
+           "failed": summary["pdfs_failed"], "skipped": summary["pdfs_wrong_category"],
+           "cost_usd": total, "results": [], "credit_exhausted": False, "log": [],
+           "extra_summary": summary}
+
+
 def list_recent_batches(limit: int = 20):
     """List recent Anthropic Message Batches with live status — the source of
     truth for what's actually queued/processing/done on Anthropic's side,
@@ -2883,6 +2964,12 @@ def process_batch_results(batch_id: str, pdf_map: dict, wait_secs: int = 30):
     if status != "ended":
         yield from emit("Still processing — check again later.")
         yield {"batch_done": False, "batch_id": batch_id}
+        return
+
+    # Florals (__f) / venue facts (__v) batches have their own tables and parser.
+    if any((m or {}).get("job") in EXTRA_JOBS for m in (pdf_map or {}).values()):
+        yield from emit("Batch complete — florals/facts job, ingesting to its own tables...")
+        yield from _process_extra_job_results(batch_id, pdf_map)
         return
 
     # Collect results grouped by pdf_id
