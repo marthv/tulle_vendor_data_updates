@@ -717,6 +717,10 @@
         {
           "date": "2026-10-26",
           "note": "Live check: Khol mansion -> Kohl Mansion, Oheka, Bacchus, 74Wythe, Bowery, Prospect Park Boathouse, Harold Pratt House, Jungle Island found in 0.1-0.5 s search time (2.5-4.5 s end to end on the live service); Ashton Gardens / Royal Palm -> choices; Orchards of Molino, Cresthollow, Il Sereno -> not found. Known miss: villa d'este (apostrophe)."
+        },
+        {
+          "date": "2026-11-18",
+          "note": "Two misses from #feedback 11-17 fixed behind REC_NAME_MATCH_V2 (on ~05:36 UTC): 'Holly Hedge' (Forever couple, chat 2544) returned not_found for a venue we have (listing 'HollyHedge Estate'); two Miami area requests (chat 2565) were posted as missing venues. Watch: rec_venue_request posts that are area phrases should stop; area messages now cost a model call."
         }
       ],
       "stat_sig": "",
@@ -1577,6 +1581,13 @@
         "EXP-2026-11-pricing-page-copy",
         "EXP-2026-11-free-daily-question",
         "EXP-2026-11-save-offer-60-forever"
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "what": "Planner name match v2 ON (owner yes): rec-engine 04e9776 + REC_NAME_MATCH_V2=1 set ~05:36 UTC. Typed venue names also match their joined form ('Holly Hedge' -> 'HollyHedge Estate'), and area constraints ('Miami area, no further north than Davie', 4+ comma-separated cities, 'within N miles') skip the instant venue lookup and go to the model's area search. Rollback: REC_NAME_MATCH_V2=0.",
+      "affects": [
+        "EXP-2026-10-planner-name-lookup"
       ]
     }
   ]
