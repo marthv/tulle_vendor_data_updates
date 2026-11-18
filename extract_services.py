@@ -96,7 +96,8 @@ ITEM_KEYS = {
     },
 }
 
-UNITS = ["flat", "per_person", "per_hour", "per_service", "per_item", "percent", "unknown"]
+UNITS = ["flat", "per_person", "per_hour", "per_service", "per_item", "per_dozen", "per_staff",
+         "percent", "unknown"]
 INCLUSION = ["included", "optional", "unknown"]
 CONF = ["high", "medium", "low"]
 SERVICE_STYLE = ["plated", "buffet", "family_style", "stations", "cocktail_reception",
@@ -178,7 +179,8 @@ STEP 2 - ITEMS. One entry per priced or listed line, in document order. Read eve
 - item_name: the vendor's own wording, verbatim (short).
 - price: the unit price as a plain number ("85", not "$85"). A printed range goes in price_low / price_high with price "". One number -> price_low and price_high "".
 - starting_at: "yes" when the price is a minimum ("starting at", "from", "+"), else "no".
-- pricing_unit: flat | per_person (per guest / per head) | per_hour | per_service (per person serviced, e.g. per bridesmaid) | per_item | percent (a % fee) | unknown.
+- pricing_unit: flat | per_person (per GUEST / per head of the wedding guest count) | per_hour | per_service (per person serviced, e.g. per bridesmaid) | per_item | per_dozen | per_staff (per server / bartender / staff member) | percent (a % fee - price then holds the percent number, never a dollar amount) | unknown.
+  A fee line that prints a DOLLAR amount (gratuity $2,161, tax $6,192.20) is "flat" with that amount; put its percent, if printed, in notes and in the quote fields. When a line is ambiguous between per guest and per staff member ("we suggest $50 per person for the staff"), use per_staff and say so in notes - never turn a staff tip into a per-guest price.
 {_CAT_HINTS[cat]}
 - inclusion: "included" when the line is part of a package or quoted order; "optional" for add-ons/upgrades; "unknown" for a plain price list.
 - FEES are items too (service charge, gratuity, tax, travel, early start, cake cutting): give each its item_key and unit, and also copy them to the quote fields.
@@ -187,11 +189,13 @@ STEP 2 - ITEMS. One entry per priced or listed line, in document order. Read eve
 - NEVER invent a price. A listed item with no price gets price/price_low/price_high "".
 
 STEP 3 - QUOTE (one object for the whole PDF):
-- vendor_name; pricing_year (4 digits, the year the prices apply to); currency (ISO, default "USD").
-- minimum_spend: a minimum order / minimum spend as a plain number; minimum_spend_conditions: what it depends on (day, season, guest count), else "". guest_minimum: a minimum guest / head count as a plain number.
-- service_charge_pct, gratuity_pct, tax_rate_pct: percent numbers as printed. travel_fee_text and deposit_text: verbatim wording, else "".
+- vendor_name; pricing_year: 4 digits, the year the prices APPLY to (the wedding / event year or the printed "2026 pricing"), NOT the date the quote or email was written; "" if no year is printed or clearly implied by an event date. currency (ISO, default "USD").
+- minimum_spend: a minimum order / minimum spend as a plain number (a "minimum package" counts); minimum_spend_conditions: what it depends on (day, season, guest count), else "". A booking fee, retainer or deposit is NOT a minimum - it goes in deposit_text.
+- guest_minimum: ONLY a hard minimum the PDF states ("minimum 100 guests", "6 services minimum per artist"). A surcharge below some count ("under 100 guests add 10%") is NOT a minimum: leave guest_minimum "" and record the surcharge in minimum_spend_conditions and as an item.
+- service_charge_pct, gratuity_pct, tax_rate_pct: percent numbers as printed. An operations / admin / production fee stated as a % counts as service_charge_pct. A credit-card processing fee is not a service charge (notes only). travel_fee_text and deposit_text: verbatim wording, else "".
 - typical_spend_text: a statement of what couples TYPICALLY spend in total ("most couples invest $4,000-$7,000"), verbatim, else "". typical_spend_low / typical_spend_high: its numbers (one number -> both). Only from such a printed statement; a minimum, a package price or anything you would add up is NOT typical spend.
-- total and total_notes: only for a proposal/quote with a printed total.
+- total and total_notes: ONLY the vendor's own printed GRAND total for the whole order, including its fees and tax as printed. A subtotal, the low end of a range, or an "approximate estimate" for part of the services is NOT a total: leave total "" and describe it in total_notes.
+- Packages offered in tiers, artist levels or named levels (Gold / Platinum / Owner): put the tier name in item_name so each price is distinguishable.
 - contact_email: the vendor's business email. confidentiality_risk "yes" only if the PDF says its pricing is confidential / not to be shared; confidentiality_evidence: that sentence (max 200 chars).
 - confidence: overall confidence in the quote fields.
 
