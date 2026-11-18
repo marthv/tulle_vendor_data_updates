@@ -1427,6 +1427,33 @@
       ],
       "owner": "Vivek",
       "launched_by": "Claude Code (registered 2026-11-18)"
+    },
+    {
+      "id": "EXP-2026-11-planner-venue-fixes",
+      "what": "Planner venue fixes for every couple, no holdout: did-you-mean + state hints (REC_DID_YOU_MEAN), non-venue text kept out of the name lookup (REC_LOOKUP_GUARD), vendor-page bubble knows 'this venue' (REC_PAGE_VENUE), fast lookups never limit-blocked or counted (REC_LOOKUP_NO_LIMIT), plus the venue lookup log (REC_VENUE_LOG, Xano table 91) to measure it",
+      "status": "live",
+      "themes": [
+        "planner",
+        "lookup",
+        "data-gaps"
+      ],
+      "goal": "Owner 11-18 (from the 14-day Planner review 11-04..11-17: 245 named lookups by 110 couples, 67 said not found, 11 couples asked for venues we have, 9 wrong venues, 16 of 68 'Venue not in Tulle' posts were not venues, 19 limit-blocked messages): couples who name a venue get it, or a 'did you mean', far more often. Bar: of named lookups in venue_lookup_log, not_found share well below the review's 67/245 = 27%, and no rise in 'wrong' (retyped within 2 min). Free budget answers (REC_FREE_BUDGET_FIT) deliberately left OFF.",
+      "primary_metric": "venue_lookup_log (table 91): outcome mix per day (found / best / choices / dym / elsewhere / not_found / wrong), distinct couples; PDF opens after a lookup (Planner sheet).",
+      "guardrail": "Planner answer latency and Xano load (did-you-mean adds up to 9 searches on a miss); free daily $ pool; purchases/day.",
+      "start_date": "2026-11-18",
+      "end_date": null,
+      "review_date": "2026-12-02",
+      "dates_note": "rec-engine b5f3edd (all flags default off) pushed 07:50 UTC; flags set ~08:02 UTC 2026-11-18 (REC_VENUE_LOG=1, REC_VENUE_LOG_TABLE_ID=91, REC_LOOKUP_GUARD=1, REC_PAGE_VENUE=1, REC_DID_YOU_MEAN=1, REC_LOOKUP_NO_LIMIT=1). REC_PAGE_VENUE needs ww-planner-chat 2958c5a active + published to receive ?v= from the bubble. Monday digest: health-report-cron VENUE_LOG_TABLE_ID=91 (VENUE_DIGEST_SLACK_WEBHOOK not set yet = printed only).",
+      "design": "pre/post, everyone. Baseline = the 11-04..11-17 Planner review (no log existed before).",
+      "results": [],
+      "stat_sig": "not computed",
+      "decision": "",
+      "confounds_noted": [
+        "Name match v2 went live the same morning (~05:36 UTC)",
+        "Publish 1401 (06:47 UTC) changed the Planner chat (estimate card, home button)"
+      ],
+      "owner": "Vivek",
+      "launched_by": "Claude Code"
     }
   ],
   "changes": [
@@ -1623,6 +1650,16 @@
         "EXP-2026-11-pricing-page-copy",
         "EXP-2026-10-chat-cost-cards",
         "EXP-2026-11-whole-wedding-planner"
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "what": "rec-engine Planner venue fixes ON ~08:02 UTC (did-you-mean, lookup guard, page venue, no-limit lookups) + venue lookup log to Xano table 91. Tulle Bot Slack Q&A service live (tulle-slack-qa, read-only, default muted).",
+      "affects": [
+        "EXP-2026-11-planner-venue-fixes",
+        "EXP-2026-11-free-daily-question",
+        "EXP-2026-11-ask-tulle-bubble",
+        "EXP-2026-10-planner-name-lookup"
       ]
     }
   ]
