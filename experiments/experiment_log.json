@@ -999,7 +999,7 @@
     {
       "id": "EXP-2026-11-pi-first-vendor-free",
       "name": "Pricing Intelligence free on the first vendor only, then locked until a plan",
-      "status": "live",
+      "status": "ended",
       "themes": [
         "paywall",
         "pricing-intelligence"
@@ -1008,7 +1008,7 @@
       "primary_metric": "purchases/day and $/day (payment log table 16) vs pre-leak baseline Oct 14-27 = 5.5/day, $394/day; % of new members opening a PDF within 1 day (baseline ~60%)",
       "guardrail": "Signed Up -> viewed_vendor_pdf share must not fall (when PI had a 3-then-2-view allowance in Aug it fell 72% -> 57%, which is why PI went paid-only on 2026-08-17)",
       "start_date": "2026-11-09",
-      "end_date": null,
+      "end_date": "2026-11-18",
       "review_date": "2026-11-23",
       "dates_note": "ep230 pushed 14:12 UTC 2026-11-09 (owner yes). Rule: unpaid accounts are entitled when total_vendor_views == 0, or == 1 AND last_viewed_vendor_id == this vendor (ep150 owns both server-side; order-independent). access_reason 'free_allowance', free_views_left 0. Paid rule unchanged (forever or total_amount_paid >= 50). Rollback: push .claude/xano_backups/ep230_pre_first_vendor_free_2026-11-09.xs (tulletogether repo).",
       "design": "pre/post",
@@ -1016,10 +1016,14 @@
         {
           "date": "2026-11-09",
           "note": "Live e2e on fresh test accounts: vendor A unlocked with real figures ($26,820 all-in at 100 guests), vendor B locked ('Hidden until you unlock'), back to A locked. First 60 real ep230 calls after the push: 3 free_allowance, 53 never_paid, 0 errors. Paid path code unchanged but not yet observed live."
+        },
+        {
+          "date": "2026-11-18",
+          "note": "Payment log (table 16, internal excluded, UTC): 11-09..11-15 41 purchases = 5.86/day, $477/day vs baseline 10-14..10-27 5.43/day, $394/day (leak window 10-28..11-08: 3.42/day, $303/day); 11-16..11-17 9 = 4.5/day, $346/day. 7-day first-payment rate by sign-up week: 10-20 2.60% (19/732), 10-27 2.20% (14/636), 11-03 2.24% (14/626), 11-10 2.40% (17/709, incomplete). Read: purchases/day rose in the first full week of the test but the per-sign-up rate did not move; confounded (leak fix 11-09, bubble 11-11, pricing copy 11-15)."
         }
       ],
       "stat_sig": "not computed",
-      "decision": "",
+      "decision": "ENDED EARLY by owner 2026-11-18 ('users don't get to see the first one for free', Price Report and Pricing Intelligence alike): ep230 free_allowance branch removed 05:39:52 UTC (backup tulletogether .claude/xano_backups/ep230_pre_no_free_vendor_2026-11-18.xs). Not called on the bar: the clean purchases window (from 11-16) had only 2 days, and the Price Report replaced the PI card on 11-17.",
       "confounds_noted": [
         "Free-PDF-view leak (ep21 0==null) ran 2026-10-28..11-09 04:35 UTC and depressed purchases (3.5/day $306/day); the purchases window is only clean from 2026-11-16",
         "Same publish window: auto tours cut to Discovery + vendor page (PDFs step only); locked venue PI now shows state median + middle-50% bar (blurred 'This venue'); Ask-Tulle-from-vendor fix (ww-planner-chat 4586d2b) - all pending owner publish 2026-11-09",
@@ -1400,6 +1404,10 @@
         {
           "date": "2026-11-18",
           "note": "Entry created. One mixed day only - not readable. The 11-17 'payments dropped' worry (2 Stripe payments in the 24h Slack summary vs 7 the day before) is inside normal day-to-day range: pricing-page views 66 vs 72, checkout clicks 7 vs 4, purchases 3 vs 4 (Mixpanel)."
+        },
+        {
+          "date": "2026-11-18",
+          "note": "Treatment change (pending owner activation + publish): ww-price-report f646150 simpler rows + 'Adds up to' total; 2201271 locked view shows nothing but one unlock card (no sealed score, area band, cost names or total). Server: no free first vendor from 05:39:52 UTC, so every free couple now sees the locked report. Read the periods separately."
         }
       ],
       "stat_sig": "not computed",
@@ -1588,6 +1596,15 @@
       "what": "Planner name match v2 ON (owner yes): rec-engine 04e9776 + REC_NAME_MATCH_V2=1 set ~05:36 UTC. Typed venue names also match their joined form ('Holly Hedge' -> 'HollyHedge Estate'), and area constraints ('Miami area, no further north than Davie', 4+ comma-separated cities, 'within N miles') skip the instant venue lookup and go to the model's area search. Rollback: REC_NAME_MATCH_V2=0.",
       "affects": [
         "EXP-2026-10-planner-name-lookup"
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "what": "ep230 (venue/pricing_intelligence_full): first-vendor-free allowance REMOVED 05:39:52 UTC (owner). Every unpaid account is locked on every vendor. Same day: Price Report locked view = one unlock card only (ww-price-report 2201271, pending activation + publish).",
+      "affects": [
+        "EXP-2026-11-pi-first-vendor-free",
+        "EXP-2026-11-price-report-vs-pi-card",
+        "EXP-2026-11-pricing-page-copy"
       ]
     }
   ]
