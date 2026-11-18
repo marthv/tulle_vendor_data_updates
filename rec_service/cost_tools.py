@@ -110,7 +110,11 @@ def estimate_cost(state, guests, major_city, peak_season, budget, *, state_rows,
     budget = _num(budget)
     w = {"type": "cost_estimate", "v": V, "state": state or "", "guests": guests, "guest_lookup": None,
          "major_city": bool(major_city), "peak_season": bool(peak_season), "budget": int(budget) or None,
-         "tiers": [], "verdict": None, "gap_pct": None, "note": None, "missing": []}
+         "tiers": [], "verdict": None, "gap_pct": None, "note": None, "missing": [],
+         # 2026-11-18 (Kate): the card lets couples try another state without re-asking or editing their profile.
+         # Only states with an average are offered, spelled exactly as table 4 has them (the lookup below is exact).
+         "state_options": sorted({str(r.get("State")) for r in state_rows or []
+                                  if r.get("State") and _num(r.get("Cost_of_Average_Wedding")) > 0})}
     if not state:
         w["missing"].append("state")
     if guests <= 0:

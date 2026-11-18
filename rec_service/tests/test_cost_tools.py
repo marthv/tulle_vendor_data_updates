@@ -77,6 +77,13 @@ def test_budget_right_at_average_is_near():
     assert (w["verdict"], w["gap_pct"]) == ("near", 0)
 
 
+def test_state_options_are_the_states_with_an_average_in_table_spelling():
+    # The card's what-if picker: exact table-4 names, sorted, and never a state the estimate can't price ("Not Sure").
+    for w in (est("Texas", 82, False, False, 0)["widget"], est("", 100, False, False, 0)["widget"]):
+        assert w["state_options"] == ["California", "New York", "Texas"]
+    assert "state_options" not in est("Texas", 82, False, False, 0)["facts"]   # the model never sees the list
+
+
 def test_missing_inputs_are_named_not_guessed():
     assert est("", 100, False, False, 0)["widget"]["missing"] == ["state"]
     assert est("Texas", 0, False, False, 0)["widget"]["missing"] == ["guests"]
