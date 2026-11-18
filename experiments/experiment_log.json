@@ -1661,6 +1661,13 @@
         "EXP-2026-11-ask-tulle-bubble",
         "EXP-2026-10-planner-name-lookup"
       ]
+    },
+    {
+      "date": "2026-11-18",
+      "what": "rec-engine REC_WW_SERVICE_PRICES=1 + REC_VENDOR_PRICES_SECRET set 18:21 UTC (code 7252cee, pushed flag-off 16:17). 'Plan my wedding' Catering / Hair & makeup / Planner rows now show a worked-out ESTIMATE from that vendor's own price sheet (Sonnet 5.5 extraction of 215 PDFs -> Xano tables 92/93) for full members; free couples get a locked row. Coverage at 120 guests: caterers 113/143, beauty 34/57, planners 8/10. Rollback: REC_WW_SERVICE_PRICES=0.",
+      "affects": [
+        "EXP-2026-11-whole-wedding-planner"
+      ]
     }
   ]
 }
