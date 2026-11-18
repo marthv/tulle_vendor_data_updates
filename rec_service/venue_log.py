@@ -192,9 +192,29 @@ def from_lookup(user, paid, access, chat_id, surface, typed, q, res):
     return row
 
 
-def from_model_search(user, paid, access, chat_id, surface, typed, hit):
+def from_model_search(user, paid, access, chat_id, surface, typed, hit, shown=None):
     """hit = agent's record of one search_venues call with a keyword: {"keyword", "state", "results": [{vendor_id, name,
-    state}]}. Outcome from the best name score: found >= lookup.HIGH, best >= lookup.MID, else not_found."""
+    state}]}. Outcome from the best name score: found >= lookup.HIGH, best >= lookup.MID, else not_found.
+    shown = [(vendor_id, name)] of the cards in the couple's final answer (2026-11-18: 'Skylands manor' was logged
+    not_found twice although the answer showed The Skylands Manor). A search whose venue ended up on a card is 'found'
+    (answered_as 'model_card'), so the weekly digest does not list venues we actually showed as missing."""
+    row = _from_model_search(user, paid, access, chat_id, surface, typed, hit)
+    if row.get("outcome") == "found" or not shown:
+        return row
+    kw = hit.get("keyword") or ""
+    ids = {str(v or "") for v, _ in shown}
+    if row.get("best_vendor_id") and row["best_vendor_id"] in ids:
+        row.update(outcome="found", answered_as="model_card")
+        return row
+    for vid, name in shown:
+        if name and _similar(kw, name):
+            row.update(outcome="found", answered_as="model_card", best_vendor_id=str(vid or ""),
+                       best_name=str(name)[:160], best_score=float(round(lookup.score(kw, name), 3)))
+            break
+    return row
+
+
+def _from_model_search(user, paid, access, chat_id, surface, typed, hit):
     row = base(user, paid, access, chat_id, surface, "model_search", typed)
     kw = hit.get("keyword") or ""
     scored = sorted(({"vendor_id": r.get("vendor_id"), "name": r.get("name"),

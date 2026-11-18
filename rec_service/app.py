@@ -725,13 +725,14 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         typed = next((m.get("content") for m in reversed(messages or []) if m.get("role") == "user"
                       and isinstance(m.get("content"), str)), "")
         req, done_kw = "%s-%s" % (user["id"], time.time()), set()
+        shown = [(c.get("vendor_id"), c.get("name")) for c in (result.get("cards") or []) if isinstance(c, dict)]
         for hit in usage["venue_keywords"]:
             k = lookup.key(hit.get("keyword"))
             if k in done_kw or len(done_kw) >= 3:
                 continue
             done_kw.add(k)
             _POOL.submit(venue_log.record, venue_log.from_model_search(user, paid, access, chat_id, xano.SURFACE.get(),
-                                                                       typed, hit), None, req)
+                                                                       typed, hit, shown), None, req)
     result = dict(result, questions=qs, upsell_prompt=None)
     if price_q:
         result.update(text=upsell.apply_text(result.get("text")), upsell_prompt=upsell.prompt(has_plan=access))

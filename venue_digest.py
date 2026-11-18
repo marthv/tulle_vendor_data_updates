@@ -168,6 +168,17 @@ def csv_text(d):
 
 def post(text, webhook=None):
     webhook = webhook if webhook is not None else os.environ.get("VENUE_DIGEST_SLACK_WEBHOOK", "")
+    # 2026-11-18 (owner: digest goes to #growth-strategy): post as Tulle Bot when a bot token + channel are set,
+    # so no separate incoming webhook is needed. VENUE_DIGEST_SLACK_TOKEN / VENUE_DIGEST_CHANNEL (channel id).
+    tok, ch = os.environ.get("VENUE_DIGEST_SLACK_TOKEN", ""), os.environ.get("VENUE_DIGEST_CHANNEL", "")
+    if not webhook and tok and ch:
+        r = requests.post("https://slack.com/api/chat.postMessage", timeout=15,
+                          headers={"Authorization": "Bearer " + tok},
+                          json={"channel": ch, "text": text, "unfurl_links": False})
+        ok = r.status_code == 200 and bool(r.json().get("ok"))
+        if not ok:
+            print("venue digest slack failed:", r.status_code, r.text[:120])
+        return ok
     if not webhook:
         print(text)
         return False
