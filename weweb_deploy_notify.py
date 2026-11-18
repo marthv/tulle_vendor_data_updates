@@ -19,6 +19,8 @@ Env:
   DEPLOY_NOTIFY_MODEL       default claude-sonnet-5-5
   WW_STAGING_HOST           default the Tulle project's *-staging.weweb.io host
   SNAPSHOT_DIR              default /data (Railway volume); falls back to ./.ww_snapshots
+  STYLE_RULES_URL           optional; Tulle Bot's GET /style-rules (writing rules the team gave it in Slack)
+  STYLE_RULES_TOKEN         bearer for that URL (= the Slack bot service's QA_RULES_TOKEN)
 
 Flags:
   --dry-run   build + diff + print the message; no post, no save
@@ -294,27 +296,53 @@ def capped(d: dict, max_items: int = 40) -> dict:
 # ---------------------------------------------------------------- message
 
 PROMPT = """You write the Slack note the Tulle Together team sees each time the WeWeb app is published to STAGING.
-Below is a machine diff between the previous staging build and this one (JSON). Write:
-- 3 to 8 short bullets, most important first, grouped by page where it helps ("Pricing page: ...").
-- Plain words a non-engineer understands. Quote changed copy exactly but keep quotes short.
-- Collapse many small style/settings tweaks into one bullet with a count; don't list them one by one.
+The readers are NOT engineers (ops, partnerships, content). They want to know: is there anything new to look at or
+check on staging, and where? Below is a machine diff between the previous staging build and this one (JSON). Write:
+- At most 4 short bullets (one line each), most visible-to-couples first, named by page ("Pricing page: ...").
+- Everyday words only. Never use: bundle, chunk, coded component, workflow, variable, formula, collection, binding,
+  element, uid, hash, cacheVersion. Say "a button", "the Planner chat", "behind-the-scenes logic" instead.
+- Quote changed wording exactly but keep quotes short.
+- Group all behind-the-scenes changes (code, logic, data wiring, style tweaks) into ONE final bullet, e.g.
+  "• Behind-the-scenes updates on 9 pages - nothing new to see." Don't list those pages unless there are 3 or fewer.
+- If NOTHING a visitor could see changed, write exactly one bullet: "• Behind-the-scenes update only - nothing new to
+  look at on staging." and stop.
 - Only state what the diff shows. Never guess why something changed or whether it works.
-- Workflows have no names in the published files; they are described by their steps. Mention workflow changes briefly (count + page), don't list step names unless that is all there is.
-- "coded_component_bundles_changed" means a custom coded component (e.g. the Planner chat) got new code; say that without naming one.
-- If the only changes are minor style/settings tweaks, say so in one bullet.
+- Never say what did NOT change.
 Output ONLY the bullets, each starting with "• ". No heading, no sign-off."""
+
+
+def team_rules() -> str:
+    """Standing writing rules the team taught Tulle Bot in Slack (slack_qa GET /style-rules). Best effort: no URL,
+    a timeout or an error just means no extra rules."""
+    url, token = os.environ.get("STYLE_RULES_URL", ""), os.environ.get("STYLE_RULES_TOKEN", "")
+    if not url or not token:
+        return ""
+    try:
+        r = requests.get(url, params={"target": "deploy_notes"}, headers={**UA, "Authorization": f"Bearer {token}"},
+                         timeout=10)
+        r.raise_for_status()
+        rules = [str(x.get("text", "")).strip() for x in r.json().get("rules", [])]
+        return "\n".join(f"- {t}" for t in rules if t)
+    except Exception as e:  # noqa: BLE001
+        print(f"[deploy-notify] style rules unavailable, using defaults: {e!r}", file=sys.stderr)
+        return ""
 
 
 def ai_bullets(d: dict) -> str | None:
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         return None
+    rules = team_rules()
+    prompt = PROMPT
+    if rules:
+        prompt += ("\n\nThe team also asked for these (they win over the defaults above on style, but never make you "
+                   "state anything the diff doesn't show):\n" + rules)
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=key)
         msg = client.messages.create(
             model=MODEL, max_tokens=3000,
-            messages=[{"role": "user", "content": PROMPT + "\n\nDIFF:\n" + json.dumps(capped(d), indent=1)[:60000]}],
+            messages=[{"role": "user", "content": prompt + "\n\nDIFF:\n" + json.dumps(capped(d), indent=1)[:60000]}],
         )
         text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
         if getattr(msg, "stop_reason", "") == "max_tokens" and "\n" in text:
@@ -331,27 +359,24 @@ def plain_bullets(d: dict) -> str:
                      ("pages_renamed_or_moved", "Page renamed/moved")):
         for x in d[k][:5]:
             b.append(f"• {label}: {x}")
-    for x in d["text_changed"][:6]:
-        b.append(f'• {x["page"]} - {x["element"]}: "{(x["before"] or "")[:80]}" -> "{(x["after"] or "")[:80]}"')
-    if d["visibility_changed"]:
-        b.append(f'• Show/hide rule changed on {len(d["visibility_changed"])} element(s): '
-                 + ", ".join(x["element"] for x in d["visibility_changed"][:5]))
-    if d["elements_added"] or d["elements_removed"]:
-        b.append(f'• Elements: {len(d["elements_added"])} added, {len(d["elements_removed"])} removed')
-    if d["elements_otherwise_changed"]:
-        b.append(f'• {len(d["elements_otherwise_changed"])} element(s) with style/settings tweaks')
-    wf = sum(len(d[f"workflows_{s}"]) for s in ("added", "removed", "changed"))
-    if wf:
-        b.append(f"• {wf} workflow change(s): " + ", ".join((d["workflows_added"] + d["workflows_changed"] + d["workflows_removed"])[:5]))
-    if d["coded_component_bundles_changed"]:
-        b.append(f'• Coded component code updated ({d["coded_component_bundles_changed"]} bundle(s))')
-    return "\n".join(b) or "• No content differences found (rebuild only)"
+    for x in d["text_changed"][:3]:
+        b.append(f'• {x["page"]}: wording changed to "{(x["after"] or "")[:80]}"')
+    shown = {x["page"] for x in d["elements_added"] + d["elements_removed"] + d["visibility_changed"]}
+    if shown:
+        b.append("• Things added, removed or shown/hidden on: " + ", ".join(sorted(shown)[:4]))
+    behind = (d["elements_otherwise_changed"] or d["coded_component_bundles_changed"] or d["page_code_bundles_changed"]
+              or any(d[f"{k}s_{s}"] for k in ("workflow", "variable", "formula", "collection")
+                     for s in ("added", "removed", "changed")))
+    if behind:
+        b.append("• Behind-the-scenes updates - nothing new to see." if b else
+                 "• Behind-the-scenes update only - nothing new to look at on staging.")
+    return "\n".join(b) or "• Behind-the-scenes update only - nothing new to look at on staging."
 
 
 def message(d: dict) -> str:
-    head = f":package: *WeWeb staging publish* - build {d['to_cv']} (previous {d['from_cv']})"
+    head = f":package: *Staging updated* (build {d['to_cv']})"
     if is_empty(d):
-        return head + "\n• No content differences found (rebuild only)"
+        return head + "\n• Behind-the-scenes update only - nothing new to look at on staging."
     body = ai_bullets(d) or plain_bullets(d)
     return f"{head}\n{body}\n<https://{STAGING_HOST}|Open staging>"
 

@@ -84,6 +84,40 @@ class State:
     def over_budget(self) -> bool:
         return self.spent_today() >= config.daily_usd_cap()
 
+    # --- team style rules (learned from Slack feedback) --------------------------------------------
+    # One global list (small team). target: "deploy_notes" (#deployment staging notes), "bot_answers"
+    # (Tulle Bot replies), or "both". Style only - they never override the bot's mandatory rules.
+    MAX_RULES = 20
+
+    def rules(self, target: str | None = None) -> list[dict]:
+        with self._lock:
+            rs = list(self._data.get("rules", []))
+        if target:
+            rs = [r for r in rs if r.get("target") in (target, "both")]
+        return rs
+
+    def add_rule(self, text: str, target: str, by: str = "", source: str = "") -> tuple[dict, dict | None]:
+        """Returns (new rule, rule dropped to stay under MAX_RULES or None)."""
+        with self._lock:
+            rs = self._data.setdefault("rules", [])
+            nid = max([int(r.get("id", 0)) for r in rs] + [0]) + 1
+            rule = {"id": nid, "text": text.strip()[:300], "target": target, "by": by, "source": source,
+                    "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+            rs.append(rule)
+            dropped = rs.pop(0) if len(rs) > self.MAX_RULES else None
+            self._save()
+            return rule, dropped
+
+    def remove_rule(self, rule_id: int) -> dict | None:
+        with self._lock:
+            rs = self._data.setdefault("rules", [])
+            for i, r in enumerate(rs):
+                if int(r.get("id", -1)) == rule_id:
+                    gone = rs.pop(i)
+                    self._save()
+                    return gone
+        return None
+
 
 class Dedupe:
     """Slack retries an event (X-Slack-Retry-Num) when the 3 s ack is slow; the event_id stays the same."""

@@ -43,6 +43,24 @@ def health():
     return {"ok": True, "enabled": config.enabled()}
 
 
+@app.get("/style-rules")
+def style_rules(request: Request, target: str = "deploy_notes"):
+    """Standing writing rules learned from Slack feedback, for the #deployment notifier (separate Railway service).
+    Bearer QA_RULES_TOKEN; 404 when the token isn't configured, so the route doesn't exist by default."""
+    import hmac
+
+    from state import State
+    token = config.rules_token()
+    if not token:
+        return JSONResponse({"ok": False}, status_code=404)
+    got = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+    if not hmac.compare_digest(got, token):
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    if target not in ("deploy_notes", "bot_answers"):
+        return JSONResponse({"ok": False, "error": "bad_target"}, status_code=400)
+    return {"ok": True, "rules": [{"id": r["id"], "text": r["text"]} for r in State().rules(target)]}
+
+
 @app.post("/slack/events")
 async def slack_events(request: Request, background: BackgroundTasks):
     body = await request.body()

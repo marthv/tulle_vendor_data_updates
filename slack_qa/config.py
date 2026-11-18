@@ -61,7 +61,11 @@ def bot_user_id() -> str:              # optional; normally read from the event'
     return _s("SLACK_BOT_USER_ID")
 
 
-def owner_user_id() -> str:            # Vivek: never auto-answered in scan mode
+def rules_token() -> str:              # QA_RULES_TOKEN: shared with the #deployment notifier (GET /style-rules)
+    return _s("QA_RULES_TOKEN")
+
+
+def owner_user_id() -> str:           # Vivek: never auto-answered in scan mode
     return _s("QA_OWNER_USER_ID", "U05UJMCHUV6")
 
 

@@ -23,7 +23,9 @@ HELP = ("I'm Tulle Bot (automated, read-only). I answer questions about recent c
         "(hypothesis, metric, status, results), deploys, what's on or off.\n"
         "`@Tulle Bot mute` - only answer when @-mentioned here.\n"
         "`@Tulle Bot unmute` - also watch this channel's questions and answer the ones I can.\n"
-        "`@Tulle Bot status` - show this channel's setting.")
+        "`@Tulle Bot status` - show this channel's setting.\n"
+        "Tell me how you'd like things written (e.g. `@Tulle Bot the staging notes are too long`) and I'll keep to it "
+        "from then on. `@Tulle Bot rules` lists what I've learned; `@Tulle Bot forget 2` removes one.")
 IGNORED_SUBTYPES_OK = {None, "thread_broadcast", "file_share"}
 QUESTION_START = re.compile(
     r"^\s*(why|what|whats|what's|when|how|is|are|was|were|did|does|do|can|could|who|where|which|has|have|should|"
@@ -33,6 +35,20 @@ REPORT_HINT = re.compile(
     r"nps|ratings?|planner usage|usage|venue (?:requests?|lookups?)|save offer|tt60|tt20|table \d+|pull)\b", re.I)
 MENTION = re.compile(r"<@[UW][A-Z0-9]+(?:\|[^>]*)?>")
 MAX_WORDS = 160
+# Cheap gate before the feedback classifier (Haiku): only messages that sound like a writing preference.
+FEEDBACK_HINT = re.compile(
+    r"\b(too (?:long|short|much|technical|wordy|detailed)|long|wordy|verbose|shorter|simpler|simplify|plain(?:er)?|"
+    r"jargon|technical|hard to (?:follow|read|understand)|confusing|easier to read|less detail|more detail|"
+    r"(?:fewer|less|more) bullets?|tl;?dr|summar(?:y|ise|ize)|from now on|going forward|in future|next time|"
+    r"please (?:always|don'?t|stop|keep|use|say)|(?:always|never|stop|don'?t) (?:include|mention|list|say|use|write)|"
+    r"(?:i|we)'?d (?:prefer|rather|like)|prefer)\b", re.I)
+FORGET = re.compile(r"^\s*(?:forget|remove|delete|drop|undo)\s+(?:rule\s*)?#?(\d+)\s*$", re.I)
+TARGET_LABEL = {"deploy_notes": "the #deployment staging notes", "bot_answers": "my answers",
+                "both": "the #deployment notes and my answers"}
+
+
+def format_rules(rules: list[dict]) -> str:
+    return "\n".join(f"{r['id']}. {r['text']}" for r in rules)
 
 
 def bot_user_id(payload: dict, slack: Slack | None = None) -> str | None:
@@ -127,9 +143,15 @@ class Bot:
         channel, text = ev["channel"], ev.get("text") or ""
         reply_ts = ev.get("thread_ts") or ev.get("ts")
         cmd = re.sub(r"[^a-z ]", "", MENTION.sub("", text).lower()).strip()
-        if cmd in ("mute", "unmute", "status", "help", ""):
+        if cmd in ("mute", "unmute", "status", "help", "rules", ""):
             return self.command(cmd or "help", channel, ev.get("user", ""), reply_ts)
         question = MENTION.sub("", text).strip()
+        fm = FORGET.match(question)
+        if fm:
+            gone = self.state.remove_rule(int(fm.group(1)))
+            self.post(channel, f'Removed rule {gone["id"]}: "{gone["text"]}"' if gone else
+                      f"There's no rule {fm.group(1)}. `@Tulle Bot rules` lists them.", reply_ts, footer=False)
+            return "command:forget"
         if is_interpersonal(question):
             self.post(channel, OUT_OF_SCOPE, reply_ts)
             return "mention:out-of-scope-rule"
@@ -139,11 +161,47 @@ class Bot:
             return "mention:over-budget"
         if not self.limiter.allow(channel):
             return "mention:rate-limited"
+        if FEEDBACK_HINT.search(question):
+            out = self.learn(question, ev)
+            if out is not None:
+                return out
         if REPORT_HINT.search(question) and getattr(self.xano, "enabled", False):
             out = self.report(question, ev)
             if out is not None:
                 return out
         return self.answer(question, ev, mode="mention")
+
+    # --- feedback -> standing rule -------------------------------------------------------------------------
+    def learn(self, question: str, ev: dict) -> str | None:
+        """Save a writing preference as a standing rule. None = not feedback (carry on as a normal question)."""
+        channel = ev["channel"]
+        reply_ts = ev.get("thread_ts") or ev.get("ts")
+        if ev.get("thread_ts") and ev.get("thread_ts") != ev.get("ts"):
+            ctx = self.slack.render(self.slack.replies(channel, ev["thread_ts"]))[-6:]
+        else:
+            ctx = self.slack.render(self.slack.history(channel, limit=5, days=7))[-5:]
+        where = "#deployment (where the staging notes are posted)" if channel == config.deploy_channel() else "a channel"
+        fb, usd = self.claude.feedback(question, f"Posted in {where}. Recent messages:\n" + "\n".join(ctx))
+        self.state.add_spend(usd)
+        rule_text = (fb.get("rule") or "").strip()
+        if not fb.get("is_feedback") or not rule_text or is_interpersonal(rule_text):
+            return None
+        target = fb.get("target") if fb.get("target") in TARGET_LABEL else "both"
+        rule, dropped = self.state.add_rule(rule_text, target, by=ev.get("user", ""), source=f"{channel}/{ev.get('ts')}")
+        when = "from the next staging note" if target == "deploy_notes" else "from now on"
+        note = (f'Got it - saved as standing rule {rule["id"]} for {TARGET_LABEL[target]}, {when}: "{rule["text"]}"\n'
+                f"`@Tulle Bot rules` lists them; `@Tulle Bot forget {rule['id']}` undoes this one.")
+        if dropped:
+            note += f' (Oldest rule {dropped["id"]} dropped to stay under {self.state.MAX_RULES}.)'
+        log.info("rule %s added by %s target=%s: %s", rule["id"], ev.get("user"), target, rule["text"])
+        if not fb.get("also_wants_reply"):
+            self.post(channel, note, reply_ts, footer=False)
+            return f"learn:rule-{rule['id']}"
+        ask = (question + "\n(Their writing preference is already saved as a standing rule and the notifier will "
+               "follow it. Don't discuss whether formats can change; just do what they asked, following the rules.)")
+        out = self.answer(ask, ev, mode="mention", prefix=note + "\n\n",
+                          extra_target="deploy_notes" if target != "bot_answers" else None)
+        return f"learn:rule-{rule['id']}+{out}"
 
     # --- Xano reports (@-mention only; read-only) -----------------------------------------------------------
     def report(self, question: str, ev: dict) -> str | None:
@@ -214,6 +272,16 @@ class Bot:
             self.post(channel, "Unmuted here: I'll watch questions in this channel and answer the ones about recent "
                                "changes I'm confident about (I stay quiet otherwise). `@Tulle Bot mute` to stop.",
                       reply_ts, footer=False)
+        elif cmd == "rules":
+            rs = self.state.rules()
+            if not rs:
+                self.post(channel, "No standing rules yet. Tell me how you'd like the #deployment notes or my answers "
+                                   "written (e.g. `@Tulle Bot the staging notes are too long`) and I'll keep to it.",
+                          reply_ts, footer=False)
+            else:
+                lines = [f'{r["id"]}. [{TARGET_LABEL.get(r.get("target"), r.get("target"))}] {r["text"]}' for r in rs]
+                self.post(channel, "Standing rules I follow (from team feedback):\n" + "\n".join(lines)
+                          + "\n`@Tulle Bot forget <number>` removes one.", reply_ts, footer=False)
         elif cmd == "status":
             muted = self.state.is_muted(channel)
             src = "set in this channel" if self.state.explicit(channel) else "the default"
@@ -251,12 +319,16 @@ class Bot:
         return self.answer(text, ev, mode="scan")
 
     # --- answer ------------------------------------------------------------------------------------------
-    def answer(self, question: str, ev: dict, mode: str) -> str:
+    def answer(self, question: str, ev: dict, mode: str, prefix: str = "", extra_target: str | None = None) -> str:
         channel = ev["channel"]
         reply_ts = ev.get("thread_ts") or ev.get("ts")
         dynamic = self.know.build_dynamic(question, channel, ev.get("thread_ts"), self.slack, self.github,
                                           current_ts=ev.get("ts"))
-        data, usd = self.claude.answer(self.know.static_context(), dynamic, question, mode)
+        rules = {r["id"]: r for r in self.state.rules("bot_answers")}
+        if extra_target:   # e.g. "rewrite that note simpler" -> also follow the deploy-note rules
+            rules.update({r["id"]: r for r in self.state.rules(extra_target)})
+        data, usd = self.claude.answer(self.know.static_context(), dynamic, question, mode,
+                                       style_rules=format_rules(sorted(rules.values(), key=lambda r: r["id"])))
         self.state.add_spend(usd)
         text = (data.get("answer") or "").strip()
         conf = float(data.get("confidence") or 0)
@@ -278,7 +350,7 @@ class Bot:
                 text = text.rstrip() + " Vivek can confirm."
 
         sources = [s for s in (data.get("sources") or []) if isinstance(s, str) and s.strip()][:5]
-        body = cap_words(text)
+        body = prefix + cap_words(text)
         if sources:
             body += "\n_Sources: " + "; ".join(s.strip() for s in sources) + "_"
         self.post(channel, body, reply_ts)

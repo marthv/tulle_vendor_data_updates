@@ -51,8 +51,18 @@ class FakeClaude:
         self.triage_calls.append(message)
         return dict(self.triage_result), self.triage_usd
 
-    def answer(self, static, dynamic, question, mode):
+    feedback_result = {"is_feedback": False, "target": "both", "rule": "", "also_wants_reply": False}
+    feedback_calls = []
+
+    def feedback(self, message, context=""):
+        self.feedback_calls = self.feedback_calls + [(message, context)]
+        return dict(self.feedback_result), 0.0005
+
+    style_rules_seen = []
+
+    def answer(self, static, dynamic, question, mode, style_rules=""):
         self.answer_calls.append((question, mode, dynamic))
+        self.style_rules_seen = self.style_rules_seen + [style_rules]
         return dict(self.answer_result), self.answer_usd
 
 
