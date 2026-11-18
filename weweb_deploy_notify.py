@@ -369,6 +369,7 @@ def main(argv: list[str]) -> int:
     prev = load(snap_path)
     key, cv, entry = build_id()
     if prev and f'{prev["cv"]}:{prev["entry"]}' == key and "--dry-run" not in argv:
+        print(f"[deploy-notify] no new staging build (still {cv})")  # heartbeat: proves the run happened + the snapshot persisted
         return 0
     snap = build_snapshot(cv, entry)
     if prev is None or "--baseline" in argv:
