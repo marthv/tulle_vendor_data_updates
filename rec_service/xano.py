@@ -1052,6 +1052,36 @@ def vendor_card(vendor_id):
     return card_from_row(rows[0])
 
 
+_IDX_CACHE = OrderedDict()   # vendor_idx -> (time, card or None); REC_PAGE_VENUE, 2026-11-18
+_IDX_LOCK = threading.Lock()
+
+
+def vendor_card_by_idx(vendor_idx, ttl_s=3600):
+    """One vendor by its table-11 ROW id (the `vendor_idx` WeWeb links carry as ?vendor_idx=, and the bubble sends as
+    ?v=) -> the vendor_card shape, or None. Metadata GET of that one row; cached an hour (500 entries)."""
+    try:
+        idx = int(vendor_idx)
+    except (TypeError, ValueError):
+        return None
+    if idx <= 0:
+        return None
+    now = time.time()
+    with _IDX_LOCK:
+        hit = _IDX_CACHE.get(idx)
+        if hit and now - hit[0] < ttl_s:
+            return hit[1]
+    try:
+        it = _meta("GET", "/table/11/content/%d" % idx)
+    except XanoError:
+        it = None
+    card = card_from_row(it) if isinstance(it, dict) and it.get("Vendor_ID") else None
+    with _IDX_LOCK:
+        _IDX_CACHE[idx] = (now, card)
+        while len(_IDX_CACHE) > 500:
+            _IDX_CACHE.popitem(last=False)
+    return card
+
+
 def card_from_row(it):
     """A table-11 row -> the card shape vendor_card returns (venue or photographer / entertainer)."""
     img = it.get("image_1")

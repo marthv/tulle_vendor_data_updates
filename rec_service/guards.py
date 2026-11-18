@@ -35,7 +35,13 @@ def _prompts(rows):
     served from it writes its own "opening" row, counted exactly like a normal opening."""
     # MCP tool calls (kind "mcp_<tool>", mcp_server.py, 2026-11-15) are the same: no model call, never counted.
     return [r for r in _ok(rows) if not str(r.get("kind") or "").startswith(("tool_", "mcp_"))
-            and r.get("kind") != "prewarm"]
+            and r.get("kind") != "prewarm" and not _free_lookup(r)]
+
+
+def _free_lookup(r):
+    """REC_LOOKUP_NO_LIMIT (2026-11-18): a fast-path venue lookup (model "lookup", no model call, cost 0) is never a
+    prompt or a free question while the flag is on. Off = every row counts exactly as before."""
+    return config.LOOKUP_NO_LIMIT and r.get("model") == "lookup"
 
 
 # Owner 2026-11-07: a venue lookup that only CLARIFIED - "which one did you mean?" or "we don't have <name>" - costs
@@ -43,10 +49,12 @@ def _prompts(rows):
 # rating card is asked (free_asked): "we want to know how people are feeling at each point". The row is logged as
 # before (counted_as_free, model "lookup", tools "lookup:<status>"); only the counting here reads the tools column.
 FREE_CLARIFY_TOOLS = ("lookup:choices", "lookup:not_found")
+# "Did you mean X?" (REC_DID_YOU_MEAN, 2026-11-18) only clarifies too. No such row exists while that flag is off.
+FREE_CLARIFY_TOOLS_DYM = FREE_CLARIFY_TOOLS + ("lookup:dym",)
 
 
 def _clarification(r):
-    return str(r.get("tools") or "") in FREE_CLARIFY_TOOLS
+    return str(r.get("tools") or "") in FREE_CLARIFY_TOOLS_DYM or _free_lookup(r)
 
 
 def free_used(usage_rows):

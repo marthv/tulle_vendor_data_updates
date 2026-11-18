@@ -407,6 +407,16 @@ def compose_full(token, health_text, now_ms=None):
             sections.append(rec_watch.weekly_planner(token))
         except Exception as e:
             sections.append(f":warning: _Planner weekly digest failed: {e}_")
+        # 2026-11-18: the venue lookup digest (venue_digest.py) posts its own message to VENUE_DIGEST_SLACK_WEBHOOK.
+        # Does nothing until VENUE_LOG_TABLE_ID is set on this service; never raises.
+        if os.environ.get("VENUE_LOG_TABLE_ID"):
+            try:
+                import venue_digest
+                line = venue_digest.weekly(token, now_ms)
+                if line:
+                    sections.append(line)
+            except Exception as e:
+                sections.append(f":warning: _Venue lookups digest failed: {str(e)[:120]}_")
 
     out = [f"*Tulle daily - {today}*", "*TL;DR*"] + [f"• {t}" for t in tldr]
     out.append("*Decisions & suggestions*")

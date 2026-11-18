@@ -31,6 +31,7 @@ import config
 import cost_tools
 import estimate
 import free_mode
+import lookup
 import neighbors
 import profile_questions as profile_questions_mod
 import progress as progress_mod
@@ -1170,6 +1171,27 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         budget = 0
 
     guests_default = guests
+    # Budget fit (config.FREE_BUDGET_FIT, 2026-11-18): a couple without full figures asking whether venues fit a number
+    # ("Anything under $10,000?") - each venue the search returns gets a verdict word worked out HERE from its pricing.
+    bfit = None
+    if config.FREE_BUDGET_FIT and light:
+        _tgt = free_mode.budget_target(last_user, budget)
+        if _tgt:
+            bfit = {"target": _tgt, "basis": free_mode.budget_basis(last_user)}
+
+    def budget_fit_of(v):
+        """VERDICTS key for one card, or None. all_in basis: the all-in estimate for their guests; with none, only a
+        rental that is ALREADY over their number says anything ("over_budget") - a rental under it proves nothing."""
+        if not bfit:
+            return None
+        rental = (v.get("venue_fee_range") or [None])[0]
+        if bfit["basis"] == "rental":
+            return free_mode.budget_verdict(rental, bfit["target"])
+        tot = v.get("estimate_total")
+        if isinstance(tot, (int, float)) and tot > 0:
+            return free_mode.budget_verdict(tot, bfit["target"])
+        vd = free_mode.budget_verdict(rental, bfit["target"])
+        return vd if vd == "over_budget" else None
 
     def shape(p):
         return _light_pricing(p, guests) if light else _compact_pricing(p, guests, budget)
@@ -1339,6 +1361,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     venues = hits + [v for v in venues if v.get("vendor_id") not in named_ids]
                 else:
                     relaxed_for_name = []
+        if config.VENUE_LOG and kw and not (lookup._place(kw) or lookup._descriptive_only(kw)
+                                             or lookup.non_venue_name(kw)):
+            # The venue log (2026-11-18): the model looked a venue up by name - what it searched and what came back.
+            timing.setdefault("venue_keywords", []).append({
+                "keyword": keyword[:120], "state": ", ".join(s for s in (states or []) if s)[:40], "city": city or "",
+                "results": [{"vendor_id": v.get("vendor_id"), "name": v.get("name"), "state": v.get("state")}
+                            for v in venues[:10] if v.get("vendor_id")]})
         timing["search_ms"] += int((time.time() - t_search) * 1000)
         timing["searches"] += 1
         keep = lambda v: (v.get("vendor_id") not in hide or (kw and kw in (v.get("name") or "").lower())
@@ -1398,6 +1427,9 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         out = []
         for i, v in enumerate(venues):
             v = card(v, pairs[i][1])
+            vd = budget_fit_of(v)
+            if vd:
+                v = dict(v, budget_fit=vd)
             if light:
                 v = _light_card(v)
             if v.get("vendor_id"):
@@ -1413,6 +1445,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 row["venue_fee_range"] = "rental not in this venue's PDF"
             if i < len(prices) and prices[i]:
                 row["pricing"] = prices[i]
+            if v.get("budget_fit"):
+                row["budget_fit"] = v["budget_fit"]   # REC_FREE_BUDGET_FIT: a verdict word, never a figure
             out.append(row)
         for v in rest:                      # after the top 8, so "Show 3 more" keeps search order
             if v.get("vendor_id") and v["vendor_id"] not in seen:
@@ -2083,6 +2117,15 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         if isinstance(last_user, str) and BREAKDOWN_ASK.search(last_user):
             context += ("\nBREAKDOWN REQUESTED: the couple's latest message asks for a cost breakdown - follow "
                         "COST BREAKDOWN (itemized \"• \" lines, about 220 words), whatever the length rules say.")
+    if bfit:
+        context += ("\nBUDGET FIT (this overrides every rule above that forbids saying a venue fits or is over their "
+                    "budget, for these three phrases only): the couple asked which venues fit a number. Each venue from "
+                    "search_venues may carry budget_fit, worked out by Tulle from that venue's real pricing (%s) against "
+                    "their number: in_budget, about_at_budget or over_budget. For each venue you present that has one, "
+                    "say it with exactly one of these phrases: \"in your budget\", \"about at your budget\", \"over your "
+                    "budget\". Never a figure - not the venue's price and not the couple's number - and never a "
+                    "verdict for a venue without budget_fit (say its PDF has the price). Prefer in_budget venues."
+                    % ("the rental fee" if bfit["basis"] == "rental" else "the all-in estimate for their guest count"))
     # Forever in the Planner (2026-11-07, Kate in #product-development 11-05 + the planner log: 162 of 290 openings
     # said "Forever unlocks..."): never in the FIRST message - the couple hasn't seen any plan yet - and at most once
     # per chat after that unless they ask. The upgrade card on the page is unaffected.
@@ -2411,6 +2454,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     # and Mixpanel carry these so "what do paid members use" and "why did this answer take 4 calls" are answerable.
     usage["tools_used"] = list(timing["calls"])   # every tool that actually ran, in order (pre-search included)
     usage["categories"] = sorted(timing["categories"])
+    if bfit:
+        usage["budget_fit"] = True      # app: free-mode text may keep the verdict phrases (free_mode.VERDICTS)
+    if timing.get("venue_keywords"):
+        usage["venue_keywords"] = list(timing["venue_keywords"])   # config.VENUE_LOG only (venue_log.py)
     usage["think_chars"] = sum(int(t.get("think_chars") or 0) for t in usage.get("turns") or [])
     usage["figure_bounced"] = guard["bounced"]
     usage["unsupported_figures"] = guard["unsupported"]

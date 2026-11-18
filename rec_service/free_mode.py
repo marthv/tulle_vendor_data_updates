@@ -72,12 +72,84 @@ def _sentences(text):
     return out[:-1] if out else []
 
 
-def sanitize_text(text):
+# ---------------------------------------------------------------- budget fit (config.FREE_BUDGET_FIT, 2026-11-18)
+# Free couples asking "Anything under $10,000?" were told "I can't say here what fits under a set number" (one wrote
+# "This has been useless"). With the flag on, each venue gets a VERDICT worked out in code from its real pricing against
+# the couple's number - in_budget / about_at_budget / over_budget - and the answer may say those words. Never a figure:
+# not the venue's, not the couple's. The verdict phrases below are the ONLY budget words sanitize_text lets through,
+# and only in a sentence with no figure at all.
+VERDICTS = {"in_budget": "in your budget", "about_at_budget": "about at your budget", "over_budget": "over your budget"}
+_VERDICT_PHRASE = re.compile(r"\b(?:in|about at|over) (?:your|their|the couple's) budget\b", re.I)
+_MONEY = re.compile(r"\$\s?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|grand)?\b"
+                    r"|\b(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|grand)\b"
+                    r"|\b(\d{1,3}(?:,\d{3})+)\b"
+                    r"|\b(?:under|below|than|within|to|max|budget|is|of|around|about)\s+(\d{4,7})\b"
+                    r"(?!\s*(?:guests?|people|ppl|miles?))",
+                    re.I)
+_BUDGET_CTX = re.compile(r"\b(?:under|below|less than|within|budget|max(?:imum)?|up to|no more than|at most|fits?|"
+                         r"fitting|afford\w*|spend|cap|cheaper than|around|about|price range)\b", re.I)
+_OWN_BUDGET = re.compile(r"\b(?:my|our|the) budget\b|\b(?:in|within|under|over|fits?|fit in|on) budget\b|\bafford\w*", re.I)
+_RENTAL = re.compile(r"\b(?:venue|rental|site|space|location)\s+(?:fee|fees|cost|costs|price|rental)\b|\brental\b", re.I)
+
+
+def budget_target(text, profile_budget=0):
+    """The couple's number in dollars from a budget-fit question, else 0. "Anything under $10,000?" -> 10000;
+    "fits my $30k budget" -> 30000; "which of these fit our budget?" -> profile_budget. A number needs a budget word
+    next to it somewhere in the message, and is ignored under $500 (guest counts, hours)."""
+    t = " ".join(str(text or "").split())
+    if not t:
+        return 0
+    if _BUDGET_CTX.search(t):
+        for m in _MONEY.finditer(t):
+            num = next((g for g in (m.group(1), m.group(3), m.group(5), m.group(6)) if g), None)
+            unit = (m.group(2) or m.group(4) or "").lower()
+            try:
+                n = float(num.replace(",", ""))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if unit in ("k", "thousand", "grand"):
+                n *= 1000
+            if n >= 500:
+                return int(n)
+    if _OWN_BUDGET.search(t):
+        try:
+            return max(0, int(profile_budget or 0))
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
+def budget_basis(text):
+    """'rental' when they asked about the venue / rental fee, else 'all_in' (the estimate for their guest count)."""
+    return "rental" if _RENTAL.search(str(text or "")) else "all_in"
+
+
+def budget_verdict(amount, target):
+    """in_budget (under 90% of their number) / about_at_budget (90-110%) / over_budget, or None without both."""
+    try:
+        a, t = float(amount or 0), float(target or 0)
+    except (TypeError, ValueError):
+        return None
+    if a <= 0 or t <= 0:
+        return None
+    r = a / t
+    return "in_budget" if r < 0.9 else "about_at_budget" if r <= 1.1 else "over_budget"
+
+
+def _verdict_ok(s):
+    """A sentence that only says a verdict: no figure anywhere, and no other price talk once the phrase is out."""
+    return bool(_VERDICT_PHRASE.search(s)) and not _FIGURE.search(s) and not has_price_talk(_VERDICT_PHRASE.sub(" ", s))
+
+
+def sanitize_text(text, allow_verdicts=False):
     """(clean_text, sentences_removed). Drops each sentence that talks price, then guarantees a pointer to the
-    pricing PDF. If too little is left to stand on its own, the whole reply becomes FALLBACK_TEXT."""
+    pricing PDF. If too little is left to stand on its own, the whole reply becomes FALLBACK_TEXT.
+    allow_verdicts (REC_FREE_BUDGET_FIT): a sentence whose only price talk is one of VERDICTS' phrases is kept."""
     kept, removed = [], 0
     for s in _sentences(text):
         if s == "\n":
+            kept.append(s)
+        elif allow_verdicts and _verdict_ok(s):
             kept.append(s)
         elif has_price_talk(s):
             removed += 1
@@ -98,13 +170,16 @@ def sanitize_text(text):
 # price_to, price_label, price_range, estimate_label, ...) is dropped - a whitelist, so a price field added to
 # the card shape later stays hidden from free users by default.
 CARD_KEYS = ("vendor_id", "vendor_idx", "name", "state", "address", "category", "venue_type",
-             "max_capacity_seated", "image", "package_count", "packages_label", "hours_label", "more", "via_more")
+             "max_capacity_seated", "image", "package_count", "packages_label", "hours_label", "more", "via_more",
+             "budget_fit")   # budget_fit: a VERDICTS key, never a figure (REC_FREE_BUDGET_FIT; absent when off)
 
 
 def card(c):
     """A card safe for a free user: whitelisted keys, description and reason without price sentences."""
     out = {k: c[k] for k in CARD_KEYS if k in c and c[k] not in (None, "")}
-    desc = " ".join(s for s in _sentences(c.get("description") or "") if s != "\n" and not has_price_talk(s))
+    if out.get("budget_fit") not in VERDICTS:
+        out.pop("budget_fit", None)
+    desc =" ".join(s for s in _sentences(c.get("description") or "") if s != "\n" and not has_price_talk(s))
     if desc.strip():
         out["description"] = desc.strip()[:300]
     reason = c.get("reason") or ""
@@ -274,10 +349,10 @@ def widgets(ws):
 
 # ---------------------------------------------------------------- whole responses
 
-def sanitize_result(result):
+def sanitize_result(result, allow_verdicts=False):
     """Apply the free rules to an agent.run result. Adds price_locked=True and price_redactions (sentences
-    or reasons removed - logged, so leaks the prompt didn't prevent are measurable)."""
-    text, removed = sanitize_text(result.get("text") or "")
+    or reasons removed - logged, so leaks the prompt didn't prevent are measurable). allow_verdicts: see sanitize_text."""
+    text, removed = sanitize_text(result.get("text") or "", allow_verdicts=allow_verdicts)
     cards = [card(c) for c in result.get("cards") or []]
     removed += sum(1 for c, o in zip(result.get("cards") or [], cards) if (c.get("reason") or "") and not o["reason"])
     return dict(result, text=text, cards=cards, more_cards=[card(c) for c in result.get("more_cards") or []],
@@ -324,6 +399,8 @@ def _venue_row(row):
     p = row.get("pricing") or {}
     if "guest_minimum_fits" in p:
         r["guest_minimum_fits"] = p["guest_minimum_fits"]
+    if row.get("budget_fit") in VERDICTS:      # a verdict word only (REC_FREE_BUDGET_FIT)
+        r["budget_fit"] = row["budget_fit"]
     return r
 
 

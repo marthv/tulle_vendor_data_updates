@@ -101,6 +101,33 @@ NAME_LOOKUP = os.environ.get("REC_NAME_LOOKUP", "1") == "1"
 NAME_MATCH_V2 = os.environ.get("REC_NAME_MATCH_V2", "0") == "1"
 # Missing venues ("We don't have X in Tulle yet") are posted to the feedback Slack channel for the data team.
 VENUE_REQUEST_SLACK = os.environ.get("REC_VENUE_REQUEST_SLACK", "1") == "1"
+
+# ---- Planner venue fixes (2026-11-18, owner's 14-day Planner review 11-04..11-17). Every flag DEFAULT OFF = today. ----
+# VENUE LOG (venue_log.py): one row per venue a couple looks for (fast-path lookup, the model's venue search with a
+#   name, a vendor-page bubble question) in Xano table venue_lookup_log, written fire-and-forget on the pool.
+#   REC_VENUE_LOG_TABLE_ID = that table's id (0 / unset = nothing is written, logged once). With the flag on, the
+#   Slack "Venue not in Tulle" notice also needs 2+ name-like words and no question / complaint (lookup.slack_worthy).
+VENUE_LOG = os.environ.get("REC_VENUE_LOG", "0").strip() == "1"
+try:
+    VENUE_LOG_TABLE_ID = max(0, int(os.environ.get("REC_VENUE_LOG_TABLE_ID", "0") or 0))
+except ValueError:
+    VENUE_LOG_TABLE_ID = 0
+# FREE BUDGET FIT: a couple without full figures asking "anything under $10,000?" / "fits my $30k budget" gets a
+#   per-venue in-budget / about-at-budget / over-budget verdict (no figure), computed in code from the venue's pricing.
+FREE_BUDGET_FIT = os.environ.get("REC_FREE_BUDGET_FIT", "0").strip() == "1"
+# DID YOU MEAN: a named lookup that would say "not in Tulle" offers the close candidate(s) instead ("Skylands manor" ->
+#   The Skylands Manor at the NJ State Botanical Garden), tries one-letter-dropped spellings ("Rhyland" -> Ryland Inn),
+#   and reads a trailing state / city hint ("The Sanctuary RI", "Fox Theatre atl", "in sharon massachusetts").
+DID_YOU_MEAN = os.environ.get("REC_DID_YOU_MEAN", "0").strip() == "1"
+# LOOKUP GUARD: questions and non-venue text ("Pricing", "im looking for a bar tender", "houston and surrounding
+#   areas") never take the named-lookup path; they go to the model.
+LOOKUP_GUARD = os.environ.get("REC_LOOKUP_GUARD", "0").strip() == "1"
+# PAGE VENUE: the bubble's surface "bubble:/vendors/...?v=<vendor_idx>" + "this venue / this one / here" with no named
+#   venue -> the message is answered about that vendor (table 11 row id -> its name and place).
+PAGE_VENUE = os.environ.get("REC_PAGE_VENUE", "0").strip() == "1"
+# LOOKUP NO LIMIT: a named lookup answered by the fast path (no model call, cost 0) is never refused by the free /
+#   daily question limits and never spends a question (rows with model "lookup" are not counted while it is on).
+LOOKUP_NO_LIMIT = os.environ.get("REC_LOOKUP_NO_LIMIT", "0").strip() == "1"
 # Railway search (owner decision 2026-10-26): this % of assistant users (stable per user, see railway_search.arm)
 # get their venue searches from the Railway search-api instead of ep119, with ep119 as the fallback. 0 = off (the
 # search-api is never called). Start: 10. Set it back to 0 to turn it off without a deploy.

@@ -76,6 +76,7 @@ import progress
 import railway_search
 import sheet_log
 import upsell
+import venue_log
 import whole_wedding
 import xano
 
@@ -460,7 +461,10 @@ def _prefetch_props(usage):
             "card_cache_hits": int(pc.get("card_hits") or 0), "card_cache_misses": int(pc.get("card_misses") or 0)}
 
 
-def _gate(kind, user, chat_id=0, waive_free=False, row_kind=None):
+LOOKUP_SOFT_BLOCKS = ("blocked_free_limit", "feedback_required", "blocked_user_cap", "blocked_monthly_cap")
+
+
+def _gate(kind, user, chat_id=0, waive_free=False, row_kind=None, lookup_free=False):
     """The one question check. Raises the blocked response (402/403/429/503) or returns what the caller
     needs to log the use and report the counters. Used by typed questions AND "Show 3 more".
     waive_free (2026-10-26): the message answers one of OUR thin-profile questions, so it must not spend one of a
@@ -484,11 +488,21 @@ def _gate(kind, user, chat_id=0, waive_free=False, row_kind=None):
         if not allowed and status in ("blocked_free_limit", "feedback_required"):
             allowed, status = True, "ok"
         counted_free = False
+    # lookup_free (REC_LOOKUP_NO_LIMIT, 2026-11-18): the venue-name fast path costs nothing, so the per-couple question
+    # limits do not refuse it and it spends nothing. The kill switch and the spend caps still apply. A soft-allowed
+    # lookup that ends up going to the model is gated again there (_run_guarded) and refused as before.
+    soft = None
+    if lookup_free:
+        if not allowed and status in LOOKUP_SOFT_BLOCKS:
+            soft, allowed, status = status, True, "ok"
+        counted_free = False
     # tier is written for the free cap; Xano drops it until table 79 has a `tier` column (see config).
     if row_kind:
         counted_free = False
     base = {"user_id": user["id"], "kind": row_kind or kind, "chat_id": chat_id, "model": config.MODEL,
             "tier": "paid" if paid else "free"}
+    if soft:
+        base["_soft_block"] = soft      # popped by _lookup_fast before any row is written
     if not allowed:
         xano.log_usage(dict(base, status=status))
         _POOL.submit(xano.mp_track, user["id"], "rec_server_request",
@@ -704,8 +718,20 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         return _stopped(kind, paid, access, rows, feedback_given)
     redactions = None
     if _detail(paid, access) == "free":   # price-free mode: price guard on text, cards and chips (code, not only the prompt)
-        result = free_mode.sanitize_result(result)
+        # REC_FREE_BUDGET_FIT: the three verdict phrases survive (only in a sentence with no figure at all).
+        result = free_mode.sanitize_result(result, allow_verdicts=bool(usage.get("budget_fit")))
         redactions = result.pop("price_redactions", 0)
+    if config.VENUE_LOG and usage.get("venue_keywords"):
+        typed = next((m.get("content") for m in reversed(messages or []) if m.get("role") == "user"
+                      and isinstance(m.get("content"), str)), "")
+        req, done_kw = "%s-%s" % (user["id"], time.time()), set()
+        for hit in usage["venue_keywords"]:
+            k = lookup.key(hit.get("keyword"))
+            if k in done_kw or len(done_kw) >= 3:
+                continue
+            done_kw.add(k)
+            _POOL.submit(venue_log.record, venue_log.from_model_search(user, paid, access, chat_id, xano.SURFACE.get(),
+                                                                       typed, hit), None, req)
     result = dict(result, questions=qs, upsell_prompt=None)
     if price_q:
         result.update(text=upsell.apply_text(result.get("text")), upsell_prompt=upsell.prompt(has_plan=access))
@@ -886,15 +912,24 @@ def _find_and_price(q, token, full, prefer=()):
         res = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, (hint,))), prefer)
     else:
         res = lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer)
+        venue_res = res
         if res["status"] == "not_found" and not lookup.destination_in(q["name"]):
             # Not a venue we have: maybe a photographer, florist, caterer ... by name (one more parallel round).
             other = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, OTHER_VENDOR_CATS)), prefer)
             if other["status"] != "not_found":
                 res = other
+        if q.get("dym"):
+            # REC_DID_YOU_MEAN (2026-11-18): still not found -> a close venue that holds their words ("Did you mean");
+            # found / best but outside the place they named or their wedding state -> the one inside it, or say where.
+            if res["status"] == "not_found" and not lookup.destination_in(q["name"]):
+                res = lookup.did_you_mean(q, venue_res, prefer)
+            elif res is venue_res:
+                res = lookup.place_fix(q, res, prefer)
+            res.pop("pool", None)
     res["vendor_kind"] = (res.get("matches") or [{}])[0].get("category") or "Venue"
     if res["vendor_kind"] != "Venue":
         return res                    # listings: no venue pricing panel to fetch
-    ids = ([m["vendor_id"] for m in res["matches"][:1]] if res["status"] in ("found", "best") else
+    ids = ([m["vendor_id"] for m in res["matches"][:1]] if res["status"] in ("found", "best", "elsewhere") else
            [m["vendor_id"] for m in res["matches"][:3]] if res["status"] == "choices" and full else [])
     if ids:
         with ThreadPoolExecutor(max_workers=len(ids)) as ex:
@@ -954,11 +989,14 @@ def _state1(st):
     return st[0] if isinstance(st, list) and st else st
 
 
-def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, repeat=False, fit_chip=False):
-    """The fast answer for "look up <venue>", or None (not a lookup, or unsure -> the model answers as before)."""
+def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, repeat=False, fit_chip=False,
+                 chat_states=()):
+    """The fast answer for "look up <venue>", or None (not a lookup, or unsure -> the model answers as before).
+    chat_states (REC_DID_YOU_MEAN): the states of the chat's latest search - "Central park" during a New York chat."""
     if not config.NAME_LOOKUP:
         return None
-    q = lookup.detect(text, last_assistant, v2=config.NAME_MATCH_V2)
+    q = lookup.detect(text, last_assistant, v2=config.NAME_MATCH_V2, guard=config.LOOKUP_GUARD,
+                      dym=config.DID_YOU_MEAN)
     if not q:
         return None
     t0 = time.time()
@@ -967,8 +1005,12 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         prefer = agent._states_of(xano.profile_of(user))     # their wedding state breaks a "which one?" tie
     except Exception:
         prefer = []
+    if config.DID_YOU_MEAN and chat_states:
+        prefer = list(dict.fromkeys([s for s in chat_states if s] + list(prefer)))
     f_find = _POOL.submit(_find_and_price, q, token, full, prefer)  # runs while the question is gated
-    paid, access, rows, feedback_given, counted_free, base = _gate("refine", user, chat_id)   # raises when blocked
+    paid, access, rows, feedback_given, counted_free, base = _gate(   # raises when blocked
+        "refine", user, chat_id, lookup_free=config.LOOKUP_NO_LIMIT)
+    base.pop("_soft_block", None)   # REC_LOOKUP_NO_LIMIT: a limit we let this lookup past (None = no limit hit)
     if tracker and tracker.cancelled():
         _log_stopped(base, "lookup", user, paid, access)
         return _stopped("refine", paid, access, rows, feedback_given)
@@ -984,7 +1026,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         return None          # "aspen", "North": several equal venues for one bare word - the model reads it
     if status == "not_found" and not q["cue"] and q["words"] == 1:
         return None          # one bare word we can't place: let the model read it
-    if after_q and status not in ("found", "best", "choices") and not lookup.destination_in(
+    if after_q and status not in ("found", "best", "choices", "elsewhere") and not lookup.destination_in(
             "%s %s" % (q["name"], q.get("location") or q.get("alt_location") or "")):
         return None          # a reply to our question that is not a venue we have: the model reads it as before
         # (a destination name - "Rosewood Bermuda" - keeps the honest coverage line even mid-chat, 2026-11-02)
@@ -1022,13 +1064,33 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
             cards = cards[:1] if status == "found" else cards
         if cards and cards[0].get("state"):
             filters = {"states": [_state1(cards[0]["state"])]}
-    elif status in ("found", "best"):
+    elif status == "dym":
+        # REC_DID_YOU_MEAN (2026-11-18): we have a venue that holds the couple's words, under another spelling or a
+        # longer name ("Skylands manor" -> The Skylands Manor at the NJ State Botanical Garden). Asked, not assumed.
+        cards = [_lookup_card(m, None, full, guests, budget, "Is this the one you meant?")[0] for m in res["matches"]]
+        opts = ["%s (%s)" % (c.get("name"), _place_label(c)) for c in cards]
+        text_out = ("We don't have “%s” under that name - did you mean %s? Tap it below for its card and pricing PDF."
+                    % (name, opts[0] if len(opts) == 1 else ", ".join(opts[:-1]) + " or " + opts[-1]))
+        chips = [c.get("name") for c in cards if c.get("name")]
+        if cards and cards[0].get("state"):
+            filters = {"states": [_state1(cards[0]["state"])]}
+    elif status in ("found", "best", "elsewhere"):
         m = res["matches"][0]
         p = (res.get("pricing") or {}).get(m["vendor_id"])
         card, p = _lookup_card(m, p, full, guests, budget, "The venue you asked about")
         cards = [card]
         vn = card.get("name")
         text_out = "Here's %s in %s." % (vn, _place_label(card))
+        if status == "elsewhere":
+            # REC_DID_YOU_MEAN: the only match is outside the place they named / their wedding state - say so.
+            where = res.get("elsewhere_of") or ""
+            where = where if "," in where else (lookup.state_of(where) or where)
+            if res.get("typed_place"):
+                text_out += " We don't have one in %s - this is the %s we have." % (where, vn)
+                venue_request = {"name": name, "location": q.get("location") or q.get("alt_location") or ""}
+                _POOL.submit(_venue_request_log, user, name, venue_request["location"], text, chat_id, [vn])
+            else:
+                text_out += " It's outside %s, where you're planning - tell me if you meant a different one." % where
         if full and card.get("estimate_label"):
             text_out += " %s." % card["estimate_label"]
         verdict = (p or {}).get("verdict") or ""
@@ -1126,8 +1188,11 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         "lookup_category": res.get("vendor_kind") or "Venue",
         "price_locked": not access, "free_refines_left": guards.free_refines_left(paid, used, feedback_given),
         **_search_props(user, search), **_ww_props(user)})
+    if config.VENUE_LOG:
+        _POOL.submit(venue_log.record, venue_log.from_lookup(user, paid, access, chat_id, xano.SURFACE.get(), text, q, res))
     return dict(result, paid=paid, has_access=access,
-                **_counters("refine", paid, rows, counted_free, feedback_given, access, row_tools="lookup:" + status))
+                **_counters("refine", paid, rows, counted_free, feedback_given, access, row_tools="lookup:" + status,
+                            spent=not config.LOOKUP_NO_LIMIT))
 
 
 def _venue_request_log(user, name, location, question, chat_id, near):
@@ -1136,7 +1201,9 @@ def _venue_request_log(user, name, location, question, chat_id, near):
         xano.mp_track(user["id"], "rec_venue_request", {"venue_name": name, "location": location,
                                                         "question": (question or "")[:300], "chat_id": chat_id,
                                                         "closest": list(near)[:3], "source": "rec_service"})
-        if config.VENUE_REQUEST_SLACK:
+        # REC_VENUE_LOG on (2026-11-18): 16 of 68 notices in 14 days were not venues ("is that inclusive?", "Pricing")
+        # - only 2+ name-like words that are not a question / complaint reach the channel (lookup.slack_worthy).
+        if config.VENUE_REQUEST_SLACK and (not config.VENUE_LOG or lookup.slack_worthy(name, question)):
             notify.venue_request(user, name, location, question, xano.plan_label(user), chat_id, near)
     except Exception as e:
         print("venue request log failed:", repr(e)[:200])
@@ -1430,12 +1497,15 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None, quote=Non
     last_a = last_t.get("text") or ""
     # A tapped chip ("Keep it all-inclusive") is never a venue name: no lookup round trip for it.
     is_chip = text.strip().lower() in {str(c).strip().lower() for c in (last_t.get("chips") or []) if c}
-    if is_chip and (ALSO_HAVE in last_a or "which one did you mean" in last_a or "the one you meant" in last_a):
+    if is_chip and (ALSO_HAVE in last_a or "which one did you mean" in last_a or "the one you meant" in last_a
+                    or (config.DID_YOU_MEAN and "under that name - did you mean" in last_a)):
         is_chip = False      # a venue name we offered: look it up (0.5 s), not the model (8 s)
     last_u = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "user"), "")
     repeat = bool(last_u) and last_u.strip().lower() == text.strip().lower()
     # "oheka castle": no model (2026-10-26). Never for an answer to our own profile question ("Near Dallas").
-    out = None if (answered or is_chip or quote) else _lookup_fast(token, user, text, last_a, chat["id"], tracker, repeat=repeat, fit_chip=fit_chip)
+    out = None if (answered or is_chip or quote) else _lookup_fast(
+        token, user, text, last_a, chat["id"], tracker, repeat=repeat, fit_chip=fit_chip,
+        chat_states=(_active_filters(history).get("states") or ()) if config.DID_YOU_MEAN else ())
     if out is None:
         msgs, kw = _model_inputs(history, text)
         if quote and msgs and msgs[-1].get("role") == "user":   # model-only: the stored turn stays the short question
@@ -1502,11 +1572,62 @@ def refine(body: RefineBody, background: BackgroundTasks, authorization: str = H
         raise
 
 
+# ---------------------------------------------------------------- the vendor page's venue (REC_PAGE_VENUE, 2026-11-18)
+# 6 bubble messages on vendor pages in 14 days ("Tell me about this venue and whether it fits my wedding") were answered
+# "You didn't name a venue": the bubble (component 2958c5a) now sends surface=bubble:/vendors/undefined?v=<vendor_idx>.
+_THIS_VENUE = re.compile(r"\bthis (?:wedding )?(?:venue|place|location|spot|property|vendor|page)\b|\bhere\b", re.I)
+_THIS_ONE = re.compile(r"\b(?:this|that) one\b", re.I)    # only on a brand-new chat: mid-chat it means a card shown
+_PAGE_V = re.compile(r"[?&]v=(\d+)")
+
+
+def _page_venue(user, text, fresh):
+    """(text naming the page's vendor, card) when the message points at "this venue / here" (or, on a fresh chat,
+    "this one"), names no venue itself and the bubble's surface carries v=<vendor_idx>; else (text, None).
+    Returns (text, False) when it pointed at the page but the vendor could not be read (for the venue log)."""
+    if not config.PAGE_VENUE:
+        return text, None
+    surface = xano.SURFACE.get() or ""
+    m = _PAGE_V.search(surface)
+    pat = _THIS_VENUE if not (fresh and _THIS_ONE.search(text)) else _THIS_ONE
+    if not (surface.startswith("bubble:") and m and pat.search(text)):
+        return text, None
+    if lookup.detect(text, v2=config.NAME_MATCH_V2):
+        return text, None       # they named a venue: that one, not the page's
+    try:
+        card = xano.vendor_card_by_idx(m.group(1))
+    except Exception:
+        card = None
+    if not card or not card.get("name"):
+        return text, False
+    # "The Beekman in New York" / "Kohl Mansion in Burlingame California": no comma, so the name lookup never splits
+    # the couple's question at it (a fit question still goes to the model; "how much is it" can take the fast path).
+    parts = [p.strip() for p in _place_label(card).split(",") if p.strip() and p.strip() != "Tulle"]
+    place = " ".join(dict.fromkeys(parts))
+    label = "%s in %s" % (card["name"], place) if place else card["name"]
+
+    def sub(mt):
+        return ("at " + label) if mt.group(0).lower() == "here" else label
+    return pat.sub(sub, text, count=1), card
+
+
 def _refine(token, user, body, background, tracker):
     if body.ww is not None and body.quote is None and whole_wedding.assigned(user.get("id")):   # flag off -> never assigned
         out = _ww_refine(token, user, body, background, tracker)
         if out is not None:
             return out
+    if config.PAGE_VENUE and body.message and body.quote is None:
+        typed = (body.message or "").strip()[:2000]
+        new, card = _page_venue(user, typed, fresh=not body.chat_id and len(body.messages or []) <= 1)
+        if card is not None:
+            if config.VENUE_LOG:
+                paid_, access_ = xano.beta_member(user), xano.has_paid_access(user)
+                _POOL.submit(venue_log.record, venue_log.from_vendor_page(
+                    user, paid_, access_, body.chat_id or 0, xano.SURFACE.get(), typed, card or None))
+            if card:
+                msgs = list(body.messages or [])
+                if msgs and msgs[-1].role == "user" and msgs[-1].content.strip() == typed:
+                    msgs[-1] = Turn(role="user", content=new)
+                body = body.model_copy(update={"message": new, "messages": msgs})
     if body.chat_id:
         chat = xano.get_chat(user["id"], body.chat_id)
         if not chat:

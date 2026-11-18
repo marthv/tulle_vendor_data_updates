@@ -279,7 +279,8 @@ def test_paid_found_answers_without_the_model(env):
     assert [a[1:3] for a in env["added"]][:2] == [("user", "Khol mansion"), ("assistant", j["text"])]
 
 
-def test_free_user_gets_no_price_of_any_kind(env):
+def test_free_user_gets_no_price_of_any_kind(env, monkeypatch):
+    monkeypatch.setattr(config, "LOOKUP_NO_LIMIT", False)   # on: a lookup spends nothing (test_venue_fixes_1118)
     env["forever"], env["access"] = False, False
     j = ask("oheka castle")
     assert env["model"] == 0 and j["price_locked"] is True
@@ -306,7 +307,8 @@ def test_several_matches_are_all_shown_not_asked(env):
     assert all(c.get("venue_fee_range") for c in j["cards"])          # FULL member: every card priced
 
 
-def test_missing_venue_is_honest_and_requested(env):
+def test_missing_venue_is_honest_and_requested(env, monkeypatch):
+    monkeypatch.setattr(config, "VENUE_LOG", False)   # on: a one-word name is not posted (lookup.slack_worthy)
     j = ask("Do you have Cresthollow in Long Island, NY?")
     assert env["model"] == 0
     assert j["lookup"]["status"] == "not_found" and j["text"].startswith("We don't have Cresthollow in Tulle yet")
@@ -341,7 +343,8 @@ def test_flag_off_is_the_old_path(env, monkeypatch):
     assert env["model"] == 1
 
 
-def test_free_user_at_the_limit_gets_the_paywall_not_a_lookup(env):
+def test_free_user_at_the_limit_gets_the_paywall_not_a_lookup(env, monkeypatch):
+    monkeypatch.setattr(config, "LOOKUP_NO_LIMIT", False)   # on: the lookup is answered (test_venue_fixes_1118)
     env["forever"], env["access"] = False, False
     env["rows"] = [{"status": "ok", "kind": "refine", "counted_as_free": True}] * config.FREE_REFINES
     monkeypatch_fb = True

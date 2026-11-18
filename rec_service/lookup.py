@@ -387,15 +387,19 @@ def area_request(text):
     return sum(1 for x in items if x and len(x.split()) <= 3) >= 4
 
 
-def detect(text, last_assistant="", v2=False):
+def detect(text, last_assistant="", v2=False, guard=False, dym=False):
     """{"name", "location", "alt_name", "alt_location", "cue"} when the message looks like "look up <venue name>",
     else None. Conservative on purpose: anything that reads like a search or a follow-up goes to the model.
-    last_assistant: the previous assistant message - a bare reply to its question ("Austin") is never a lookup."""
+    last_assistant: the previous assistant message - a bare reply to its question ("Austin") is never a lookup.
+    guard (config.LOOKUP_GUARD) / dym (config.DID_YOU_MEAN), 2026-11-18: see the block at the end of this module.
+    Both False = exactly as before."""
     raw = " ".join(str(text or "").split())
     if not raw or len(raw) > 200:
         return None
     if v2 and area_request(raw):
         return None          # an area / location constraint: the model's area search reads it (chat 2565)
+    if guard and non_venue_text(raw):
+        return None          # a question / complaint / "I'm looking for ..." / an area: the model reads it
     if conversational(raw) and not _CUE.search(raw):
         return None
     # "Is Il Sereno ... listed in Tulle's vendor directory? What is its pricing?" -> the first sentence.
@@ -413,6 +417,11 @@ def detect(text, last_assistant="", v2=False):
         for p in _SUFFIXES:
             s = re.sub(p, "", s, flags=re.I)
         s = s.strip(" ,.-:")
+    if guard or dym:
+        # "show me the pricing for the sapphire estate in sharon massachusetts" (11-12): "the pricing for" stayed in
+        # the name because the prefix list expects "pricing for" at the start.
+        s = re.sub(r"^the\s+(?:pricing|prices?|costs?|price list|info|details|rates)\s+(?:for|of|at|on)\s+", "", s,
+                   flags=re.I).strip(" ,.-:")
     if not s:
         return None
     # Location: "Bacchus, Brooklyn" / "Il Sereno, the hotel in Torno on Lake Como, Italy" / "Bacchus in Brooklyn".
@@ -449,6 +458,11 @@ def detect(text, last_assistant="", v2=False):
                 if rest and (tail in US_STATES or (k == 1 and tail in STATE_ABBR and tail not in _AMBIG_ABBR)):
                     alt_name, alt_location = " ".join(nw[:-k]).strip(" ,.-:"), " ".join(nw[-k:])
                     break
+    if dym:
+        if location:
+            location = place_hint(location)          # "sharon massachusetts" -> "sharon, Massachusetts"
+        elif not alt_name:
+            alt_name, alt_location = city_tail(name)  # "fox theatre atl" -> "fox theatre" + "Atlanta, Georgia"
     words = norm(name).split()
     if not words or len(words) > 7 or len(norm(name)) < 3:
         return None
@@ -462,6 +476,8 @@ def detect(text, last_assistant="", v2=False):
             return None          # "wedding photographer" = a search
     if REJECT.search(check) or _place(core) or _descriptive_only(core) or conversational(core):
         return None
+    if guard and non_venue_name(core):
+        return None          # "Pricing", "bar tender", "estate multi day", "Texas city"
     if category and len(norm(core).split()) == 1 and len(norm(core)) < 4:
         return None          # "DJ me", "photo op": too short to be a business name
     after_question = False
@@ -478,6 +494,8 @@ def detect(text, last_assistant="", v2=False):
            "words": len(words), "after_question": after_question, "category": category}
     if v2:
         out["v2"] = True      # find / resolve use the joined-words match (absent = exactly as before)
+    if dym:
+        out["dym"] = True     # find keeps its candidate pool and tries dropped-letter spellings (absent = as before)
     return out
 
 
@@ -620,10 +638,37 @@ def find(q, search, workers=6):
             run(extra)
             ranked = _rank(rows, q)
             status, matches = decide(ranked)
+    if q.get("dym") and status != "found" and not dym_candidates(q, _unique(rows)):
+        # Stage 3 (REC_DID_YOU_MEAN): one letter dropped from the most distinctive word ("rhyland" -> "ryland"). A
+        # failure here never turns into "we don't have it" - the earlier rounds already answered.
+        extra = deletion_queries(q["name"], done)
+        if extra:
+            try:
+                run(extra)
+            except LookupFailed:
+                pass
+            ranked = _rank(rows, q)
+            status, matches = decide(ranked)
     status, matches = _promote_single(q, status, matches)
-    return {"status": status, "matches": matches, "queries": list(done),
-            "scores": [round(s, 3) for s, _ in ranked[:5]],
-            "near": [r.get("name") for s, r in ranked[:3] if r.get("name")]}
+    out = {"status": status, "matches": matches, "queries": list(done),
+           "scores": [round(s, 3) for s, _ in ranked[:5]],
+           "near": [r.get("name") for s, r in ranked[:3] if r.get("name")],
+           # the venue log's best match + alternatives (2026-11-18; read only by venue_log)
+           "ranked": [{"vendor_id": r.get("vendor_id"), "name": r.get("name"), "state": _st(r.get("state")),
+                       "score": round(s, 3)} for s, r in ranked[:4]]}
+    if q.get("dym"):
+        out["pool"] = _unique(rows)
+    return out
+
+
+def _unique(rows):
+    seen, out = set(), []
+    for r in rows:
+        vid = r.get("vendor_id")
+        if vid and vid not in seen:
+            seen.add(vid)
+            out.append(r)
+    return out
 
 
 # ---------------------------------------------------------------- one answer instead of "which one?" (2026-11-07)
@@ -698,3 +743,214 @@ def resolve(q, res, prefer_states=()):
 
 class LookupFailed(Exception):
     pass
+
+
+# ================================================================ 2026-11-18 (owner's 14-day Planner review)
+# ---- LOOKUP GUARD (config.LOOKUP_GUARD) + the Slack rule (config.VENUE_LOG) share these. ----
+# Words that say what a couple NEEDS or ASKS, never which venue: a message made only of these (plus the descriptor
+# words above) is not a venue name ("Pricing", "bar tender", "estate multi day").
+NON_VENUE = {
+    "pricing", "price", "prices", "priced", "cost", "costs", "quote", "quotes", "info", "information", "details",
+    "budget", "deposit", "contract", "availability", "available", "bartender", "bartenders", "bar", "tender",
+    "officiant", "officiants", "catering", "caterer", "rentals", "rental", "decor", "cake", "dress", "menu",
+    "package", "packages", "minimum", "minimums", "fee", "fees", "tax", "tip", "tips", "gratuity", "tasting",
+    "shuttle", "transportation", "curfew", "multi", "multiday", "day", "days", "weekend", "weekday", "weekdays",
+    "date", "dates", "time", "times", "option", "options", "looking", "im", "need", "needs", "want", "wants"}
+_QSTART = re.compile(r"^(?:is|are|was|were|does|do|did|can|could|will|would|should|has|have|what|whats|how|why|"
+                     r"when|where|which|who|any|anything)\b", re.I)
+_SEEKING = re.compile(r"^(?:i'?m|im|i am|we'?re|were|we are|i|we)\s+(?:looking|searching|hoping|trying|want|need)\b",
+                      re.I)
+_AREAS = re.compile(r"\b(?:surrounding|surounding|serounding|nearby)\s+areas?\b|\bareas\b", re.I)
+_STATE_PLACE = re.compile(r"^(?:%s)\s+(?:city|county|area|region|state)$" % "|".join(sorted(US_STATES, key=len,
+                                                                                           reverse=True)))
+
+
+def _clean(text):
+    """Apostrophes as typed on phones (curly, or mangled to U+FFFD on the way in) -> '."""
+    return " ".join(str(text or "").replace("�", "'").replace("’", "'").split())
+
+
+def non_venue_text(text):
+    """True when the whole message is a question, a complaint, a "we're looking for ..." search or an area - never a
+    venue's name - and it has no lookup cue ("pricing", "do you have", "listed", ...)."""
+    t = _clean(text)
+    if not t:
+        return False
+    cue = bool(_CUE.search(t))
+    if conversational(t) and not cue:
+        return True
+    if _QSTART.match(t) and not cue and not re.match(r"(?i)^(?:what|how) about\b", t):
+        return True          # "what about / how about <name>" stays a lookup (a _PREFIXES intro)
+    if _SEEKING.match(t) and not cue:
+        return True
+    return bool(_AREAS.search(t))
+
+
+def non_venue_name(name):
+    """True when the would-be name holds no word that could name a venue: only need / ask words and descriptors, or
+    a state + "city" ("Texas city")."""
+    ws = tokens(_clean(name))
+    if not ws:
+        return True
+    if all(w in NON_VENUE or w in DESCRIPTORS for w in ws):
+        return True
+    return bool(_STATE_PLACE.match(norm(name)))
+
+
+def slack_worthy(name, text):
+    """The "Venue not in Tulle" notice (config.VENUE_LOG on): 2+ name-like words, at least one of them distinctive,
+    and the message is not a question / complaint. "Madonna inn" yes; "Pricing", "It's stupid", "Oheka" no."""
+    if non_venue_text(text) or non_venue_name(name):
+        return False
+    ws = [w for w in tokens(_clean(name)) if w not in NON_VENUE and len(w) >= 2]
+    if len(ws) < 2:
+        return False
+    return not all(w in DESCRIPTORS or w in GENERIC for w in ws)
+
+
+# ---- DID YOU MEAN (config.DID_YOU_MEAN) ----
+# City short forms and big-city names couples tack onto a venue ("Fox Theatre atl", "Public nyc", "The Thompson
+# houston"). Read as an ALTERNATIVE place, like the trailing state - the full typed name is still tried.
+CITY_HINTS = {
+    "atl": "Atlanta, Georgia", "atlanta": "Atlanta, Georgia", "nyc": "New York, New York",
+    "manhattan": "New York, New York", "brooklyn": "Brooklyn, New York", "philly": "Philadelphia, Pennsylvania",
+    "philadelphia": "Philadelphia, Pennsylvania", "chi": "Chicago, Illinois", "chicago": "Chicago, Illinois",
+    "sf": "San Francisco, California", "san francisco": "San Francisco, California", "dc": "Washington, District of Columbia",
+    "nola": "New Orleans, Louisiana", "new orleans": "New Orleans, Louisiana", "atx": "Austin, Texas",
+    "austin": "Austin, Texas", "htx": "Houston, Texas", "houston": "Houston, Texas", "dfw": "Dallas, Texas",
+    "dallas": "Dallas, Texas", "stl": "St. Louis, Missouri", "kc": "Kansas City, Missouri", "slc": "Salt Lake City, Utah",
+    "phx": "Phoenix, Arizona", "phoenix": "Phoenix, Arizona", "vegas": "Las Vegas, Nevada",
+    "las vegas": "Las Vegas, Nevada", "boston": "Boston, Massachusetts", "miami": "Miami, Florida",
+    "nashville": "Nashville, Tennessee", "denver": "Denver, Colorado", "seattle": "Seattle, Washington",
+    "san diego": "San Diego, California", "charleston": "Charleston, South Carolina", "savannah": "Savannah, Georgia",
+    "pittsburgh": "Pittsburgh, Pennsylvania", "baltimore": "Baltimore, Maryland", "detroit": "Detroit, Michigan",
+    "minneapolis": "Minneapolis, Minnesota", "orlando": "Orlando, Florida", "tampa": "Tampa, Florida"}
+
+
+def place_hint(location):
+    """A typed place the state reader can use: "atl" -> "Atlanta, Georgia"; "sharon massachusetts" -> "sharon,
+    Massachusetts" (state_of reads the part after the last comma); anything else unchanged."""
+    n = norm(location)
+    if n in CITY_HINTS:
+        return CITY_HINTS[n]
+    if state_of(location):
+        return location
+    w = n.split()
+    for k in (2, 1):
+        tail = " ".join(w[-k:])
+        if len(w) > k and (tail in US_STATES or (k == 1 and tail in STATE_ABBR and tail not in _AMBIG_ABBR)):
+            return "%s, %s" % (" ".join(w[:-k]), (STATE_ABBR.get(tail) or tail).title())
+    return location
+
+
+def city_tail(name):
+    """("fox theatre", "Atlanta, Georgia") for "fox theatre atl"; ("", "") when the name does not end in a known city
+    or nothing distinctive would be left ("Hotel Houston" stays one name)."""
+    nw = str(name or "").split()
+    for k in (2, 1):
+        if len(nw) > k:
+            tail = norm(" ".join(nw[-k:]))
+            rest = [t for t in tokens(" ".join(nw[:-k])) if t not in GENERIC]
+            if rest and tail in CITY_HINTS:
+                return " ".join(nw[:-k]).strip(" ,.-:"), CITY_HINTS[tail]
+    return "", ""
+
+
+def deletion_queries(name, done=()):
+    """Stage 3: the most distinctive word (5+ letters) with one letter dropped - "rhyland" -> "ryland" - and with an
+    "s" added ("elkin" -> "elkins")."""
+    d = sorted([t for t in tokens(name) if t not in GENERIC and len(t) >= 5], key=len, reverse=True)[:1]
+    qs = [t + "s" for t in d if not t.endswith("s")] + [t[:i] + t[i + 1:] for t in d for i in range(len(t))]
+    return [x for x in dict.fromkeys(qs) if x not in done][:8]
+
+
+def _generic_typo(t):
+    """'meusuem' is a misspelt 'museum': a venue-type word, not a distinctive one."""
+    return len(t) >= 5 and t not in GENERIC and any(
+        g[0] == t[0] and abs(len(g) - len(t)) <= 1 and sim(t, g) >= 0.6 for g in GENERIC if len(g) >= 4)
+
+
+def dym_score(query, name):
+    """0 when the candidate does not hold the couple's distinctive words; else 0..1. Each distinctive word (venue-type
+    words and their misspellings left out) must match a word of the name closely (>= 0.8, 0.9 under 5 letters); the
+    longest must match; at least half of them must; with 3+ words at least 2 must."""
+    qd = [t for t in _distinctive(query) if not _generic_typo(t)] or _distinctive(query)
+    ct = tokens(name)
+    if not qd or not ct:
+        return 0.0
+    sims = []
+    for t in qd:
+        b = max(sim(t, u) for u in ct)
+        sims.append(b if b >= (0.8 if len(t) >= 5 else 0.9) else 0.0)
+    matched = sum(1 for s in sims if s)
+    longest = max(range(len(qd)), key=lambda i: len(qd[i]))
+    if not matched or not sims[longest] or matched / len(qd) < 0.5 or (len(qd) >= 3 and matched < 2):
+        return 0.0
+    return round(0.7 * matched / len(qd) + 0.3 * sum(sims) / len(qd), 3)
+
+
+def dym_candidates(q, pool):
+    """[(score, row)] best first: rows of the pool that hold the couple's distinctive words."""
+    names = [n for n in (q.get("name"), q.get("alt_name")) if n]
+    out = []
+    for m in pool or []:
+        s = max([dym_score(n, m.get(f) or "") for n in names for f in ("name", "google_name")] or [0.0])
+        if s > 0:
+            out.append((s, m))
+    return sorted(out, key=lambda x: -x[0])
+
+
+def _place_of(q):
+    return q.get("location") or q.get("alt_location") or ""
+
+
+def did_you_mean(q, res, prefer_states=()):
+    """A not_found lookup whose candidate pool holds the couple's words -> status "dym" with up to 3 matches (in the
+    place they named, else their wedding state(s), first). Anything else passes through unchanged. Pure."""
+    if res.get("status") != "not_found":
+        return res
+    cands = dym_candidates(q, res.get("pool"))
+    if not cands:
+        return res
+    place = _place_of(q)
+    want = {str(s).strip().lower() for s in prefer_states if s}
+
+    def rank(c):
+        m = c[1]
+        here = _in_place(m, place) if place else str(_st(m.get("state"))).strip().lower() in want
+        return (0 if here else 1, -c[0])
+    cands.sort(key=rank)
+    return dict(res, status="dym", matches=[m for _, m in cands[:3]], dym_scores=[s for s, _ in cands[:3]])
+
+
+def place_fix(q, res, prefer_states=()):
+    """A found / best venue that is NOT in the place the couple named ("The Sanctuary RI" -> the New York one) or,
+    with no place named, not in their wedding state(s) ("Central park" during a New York chat -> Minnesota):
+      - a candidate in that place that holds their words -> status "best", that one first, the other offered;
+      - none -> status "elsewhere" (the same card, and the answer says where it is)."""
+    if res.get("status") not in ("found", "best") or not res.get("matches"):
+        return res
+    top = res["matches"][0]
+    names = [n for n in (q.get("name"), q.get("alt_name")) if n]
+    v2 = bool(q.get("v2"))
+
+    def holds(m):
+        return any(strong(n, m.get(f) or "", v2) or dym_score(n, m.get(f) or "") > 0
+                   for n in names for f in ("name", "google_name"))
+    place = _place_of(q)
+    if place and (state_of(place) or [t for t in tokens(place) if t not in STATE_ABBR]):
+        inside = lambda m: _in_place(m, place)
+        where = place
+    else:
+        want = {str(s).strip().lower() for s in prefer_states if s}
+        if not want:
+            return res
+        inside = lambda m: str(_st(m.get("state"))).strip().lower() in want
+        where = ", ".join(s for s in prefer_states if s)
+    if inside(top):
+        return res
+    pool = [m for m in (res.get("pool") or []) + list(res["matches"]) if m.get("vendor_id") != top.get("vendor_id")]
+    here = [m for m in pool if inside(m) and holds(m)]
+    if here:
+        return dict(res, status="best", matches=[here[0], top], place_fixed=True)
+    return dict(res, status="elsewhere", matches=[top], elsewhere_of=where, typed_place=bool(place))
