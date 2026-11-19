@@ -24,4 +24,4 @@ COPY experiments/ experiments/
 EXPOSE 8080
 # One worker: the scheduler thread lives in the process. "::" listens on IPv6 + IPv4, which
 # Railway private networking (experiments-engine.railway.internal) needs.
-CMD ["sh", "-c", "exec uvicorn experiments_engine.service:app --host :: --port ${PORT:-8080} --workers 1 --no-access-log"]
+CMD ["python", "-m", "experiments_engine.run"]
