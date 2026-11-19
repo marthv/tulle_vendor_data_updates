@@ -641,6 +641,7 @@ def create_app(engine=None, start_scheduler=None):
             return JSONResponse({"status": "warming", "detail": "no snapshot yet; first run in progress"},
                                 status_code=503, headers={"Retry-After": "60"})
         n = max(0, min(int(history or 0), MAX_INLINE_HISTORY))
+        log.info("snapshot served (history=%d, host=%s)", n, (request.headers.get("host") or "")[:60])
         if n:
             gz, etag = eng.snapshot_variant(n)
         else:
