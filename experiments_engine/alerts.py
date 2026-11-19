@@ -20,7 +20,7 @@ import os
 log = logging.getLogger("experiments_engine.alerts")
 
 SLACK_URL = "https://slack.com/api/chat.postMessage"
-MAX_ITEMS = 8
+MAX_ITEMS = 5
 MAX_CHARS = 3800
 
 
@@ -37,8 +37,9 @@ def _esc(s):
     return str(s if s is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _name(row):
-    return _esc(row.get("name") or row.get("id") or "?")
+def _name(row, limit=90):
+    n = str(row.get("name") or row.get("id") or "?")
+    return _esc(n if len(n) <= limit else n[:limit - 1].rstrip() + "…")
 
 
 def _pct(x, nd=0):
@@ -73,7 +74,8 @@ def _bullets(rows, render):
 
 
 def _exp_line(row):
-    line = f"• *{_name(row)}*: {_esc(row.get('action') or '')}. {_esc(row.get('reason') or '')}".rstrip()
+    action = str(row.get('action') or '').rstrip('.?!')
+    line = f"• *{_name(row)}*: {_esc(action)}. {_esc(row.get('reason') or '')}".rstrip()
     c = counts_line(row)
     return line + (f"\n    {c}" if c else "")
 

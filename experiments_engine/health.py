@@ -62,7 +62,7 @@ ACTIONS = {
     "callable_loss": "Call it: revert",
     "needs_call": "Owner call due",
     "starved": "Shelve or redesign",
-    "no_data": "Check tracking / is it switched on?",
+    "no_data": "Check tracking (is it switched on?)",
     "zombie": "Shelve",
     "manual_overdue": "Read it out",
     "confounded": "Evidence only; consider a split test",
@@ -525,8 +525,9 @@ def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues
     # 5 starved
     if mdays and out["projected_days"] is not None and out["projected_days"] > mdays:
         flag("starved", f"Projected {out['projected_days']} days to a verdict > max_days {int(mdays)}")
-    elif days_running is not None and days_running >= 7 and (last7 or not rows) and obs_rate is not None \
-            and obs_rate < MIN_EXPOSURE_PER_ARM_DAY:
+    elif atype == "split" and days_running is not None and days_running >= 7 and (last7 or not rows)             and obs_rate is not None and obs_rate < MIN_EXPOSURE_PER_ARM_DAY:
+        # Exposure floor applies to split tests only. Benchmark / pre-post tests are low-volume by
+        # design (e.g. the save offer: >= 3 buyers in ~25 offers) and are judged by projected days.
         flag("starved", f"Only {obs_rate:.1f} couples/day/arm over the last 7 days (< {MIN_EXPOSURE_PER_ARM_DAY})")
 
     # 6 no_data
@@ -574,8 +575,8 @@ def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues
         last = max(dates) if dates else None
         since = (today - last).days if last else days_running
         if since >= MANUAL_OVERDUE_DAYS:
-            flag("manual_overdue", f"No results[] readout for {since} days" if last
-                 else f"No results[] readout in {since} days live")
+            flag("manual_overdue", f"No readout for {since} days" if last
+                 else f"No readout in {since} days live")
 
     # 9 confounded
     if confounded:
