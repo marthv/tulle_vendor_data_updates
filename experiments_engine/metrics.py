@@ -537,11 +537,17 @@ def m_pdf_open_rate_new(ctx, params, window):
     users = _new_users(ctx, window)
     units = [{"uid": uid, "anchor": t, "pending": t + min_age * DAY > ctx.now_ms,
               "conv": _x.to_int(u.get("total_pdf_views")) > 0} for uid, t, u in users]
-    return rate_readout(units, window, "share of new accounts that have opened a PDF by read time "
-                        "(accounts at least %g day(s) old)" % min_age,
-                        ["No first-view timestamp in Xano: this is 'opened by read time', not 'within 1 day'. "
-                         "Older cohorts have had longer, so a pre cohort is biased upward.",
-                         "Not comparable with the Mixpanel 1-day baseline (~60%)."])
+    ro = rate_readout(units, window, "share of new accounts that have opened a PDF by read time "
+                      "(accounts at least %g day(s) old)" % min_age,
+                      ["No first-view timestamp in Xano: this is 'opened by read time', not 'within 1 day'. "
+                       "Older cohorts have had longer, so a pre cohort is biased upward.",
+                       "Not comparable with the Mixpanel 1-day baseline (~60%)."])
+    # Across time windows (pre/post, benchmark) the older cohort has had longer to open a PDF, so the
+    # comparison is biased by construction: evidence only, never a ship/revert call (health.py).
+    # A split test compares same-age arms, so it stays callable.
+    if window.get("type") != "split":
+        ro["approximate"] = True
+    return ro
 
 
 def m_pdf_open_within_1d(ctx, params, window):
