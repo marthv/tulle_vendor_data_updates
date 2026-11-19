@@ -26,7 +26,9 @@ def real_entry(eid):
 
 def test_pdf_limit_verdict_from_live_numbers():
     """Live 06:30 UTC 11-19 readout: 20 of 395 before vs 22 of 371 after, 70% chance, money bar 95%."""
-    e = real_entry("EXP-2026-11-limit-cards-plans-copy")
+    # The registry entry was closed (inconclusive) on 2026-11-19; score it as it stood while live.
+    e = dict(real_entry("EXP-2026-11-limit-cards-plans-copy"))
+    e.update(status="live", outcome=None, decided_on=None, decision="")
     ro = {"arms": {"control": {"n": 395, "conv": 20}, "treatment": {"n": 371, "conv": 22}},
           "pending": {"treatment": 17}, "params": {"gate": "pdf_limit"},
           "definition": "share of new accounts with >= 3 PDF views who pay within 1 day(s) of sign-up; cohort before "
