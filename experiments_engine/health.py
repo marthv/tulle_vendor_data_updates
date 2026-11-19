@@ -487,6 +487,13 @@ def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues
         loss is not None and loss <= rule["max_loss"])
     enough_days = days_running is not None and days_running >= spec.MIN_DAYS_TO_CALL
     comparative = atype != "rollout"
+    # An approximate metric (e.g. "opened a PDF by read time", where older cohorts have had longer)
+    # is biased by construction, so it can never produce a ship or revert call. Live check 2026-11-19
+    # gave welcome-email-server a false "revert" (P(beat) 0.004) for exactly this reason.
+    approximate = bool(isinstance(readout, dict) and readout.get("approximate"))
+    if approximate:
+        out["approximate_metric"] = "Metric is approximate (biased between cohorts); evidence only, never callable"
+        comparative = False
 
     # 2 callable_win
     if comparative and p_beat is not None and p_beat >= rule["ship_p"] and loss_ok and enough_days:

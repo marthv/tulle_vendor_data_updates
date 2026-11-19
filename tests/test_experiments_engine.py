@@ -232,6 +232,14 @@ class TestHealth(unittest.TestCase):
         self.assertEqual(h["health"], "callable_loss")
         self.assertEqual(h["action"], "Call it: revert")
 
+    def test_approximate_metric_is_never_callable(self):
+        ro = readout(t=(3000, 200)); ro["approximate"] = True
+        h = self.ev(ro=ro)
+        self.assertNotIn(h["health"], ("callable_loss", "callable_win"))
+        self.assertTrue(h.get("approximate_metric"))
+        ro2 = readout(t=(3000, 400)); ro2["approximate"] = True
+        self.assertNotEqual(self.ev(ro=ro2)["health"], "callable_win")
+
     def test_guardrail_breach_beats_win(self):
         ro = readout(t=(3000, 400), guardrails=[{"key": "purchases_per_day",
                                                  "count": {"pre": {"count": 100, "days": 14},

@@ -1106,7 +1106,7 @@
     {
       "id": "EXP-2026-10-pdf-popup-copy",
       "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
-      "status": "live",
+      "status": "reverted",
       "themes": [
         "paywall"
       ],
@@ -1122,10 +1122,14 @@
         {
           "date": "2026-10-26",
           "note": "Started. Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data)."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Softer copy reverted 2026-11-03 ~21:10 UTC (limit + warning cards back to 'Check out our plans'), published and verified. No read of the result was recorded before the revert."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Softer copy reverted 2026-11-03 ~21:10 UTC (limit + warning cards back to 'Check out our plans'), published and verified. No read of the result was recorded before the revert.",
       "confounds_noted": [
         "same publish as checkbox removal etc.",
         "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
@@ -1185,7 +1189,9 @@
       "audit_2026_11_19": {
         "recommended_status": "reverted",
         "evidence": "The softer copy was REVERTED: memory project_limit_cards_plans_revert_and_vibe_lookup_2026-11-03 - limit + warning cards back to 'Check out our plans', submit-PDF link hidden, published and verified live 2026-11-03 ~21:10 UTC (owner: the 10-24 'keep going free' copy may have cost payments). Further changed by the 11-12 venue-specific limit card build. Ran 10-26..11-03."
-      }
+      },
+      "outcome": "reverted",
+      "decided_on": "2026-11-03"
     },
     {
       "id": "EXP-2026-10-trustpilot-5star",
@@ -1351,7 +1357,7 @@
     {
       "id": "EXP-2026-10-search-railway",
       "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 50% of users",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "performance",
         "search"
@@ -1396,10 +1402,14 @@
         {
           "date": "2026-10-27",
           "note": "16:25 UTC search-api 554bec3: breaker closes on a probe (min 10 s, every 5 s) - open 10-43 s per freeze vs 120 s; Discovery miss fallback 46% (16:10-16:26) -> 17.5% (16:26-17:06, 10/57). Meili redeploy 15:55 did NOT help (8.4 -> 13.6 freezes/h, busier hour). 17:35 UTC search-api + sync-cron moved to meilisearch-b (fresh volume, us-east4, seeded by meili-b-seed; counts identical). First 20 min on B: no 30-40 s freezes, but a few ~1.0-1.2 s waits failed under MEILI_QUERY_TIMEOUT_S=0.8 -> reverted to 1.5 at ~18:10. ~18:05 UTC ep119 + fn83 got the florals code (owner OK, option A): Flowers skips Railway (Xano path), fl_* filters inert unless sent; non-Flowers unchanged (copy test + live smoke: same totals)."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Split ended 2026-10-27: REC_RAILWAY_SEARCH_PCT 50->100 (05:54 UTC, Planner) and ep119 $rw_pct 50->100 (16:10 UTC, Discovery). Railway search serves everyone since."
         }
       ],
       "stat_sig": "",
-      "decision": "Ramp to 25% when the brief says green (>=50 Railway requests, fallback <5%, search p50 >=30% faster)",
+      "decision": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Split ended 2026-10-27: REC_RAILWAY_SEARCH_PCT 50->100 (05:54 UTC, Planner) and ep119 $rw_pct 50->100 (16:10 UTC, Discovery). Railway search serves everyone since.",
       "confounds_noted": [
         "Railway answers enter the shared ep119 24 h cache (cache key excludes auth), so cache hits can't be attributed to an arm",
         "Owner account forced to Railway (Discovery logs have no user id)"
@@ -1469,7 +1479,9 @@
       "audit_2026_11_19": {
         "recommended_status": "shipped",
         "evidence": "The split ended 2026-10-27: REC_RAILWAY_SEARCH_PCT 50 -> 100 at 05:54 UTC (Planner) and ep119 $rw_pct 50 -> 100 at 16:10 UTC (Discovery) (registry changes[] 10-27; memory index_overflow 'Railway search 100% (ep119 + Planner)', 11-02 read: Railway arm 93%, p50 0.21 s, fallbacks 7%). REC_RAILWAY_SEARCH_PCT is still set on rec-engine (Railway variable list, value not readable). Recommend decided: shipped (100% rollout), no further A/B."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-10-27"
     },
     {
       "id": "EXP-2026-10-chat-cost-cards",
@@ -1561,7 +1573,7 @@
     {
       "id": "EXP-2026-10-next-step-chips",
       "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
-      "status": "live",
+      "status": "paused",
       "themes": [
         "assistant",
         "planning"
@@ -1574,7 +1586,12 @@
       "review_date": null,
       "dates_note": "backend bd2535b deployed 10-25 23:50 UTC; front end in the 10-26 publish",
       "design": "pre/post",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Switched OFF 2026-11-07 as a side effect of open-ended replies (rec e80a904, REC_OPEN_ENDED default on). Status set to paused 2026-11-19: owner to resume or shelve."
+        }
+      ],
       "stat_sig": "",
       "decision": "",
       "confounds_noted": [
@@ -1634,7 +1651,8 @@
       "audit_2026_11_19": {
         "recommended_status": "shelved",
         "evidence": "Effectively OFF since 2026-11-07: rec-engine e80a904 'open-ended replies - no trailing question, no chips, no profile questions' (REC_OPEN_ENDED default '1' in config.py; REC_OPEN_ENDED is not in the rec-engine variable list, so the default applies); app._open_ended clears chips except lookup 'best'. Memory index_overflow 11-07: 'OPEN-ENDED server LIVE main e80a904 (verified live: no closing ?, chips [])'. No read recorded. Recommend shelved (superseded by open-ended replies)."
-      }
+      },
+      "paused_on": "2026-11-07"
     },
     {
       "id": "EXP-2026-10-stop-progress",
@@ -1888,7 +1906,7 @@
     {
       "id": "EXP-2026-10-planner-profile-questions",
       "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
-      "status": "live",
+      "status": "paused",
       "themes": [
         "assistant",
         "activation"
@@ -1901,7 +1919,12 @@
       "review_date": "2026-11-09",
       "dates_note": "rec-engine c4ec678 23:18 UTC (REC_PROFILE_QUESTIONS=1)",
       "design": "pre/post",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Switched OFF 2026-11-07 as a side effect of open-ended replies (rec e80a904: profile questions only when not OPEN_ENDED). Status set to paused 2026-11-19: owner to resume or shelve."
+        }
+      ],
       "stat_sig": "",
       "decision": "",
       "confounds_noted": [
@@ -1959,7 +1982,8 @@
       "audit_2026_11_19": {
         "recommended_status": "shelved",
         "evidence": "OFF since 2026-11-07: app.py only asks profile questions when 'config.PROFILE_QUESTIONS and not config.OPEN_ENDED' (origin/main); REC_OPEN_ENDED defaults on and is not set on Railway. Commit e80a904 message: 'no profile questions'. No read recorded. Recommend shelved (superseded by open-ended replies)."
-      }
+      },
+      "paused_on": "2026-11-07"
     },
     {
       "id": "EXP-2026-10-planner-listings",
@@ -2283,14 +2307,14 @@
     {
       "id": "EXP-2026-11-texas-only-forever-89",
       "name": "Texas-only Forever $89",
-      "status": "planned",
+      "status": "live",
       "themes": [
         "pricing"
       ],
       "goal": "Owner request 2026-10-31: couples whose wedding location is Texas and ONLY Texas see Forever at $89 (vs $135 Rest+TX baseline). Does the lower price lift Texas-only Forever buys/day and revenue per sign-up?",
       "primary_metric": "Texas-only Forever buys/day and $/sign-up (table 16 x table 1; cohort = normalised Wedding_Location_Updated == {Texas} after splitting comma-packed entries, trimming, lower-casing, dropping empties)",
       "guardrail": "Texas+other (NY/CA/Intl or any other state), Rest, NY, CA/Intl prices unchanged; page price must equal charged price (WeWeb bindings + fn63 all gated on table 17 Product_ID 13)",
-      "start_date": null,
+      "start_date": "2026-11-03",
       "end_date": null,
       "review_date": null,
       "dates_note": "Built 2026-10-31 with the switch OFF (table 17 row 16 parked as Product_ID 113; fn63 Texas block live but inert). Starts when the owner (1) creates the $89 Stripe price + payment link under prod_Ri5UAnkrymjxZ9 and puts it in row 16, (2) publishes the two Membership-page bindings, (3) sets row 16 Product_ID 113 -> 13. Read 2-3 weeks after that date.",
@@ -2333,7 +2357,12 @@
         },
         "note": "Payment log Amount includes tax, refunds not netted; roadmap rows excluded. $/sign-up = cohort revenue in window / cohort sign-ups in window (not age-matched). Base rate is tiny: at 0.05-0.3 Forever/day a 2-3 week read will be directional only."
       },
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Live since 2026-11-03 ~06:00 UTC (Xano table 17 row 16, Product_ID 13) but was still marked planned. Status corrected 2026-11-19; never read out."
+        }
+      ],
       "stat_sig": "not computed",
       "decision": "",
       "confounds_noted": [
@@ -2416,7 +2445,7 @@
     {
       "id": "EXP-2026-11-planner-my-wedding-plan",
       "name": "Planner 'My wedding' plan (launch to everyone, no holdout)",
-      "status": "live",
+      "status": "reverted",
       "themes": [
         "planner",
         "engagement",
@@ -2435,10 +2464,14 @@
         {
           "date": "2026-11-11",
           "note": "Registry fix: launched 2026-11-08 (My wedding v3 server live; REC_PLAN_AB_PCT=100, adoption shown daily by ab_report since 11-08). Call date set to 2 weeks per the plan."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Rolled back 2026-11-08 ~03:21 UTC (REC_PLAN_AB_PCT=0; commits 1f994f7/dfdff4f), about 38 min after going on. Table 90 holds only owner test rows."
         }
       ],
       "stat_sig": null,
-      "decision": null,
+      "decision": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Rolled back 2026-11-08 ~03:21 UTC (REC_PLAN_AB_PCT=0; commits 1f994f7/dfdff4f), about 38 min after going on. Table 90 holds only owner test rows.",
       "confounds_noted": "No control group: re-gating, open-ended replies, home screen, lookup and sourced answers all shipped 11-07, so any before/after change cannot be credited to the plan alone.",
       "risks": "Plan UI clutter on mobile cards; a plan read failure must never block an answer (caught, 3 s cap).",
       "owner": "Vivek",
@@ -2510,12 +2543,14 @@
       "audit_2026_11_19": {
         "recommended_status": "reverted",
         "evidence": "Plan is NOT running: memory index_overflow '11-07 22:21 ET ... My wedding plan ROLLED BACK (REC_PLAN_AB_PCT=0 on rec-engine + health-report-cron; verified plan_enabled False)' (= 11-08 03:21 UTC), commits 1f994f7 / dfdff4f; Xano table 90 rec_wedding_plan holds 5 rows total, all user 14998 (owner test), created 2026-11-08 02:28-03:04 UTC (read-only check 2026-11-19). The 11-11 'registry fix' (996a012) appears to conflate the native My wedding page (v3, 8434d1c, 11-08) with this plan sheet. REC_PLAN_AB_PCT is set on rec-engine but its value is not readable here. Recommend reverted (live ~38 min on 11-08 for internal only)."
-      }
+      },
+      "outcome": "reverted",
+      "decided_on": "2026-11-08"
     },
     {
       "id": "EXP-2026-11-pi-first-vendor-free",
       "name": "Pricing Intelligence free on the first vendor only, then locked until a plan",
-      "status": "ended",
+      "status": "shelved",
       "themes": [
         "paywall",
         "pricing-intelligence"
@@ -2536,10 +2571,14 @@
         {
           "date": "2026-11-18",
           "note": "Payment log (table 16, internal excluded, UTC): 11-09..11-15 41 purchases = 5.86/day, $477/day vs baseline 10-14..10-27 5.43/day, $394/day (leak window 10-28..11-08: 3.42/day, $303/day); 11-16..11-17 9 = 4.5/day, $346/day. 7-day first-payment rate by sign-up week: 10-20 2.60% (19/732), 10-27 2.20% (14/636), 11-03 2.24% (14/626), 11-10 2.40% (17/709, incomplete). Read: purchases/day rose in the first full week of the test but the per-sign-up rate did not move; confounded (leak fix 11-09, bubble 11-11, pricing copy 11-15)."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Owner ended it early 2026-11-18 05:39:52 UTC (ep230 allowance removed). 'ended' is not a v2 status."
         }
       ],
       "stat_sig": "not computed",
-      "decision": "ENDED EARLY by owner 2026-11-18 ('users don't get to see the first one for free', Price Report and Pricing Intelligence alike): ep230 free_allowance branch removed 05:39:52 UTC (backup tulletogether .claude/xano_backups/ep230_pre_no_free_vendor_2026-11-18.xs). Not called on the bar: the clean purchases window (from 11-16) had only 2 days, and the Price Report replaced the PI card on 11-17.",
+      "decision": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Owner ended it early 2026-11-18 05:39:52 UTC (ep230 allowance removed). 'ended' is not a v2 status.",
       "confounds_noted": [
         "Free-PDF-view leak (ep21 0==null) ran 2026-10-28..11-09 04:35 UTC and depressed purchases (3.5/day $306/day); the purchases window is only clean from 2026-11-16",
         "Same publish window: auto tours cut to Discovery + vendor page (PDFs step only); locked venue PI now shows state median + middle-50% bar (blurred 'This venue'); Ask-Tulle-from-vendor fix (ww-planner-chat 4586d2b) - all pending owner publish 2026-11-09",
