@@ -80,7 +80,7 @@
       "dates_note": "Built 08-16; published around 08-19 (exact date not recorded)",
       "design": "pre/post",
       "stat_sig": "no read recorded",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [],
       "risks": [],
       "owner": "Vivek",
@@ -93,11 +93,15 @@
         {
           "date": "2026-10-14",
           "note": "Correction: PDF wall ~18% of purchases (30/170, 30d), not 40%. Warning CTA 88 clicks -> 11 buys (1d)."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "id": "EXP-2026-08-pdf-warning-view3",
       "name": "\"Last free pricing PDF\" warning on the 3rd free view",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "paywall"
       ],
@@ -154,7 +158,9 @@
       "audit_2026_11_19": {
         "recommended_status": "needs_call",
         "evidence": "Registry live since 2026-08-19 with no decision (3 months, zombie by framework rule). The warning overlay still exists: memory project_pdf_warning_view3 (11-12) says 'PDF Warning overlay + popup 48be8a6c untouched' while the limit card was made venue-specific; its copy was rewritten 10-26 (EXP-2026-10-pdf-popup-copy) and reverted 11-03. Recommend owner call: record as decided/shipped (kept) or shelve."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "guardrail": "",
@@ -1018,7 +1024,7 @@
     {
       "id": "EXP-2026-10-signup-checkbox",
       "name": "Remove T&C checkbox on sign-up ('By clicking Sign up, you agree...')",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "signup",
         "legal"
@@ -1043,10 +1049,14 @@
         {
           "date": "2026-11-12",
           "note": "BUG FOUND + FIXED 04:14 UTC: ep7 (Google sign-in) kept the TERMS_REQUIRED check after the checkbox was removed, so NEW users pressing Google on Sign In ('/') were refused and bounced to Sign Up (18 of 93 Google calls failed in the 24h to 11-12 03:38 UTC, all agreed_terms=false; ~half never retried). Sign-up rate since 10-26 is understated for Google; read the 2-week result from 11-12 on, or note the gap."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "same publish: sign-in/up layout fix, tour reset, PDF popup copy, cost tools consolidation, 5-star Trustpilot ask",
         "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix",
@@ -1101,7 +1111,9 @@
       "audit_2026_11_19": {
         "recommended_status": "needs_call",
         "evidence": "Change is still live (no evidence of the checkbox returning). Read was confounded: Google sign-in broken 11-04..11-07 04:29 UTC (memory project_google_signin_blocked_by_app_wf_2026-11-06) and ep7 TERMS_REQUIRED bounced new Google users until 11-12 04:14 UTC (registry result). Planned 2-week re-read never recorded. Recommend owner call -> shipped, with a clean read from 11-12."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-pdf-popup-copy",
@@ -1196,7 +1208,7 @@
     {
       "id": "EXP-2026-10-trustpilot-5star",
       "name": "NPS thank-you Trustpilot ask only for 5-star raters (owner test)",
-      "status": "live",
+      "status": "shelved",
       "themes": [
         "reviews"
       ],
@@ -1220,10 +1232,14 @@
         {
           "date": "2026-11-11",
           "note": "Table 77, all time (internal excluded): the Trustpilot prompt was shown (offered/declined) to 57 of 71 raters and recorded 0 clicked / 0 completed. Last 7 days: 15 ratings, avg 3.8/5 (prior 7 days 15, 4.5/5); 9 five-star raters shown the ask, 0 clicked. TrustBox iframe clicks (nps-survey f992e72) are not recorded. Daily line in the brief from 11-11."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): shelve. Zero Trustpilot clicks tracked in both periods (0 of 26 before, 0 of 44 after), and asking only 5-star raters is a review-gating risk. Note: shelving the record does not change the NPS component; removing the 5-star-only ask is a separate code change."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): shelve. Zero Trustpilot clicks tracked in both periods (0 of 26 before, 0 of 44 after), and asking only 5-star raters is a review-gating risk. Note: shelving the record does not change the NPS component; removing the 5-star-only ask is a separate code change.",
       "confounds_noted": [
         "past-buyer review email 2026-10-24 (148 sends) also drives reviews",
         "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
@@ -1277,7 +1293,9 @@
       "audit_2026_11_19": {
         "recommended_status": "needs_call",
         "evidence": "Still live: reviewMinScore 5 confirmed 10-26; TrustBox on the thank-you step added (nps-survey f992e72, live status not verified). 0 clicks / 0 completions from 57 asks (result 11-11) - starved; also flagged as review gating against Trustpilot/FTC guidance (risks). Recommend owner call: shelve or set reviewMinScore=1."
-      }
+      },
+      "outcome": "shelved",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-tours-v2",
@@ -1486,7 +1504,7 @@
     {
       "id": "EXP-2026-10-chat-cost-cards",
       "name": "Cost cards inside Tulle Planner chat answers (estimate / split / compare / budget)",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "assistant",
         "planning"
@@ -1503,10 +1521,14 @@
         {
           "date": "2026-10-26",
           "note": "Started. Rollback: set REC_COST_TOOLS_IN_CHAT=0 on Railway rec-engine."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
       ],
@@ -1568,12 +1590,14 @@
       "audit_2026_11_19": {
         "recommended_status": "needs_call",
         "evidence": "Probably still on: REC_COST_TOOLS_IN_CHAT is set on rec-engine (Railway variable list; value not readable; code default is 0). Treatment changed: Split my budget removed from the component 11-08 (ww-planner-chat 9932264), Budget/Cost tools tabs removed 11-08, open-ended replies strip chips from 11-07 (REC_OPEN_ENDED default on, not set on Railway), estimate what-if card 11-18 (publish 1401). No read ever recorded. Recommend owner call (shipped as default) or shelve the experiment framing."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-next-step-chips",
       "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
-      "status": "paused",
+      "status": "shelved",
       "themes": [
         "assistant",
         "planning"
@@ -1590,10 +1614,14 @@
         {
           "date": "2026-11-19",
           "note": "Switched OFF 2026-11-07 as a side effect of open-ended replies (rec e80a904, REC_OPEN_ENDED default on). Status set to paused 2026-11-19: owner to resume or shelve."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): shelve. Off since 2026-11-07 (open-ended replies); superseded by the planned open-ended vs chips split."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): shelve. Off since 2026-11-07 (open-ended replies); superseded by the planned open-ended vs chips split.",
       "confounds_noted": [
         "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
       ],
@@ -1652,12 +1680,14 @@
         "recommended_status": "shelved",
         "evidence": "Effectively OFF since 2026-11-07: rec-engine e80a904 'open-ended replies - no trailing question, no chips, no profile questions' (REC_OPEN_ENDED default '1' in config.py; REC_OPEN_ENDED is not in the rec-engine variable list, so the default applies); app._open_ended clears chips except lookup 'best'. Memory index_overflow 11-07: 'OPEN-ENDED server LIVE main e80a904 (verified live: no closing ?, chips [])'. No read recorded. Recommend shelved (superseded by open-ended replies)."
       },
-      "paused_on": "2026-11-07"
+      "paused_on": "2026-11-07",
+      "outcome": "shelved",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-stop-progress",
       "name": "Live progress labels + Stop button on planner answers",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "assistant",
         "performance"
@@ -1674,10 +1704,14 @@
         {
           "date": "2026-10-25",
           "note": "Baseline answer latency (283 real requests 10-18..10-25): p50 ~12.6s, p90 23-24s; model 43%, Xano 55%."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Same publish: sign-up checkbox removal, PDF popup copy, Trustpilot 5-star ask, tours v2 + Cost tools tour, Tulle Planner rename + 3 tabs, chat cost cards, Stop/progress, next-step chips, onboarding vibes fix"
       ],
@@ -1735,12 +1769,14 @@
       "audit_2026_11_19": {
         "recommended_status": "needs_call",
         "evidence": "Still in code (rec_service/progress.py on origin/main 2c66b90); no evidence it was removed. No read since the 10-25 baseline; no review date. Recommend owner call -> shipped."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-planner-name-lookup",
       "name": "Planner: instant venue lookup by name (no model)",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "assistant",
         "performance",
@@ -1762,10 +1798,14 @@
         {
           "date": "2026-11-18",
           "note": "Two misses from #feedback 11-17 fixed behind REC_NAME_MATCH_V2 (on ~05:36 UTC): 'Holly Hedge' (Forever couple, chat 2544) returned not_found for a venue we have (listing 'HollyHedge Estate'); two Miami area requests (chat 2565) were posted as missing venues. Watch: rec_venue_request posts that are area phrases should stop; area messages now cost a model call."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
       ],
@@ -1824,7 +1864,9 @@
       "audit_2026_11_19": {
         "recommended_status": "needs_call",
         "evidence": "Live (REC_NAME_LOOKUP default 1, not overridden on Railway) but heavily modified: 11-07 'no more which one did you mean' (92f42e5, 16f2464), 11-18 name match v2 (REC_NAME_MATCH_V2 set), 11-18 venue fixes + table 91 log (EXP-2026-11-planner-venue-fixes). Review date 11-02 passed with no call. Recommend decided: shipped; measurement continues under EXP-2026-11-planner-venue-fixes."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-planner-price-upsell",
@@ -1906,7 +1948,7 @@
     {
       "id": "EXP-2026-10-planner-profile-questions",
       "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
-      "status": "paused",
+      "status": "shelved",
       "themes": [
         "assistant",
         "activation"
@@ -1923,10 +1965,14 @@
         {
           "date": "2026-11-19",
           "note": "Switched OFF 2026-11-07 as a side effect of open-ended replies (rec e80a904: profile questions only when not OPEN_ENDED). Status set to paused 2026-11-19: owner to resume or shelve."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): shelve. Off since 2026-11-07 (open-ended replies); superseded by the planned open-ended vs chips split."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): shelve. Off since 2026-11-07 (open-ended replies); superseded by the planned open-ended vs chips split.",
       "confounds_noted": [
         "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
       ],
@@ -1983,12 +2029,14 @@
         "recommended_status": "shelved",
         "evidence": "OFF since 2026-11-07: app.py only asks profile questions when 'config.PROFILE_QUESTIONS and not config.OPEN_ENDED' (origin/main); REC_OPEN_ENDED defaults on and is not set on Railway. Commit e80a904 message: 'no profile questions'. No read recorded. Recommend shelved (superseded by open-ended replies)."
       },
-      "paused_on": "2026-11-07"
+      "paused_on": "2026-11-07",
+      "outcome": "shelved",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-planner-listings",
       "name": "Planner: florists, hair & makeup, caterers, planners as listings (no prices)",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "assistant",
         "coverage"
@@ -2001,9 +2049,14 @@
       "review_date": "2026-11-09",
       "dates_note": "rec-engine c4ec678 23:18 UTC (REC_LISTINGS_IN_CHAT=1). Demand so far ~1 ask each for flowers/makeup/planner in 14 d.",
       "design": "pre/post",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
+        }
+      ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
       ],
@@ -2060,12 +2113,14 @@
       "audit_2026_11_19": {
         "recommended_status": "needs_call",
         "evidence": "Still on (REC_LISTINGS_IN_CHAT default 1, not set on Railway). Extended since: vendor-type name lookup c4ad97d (11-07), florist pricing f02acca (11-07), service prices in Plan my wedding (11-18). Review date 11-09 passed. Recommend owner call -> shipped."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-planner-speed-v3",
       "name": "Planner speed: pricing cache (1 h, tier-safe) + Railway search 50% + per-turn timing",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "assistant",
         "performance"
@@ -2078,9 +2133,14 @@
       "review_date": "2026-11-02",
       "dates_note": "rec-engine c4ec678 23:18 UTC. Baseline (7 d to 10-26): opening p50 12.3 s, p75 17.0 s, p90 22.7 s; model 6.1 s, ep119 search 3.9 s, pricing 3.45 s of a 14.65 s average. First live sample: turn 1 2.1 s, turn 2 5.9 s.",
       "design": "pre/post",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
+        }
+      ],
       "stat_sig": "",
-      "decision": "Skip-turn-1 decided after a few days of turn_ms data",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
       ],
@@ -2135,7 +2195,9 @@
       "audit_2026_11_19": {
         "recommended_status": "shipped",
         "evidence": "Superseded the next morning by speed 2a (10-27 05:53 UTC). A read exists in memory but not in the registry: index_overflow '10-28 Planner speed 2a READ: fresh opening p50 12.7->8.1 s, p90 21.0->18.5 s'. Pricing cache later raised 1 h -> 12 h + warmer (4976ae8, 11-01). Recommend decided: shipped (infra), record the 10-28 read."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-10-vendor-pdf-order",
@@ -2215,7 +2277,7 @@
     {
       "id": "EXP-2026-10-planner-speed-2a",
       "name": "Planner speed 2a: prefetch caches (benchmarks + saved cards) + Railway search 100% with breaker + reuse today's opening",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "assistant",
         "performance"
@@ -2232,10 +2294,14 @@
         {
           "date": "2026-10-27",
           "note": "Live check, owner account 14998 (Forever, 5 saved): fresh opening 9.2 s with prefetch 1.4 s (cold caches); same-day repeat reused in 0.87 s client time, no rec_usage row, counters unchanged; after a context change a fresh run with prefetch 2 ms (2 benchmark + 5 card cache hits) but 18.1 s because the search-api froze (its own breaker 503, Meili ReadTimeout) and ep119 took 12.1 s; our breaker opened and the next search skipped Railway (breaker_open)."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "search-api Meili freezes (fix deployed separately) send searches to slow ep119 during the breaker window"
       ],
@@ -2302,7 +2368,9 @@
       "audit_2026_11_19": {
         "recommended_status": "shipped",
         "evidence": "Code still default-on (REC_OPENING_REUSE / BENCH / CARD caches in config.py, none overridden on Railway). Read in memory project_planner_speed_2a_2026-10-27 / index_overflow: fresh opening p50 12.7 -> 8.1 s, p90 21.0 -> 18.5 s (10-28) - not copied into results[]. The Planner home screen (no automatic opening, 11-07) reduces how often an opening runs. Review date 10-28 long past. Recommend decided: shipped."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-texas-only-forever-89",
@@ -2744,7 +2812,8 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "Rule still in place (REC_FREE_DAILY_MODE / REC_FREE_DAILY_REFINES set on rec-engine; values not readable; no later change found in git or memory). Starved: 2 of 83 post-launch couples returned (11-15 read); Planner questions fell ~80% from 11-11 (bubble replaced the Discovery entry). Review 11-23. Recommend keep to 11-23 then likely shelve (can't reach a verdict)."
-      }
+      },
+      "in_rotation": true
     },
     {
       "id": "EXP-2026-11-save-offer-60-forever",
@@ -2847,7 +2916,8 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "ep313 v4 live since 11-12 06:40 UTC (registry); reads 2/10 (11-15) and 2/16 (memory project_session_2026-11-18). Review 12-02. On track; read v3 and v4 periods separately."
-      }
+      },
+      "in_rotation": true
     },
     {
       "id": "EXP-2026-11-nps-optional-comment-high-stars",
@@ -3143,7 +3213,7 @@
     {
       "id": "EXP-2026-11-planner-pdf-count-link",
       "name": "Planner venue cards: centered 'N Pricing PDFs' link under the button",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "planner",
         "pdf-opens"
@@ -3160,10 +3230,14 @@
         {
           "date": "2026-11-15",
           "note": "LIVE, verified: 'tpc-vall' link code present in the live site script."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Went live in the same WeWeb publish (2026-11-15 ~04:40 UTC) as: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone, stage starters on the home card"
       ],
@@ -3220,12 +3294,14 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "Live since 11-15 04:40 UTC (verified in the live script). No read yet; review 11-29."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-free-question-limit-note",
       "name": "Planner: clear 'free question used' note for free couples (pay for more, or come back tomorrow for one more)",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "planner",
         "free",
@@ -3243,10 +3319,14 @@
         {
           "date": "2026-11-15",
           "note": "LIVE, verified: rec_free_limit_note_shown code present in the live site script."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Went live in the same WeWeb publish (2026-11-15 ~04:40 UTC) as: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone, stage starters on the home card",
         "Overlaps EXP-2026-11-free-daily-question (same couples, same moment)"
@@ -3306,12 +3386,14 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "Live since 11-15 04:40 UTC (verified in the live script). Same couples and moment as EXP-2026-11-free-daily-question. Review 11-29."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-quote-check-everyone",
       "name": "Planner quote check open to every signed-in couple (was Forever only); 'Got a quote?' home card, one-tap check, 'Save this quote to My wedding'",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "planner",
         "activation",
@@ -3329,10 +3411,14 @@
         {
           "date": "2026-11-15",
           "note": "LIVE, verified: /rec/status returns attach_open true (checked with a paid test account only); 'Got a quote' + 'Save this quote to My wedding' code present in the live site script. NOT yet verified end to end for a free couple."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Went live in the same WeWeb publish (2026-11-15 ~04:40 UTC) as: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone, stage starters on the home card"
       ],
@@ -3393,7 +3479,9 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "Live since 11-15 (REC_QUOTE_AUDIENCE not set on Railway, code default 'all'). Memory project_session_2026-11-18: 'quote check ~0 use' - likely starved. Review 11-29."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-planner-context-first",
@@ -3479,7 +3567,7 @@
     {
       "id": "EXP-2026-11-whole-wedding-planner",
       "what": "Planner 'Plan my wedding' (whole-wedding proposal) for every couple, no holdout",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "planner",
         "engagement",
@@ -3502,10 +3590,14 @@
         {
           "date": "2026-11-17",
           "note": "LIVE 16:47 UTC (WeWeb publish, cacheVersion 1398), verified in the live site: whole-wedding proposal card, Tools 'Plan my wedding' (03d4ff5) and bar self-check (42dfd3c) in the live wwElement chunk; server REC_WHOLE_WEDDING_PCT=100. Call 2026-12-01."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
         }
       ],
       "stat_sig": null,
-      "decision": null,
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": "Ships in the same publish as the Tulle Price Report (replaces Pricing Intelligence card), Meta landing pages + pixel, /connect-claude, Back to Planner, sticky-bar Ask Tulle removal - before/after cannot be credited to this alone.",
       "risks": "Proposal quality (picks, estimates for categories without extracted prices); Xano load from ~12 lookups per proposal; strip total vs plan total confusion.",
       "owner": "Vivek",
@@ -3579,7 +3671,9 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "REC_WHOLE_WEDDING / REC_WHOLE_WEDDING_PCT present on rec-engine (values not readable; set to 1 / 100 on 11-17 per memory project_whole_wedding_planner_2026-11-16); publish 1398 verified. Treatment changed 11-18 18:21 UTC (service prices). Review 12-01."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-price-report-vs-pi-card",
@@ -3685,12 +3779,13 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "Live since 11-17 16:47 UTC; period 2 from 11-18 06:47 (publish 1401). Further locked-view builds pushed 11-18 (98f613c teaser, f52e04a one CTA, 8a2c36d compact = default) are pending owner activation + publish (memory project_payment_dip_2026-11-18) - a third treatment if published. Venue-card upgrade clicks fell ~60% after the 11-18 overnight changes (same memory; small sample). Owner: no split test. Review 12-01."
-      }
+      },
+      "in_rotation": true
     },
     {
       "id": "EXP-2026-11-planner-venue-fixes",
       "what": "Planner venue fixes for every couple, no holdout: did-you-mean + state hints (REC_DID_YOU_MEAN), non-venue text kept out of the name lookup (REC_LOOKUP_GUARD), vendor-page bubble knows 'this venue' (REC_PAGE_VENUE), fast lookups never limit-blocked or counted (REC_LOOKUP_NO_LIMIT), plus the venue lookup log (REC_VENUE_LOG, Xano table 91) to measure it",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "planner",
         "lookup",
@@ -3704,9 +3799,14 @@
       "review_date": "2026-12-02",
       "dates_note": "rec-engine b5f3edd (all flags default off) pushed 07:50 UTC; flags set ~08:02 UTC 2026-11-18 (REC_VENUE_LOG=1, REC_VENUE_LOG_TABLE_ID=91, REC_LOOKUP_GUARD=1, REC_PAGE_VENUE=1, REC_DID_YOU_MEAN=1, REC_LOOKUP_NO_LIMIT=1). REC_PAGE_VENUE needs ww-planner-chat 2958c5a active + published to receive ?v= from the bubble. Monday digest: health-report-cron VENUE_LOG_TABLE_ID=91 (VENUE_DIGEST_SLACK_WEBHOOK not set yet = printed only).",
       "design": "pre/post, everyone. Baseline = the 11-04..11-17 Planner review (no log existed before).",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
+        }
+      ],
       "stat_sig": "not computed",
-      "decision": "",
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "confounds_noted": [
         "Name match v2 went live the same morning (~05:36 UTC)",
         "Publish 1401 (06:47 UTC) changed the Planner chat (estimate card, home button)"
@@ -3779,7 +3879,9 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "REC_VENUE_LOG, REC_VENUE_LOG_TABLE_ID, REC_LOOKUP_GUARD, REC_PAGE_VENUE, REC_DID_YOU_MEAN, REC_LOOKUP_NO_LIMIT all present on rec-engine (Railway variable list); table 91 writing verified 11-18 (memory project_session_2026-11-18). REC_PAGE_VENUE needs ww-planner-chat 2958c5a published. Review 12-02."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-planner-open-week",
@@ -4054,7 +4156,7 @@
     {
       "id": "EXP-2026-11-limit-cards-plans-copy",
       "name": "PDF limit + last-PDF warning cards back to 'Check out our plans' (submit-PDF link hidden)",
-      "status": "live",
+      "status": "inconclusive",
       "themes": [
         "paywall"
       ],
@@ -4066,8 +4168,13 @@
       "review_date": null,
       "dates_note": "Published + verified live 2026-11-03 ~21:10 UTC (live /data for both vendor pages). Backup weweb_pdf_limit_cards_pre_plans_revert_2026-11-03.json. Memory planned 'READ limit-card conversion ~11-17' - no read recorded. Source: memory project_limit_cards_plans_revert_and_vibe_lookup_2026-11-03.",
       "design": "pre/post",
-      "results": [],
-      "decision": "",
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): keep the change, close inconclusive. Couples who hit the PDF limit and paid within 1 day: 5.1% (20 of 395, 10-20..11-03) before vs 5.9% (22 of 371, 11-03..11-19) after; 70% chance it's genuinely better vs the 95% money bar; purchases guardrail ok; before/after with other launches in the window, so evidence, not proof."
+        }
+      ],
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): keep the change, close inconclusive. Couples who hit the PDF limit and paid within 1 day: 5.1% (20 of 395, 10-20..11-03) before vs 5.9% (22 of 371, 11-03..11-19) after; 70% chance it's genuinely better vs the 95% money bar; purchases guardrail ok; before/after with other launches in the window, so evidence, not proof.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4121,12 +4228,14 @@
         "guardrails[0]: no threshold stated at launch; engine default (25% move, 90% sure) applies",
         "review_date: no review date set at launch"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "outcome": "inconclusive",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-contextual-pricing-page",
       "name": "Contextual pricing page: Vendor Context Card + src tracking when arriving from a vendor",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "pricing",
         "conversion"
@@ -4139,8 +4248,13 @@
       "review_date": null,
       "dates_note": "Built in editor 11-12; publish verified ~06:40 UTC 2026-11-12 (memory project_welcome_email_2026-11-12: 'membership (pricing_page_viewed, pc5 stamp, Vendor Context Card ...) ALL LIVE'). Memory project_payment_dip_2026-11-18: 'vendor-context card no measurable lift'. 11-18: plans-page Vendor Context Card estimate box removed in the editor (backup weweb_vendor_context_card_pre_no_estimate_2026-11-18.json) - publish not verified.",
       "design": "pre/post",
-      "results": [],
-      "decision": "",
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
+        }
+      ],
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4192,7 +4306,9 @@
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)",
         "guardrails[0]: no threshold stated at launch; engine default (25% move, 90% sure) applies"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-venue-specific-pdf-limit-card",
@@ -4319,7 +4435,7 @@
     {
       "id": "EXP-2026-11-welcome-email-server",
       "name": "Welcome email rebuilt: server-side Brevo send with new copy + planning-stage opener",
-      "status": "live",
+      "status": "inconclusive",
       "themes": [
         "activation",
         "email"
@@ -4332,8 +4448,13 @@
       "review_date": null,
       "dates_note": "fn72 emails/send_welcome_email LIVE 05:55 + 06:10 UTC 2026-11-12; ep2 auth/signup calls it 05:56 UTC (backup api2_ep2_pre_server_welcome_2026-11-12.xs). Email sign-ups were getting TWO welcomes until the browser step was disabled + republished (memory project_welcome_email_2026-11-12). Copy promises 'first venue PI free' - false since 11-18 05:39 UTC (no free first vendor).",
       "design": "pre/post",
-      "results": [],
-      "decision": "",
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): keep the new email, close inconclusive. The only metric (opened a PDF by read time) is biased between cohorts, so it can't say whether the email worked. Follow-up: the email still promises a free first venue, untrue since 2026-11-18."
+        }
+      ],
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): keep the new email, close inconclusive. The only metric (opened a PDF by read time) is biased between cohorts, so it can't say whether the email worked. Follow-up: the email still promises a free first venue, untrue since 2026-11-18.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4382,7 +4503,9 @@
         "email copy still says the first venue's Pricing Intelligence is free - contradicted by the 11-18 change",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "outcome": "inconclusive",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-meta-landing-pages",
@@ -4448,7 +4571,7 @@
     {
       "id": "EXP-2026-11-estimate-card-whatif",
       "name": "Planner estimate card what-if (guests + state on the card) + 'What will my wedding cost?' on the Planner home",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "planner",
         "cost-tools"
@@ -4461,8 +4584,13 @@
       "review_date": null,
       "dates_note": "Server 1576c60 (state_options) live 11-18; ww-planner-chat fbce08d live with publish 1401 at 2026-11-18 06:47 UTC (registry changes[] 11-18). Baseline: rec_free_tool 10 users (week of 11-09), 5 (11-16 partial); typed estimate questions not counted (memory project_estimate_card_whatif_2026-11-18).",
       "design": "pre/post",
-      "results": [],
-      "decision": "",
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
+        }
+      ],
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4508,12 +4636,14 @@
         "owner has not set a bar or review date",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-ww-service-prices",
       "name": "Plan my wedding: catering / hair & makeup / planner rows priced from the vendors' own PDFs",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "planner",
         "my-wedding",
@@ -4527,8 +4657,13 @@
       "review_date": null,
       "dates_note": "REC_WW_SERVICE_PRICES=1 + REC_VENDOR_PRICES_SECRET set 18:21 UTC 2026-11-18 (code 7252cee; deploy e87a105c 'vendor prices loaded: 212 vendors'); both present in the rec-engine variable list 2026-11-19. Free-couple locked row not checked live. Sources: registry changes[] 514d607, memory project_services_extraction_pilot_2026-11-18.",
       "design": "pre/post, everyone (treatment change inside EXP-2026-11-whole-wedding-planner)",
-      "results": [],
-      "decision": "",
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live."
+        }
+      ],
+      "decision": "Owner call 2026-11-19 (backlog clearance, rotation capped at 3): close as shipped, no read-out. A feature launch logged as an experiment; a before/after read would be confounded by other launches and would not change the call. The change stays live.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4576,7 +4711,9 @@
         "overlaps EXP-2026-11-whole-wedding-planner (same couples, same card)",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "outcome": "shipped",
+      "decided_on": "2026-11-19"
     },
     {
       "id": "EXP-2026-11-planner-home-screen",
