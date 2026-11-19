@@ -110,3 +110,15 @@ def test_triage_refusal_is_low_confidence():
         create=lambda **kw: _Resp({}, model="claude-haiku-5-5", stop="refusal")))
     data, _ = llm.Claude(client).triage("q?", "")
     assert data["confidence"] == 0.0
+
+
+def test_bot_view_drops_v2_spec_fields_and_keeps_readable_ones():
+    reg = {"_about": "x", "changes": [{"date": "2026-11-19", "what": "c"}],
+           "experiments": [{"id": "EXP-1", "name": "n", "status": "live", "goal": "g", "results": [{"note": "r"}],
+                            "spec_gaps": ["a"], "metric": {"key": "m"}, "audit_2026_11_19": {"e": 1}}]}
+    v = knowledge.bot_view(reg)
+    e = v["experiments"][0]
+    assert {"id", "name", "status", "goal", "results"} <= set(e)
+    assert not ({"spec_gaps", "metric", "audit_2026_11_19"} & set(e))
+    assert v["changes"] == reg["changes"] and v["_about"] == "x"
+    assert "spec_gaps" in reg["experiments"][0]          # input not mutated

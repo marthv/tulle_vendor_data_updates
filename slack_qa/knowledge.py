@@ -71,6 +71,24 @@ def memory_top(path: Path = KNOW / "memory" / "MEMORY.md", max_chars: int = 1200
     return text[i:j if j > 0 else None][:max_chars]
 
 
+# Framework v2 (experiments/FRAMEWORK.md, 2026-11-19) added structured spec fields the engine and dash use.
+# The bot answers from the human-readable fields, so the structured ones are dropped here: the registry
+# grew ~2.4x and this whole block goes into every prompt (cost + QA_DAILY_USD cap).
+BOT_DROP_KEYS = frozenset({
+    "spec_gaps", "metric", "audit_2026_11_19", "audience", "assignment", "guardrails", "rollback", "surfaces",
+    "tests", "tier", "max_days", "planned_days", "hypothesis_reconstructed", "backfilled", "framework_version",
+    "decision_rule", "links", "reporting", "what_changed", "hypothesis",
+})
+
+
+def bot_view(reg: dict) -> dict:
+    """The registry as the bot sees it: same shape, minus the structured v2 spec fields."""
+    out = {k: v for k, v in reg.items() if k != "experiments"}
+    out["experiments"] = [{k: v for k, v in e.items() if k not in BOT_DROP_KEYS} if isinstance(e, dict) else e
+                          for e in reg.get("experiments", [])]
+    return out
+
+
 def static_context() -> str:
     """Registry + MEMORY.md top. Rebuilt only when either file changes, so the bytes stay identical."""
     key = (_mtime(REGISTRY), _mtime(KNOW / "memory" / "MEMORY.md"))
@@ -79,7 +97,7 @@ def static_context() -> str:
         _static_cache["key"] = key
         _static_cache["text"] = (
             "<experiment_registry source=\"experiments/experiment_log.json\">\n"
-            + scrub(json.dumps(reg, ensure_ascii=False, separators=(",", ":")))
+            + scrub(json.dumps(bot_view(reg), ensure_ascii=False, separators=(",", ":")))
             + "\n</experiment_registry>\n\n<owner_handoff_notes source=\"memory note MEMORY.md (PICK UP HERE)\">\n"
             + memory_top() + "\n</owner_handoff_notes>")
     return _static_cache["text"]

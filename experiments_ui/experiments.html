@@ -1,0 +1,1097 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Experiments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── Tokens ─────────────────────────────────────────────────────────────
+   Three modes mirror the dash's theme.py (Light / Sepia / Dark). The dash
+   passes its mode in; the standalone preview accepts #theme=. Status colours
+   are text-safe pairs (AA on their own tint), not the raw brand fills. */
+:root{
+  --g900:#0A3D24; --g800:#0D5C3A; --g700:#0F7348; --g500:#00A368; --g300:#52D19A; --g200:#A8EAC8; --g100:#D4F5E4; --g50:#EDF9F3;
+  --bg:#FAF8F4; --surface:#FFFFFF; --surface-2:#F6F4EF; --line:#E8EAEE; --line-2:#CDD0D8;
+  --ink:#18191A; --ink-2:#2E3035; --ink-3:#52555C; --ink-4:#6E7179; --ink-5:#A8ABB3;
+  --track:#EEEDE8;
+  --win-fill:#00A368; --win-ink:#0D5C3A; --win-tint:#EDF9F3; --win-line:#A8EAC8;
+  --warn-fill:#D97706; --warn-ink:#8A4B08; --warn-tint:#FEF6E0; --warn-line:#F5D99A;
+  --bad-fill:#C53030; --bad-ink:#9B2C2C; --bad-tint:#FEE2E2; --bad-line:#F5B5B5;
+  --neutral-tint:#F1F2F4; --neutral-ink:#52555C;
+  --brand:#0F7348; --focus:#00A368;
+  --sh1:0 1px 2px rgba(16,24,20,.05),0 1px 3px rgba(16,24,20,.04);
+  --sh2:0 12px 40px rgba(16,24,20,.16),0 2px 8px rgba(16,24,20,.06);
+  --scrim:rgba(12,14,12,.32);
+  --r6:6px; --r8:8px; --r12:12px; --r16:16px;
+  --font-d:"Lora",Georgia,serif; --font-u:"Sora",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+:root[data-theme="sepia"]{
+  --bg:#F7F1E3; --surface:#FDF9F0; --surface-2:#F3EBDA; --line:#E6DAC2; --line-2:#D5C6A8;
+  --ink:#33291C; --ink-2:#3F3424; --ink-3:#6B5D49; --ink-4:#76684F; --ink-5:#B3A58E;
+  --track:#ECE2CD; --neutral-tint:#EFE7D5; --neutral-ink:#6B5D49; --brand:#1B6B45;
+  --win-tint:#E8F3E6; --warn-tint:#FBEFD2;
+}
+:root[data-theme="dark"]{
+  --bg:#15181C; --surface:#1E2228; --surface-2:#232830; --line:#2F353E; --line-2:#3C434E;
+  --ink:#E8EAEE; --ink-2:#D5D8DE; --ink-3:#A8ABB3; --ink-4:#8B8F98; --ink-5:#6B707A;
+  --track:#2B313A; --neutral-tint:#2A3039; --neutral-ink:#C3C7CE; --brand:#2FA96B; --focus:#52D19A;
+  --win-fill:#2FBF7E; --win-ink:#7FE0B0; --win-tint:#143024; --win-line:#1F5A3E;
+  --warn-fill:#E59A2F; --warn-ink:#F2C47A; --warn-tint:#33270F; --warn-line:#5E4718;
+  --bad-fill:#E05252; --bad-ink:#F4A3A3; --bad-tint:#3A1A1A; --bad-line:#6B2C2C;
+  --sh1:0 1px 2px rgba(0,0,0,.3); --sh2:0 16px 48px rgba(0,0,0,.5); --scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-u);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+.num,.tab-n{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.wrap{max-width:1180px;margin:0 auto;padding:24px 28px 64px}
+@media (max-width:900px){.wrap{padding:16px 16px 48px}}
+
+/* header */
+.hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.hdr h1{font-family:var(--font-d);font-weight:600;font-size:26px;letter-spacing:-.01em;margin:0;line-height:1.2}
+.hdr .meta{color:var(--ink-3);font-size:13px;margin-top:4px}
+.badge-fixture{font-size:12px;font-weight:500;color:var(--warn-ink);border:1px dashed var(--warn-line);background:var(--warn-tint);padding:3px 10px;border-radius:999px;white-space:nowrap}
+.banner{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:var(--r8);font-size:13px;margin:14px 0 0;border:1px solid var(--line);background:var(--surface);color:var(--ink-2)}
+.banner.warn{background:var(--warn-tint);border-color:var(--warn-line);color:var(--warn-ink)}
+
+/* tabs */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:18px 0 24px;overflow-x:auto}
+.tab{appearance:none;background:none;border:0;padding:10px 12px 11px;font-size:14px;font-weight:500;color:var(--ink-3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;display:flex;gap:7px;align-items:center}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--brand)}
+.tab-n{font-size:12px;color:var(--ink-3);background:var(--neutral-tint);padding:0 7px;border-radius:999px;line-height:18px}
+.tab .dot{width:6px;height:6px;border-radius:50%;background:var(--warn-fill)}
+
+/* section titles */
+.sec{margin:0 0 32px}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 10px}
+.sec-h h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0}
+.sec-h .aside{font-size:13px;color:var(--ink-3)}
+.linkbtn{appearance:none;background:none;border:0;padding:0;color:var(--brand);font-weight:500;font-size:13px;cursor:pointer}
+.linkbtn:hover{text-decoration:underline}
+
+/* today strip */
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:32px}
+@media (max-width:760px){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{appearance:none;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);padding:14px 16px 13px;cursor:pointer;box-shadow:var(--sh1);transition:border-color .15s,box-shadow .15s;position:relative}
+.kpi:hover{border-color:var(--line-2)}
+.kpi[aria-pressed="true"]{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand) inset}
+.kpi .k-n{font-family:var(--font-d);font-size:30px;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums lining-nums}
+.kpi .k-l{font-size:13px;font-weight:500;color:var(--ink-2);margin-top:4px}
+.kpi .k-s{font-size:12px;color:var(--ink-3);margin-top:1px;min-height:18px}
+.kpi.zero .k-n{color:var(--ink-4)}
+.kpi.warn .k-n{color:var(--warn-ink)}
+.kpi.bad .k-n{color:var(--bad-ink)}
+.kpi.bad{border-color:var(--bad-line)}
+.kpi.win .k-n{color:var(--win-ink)}
+
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;line-height:20px;padding:1px 9px 1px 8px;border-radius:999px;white-space:nowrap;border:1px solid transparent;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.pill i{width:6px;height:6px;border-radius:50%;flex:none;background:currentColor;opacity:.9}
+.pill svg{flex:none}
+.pill.win{background:var(--win-tint);color:var(--win-ink);border-color:var(--win-line)}
+.pill.ok{background:transparent;color:var(--win-ink);border-color:var(--win-line)}
+.pill.warn{background:var(--warn-tint);color:var(--warn-ink);border-color:var(--warn-line)}
+.pill.bad{background:var(--bad-tint);color:var(--bad-ink);border-color:var(--bad-line)}
+.pill.neutral{background:var(--neutral-tint);color:var(--neutral-ink)}
+.pill.outline{background:transparent;color:var(--ink-3);border-color:var(--line-2)}
+
+/* card + list */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);box-shadow:var(--sh1);overflow:hidden}
+.row{display:grid;align-items:center;gap:16px;padding:13px 18px;border-top:1px solid var(--line);cursor:pointer;background:var(--surface);transition:background .12s}
+.row:first-child{border-top:0}
+.row:hover{background:var(--surface-2)}
+.row:focus-visible{outline:2px solid var(--focus);outline-offset:-2px;border-radius:0}
+.ttl{font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.sub{font-size:13px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* action queue */
+.q-row{grid-template-columns:186px minmax(0,1fr) auto}
+.q-act{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;padding:5px 11px;border:1px solid var(--line-2);border-radius:var(--r8);background:var(--surface)}
+.q-act svg{opacity:.55}
+.q-row.sev-bad .q-act{color:var(--bad-ink);border-color:var(--bad-line);background:var(--bad-tint)}
+.q-row.sev-win .q-act{color:var(--win-ink);border-color:var(--win-line);background:var(--win-tint)}
+.q-row.sev-bad{box-shadow:inset 3px 0 0 var(--bad-fill)}
+.q-more{padding:10px 18px;border-top:1px solid var(--line);font-size:13px;background:var(--surface)}
+@media (max-width:900px){.q-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"p a" "t t"}.q-row>.q-p{grid-area:p}.q-row>.q-t{grid-area:t}.q-row>.q-a{grid-area:a}}
+/* grouped queue: one card per action, worst group first */
+.qg{margin-bottom:12px}
+.qg-h{appearance:none;width:100%;display:grid;grid-template-columns:18px auto minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);padding:12px 18px;cursor:pointer;box-shadow:var(--sh1)}
+.qg-h:hover{border-color:var(--line-2)}
+.qg.open .qg-h{border-radius:var(--r12) var(--r12) 0 0;border-bottom-color:var(--line)}
+.qg-h .chev{transition:transform .15s;color:var(--ink-3);display:inline-flex}
+.qg.open .qg-h .chev{transform:rotate(90deg)}
+.qg-h .gt{font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap}
+.qg-h .gn{font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;padding:0 8px;line-height:20px;border-radius:999px;background:var(--neutral-tint);color:var(--neutral-ink);margin-left:8px}
+.qg.g-bad .qg-h .gn{background:var(--bad-tint);color:var(--bad-ink)}
+.qg.g-warn .qg-h .gn{background:var(--warn-tint);color:var(--warn-ink)}
+.qg-h .gg{font-size:13px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qg-h .gx{font-size:12px;color:var(--ink-3);white-space:nowrap}
+.qg-b{border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r12) var(--r12);overflow:hidden;background:var(--surface);box-shadow:var(--sh1)}
+.qg:not(.open) .qg-b{display:none}
+@media (max-width:900px){.qg-h{grid-template-columns:18px minmax(0,1fr) auto;row-gap:4px}.qg-h .chev{grid-row:1;grid-column:1}.qg-h .gt{grid-row:1;grid-column:2}.qg-h .gx{grid-row:1;grid-column:3}.qg-h .gg{grid-row:2;grid-column:2/-1;white-space:normal}}
+.q-row.sel-row{grid-template-columns:22px 186px minmax(0,1fr) auto}
+@media (max-width:900px){.q-row.sel-row{grid-template-columns:22px minmax(0,1fr) auto;grid-template-areas:"c p a" "c t t"}.q-row.sel-row>.q-c{grid-area:c}}
+.q-c input{width:16px;height:16px;accent-color:var(--brand);cursor:pointer;margin:0}
+.ttl-btn{appearance:none;background:none;border:0;padding:0;margin:0;text-align:left;font:inherit;color:inherit;cursor:pointer;display:block;max-width:100%}
+.ttl-btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.q-due{font-size:12px;color:var(--warn-ink);font-weight:500;white-space:nowrap}
+.q-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 18px;border-top:1px solid var(--line);background:var(--surface-2);font-size:13px;color:var(--ink-3)}
+.btn{appearance:none;font:inherit;font-size:13px;font-weight:600;padding:6px 12px;border-radius:var(--r8);border:1px solid var(--line-2);background:var(--surface);color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--ink-4)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.alert{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 16px;border-radius:var(--r12);border:1px solid var(--bad-line);background:var(--bad-tint);color:var(--bad-ink);margin:0 0 16px;font-size:14px}
+.alert b{font-weight:600}
+.alert>div{flex:1 1 420px}
+.copybox{margin-top:10px}
+.copybox textarea{width:100%;min-height:110px;font:12px/1.5 ui-monospace,Consolas,monospace;color:var(--ink);background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r8);padding:8px}
+.r-head.nostats,.r-row.nostats{grid-template-columns:minmax(0,1fr) 200px 190px}
+
+.empty{padding:28px 18px;text-align:center;color:var(--ink-3);font-size:14px}
+.empty b{display:block;color:var(--ink);font-family:var(--font-d);font-weight:600;font-size:17px;margin-bottom:2px}
+.empty .ic{width:34px;height:34px;border-radius:50%;background:var(--win-tint);color:var(--win-ink);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px}
+
+/* running */
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.seg{display:inline-flex;background:var(--neutral-tint);border-radius:var(--r8);padding:2px}
+.seg button{appearance:none;border:0;background:none;padding:4px 10px;border-radius:6px;font-size:13px;color:var(--ink-3);cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--sh1);font-weight:500}
+.inp,.sel{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r8);padding:5px 10px;height:31px}
+.inp:focus,.sel:focus{outline:none;border-color:var(--g500);box-shadow:0 0 0 3px color-mix(in srgb,var(--g500) 18%,transparent)}
+.inp{min-width:180px}
+.grow{flex:1}
+
+.r-head,.r-row{grid-template-columns:minmax(0,1fr) 172px 168px 136px 168px}
+.r-name .ttl{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4}
+.drawer:focus{outline:none}
+.r-head{display:grid;gap:16px;padding:9px 18px;border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-3);font-weight:500;background:var(--surface)}
+.r-head button{appearance:none;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;gap:4px;align-items:center}
+.r-head button:hover{color:var(--ink)}
+.r-head [aria-sort="ascending"] .ar::after{content:"↑"}.r-head [aria-sort="descending"] .ar::after{content:"↓"}
+.r-head .ar{font-size:11px;color:var(--ink)}
+.r-name .themes{display:flex;gap:6px;margin-top:3px;overflow:hidden}
+.theme{font-size:12px;color:var(--ink-3);white-space:nowrap}
+.theme+.theme::before{content:"·";margin-right:6px;color:var(--ink-5)}
+.cell-l{font-size:12px;color:var(--ink-3);display:flex;justify-content:space-between;gap:6px;margin-bottom:5px;white-space:nowrap}
+.cell-l b{font-weight:500;color:var(--ink-2)}
+.cell-l .over{color:var(--warn-ink);font-weight:500}
+@media (max-width:1040px){.r-head,.r-row{grid-template-columns:minmax(0,1fr) 170px 140px 130px 160px}}
+@media (max-width:900px){
+  .r-head{display:none}
+  .r-row{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:"n n h" "t m g";row-gap:10px}
+  .r-row>.c-n{grid-area:n}.r-row>.c-t{grid-area:t}.r-row>.c-m{grid-area:m}.r-row>.c-g{grid-area:g}.r-row>.c-h{grid-area:h;justify-self:end}
+}
+
+/* timeline bar */
+.tl{position:relative;height:6px;border-radius:3px;background:var(--track)}
+.tl .f{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--g500)}
+.tl .f.over{background:linear-gradient(90deg,var(--g500) 0,var(--g500) var(--rv),color-mix(in srgb,var(--warn-fill) 50%,var(--track)) var(--rv))}
+.tl .rv{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink-2);border-radius:1px;transform:translateX(-1px)}
+.tl .mx{position:absolute;right:0;top:-2px;width:2px;height:10px;background:var(--ink-5);border-radius:1px}
+/* chance gauge */
+.gz{display:flex;align-items:center;gap:10px}
+.gz .bar{position:relative;flex:1;height:6px;border-radius:3px;background:var(--track)}
+.gz .bar .f{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--ink-4)}
+.gz .bar .f.win{background:var(--win-fill)}
+.gz .bar .f.lose{background:var(--warn-fill)}
+.gz .bar .f.ev{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.45) 0 2px,transparent 2px 5px)}
+.gz .bar .th{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink);border-radius:1px;transform:translateX(-1px)}
+.gz .v{font-size:13px;font-weight:600;min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
+.gz .v.win{color:var(--win-ink)}.gz .v.lose{color:var(--warn-ink)}
+.na{font-size:12px;color:var(--ink-3)}
+.mval{font-size:13px;font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mval .arw{color:var(--ink-5);margin:0 4px}
+.mcnt{font-size:12px;color:var(--ink-3);white-space:nowrap;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+
+.planned{margin-top:10px;font-size:13px;color:var(--ink-3)}
+.planned summary{cursor:pointer;width:max-content}
+.planned ul{margin:8px 0 0;padding:0;list-style:none}
+.planned li{padding:6px 0;border-top:1px dashed var(--line);display:flex;gap:10px;justify-content:space-between}
+
+/* decided + changes */
+.d-row{grid-template-columns:118px minmax(0,1fr) 170px}
+.d-row .take{font-size:13px;color:var(--ink-3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;margin-top:2px}
+.d-meta{font-size:12px;color:var(--ink-3);text-align:right;white-space:nowrap}
+@media (max-width:900px){.d-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"b m" "t t"}.d-row>.d-b{grid-area:b}.d-row>.d-t{grid-area:t}.d-row>.d-meta{grid-area:m}}
+.chipbar{display:flex;gap:6px;flex-wrap:wrap}
+.chip{appearance:none;border:1px solid var(--line-2);background:var(--surface);color:var(--ink-2);font-size:13px;padding:3px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.chip[aria-pressed="true"]{border-color:var(--brand);color:var(--brand);background:var(--win-tint);font-weight:500}
+.chip .c{color:var(--ink-3);margin-left:4px;font-variant-numeric:tabular-nums}
+
+.day-h{font-size:12px;font-weight:600;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase;margin:22px 0 8px}
+.day-h:first-child{margin-top:0}
+.ch{display:grid;grid-template-columns:96px minmax(0,1fr);gap:14px;padding:12px 16px;border-top:1px solid var(--line);background:var(--surface)}
+.ch:first-child{border-top:0}
+.ch.unlogged{box-shadow:inset 3px 0 0 var(--warn-fill);background:linear-gradient(90deg,var(--warn-tint),var(--surface) 55%)}
+.src{font-size:12px;font-weight:500;color:var(--ink-2);background:var(--neutral-tint);padding:1px 8px;border-radius:var(--r6);display:inline-block;white-space:nowrap}
+.ch .when{font-size:12px;color:var(--ink-3);margin-top:4px;font-variant-numeric:tabular-nums}
+.ch .txt{font-size:13px;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ch .txt.open{-webkit-line-clamp:unset;display:block}
+.ch .foot{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px;font-size:12px;color:var(--ink-3)}
+.xchip{appearance:none;border:1px solid var(--line);background:var(--surface-2);border-radius:var(--r6);font-size:12px;padding:1px 7px;cursor:pointer;color:var(--ink-2);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xchip:hover{border-color:var(--line-2)}
+.ref{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--ink-3)}
+.guide{font-size:12px;color:var(--warn-ink);margin-top:6px}
+
+/* rules */
+.rules{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+@media (max-width:900px){.rules{grid-template-columns:1fr}}
+.rules .card{padding:18px 20px}
+.rules h3{font-family:var(--font-d);font-weight:600;font-size:17px;margin:0 0 4px}
+.rules p{color:var(--ink-3);font-size:13px;margin:0 0 12px}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{font-size:12px;font-weight:500;color:var(--ink-3);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+table.t td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+table.t tr:last-child td{border-bottom:0}
+table.t td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.rules .full{grid-column:1/-1}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .18s;z-index:40}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(680px,94vw);background:var(--bg);box-shadow:var(--sh2);transform:translateX(102%);transition:transform .22s cubic-bezier(.4,0,.2,1);z-index:50;display:flex;flex-direction:column;border-left:1px solid var(--line)}
+.drawer.on{transform:none}
+@media (prefers-reduced-motion:reduce){.drawer,.scrim{transition:none}}
+.dw-h{padding:18px 24px 16px;border-bottom:1px solid var(--line);background:var(--surface);display:flex;gap:12px;align-items:flex-start}
+.dw-h .t{flex:1;min-width:0}
+.dw-h h2{font-family:var(--font-d);font-weight:600;font-size:20px;line-height:1.3;margin:6px 0 4px}
+.dw-h .m{font-size:12px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:4px 10px}
+.x{appearance:none;border:1px solid var(--line);background:var(--surface);width:32px;height:32px;border-radius:var(--r8);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-3);flex:none}
+.x:hover{color:var(--ink);border-color:var(--line-2)}
+.dw-b{overflow-y:auto;padding:20px 24px 48px;flex:1}
+.verdict{border-radius:var(--r12);padding:14px 16px;border:1px solid var(--line);background:var(--surface);margin-bottom:22px}
+.verdict.win{background:var(--win-tint);border-color:var(--win-line)}
+.verdict.warn{background:var(--warn-tint);border-color:var(--warn-line)}
+.verdict.bad{background:var(--bad-tint);border-color:var(--bad-line)}
+.verdict p{margin:0;font-size:14px;color:var(--ink);line-height:1.55}
+.verdict .act{margin-top:8px;font-size:13px;font-weight:600;display:flex;gap:8px;align-items:center}
+.verdict.win .act{color:var(--win-ink)}.verdict.warn .act{color:var(--warn-ink)}.verdict.bad .act{color:var(--bad-ink)}
+.ds{padding:18px 0;border-top:1px solid var(--line)}
+.ds:first-of-type{border-top:0;padding-top:0}
+.ds-h{display:flex;gap:10px;align-items:baseline;margin-bottom:8px}
+.ds-h .i{font-size:12px;color:var(--ink-4);font-variant-numeric:tabular-nums;width:14px}
+.ds-h h3{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0}
+.ds-b{padding-left:24px;font-size:14px;color:var(--ink-2)}
+.ds-b p{margin:0 0 6px}
+.quote{font-family:var(--font-d);font-size:15px;line-height:1.55;color:var(--ink)}
+.missing{color:var(--ink-4);font-style:italic;font-size:13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:var(--r6);white-space:nowrap}
+.kv{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+.kv>div{background:var(--surface);border:1px solid var(--line);border-radius:var(--r8);padding:10px 12px}
+.kv .l{font-size:12px;color:var(--ink-3)}
+.kv .v{font-weight:600;font-size:17px;font-variant-numeric:tabular-nums;line-height:1.35;margin:2px 0 1px;color:var(--ink)}
+.kv .s{font-size:12px;color:var(--ink-3)}
+@media (max-width:620px){.kv{grid-template-columns:1fr 1fr}}
+.post{background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);padding:16px}
+.post-top{display:grid;grid-template-columns:150px minmax(0,1fr);gap:20px;align-items:center}
+@media (max-width:620px){.post-top{grid-template-columns:1fr}}
+.big{font-family:var(--font-d);font-weight:600;font-size:34px;line-height:1;font-variant-numeric:tabular-nums lining-nums}
+.big.win{color:var(--win-ink)}.big.lose{color:var(--warn-ink)}
+.big-l{font-size:12px;color:var(--ink-3);margin-top:6px}
+.scale{position:relative;height:10px;border-radius:5px;background:var(--track);margin:22px 0 22px}
+.scale .f{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--ink-4)}
+.scale .f.win{background:var(--win-fill)}.scale .f.lose{background:var(--warn-fill)}
+.scale .f.ev{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.45) 0 2px,transparent 2px 5px)}
+.scale .mk{position:absolute;top:-5px;width:2px;height:20px;background:var(--ink);transform:translateX(-1px)}
+.scale .mk.stop{background:var(--ink-4)}
+.scale .mk span{position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--ink-3);white-space:nowrap}
+.scale .ax{position:absolute;top:14px;font-size:11px;color:var(--ink-4)}
+.lift{display:grid;grid-template-columns:150px minmax(0,1fr);gap:20px;align-items:center;margin-top:6px;padding-top:12px;border-top:1px solid var(--line)}
+@media (max-width:620px){.lift{grid-template-columns:1fr}}
+.lift .lv{font-weight:600;font-size:17px;font-variant-numeric:tabular-nums}
+.lift .ll{font-size:12px;color:var(--ink-3)}
+.ci{position:relative;height:44px}
+.ci .zero{position:absolute;top:8px;height:22px;width:1px;background:var(--ink-5)}
+.ci .zero span{position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--ink-4);white-space:nowrap}
+.ci .rng{position:absolute;top:16px;height:6px;border-radius:3px;background:var(--ink-5)}
+.ci .rng.win{background:var(--win-fill)}.ci .rng.lose{background:var(--warn-fill)}
+.ci .med{position:absolute;top:12px;width:14px;height:14px;border-radius:50%;background:var(--surface);border:2.5px solid var(--ink);transform:translateX(-7px)}
+.ci .lab{position:absolute;top:30px;font-size:11px;color:var(--ink-3);transform:translateX(-50%);white-space:nowrap;font-variant-numeric:tabular-nums}
+.arms{width:100%;border-collapse:collapse;font-size:13px;margin-top:14px}
+.arms td,.arms th{padding:7px 0;border-top:1px solid var(--line);text-align:left}
+.arms th{font-weight:500;color:var(--ink-3);font-size:12px;border-top:0}
+.arms td.r,.arms th.r{text-align:right;font-variant-numeric:tabular-nums}
+.thr{font-size:12px;color:var(--ink-3);margin-top:12px;display:flex;flex-wrap:wrap;gap:4px 14px}
+.thr b{color:var(--ink-2);font-weight:500}
+.glist{margin:12px 0 0;padding:0;list-style:none}
+.glist li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.evid{margin-top:14px;border:1px dashed var(--line-2);border-radius:var(--r8);padding:12px 14px;background:var(--surface)}
+.evid h4{margin:0 0 6px;font-size:13px;font-weight:600;color:var(--ink)}
+.evid ol{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--ink-2)}
+.evid li{margin:4px 0}
+.dates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.dates>div{font-size:12px;color:var(--ink-3)}
+.dates b{display:block;font-size:14px;color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+.spark{background:var(--surface);border:1px solid var(--line);border-radius:var(--r8);padding:10px 12px 6px;margin-top:12px}
+.spark .l{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-3)}
+.spark svg{display:block;width:100%;height:84px}
+.log{list-style:none;margin:0;padding:0}
+.log li{padding:10px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:86px minmax(0,1fr);gap:12px;font-size:13px}
+.log li:first-child{border-top:0;padding-top:0}
+.log .d{color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.clamp.open{display:block}
+details.gaps{margin:-8px 0 20px;border:1px solid var(--line);border-radius:var(--r8);background:var(--surface);font-size:13px}
+details.gaps summary{padding:9px 14px;cursor:pointer;color:var(--ink-2);font-weight:500}
+details.gaps ul{margin:0;padding:0 14px 10px 32px;color:var(--ink-3)}
+details.gaps li{margin:3px 0}
+details.gaps li.err{color:var(--ink-2)}
+.foot-err{margin-top:28px;font-size:12px;color:var(--ink-3)}
+.foot-err summary{cursor:pointer}
+.foot-err pre{white-space:pre-wrap;font-size:11px;background:var(--surface);border:1px solid var(--line);padding:8px;border-radius:var(--r6)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app" aria-live="off"></div>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="dw-title" aria-hidden="true" tabindex="-1"></aside>
+
+<script>
+window.__SNAPSHOT__ = /*__SNAPSHOT__*/null;
+window.__THEME__ = /*__THEME__*/null;
+</script>
+<script>
+(function(){
+"use strict";
+var S = window.__SNAPSHOT__ || {};
+var app = document.getElementById("app");
+var drawer = document.getElementById("drawer");
+var scrim = document.getElementById("scrim");
+
+/* ── hash params (preview + headless screenshots): #tab=decided&exp=ID&filter=stale&theme=dark&queue=all */
+var H = {};
+try { (location.hash || "").replace(/^#/, "").split("&").forEach(function(kv){ if(!kv) return; var p = kv.split("="); H[decodeURIComponent(p[0])] = decodeURIComponent(p.slice(1).join("=") || ""); }); } catch(e) {}
+var theme = window.__THEME__ || H.theme || "light";
+if (["light","sepia","dark"].indexOf(theme) < 0) theme = "light";
+document.documentElement.setAttribute("data-theme", theme);
+
+/* ── helpers */
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function arr(x){ return Array.isArray(x) ? x : (x == null || x === "" ? [] : [x]); }
+function obj(x){ return x && typeof x === "object" && !Array.isArray(x) ? x : {}; }
+function num(x){ var n = typeof x === "number" ? x : parseFloat(x); return isFinite(n) ? n : null; }
+function fmtInt(n){ n = num(n); return n == null ? "–" : Math.round(n).toLocaleString("en-US"); }
+function pct(x, d){ x = num(x); if (x == null) return "–"; var v = x * 100; d = d == null ? (Math.abs(v) < 10 ? 1 : 0) : d; return v.toFixed(d) + "%"; }
+function chance(p){ p = num(p); if (p == null) return "–"; if (p >= 0.995) return ">99%"; if (p <= 0.005) return "<1%"; return Math.round(p * 100) + "%"; }
+function lift(x){ x = num(x); if (x == null) return "–"; var v = Math.round(x * 100); return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v) + "%"; }
+function pts(x){ x = num(x); if (x == null) return "–"; var v = x * 100; if (v < 0.01) return v > 0 ? "<0.01 pts" : "0 pts"; return v.toFixed(v < 1 ? 2 : 1) + " pts"; }
+var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function pd(s){ if(!s) return null; var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(Date.UTC(+m[1], +m[2]-1, +m[3])) : null; }
+function fd(s, yr){ var d = pd(s); if(!d) return "–"; return MON[d.getUTCMonth()] + " " + d.getUTCDate() + (yr ? ", " + d.getUTCFullYear() : ""); }
+function addDays(s, n){ var d = pd(s); if(!d || num(n) == null) return null; d.setUTCDate(d.getUTCDate() + Math.round(n)); return d.toISOString().slice(0,10); }
+var TODAY = S.today || (S.generated_at ? String(S.generated_at).slice(0,10) : new Date().toISOString().slice(0,10));
+function daysBetween(a, b){ var x = pd(a), y = pd(b); return x && y ? Math.round((y - x) / 864e5) : null; }
+function trunc(s, n){ s = String(s || ""); return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s; }
+var ICON = {
+  arrow:'<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  clock:'<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.6V8l2.3 1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  check:'<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  x:'<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
+};
+
+/* ── field access (tolerant of v1, v2, engine and brief shapes) */
+function nameOf(e){ e = obj(e); var w = obj(e.what); return e.name || w.name || (typeof e.what === "string" ? e.what : "") || e.what_changed || e.id || "(unnamed experiment)"; }
+function whatChanged(e){ var w = obj(e.what); return w.what_changed || (typeof e.what === "string" ? e.what : "") || e.what_changed || ""; }
+function linksOf(e){ return arr(obj(e.what).links).concat(e.what && typeof e.what === "object" ? [] : arr(e.links)); }
+function surfacesOf(e){ return arr(obj(e.impacts).surfaces).length ? arr(obj(e.impacts).surfaces) : arr(e.surfaces); }
+function audienceOf(e){ var a = obj(e.impacts).audience; if (a && typeof a === "object") return a; return typeof e.audience === "string" ? {segment: e.audience} : obj(e.audience); }
+function metricOf(e){ var m = obj(obj(e.success_metric).metric); return Object.keys(m).length ? m : obj(e.metric); }
+function planOf(e){ return obj(obj(e.success_metric).sample_plan || e.sample_plan); }
+function ruleOf(e){ var r = obj(e.decision_rule); if (!Object.keys(r).length) r = obj(obj(e.success_metric).decision_rule); return {ship_p: num(r.ship_p) == null ? 0.9 : num(r.ship_p), stop_p: num(r.stop_p) == null ? 0.1 : num(r.stop_p), max_loss: num(r.max_loss) == null ? 0.005 : num(r.max_loss)}; }
+function tlOf(e){ var t = obj(e.timeline); return {start: t.start_date || e.start_date, planned: num(t.planned_days != null ? t.planned_days : e.planned_days), review: t.review_date || e.review_date, max: num(t.max_days != null ? t.max_days : e.max_days)}; }
+function statsOf(e){ var s = obj(e.stats); if (s.p_beat != null || s.control_rate != null || s.treatment_rate != null) return s; var r = obj(e.readout); return r.p_beat != null ? r : null; }
+function atypeOf(e){ return e.assignment_type || obj(e.assignment).type || null; }
+function readoutOf(e){ return obj(e.readout); }
+function themesOf(e){ return arr(e.themes).filter(Boolean); }
+function reportingOf(e){ var r = e.reporting; if (r && typeof r === "object") r = r.mode || r.type; return String(r || "manual").toLowerCase(); }
+function errIssues(e){ return arr(e.spec_issues).filter(function(i){ return obj(i).severity === "error"; }); }
+function lastResultDate(e){ var d = null; arr(e.results).forEach(function(r){ r = obj(r); if (r.date && (!d || String(r.date) > d)) d = String(r.date).slice(0,10); }); return d; }
+function daysRunning(e){ if (num(e.days_running) != null) return num(e.days_running); var s = tlOf(e).start; return s ? daysBetween(s, TODAY) : null; }
+function reviewDate(e){ var t = tlOf(e); return t.review || (t.start && t.planned ? addDays(t.start, t.planned) : null); }
+function armsOf(e){ var a = obj(readoutOf(e).arms); if (a.control || a.treatment) return a; var s = statsOf(e) || {}; if (s.c_n != null || s.t_n != null) return {control: s.c_n != null ? {n: s.c_n, conv: s.c_conv} : null, treatment: s.t_n != null ? {n: s.t_n, conv: s.t_conv} : null}; return {}; }
+function guardsOf(e){
+  var spec = {}; arr(obj(e.success_metric).guardrails).concat(arr(e.guardrails)).forEach(function(g){ g = obj(g); if (g.key && (g.label || g.max_drop_rel != null || g.max_rise_rel != null)) spec[g.key] = Object.assign({}, spec[g.key] || {}, g); });
+  var evald = arr(e.guardrails).filter(function(g){ return obj(g).breached != null || obj(g).p_breach != null; });
+  var keys = {}; var out = [];
+  evald.forEach(function(g){ keys[g.key] = 1; out.push(Object.assign({}, spec[g.key] || {}, g, {evaluated: true})); });
+  Object.keys(spec).forEach(function(k){ if (!keys[k]) out.push(Object.assign({}, spec[k], {evaluated: false})); });
+  return out;
+}
+function guardLabel(g){ return g.label || String(g.key || "guardrail").replace(/_/g, " "); }
+
+/* ── health vocabulary */
+var STATES = ["guardrail_breach","callable_win","callable_loss","needs_call","starved","no_data","zombie","manual_overdue","confounded","spec_incomplete","guardrail_unmonitored","on_track"];
+var RANK = {}; STATES.forEach(function(s, i){ RANK[s] = i; });
+var STALE = {starved:1, no_data:1, zombie:1, manual_overdue:1};
+function engineOff(e){ return e.health === "no_data" && /no metric runner/i.test(String(readoutOf(e).error || "") + " " + String(e.reason || "")); }
+function sev(e){ var h = e.health; if (engineOff(e)) return "neutral"; if (h === "guardrail_breach") return "bad"; if (h === "callable_win") return "win"; if (h === "on_track") return e.stale ? "warn" : "ok"; if (h === "confounded" || h === "spec_incomplete") return e.stale ? "warn" : "neutral"; if (!h) return "neutral"; return "warn"; }
+function pillText(e){
+  var h = e.health, od = num(e.overdue_days), dr = daysRunning(e);
+  if (engineOff(e)) return "No numbers yet";
+  switch (h) {
+    case "guardrail_breach": return "Guardrail breach";
+    case "callable_win": return "Ready to ship";
+    case "callable_loss": return "Likely worse";
+    case "needs_call": return e.stale ? "Stale · " + od + "d past review" : "Call due" + (od ? " · " + od + "d" : "");
+    case "starved": return "Stale · can't finish";
+    case "no_data": return e.stale ? "Stale · no data" : "Metric not read";
+    case "zombie": return "Stale · " + (dr != null ? dr + "d live" : "overran");
+    case "manual_overdue": { var sd = sinceReadout(e); return "Stale · no readout" + (sd != null ? " " + sd + "d" : ""); }
+    case "confounded": return "Confounded";
+    case "spec_incomplete": return "Spec incomplete";
+    case "guardrail_unmonitored": return "Guardrail not watched";
+    case "on_track": return "On track";
+    // a state this page doesn't know yet (the engine grew one): show the engine's own name
+    default: return h ? cap(String(h).replace(/_/g, " ")) : (e.lifecycle === "planned" ? "Planned" : (e.status || "Not live"));
+  }
+}
+function isStaleish(e){ return !!e.stale || !!STALE[e.health] || (e.health === "needs_call" && e.stale); }
+function pill(e){
+  var s = sev(e), stale = /^Stale/.test(pillText(e));
+  return '<span class="pill ' + s + '">' + (stale ? ICON.clock : "<i></i>") + esc(pillText(e)) + "</span>";
+}
+function actionVerb(e){
+  if (engineOff(e)) return "Nothing to do";
+  switch (e.health) {
+    case "guardrail_breach": return "Pause or revert now";
+    case "callable_win": return "Ship it";
+    case "callable_loss": return "Revert it";
+    case "needs_call": return e.stale ? "Call it or shelve" : "Make the call";
+    case "starved": return "Shelve or redesign";
+    case "no_data": return readoutOf(e).error ? "Fix the metric" : "Check it's switched on";
+    case "zombie": return "Shelve it";
+    case "manual_overdue": return "Get a readout";
+    case "confounded": return "Treat as evidence";
+    case "spec_incomplete": return "Complete the spec";
+    case "guardrail_unmonitored": return "Fix the guardrail metric";
+    case "on_track": return "Keep running";
+    default: return e.action || "Open";
+  }
+}
+var FIELD = {"name":"name","what_changed":"what changed","surfaces":"surfaces","audience.segment":"audience","hypothesis":"hypothesis","tests":"what it tests","metric.key":"metric","metric.direction":"metric direction","metric.mde_rel":"smallest lift","metric.baseline":"baseline","audience.est_daily_exposed":"couples/day","planned_days":"planned days","review_date":"review date","max_days":"stop date","reporting":"reporting","assignment":"assignment","rollback":"rollback","tier":"tier","start_date":"start date","guardrails":"guardrails"};
+function humanReason(e){
+  var st = statsOf(e) || {}, p = num(st.p_beat), r = ruleOf(e), dr = daysRunning(e), plan = planOf(e), t = tlOf(e);
+  var rv = reviewDate(e), od = num(e.overdue_days);
+  switch (e.health) {
+    case "guardrail_breach": {
+      var g = guardsOf(e).filter(function(x){ return x.breached; })[0] || {};
+      var lim = g.max_rise_rel != null ? "up more than " + Math.round(g.max_rise_rel * 100) + "%" : "down more than " + Math.round((g.max_drop_rel != null ? g.max_drop_rel : 0.25) * 100) + "%";
+      return cap(guardLabel(g)) + " likely " + lim + (g.p_breach != null ? " (" + chance(g.p_breach) + " sure)" : "") + ".";
+    }
+    case "callable_win": return chance(p) + " chance it's better (" + lift(st.lift_median_rel) + ") after " + dr + " days. Clears the " + chance(r.ship_p) + " bar." + (atypeOf(e) === "pre_post" ? " Before/after, not a split test." : "");
+    case "callable_loss": return "Only " + chance(p) + " chance it's better (" + lift(st.lift_median_rel) + "). Clear enough to revert." + (atypeOf(e) === "pre_post" ? " Before/after, not a split test." : "");
+    case "needs_call": return "Review was due " + fd(rv) + (od != null ? " (" + od + (od === 1 ? " day" : " days") + " ago)" : "") + (p != null ? ". " + chance(p) + " chance it's better so far." : ". No decision recorded.") + (e.stale ? " Call it from what you know, or shelve it." : "");
+    case "starved": {
+      var rate = num(plan.daily_exposed_per_arm) || num(e.exposure_per_arm_day);
+      if (num(e.projected_days) != null && t.max) return "Needs ~" + fmtInt(plan.n_per_arm) + " couples a side" + (rate ? " at ~" + Math.round(rate) + "/day" : "") + ": day " + fmtInt(e.projected_days) + ", past the " + t.max + "-day stop.";
+      return "Only ~" + (rate != null ? rate.toFixed(1) : "?") + " couples a day per side. Too few to ever call.";
+    }
+    case "no_data": return engineOff(e) ? "Reported automatically, but the experiments engine isn't connected, so it has no numbers yet." : readoutOf(e).error ? "The metric isn't being read (" + trunc(String(readoutOf(e).error).replace(/^metric failed:\s*/i, ""), 60) + ")." + (e.stale ? "" : " Not stale yet; fix it before it is.") : "No new couples for 3 days. Is it still switched on?";
+    case "zombie": return "Live " + dr + " days, more than twice the planned " + t.planned + ".";
+    case "manual_overdue": { var l = lastResultDate(e); return (l ? "Reported by hand; nobody has read it out for " + daysBetween(l, TODAY) + " days (last " + fd(l) + ")." : "Reported by hand; no readout in " + dr + " days live.") + " Ask Claude Code for a readout, or shelve it."; }
+    case "confounded": return arr(e.overlapping_changes).length + " other launches overlap its window. Evidence, not proof.";
+    case "spec_incomplete": { var m = errIssues(e).map(function(i){ return FIELD[i.field] || String(i.field || "").replace(/_/g, " "); }); var u = m.filter(function(x, i){ return m.indexOf(x) === i; }); return "Missing " + u.slice(0, 3).join(", ") + (u.length > 3 ? " and " + (u.length - 3) + " more" : "") + "."; }
+    case "guardrail_unmonitored": { var um = guardsOf(e).filter(function(x){ return !x.evaluated || x.unmonitored; }).map(guardLabel); return (um.length ? cap(um.join(", ")) : "A guardrail") + " isn't being measured, so a drop there would go unnoticed." + (p != null ? " " + chance(p) + " chance it's better so far." : ""); }
+    case "on_track": return (p != null ? chance(p) + " chance it's better · " : "") + (num(e.days_left) != null ? "~" + e.days_left + " days to review" : "running");
+    default: return e.reason || "";
+  }
+}
+function cap(s){ s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1); }
+function sinceReadout(e){ var l = lastResultDate(e) || tlOf(e).start; return l ? daysBetween(l, TODAY) : null; }
+/* days until a not-yet-stale call goes stale (needs_call turns stale 3 days past review) */
+function staleIn(e){ var od = num(e.overdue_days); if (e.health === "needs_call" && !e.stale && od != null) return Math.max(3 - od, 0); return null; }
+
+/* ── queue groups: what kind of thing the founder has to do */
+var GROUPS = [
+  {id: "decide",   title: "Decide now",              cls: "g-warn", guide: "The data is clear, or the review date has passed. Make the call."},
+  {id: "stale",    title: "Stale: call it or shelve", cls: "g-warn", guide: "Stuck: overdue, no readout, too few couples or no data. Each row says why."},
+  {id: "spec",     title: "Fix the setup",            cls: "",       guide: "Live, but the spec has gaps or the metric isn't being read. Ask Claude Code to fix it."},
+  {id: "waiting",  title: "Waiting for live numbers", cls: "",       guide: "No action. Read automatically, but the engine isn't connected, so there is nothing to read yet."},
+  {id: "evidence", title: "Before/after only",        cls: "",       guide: "No action today. Before/after tests with 2+ other launches in the window: evidence, not proof."}
+];
+function groupOf(e){
+  if (engineOff(e)) return "waiting";
+  if (/^(guardrail_breach|callable_win|callable_loss)$/.test(e.health) || (e.health === "needs_call" && !e.stale)) return "decide";
+  // trust the engine's stale flag (it is what the daily DM counts); a metric that failed but is
+  // not stale yet is a setup problem, not a shelve decision
+  if (e.stale || e.health === "needs_call" || (STALE[e.health] && e.health !== "no_data")) return "stale";
+  if (e.health === "spec_incomplete" || e.health === "no_data" || e.health === "guardrail_unmonitored") return "spec";
+  if (e.health && e.health !== "on_track" && RANK[e.health] == null) return "spec";  // unknown state: surface it, don't drop it
+  if (e.health === "confounded") return "evidence";
+  return null;
+}
+/* one instruction the founder can paste into Claude Code */
+function instruction(e){
+  return actionVerb(e) + ": " + (e.id || nameOf(e)) + " (" + nameOf(e) + "). Why: " + shortReason(e) + " Record the decision in experiments/experiment_log.json.";
+}
+function copyText(text, btn, boxHost){
+  var ok = false;
+  try {
+    var ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.top = "0"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); document.body.removeChild(ta);
+  } catch (err) { ok = false; }
+  var done = function(){ if (!btn) return; var t = btn.getAttribute("data-label") || btn.textContent; btn.setAttribute("data-label", t); btn.textContent = "Copied"; setTimeout(function(){ btn.textContent = t; }, 1600); };
+  var fallback = function(){ if (!boxHost) return; boxHost.innerHTML = '<div class="copybox"><label style="font-size:12px;color:var(--ink-3)">Copy blocked by the browser. Select and copy:</label><textarea readonly>' + esc(text) + '</textarea></div>'; var t = boxHost.querySelector("textarea"); t.focus(); t.select(); };
+  if (ok) return done();
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+}
+
+/* plain-English verdict sentence for the drawer */
+function verdict(e){
+  var st = statsOf(e), at = atypeOf(e), r = ruleOf(e), dr = daysRunning(e), t = tlOf(e), plan = planOf(e);
+  if (!e.health) return e.lifecycle === "planned" ? "Planned. Not switched on yet." : "Not live.";
+  if (e.health === "guardrail_breach") return humanReason(e) + " That outweighs any lift on the primary metric.";
+  if (!st || num(st.p_beat) == null) {
+    // stuck experiments lead with why they are stuck; the "no numbers" line alone hid it
+    if (e.health === "manual_overdue") return humanReason(e);
+    if ((e.health === "needs_call" || e.health === "zombie" || e.health === "starved") && at !== "rollout") {
+      var l0 = lastResultDate(e);
+      return humanReason(e) + (reportingOf(e) === "manual" ? " No numbers: it is reported by hand" + (l0 ? ", last readout " + fd(l0) + "." : " and nothing has been read out.") : "");
+    }
+    if (at === "rollout") { var gs = guardsOf(e).filter(function(g){ return g.evaluated; }); return "Rollout to everyone, so there is no comparison group. " + (gs.length ? (gs.some(function(g){ return g.breached; }) ? "A guardrail is breached." : "Guardrails are holding (" + gs.length + " checked).") : "Guardrails have not been read yet."); }
+    if (reportingOf(e) === "manual") { var l = lastResultDate(e); return "No numbers yet. Reported by hand" + (l ? "; last readout " + fd(l) + "." : ", and nothing has been read out."); }
+    if (engineOff(e)) return "No numbers yet: this one is read automatically, and the experiments engine isn't connected, so the readout hasn't run.";
+    return readoutOf(e).error ? "No readout: " + readoutOf(e).error + "." : "No readout yet.";
+  }
+  var p = num(st.p_beat), s = chance(p) + " chance it's better";
+  if (num(st.lift_median_rel) != null) s += " (" + lift(st.lift_median_rel) + (arr(st.lift_ci95_rel)[0] != null ? ", likely between " + lift(st.lift_ci95_rel[0]) + " and " + lift(st.lift_ci95_rel[1]) : "") + ")";
+  s += ". ";
+  var conf = at === "pre_post" && arr(e.overlapping_changes).length >= 2;
+  var ppNote = at === "pre_post" ? " Before/after comparison" + (arr(e.overlapping_changes).length ? " with " + arr(e.overlapping_changes).length + " other launches in the window" : "") + ": evidence, not proof." : "";
+  if (e.health === "callable_win") return s + "Callable: clears the " + chance(r.ship_p) + " bar with low expected loss after " + dr + " days." + ppNote;
+  if (e.health === "callable_loss") return s + "Callable: it is very likely not helping." + ppNote;
+  if (conf && p >= r.ship_p) return s + "It would clear the bar, but " + e.overlapping_changes.length + " other launches overlap, so it can't be called as a win from this data.";
+  var left = num(e.projected_days) != null && dr != null ? e.projected_days - dr : num(e.days_left);
+  var need = p >= r.ship_p ? (dr != null && dr < 7 ? "a full week of data" : "a lower expected loss") : chance(r.ship_p);
+  var tail = "Not callable yet: needs " + need;
+  if (e.health === "starved" || (num(e.projected_days) != null && t.max && e.projected_days > t.max)) tail += ", and at this pace that takes ~" + fmtInt(e.projected_days) + " days, past the " + t.max + "-day stop";
+  else if (left != null && left > 0) tail += " and ~" + left + " more days";
+  s += tail + ".";
+  if (at === "pre_post") s += " Before/after comparison: evidence, not proof.";
+  return s;
+}
+
+/* ── data prep */
+var EXPS = arr(S.experiments).map(obj).filter(function(e){ return e.id || e.name; });
+var LIVE = EXPS.filter(function(e){ return !!e.health; });
+var PLANNED = EXPS.filter(function(e){ return !e.health && (e.lifecycle === "planned" || e.status === "planned" || e.lifecycle === "draft"); });
+var DECIDED = arr(S.decided).map(obj);
+var CHANGES = (function(){
+  // registry changes[] (logged) + the engine's detected change feed (snapshot.change_feed.events,
+  // with .unlogged events flagged). A detected event that is also in unlogged[] shows once.
+  var cf = obj(S.change_feed), out = arr(S.changes).map(obj), seen = {};
+  var key = function(c){ return [c.source || "", c.ref || "", String(c.ts || c.date || "").slice(0, 16)].join("|"); };
+  out.forEach(function(c){ if (c.unlogged) seen[key(c)] = 1; });
+  arr(cf.unlogged).map(obj).forEach(function(c){ if (!seen[key(c)]) { seen[key(c)] = 1; out.push(Object.assign({}, c, {unlogged: true, detected: true})); } });
+  arr(cf.events).map(obj).forEach(function(c){ if (!seen[key(c)] && c.user_facing !== false) { seen[key(c)] = 1; out.push(Object.assign({}, c, {detected: true})); } });
+  return out;
+})();
+var BYID = {}; EXPS.concat(DECIDED).forEach(function(e){ if (e.id) BYID[e.id] = e; });
+function sevKey(e){ var urgent = e.health === "guardrail_breach" ? 0 : (e.stale ? 1 : 2); return [urgent, RANK[e.health] == null ? 99 : RANK[e.health], -(num(e.overdue_days) || 0)]; }
+function cmpKey(a, b){ for (var i = 0; i < a.length; i++){ if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; } return 0; }
+var QUEUE = (arr(S.action_queue).length ? arr(S.action_queue).map(function(q){ return BYID[obj(q).id] || obj(q); }) : LIVE.filter(function(e){ return e.health !== "on_track" || e.stale; }))
+  .filter(function(e){ return e && e.health; })
+  .sort(function(a, b){ return cmpKey(sevKey(a), sevKey(b)); });
+var SUM = obj(S.summary);
+function sumOr(k, f){ return num(SUM[k]) != null ? num(SUM[k]) : LIVE.filter(f).length; }
+var COUNTS = {
+  call: sumOr("needs_call", function(e){ return /^(needs_call|callable_win|callable_loss)$/.test(e.health); }),
+  stale: sumOr("stale", function(e){ return !!e.stale; }),
+  healthy: sumOr("healthy", function(e){ return e.health === "on_track" && !e.stale; }),
+  guard: sumOr("guardrail", function(e){ return e.health === "guardrail_breach"; })
+};
+// running-list filters use the same buckets as the queue groups, so counts always agree
+var FILTERS = {
+  all: function(){ return true; },
+  call: function(e){ return groupOf(e) === "decide"; },
+  stale: function(e){ return groupOf(e) === "stale"; },
+  spec: function(e){ return groupOf(e) === "spec"; },
+  healthy: function(e){ var g = groupOf(e); return g === "evidence" || g === "waiting" || (!g && e.health === "on_track"); }
+};
+
+/* ── state */
+var ST = { tab: ["today","decided","changes","rules"].indexOf(H.tab) >= 0 ? H.tab : "today", filter: H.filter === "healthy" ? "healthy" : "all", q: "", sort: "sev", dir: 1, queueAll: H.queue === "all", dOutcome: "all", dTheme: "", dQ: "", cOnly: H.unlogged === "1", cSrc: "",
+  runOpen: H.focus === "running" || H.filter === "healthy",
+  open: {decide: true, stale: true, spec: H.queue === "all", waiting: H.queue === "all", evidence: H.queue === "all"}, more: {}, sel: {} };
+/* queue grouped by what the founder has to do; each live row lands in at most one group */
+var G = {decide: [], stale: [], spec: [], waiting: [], evidence: []};
+QUEUE.forEach(function(e){ var g = groupOf(e); if (g) G[g].push(e); });
+// inside "stale", the oldest problem first; inside "decide", guardrails then calls
+G.stale.sort(function(a, b){ return (staleAge(b) || 0) - (staleAge(a) || 0); });
+function staleAge(e){
+  // how long it has been stuck: days past review, days without a readout, or days live past 2x plan
+  if (e.health === "needs_call") return num(e.overdue_days);
+  if (e.health === "manual_overdue") return sinceReadout(e);
+  if (e.health === "zombie") { var t = tlOf(e), dr = daysRunning(e); return t.planned && dr != null ? dr - 2 * t.planned : null; }
+  return num(e.overdue_days);
+}
+var FINE = LIVE.filter(function(e){ return e.health === "on_track" && !e.stale; });
+var FILTER_TO_GROUP = {call: "decide", guard: "decide", stale: "stale", spec: "spec", waiting: "waiting", evidence: "evidence"};
+if (FILTER_TO_GROUP[H.filter]) ST.open[FILTER_TO_GROUP[H.filter]] = true;
+
+/* ── components */
+function timelineBar(e, compact){
+  var t = tlOf(e), dr = daysRunning(e);
+  if (dr == null) return '<span class="na">Not started</span>';
+  var planned = t.planned || (reviewDate(e) && t.start ? daysBetween(t.start, reviewDate(e)) : null);
+  // no planned length and no stop date: a bar would always read as 100% done, so show text only
+  if (!planned && !t.max) return '<div class="cell-l"><b>Day ' + dr + '</b></div><div class="na">no review date set</div>';
+  var scale = Math.max(t.max || 0, planned || 0, dr || 0, 1);
+  var w = Math.min(dr / scale, 1) * 100, rv = planned ? Math.min(planned / scale, 1) * 100 : null;
+  var over = planned && dr > planned;
+  var lab = planned ? (over ? '<b>Day ' + dr + '</b><span class="over">' + (dr - planned) + 'd past review</span>' : '<b>Day ' + dr + ' of ' + planned + '</b>' + (t.max ? '<span>stop ' + t.max + '</span>' : "")) : '<b>Day ' + dr + '</b>';
+  var fstyle = "width:" + w.toFixed(1) + "%" + (over && rv != null ? ";--rv:" + (rv / w * 100).toFixed(1) + "%" : "");
+  return '<div class="cell-l">' + lab + '</div><div class="tl" role="img" aria-label="Day ' + dr + (planned ? ' of ' + planned + ' planned' : '') + (t.max ? ', hard stop day ' + t.max : '') + '">' +
+    '<div class="f' + (over ? " over" : "") + '" style="' + fstyle + '"></div>' + (rv != null ? '<div class="rv" style="left:' + rv.toFixed(1) + '%" title="Review ' + esc(fd(reviewDate(e))) + '"></div>' : "") + (t.max ? '<div class="mx" title="Hard stop day ' + t.max + '"></div>' : "") + '</div>';
+}
+function gauge(e){
+  var st = statsOf(e), at = atypeOf(e);
+  if (at === "rollout") return '<span class="na">Rollout</span>';
+  if (!st || num(st.p_beat) == null) return '<span class="na">' + (reportingOf(e) === "manual" ? "Manual · no counts" : "No readout") + '</span>';
+  var p = num(st.p_beat), r = ruleOf(e), cls = p >= r.ship_p ? "win" : (p <= r.stop_p ? "lose" : "");
+  var ev = at === "pre_post" ? " ev" : "";
+  return '<div class="gz" role="img" aria-label="' + esc(chance(p)) + ' chance it is better; ship bar ' + esc(chance(r.ship_p)) + (ev ? "; before/after evidence" : "") + '"><div class="bar"><div class="f ' + cls + ev + '" style="width:' + (p * 100).toFixed(1) + '%"></div><div class="th" style="left:' + (r.ship_p * 100) + '%" title="Ship bar ' + esc(chance(r.ship_p)) + '"></div></div><span class="v ' + cls + '">' + esc(chance(p)) + '</span></div>';
+}
+function metricCell(e){
+  var a = armsOf(e), st = statsOf(e) || {}, at = atypeOf(e), m = metricOf(e);
+  var c = obj(a.control), t = obj(a.treatment);
+  var cr = num(st.control_rate), tr = num(st.treatment_rate);
+  if (st.model === "gamma_poisson") return '<div class="mval">' + (cr != null ? cr.toFixed(1) : "–") + '<span class="arw">→</span>' + (tr != null ? tr.toFixed(1) : "–") + '/day</div><div class="mcnt">' + esc(m.label || "per day") + '</div>';
+  if (cr == null && c.n) cr = c.conv / c.n; if (tr == null && t.n) tr = t.conv / t.n;
+  if (cr == null && tr == null) {
+    if (at === "rollout") { var gs = guardsOf(e).filter(function(g){ return g.evaluated; }), nb = gs.filter(function(g){ return g.breached; }).length; return '<span class="na">' + (!gs.length ? "Guardrails not read" : nb ? nb + " guardrail" + (nb === 1 ? "" : "s") + " breached" : gs.length + " guardrail" + (gs.length === 1 ? "" : "s") + " holding") + '</span>'; }
+    return '<span class="na">–</span>';
+  }
+  var cnt = (c.n != null ? fmtInt(c.conv) + "/" + fmtInt(c.n) : (at === "benchmark" ? "past rate" : "")) + (t.n != null ? "  →  " + fmtInt(t.conv) + "/" + fmtInt(t.n) : "");
+  return '<div class="mval" title="' + esc(m.label || "") + '">' + pct(cr) + '<span class="arw">→</span>' + pct(tr) + '</div><div class="mcnt" title="' + esc((at === "pre_post" ? "before · after" : at === "benchmark" ? "benchmark · now" : "control · treatment")) + '">' + esc(cnt) + '</div>';
+}
+function bindRows(root){
+  root.querySelectorAll("[data-open]").forEach(function(el){
+    el.addEventListener("click", function(ev){ if (ev.target.closest("[data-stop]")) return; openDrawer(el.getAttribute("data-open"), el); });
+    el.addEventListener("keydown", function(ev){ if ((ev.key === "Enter" || ev.key === " ") && ev.target === el){ ev.preventDefault(); openDrawer(el.getAttribute("data-open"), el); } });
+  });
+}
+
+/* ── views */
+function renderHeader(){
+  var gen = S.generated_at ? String(S.generated_at) : "";
+  var genTxt = gen ? fd(gen) + " " + (gen.slice(11,16) ? gen.slice(11,16) + " UTC" : "") : "unknown";
+  var unlogged = CHANGES.filter(function(c){ return c.unlogged; }).length;
+  var nDraft = PLANNED.filter(function(e){ return e.lifecycle === "draft" || e.status === "draft"; }).length;
+  var h = '<div class="hdr"><div><h1>Experiments</h1><div class="meta num">Updated ' + esc(genTxt) + ' · ' + LIVE.length + ' running · ' + (PLANNED.length - nDraft) + ' planned' + (nDraft ? ' · ' + nDraft + ' draft' : '') + ' · ' + DECIDED.length + ' decided</div></div>' +
+    (S.fixture ? '<span class="badge-fixture" title="' + esc(S.fixture_note || "") + '">Fixture data · not a readout</span>' : "") + '</div>';
+  if (S.degraded) h += '<div class="banner warn" role="status">' + esc(S.degraded_note || "Engine snapshot unavailable: registry view only.") + '</div>';
+  h += '<div class="tabs" role="tablist" aria-label="Experiments views">' +
+    tabBtn("today", "Today", QUEUE.filter(function(e){ var g = groupOf(e); return g && g !== "evidence"; }).length) + tabBtn("decided", "Decided", DECIDED.length) +
+    tabBtn("changes", "Changes", CHANGES.length, unlogged) + tabBtn("rules", "Rules") + '</div>';
+  return h;
+}
+function tabBtn(id, label, n, dot){
+  return '<button class="tab" role="tab" id="tab-' + id + '" aria-controls="panel" aria-selected="' + (ST.tab === id) + '" tabindex="' + (ST.tab === id ? 0 : -1) + '" data-tab="' + id + '">' + label + (n != null ? '<span class="tab-n">' + n + '</span>' : "") + (dot ? '<span class="dot" title="' + dot + ' unlogged"></span><span class="sr">' + dot + ' unlogged</span>' : "") + '</button>';
+}
+function shortReason(e){ return humanReason(e).replace(/ (Ask Claude Code for a readout, or shelve it|Call it from what you know, or shelve it)\.$/, ""); }
+function qRow(e, selectable){
+  var due = "";
+  if (e.health === "callable_win" || e.health === "callable_loss" || e.health === "guardrail_breach") { var od = num(e.overdue_days); if (od) due = od + "d past review"; }
+  var si = staleIn(e); if (si != null) due = si === 0 ? "stale today" : "goes stale in " + si + "d";
+  var label = nameOf(e) + ". " + pillText(e) + ". " + actionVerb(e) + ". " + shortReason(e);
+  return '<div class="row q-row sev-' + sev(e) + (selectable ? " sel-row" : "") + '" data-open="' + esc(e.id) + '">' +
+    (selectable ? '<div class="q-c" data-stop><input type="checkbox" data-sel="' + esc(e.id) + '"' + (ST.sel[e.id] ? " checked" : "") + ' aria-label="Select ' + esc(trunc(nameOf(e), 60)) + ' to shelve"></div>' : "") +
+    '<div class="q-p">' + pill(e) + '</div><div class="q-t" style="min-width:0"><button class="ttl-btn ttl" data-open-btn="' + esc(e.id) + '" aria-label="' + esc(label) + '" title="' + esc(nameOf(e)) + '">' + esc(nameOf(e)) + '</button><div class="sub" title="' + esc(shortReason(e)) + '">' + esc(shortReason(e)) + '</div></div>' +
+    '<div class="q-a" style="display:flex;gap:10px;align-items:center">' + (due ? '<span class="q-due">' + esc(due) + '</span>' : "") + '<span class="q-act">' + esc(actionVerb(e)) + ICON.arrow + '</span></div></div>';
+}
+function renderGroup(g){
+  var list = G[g.id], open = !!ST.open[g.id];
+  var guard = g.id === "decide" && list.some(function(e){ return e.health === "guardrail_breach"; });
+  var h = '<div class="qg ' + (guard ? "g-bad" : g.cls) + (open ? " open" : "") + '" id="g-' + g.id + '">' +
+    '<button class="qg-h" data-group="' + g.id + '" aria-expanded="' + open + '" aria-controls="gb-' + g.id + '"><span class="chev">' + ICON.arrow + '</span><span class="gt">' + g.title + '<span class="gn">' + list.length + '</span></span><span class="gg">' + g.guide + '</span><span class="gx">' + (open ? "Hide" : "Show") + '</span></button>';
+  h += '<div class="qg-b" id="gb-' + g.id + '">';
+  var LIM = 10, rows = ST.more[g.id] ? list : list.slice(0, LIM);
+  rows.forEach(function(e){ h += qRow(e, g.id === "stale"); });
+  if (list.length > LIM) h += '<div class="q-more"><button class="linkbtn" data-more="' + g.id + '">' + (ST.more[g.id] ? "Show fewer" : "Show all " + list.length) + '</button></div>';
+  if (g.id === "stale") {
+    var n = list.filter(function(e){ return ST.sel[e.id]; }).length;
+    h += '<div class="q-foot"><button class="btn" data-selall>' + (n === list.length ? "Clear selection" : "Select all") + '</button><button class="btn primary" data-copy-shelve' + (n ? "" : " disabled") + '>Copy shelve list for Claude Code' + (n ? " (" + n + ")" : "") + '</button><span>Tick the ones to shelve, paste the list into Claude Code, and it records the decisions.</span><div id="shelve-box" style="flex-basis:100%"></div></div>';
+  }
+  return h + '</div></div>';
+}
+function shelveText(){
+  var picked = G.stale.filter(function(e){ return ST.sel[e.id]; });
+  return "Shelve these " + picked.length + " stale experiment" + (picked.length === 1 ? "" : "s") + " (decided from the Experiments tab, " + TODAY + "). For each, set the outcome to shelved in experiments/experiment_log.json with the reason below:\n" +
+    picked.map(function(e){ return "- " + (e.id || nameOf(e)) + " (" + nameOf(e) + "): " + shortReason(e); }).join("\n");
+}
+function renderToday(){
+  var guards = G.decide.filter(function(e){ return e.health === "guardrail_breach"; });
+  var nEv = G.evidence.length, nWait = G.waiting.length;
+  var oldest = G.stale.length ? staleAge(G.stale[0]) : null;
+  var soon = G.decide.filter(function(e){ return staleIn(e) != null; }).length;
+  var k = function(id, n, label, sub, cls){ return '<button class="kpi ' + (n ? cls : "zero") + '" data-kpi="' + id + '"><div class="k-n">' + n + '</div><div class="k-l">' + label + '</div><div class="k-s">' + sub + '</div></button>'; };
+  var h = "";
+  guards.forEach(function(e){ h += '<div class="alert" role="alert"><div><b>Guardrail breach:</b> ' + esc(nameOf(e)) + '. ' + esc(humanReason(e)) + '</div><button class="btn" data-open-btn="' + esc(e.id) + '">Pause or revert now</button></div>'; });
+  h += '<div class="strip" role="group" aria-label="Today at a glance">' +
+    k("decide", G.decide.length, "Decide now", guards.length ? guards.length + " guardrail alert" + (guards.length === 1 ? "" : "s") + ", pause or revert" : G.decide.length ? (soon ? soon + " go" + (soon === 1 ? "es" : "") + " stale within 3 days" : "ready to call or past review") : "nothing to decide", guards.length ? "bad" : "warn") +
+    k("stale", G.stale.length, "Stale", G.stale.length ? (oldest != null ? "oldest stuck " + oldest + " days" : "call it or shelve") : "nothing going stale", "warn") +
+    k("spec", G.spec.length, "Fix the setup", G.spec.length ? "spec gaps or metric not read" : "every spec complete", "") +
+    k("fine", FINE.length + nEv + nWait, "No action due", FINE.length + " on track" + (nWait ? " · " + nWait + " waiting for numbers" : "") + (nEv ? " · " + nEv + " before/after only" : ""), "win") + '</div>';
+  var total = G.decide.length + G.stale.length + G.spec.length;
+  h += '<section class="sec" id="queue" aria-labelledby="q-h"><div class="sec-h"><h2 id="q-h">Needs you</h2><span class="aside">' + (total ? total + " to act on, grouped by what to do" : "") + '</span></div>';
+  if (!total && !nEv && !nWait) {
+    h += '<div class="card"><div class="empty"><div class="ic">' + ICON.check + '</div><b>Nothing needs you today.</b>' + FINE.length + ' experiment' + (FINE.length === 1 ? "" : "s") + ' running on track.</div></div>';
+  } else {
+    if (!total) h += '<div class="card" style="margin-bottom:12px"><div class="empty"><div class="ic">' + ICON.check + '</div><b>Nothing needs you today.</b></div></div>';
+    GROUPS.forEach(function(g){ if (G[g.id].length) h += renderGroup(g); });
+  }
+  h += '</section>';
+  // running
+  h += '<section class="sec" id="running" aria-labelledby="r-h"><div class="sec-h"><h2 id="r-h">Running</h2><span class="aside">' + LIVE.length + ' live</span></div>';
+  // the running list repeats every queued row; collapsed by default while the queue has work
+  if (!ST.runOpen && (G.decide.length + G.stale.length + G.spec.length)) {
+    h += '<div class="qg"><button class="qg-h" data-runopen aria-expanded="false"><span class="chev">' + ICON.arrow + '</span><span class="gt">All ' + LIVE.length + ' running</span><span class="gg">Timeline, numbers and health for every live experiment, including the ones above.</span><span class="gx">Show</span></button></div>';
+  } else {
+  h += '<div class="toolbar"><div class="seg" role="group" aria-label="Filter running experiments">' +
+    [["all","All"],["call","Decide now"],["stale","Stale"],["spec","Fix the setup"],["healthy","No action due"]].map(function(f){ return '<button data-filter="' + f[0] + '" aria-pressed="' + (ST.filter === f[0]) + '">' + f[1] + '</button>'; }).join("") +
+    '</div><span class="grow"></span><label class="sr" for="rq">Search running</label><input id="rq" class="inp" type="search" placeholder="Search name or theme" value="' + esc(ST.q) + '"></div>';
+  h += '<div class="card" id="runlist">' + runningRows() + '</div>';
+  }
+  if (PLANNED.length) h += '<details class="planned"><summary>' + PLANNED.length + ' planned or draft, not switched on</summary><ul>' + PLANNED.map(function(e){ return '<li><a href="#" class="linkbtn" data-open="' + esc(e.id) + '">' + esc(trunc(nameOf(e), 110)) + '</a><span>' + (errIssues(e).length ? errIssues(e).length + " spec gaps" : "spec complete") + '</span></li>'; }).join("") + '</ul></details>';
+  h += '</section>';
+  if (arr(S.errors).length) h += '<details class="foot-err"><summary>' + S.errors.length + ' engine error' + (S.errors.length === 1 ? "" : "s") + ' this run</summary><pre>' + esc(S.errors.map(function(x){ x = obj(x); return (x.id || "-") + " [" + (x.stage || "") + "] " + (x.error || ""); }).join("\n")) + '</pre></details>';
+  return h;
+}
+function runningRows(){
+  var q = ST.q.trim().toLowerCase();
+  var list = LIVE.filter(FILTERS[ST.filter]).filter(function(e){ return !q || (nameOf(e) + " " + themesOf(e).join(" ") + " " + (e.id || "")).toLowerCase().indexOf(q) >= 0; });
+  var key = {
+    sev: function(e){ return sevKey(e); },
+    name: function(e){ return [nameOf(e).toLowerCase()]; },
+    day: function(e){ return [-(daysRunning(e) || 0)]; },
+    chance: function(e){ var s = statsOf(e); return [s && num(s.p_beat) != null ? -s.p_beat : 2]; }
+  }[ST.sort];
+  list.sort(function(a, b){ return cmpKey(key(a), key(b)) * ST.dir; });
+  // registry-only view (or no readouts at all): the metric and chance columns would be all dashes
+  var hasStats = LIVE.some(function(e){ var st = statsOf(e), a = armsOf(e); return (st && (num(st.p_beat) != null || num(st.control_rate) != null)) || obj(a.control).n != null || atypeOf(e) === "rollout"; });
+  var ns = hasStats ? "" : " nostats";
+  var sortBtn = function(id, label){ var on = ST.sort === id; return '<button data-sort="' + id + '" aria-sort="' + (on ? (ST.dir === 1 ? "ascending" : "descending") : "none") + '">' + label + '<span class="ar"></span></button>'; };
+  var h = '<div class="r-head' + ns + '" role="row"><div>' + sortBtn("name", "Experiment") + '</div><div>' + sortBtn("day", "Timeline") + '</div>' + (hasStats ? '<div>Primary metric</div><div>' + sortBtn("chance", "Chance it’s better") + '</div>' : "") + '<div>' + sortBtn("sev", "Health") + '</div></div>';
+  if (!list.length) {
+    var none = ST.filter !== "all" || q;
+    return h + '<div class="empty">' + (none ? 'No running experiments match.<br><button class="linkbtn" data-clear>Clear filters</button>' : (S.degraded ? "No live experiments in the registry." : "No experiments running.")) + '</div>';
+  }
+  list.forEach(function(e){
+    h += '<div class="row r-row' + ns + '" role="button" tabindex="0" data-open="' + esc(e.id) + '" aria-label="' + esc(nameOf(e) + ". " + pillText(e)) + '">' +
+      '<div class="c-n r-name" style="min-width:0"><div class="ttl" title="' + esc(nameOf(e)) + '">' + esc(nameOf(e)) + '</div><div class="themes">' + themesOf(e).slice(0, 3).map(function(t){ return '<span class="theme">' + esc(t) + '</span>'; }).join("") + '</div></div>' +
+      '<div class="c-t">' + timelineBar(e) + '</div>' + (hasStats ? '<div class="c-m" style="min-width:0">' + metricCell(e) + '</div><div class="c-g">' + gauge(e) + '</div>' : "") + '<div class="c-h" style="min-width:0">' + pill(e) + '</div></div>';
+  });
+  return h;
+}
+
+var OUT = {shipped: ["Shipped","win"], reverted: ["Reverted","warn"], shelved: ["Shelved","neutral"], inconclusive: ["Inconclusive","outline"], unknown: ["Concluded","outline"]};
+function outcomeOf(d){ var o = String(d.outcome || "").toLowerCase(); return OUT[o] ? o : (OUT[String(d.status || "").toLowerCase()] ? String(d.status).toLowerCase() : "unknown"); }
+function outcomePill(d){ var o = OUT[outcomeOf(d)]; return '<span class="pill ' + o[1] + '"><i></i>' + o[0] + '</span>'; }
+function renderDecided(){
+  var counts = {all: DECIDED.length}; DECIDED.forEach(function(d){ var o = outcomeOf(d); counts[o] = (counts[o] || 0) + 1; });
+  var themes = {}; DECIDED.forEach(function(d){ themesOf(d).forEach(function(t){ themes[t] = 1; }); });
+  var h = '<section class="sec"><div class="sec-h"><h2>Learnings library</h2><span class="aside">What we tried, what we kept, and why</span></div>';
+  h += '<div class="toolbar"><div class="chipbar" role="group" aria-label="Outcome">' + ["all","shipped","reverted","shelved","inconclusive","unknown"].filter(function(o){ return o === "all" || counts[o]; }).map(function(o){ return '<button class="chip" data-out="' + o + '" aria-pressed="' + (ST.dOutcome === o) + '">' + (o === "all" ? "All" : OUT[o][0]) + '<span class="c">' + (counts[o] || 0) + '</span></button>'; }).join("") + '</div><span class="grow"></span>' +
+    '<label class="sr" for="dth">Theme</label><select id="dth" class="sel"><option value="">All themes</option>' + Object.keys(themes).sort().map(function(t){ return '<option' + (ST.dTheme === t ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' +
+    '<label class="sr" for="dq">Search decided</label><input id="dq" class="inp" type="search" placeholder="Search learnings" value="' + esc(ST.dQ) + '"></div>';
+  h += '<div class="card" id="declist">' + decidedRows() + '</div></section>';
+  return h;
+}
+function decidedRows(){
+  var q = ST.dQ.trim().toLowerCase();
+  var list = DECIDED.filter(function(d){ return (ST.dOutcome === "all" || outcomeOf(d) === ST.dOutcome) && (!ST.dTheme || themesOf(d).indexOf(ST.dTheme) >= 0) && (!q || (nameOf(d) + " " + (d.takeaway || "") + " " + themesOf(d).join(" ")).toLowerCase().indexOf(q) >= 0); })
+    .sort(function(a, b){ return String(b.decided_on || b.end_date || b.start_date || "").localeCompare(String(a.decided_on || a.end_date || a.start_date || "")); });
+  if (!list.length) return '<div class="empty">' + (DECIDED.length ? 'Nothing matches.<br><button class="linkbtn" data-dclear>Clear filters</button>' : "Nothing decided yet. Calls you make will collect here as a library of what worked.") + '</div>';
+  return list.map(function(d){
+    var when = d.decided_on || d.end_date;
+    return '<div class="row d-row" role="button" tabindex="0" data-open="' + esc(d.id) + '"><div class="d-b">' + outcomePill(d) + '</div><div class="d-t" style="min-width:0"><div class="ttl">' + esc(nameOf(d)) + '</div><div class="take">' + esc(d.takeaway || d.decision || "No takeaway recorded.") + '</div></div><div class="d-meta">' + (when ? fd(when, true) : "–") + '<br>' + esc(themesOf(d).slice(0, 2).join(" · ")) + '</div></div>';
+  }).join("");
+}
+var SRC = {weweb: "WeWeb", "rec-engine": "rec-engine", "railway-var": "Railway var", railway: "Railway", xano: "Xano", github: "GitHub", brevo: "Brevo", stripe: "Stripe", manual: "Logged"};
+function srcOf(c){ var s = String(c.source || "").toLowerCase(); if (s) return s; var t = String(c.what || c.title || "").toLowerCase(); if (/weweb/.test(t)) return "weweb"; if (/rec-engine|rec_/.test(t)) return "rec-engine"; if (/\bep\d+|xano/.test(t)) return "xano"; return "manual"; }
+function renderChanges(){
+  var un = CHANGES.filter(function(c){ return c.unlogged; });
+  var srcs = {}; CHANGES.forEach(function(c){ srcs[srcOf(c)] = 1; });
+  var h = '<section class="sec">';
+  if (un.length) h += '<div class="banner warn" style="margin:0 0 16px"><div><b>' + un.length + ' change' + (un.length === 1 ? "" : "s") + ' shipped without a log entry.</b> An unlogged change can quietly confound a running experiment. Log it: ask Claude Code to add a <code>changes[]</code> entry (date, source, ref, which experiments it affects) to the registry.</div></div>';
+  h += '<div class="sec-h"><h2>Shipped changes</h2><span class="aside">Anything that could move a running experiment</span></div>';
+  h += '<div class="toolbar"><div class="seg" role="group" aria-label="Show"><button data-conly="0" aria-pressed="' + !ST.cOnly + '">All</button><button data-conly="1" aria-pressed="' + ST.cOnly + '">Unlogged only' + (un.length ? " (" + un.length + ")" : "") + '</button></div><span class="grow"></span><label class="sr" for="csrc">Source</label><select id="csrc" class="sel"><option value="">All sources</option>' + Object.keys(srcs).sort().map(function(s){ return '<option value="' + esc(s) + '"' + (ST.cSrc === s ? " selected" : "") + '>' + esc(SRC[s] || s) + '</option>'; }).join("") + '</select></div>';
+  h += '<div id="chlist">' + changeRows() + '</div></section>';
+  return h;
+}
+function changeRows(){
+  var list = CHANGES.filter(function(c){ return (!ST.cOnly || c.unlogged) && (!ST.cSrc || srcOf(c) === ST.cSrc); })
+    .sort(function(a, b){ return String(b.ts || b.date || "").localeCompare(String(a.ts || a.date || "")); });
+  if (!list.length) return '<div class="card"><div class="empty">' + (ST.cOnly ? "<b>Every detected change is logged.</b>Nothing can confound an experiment without you knowing." : "No changes recorded.") + '</div></div>';
+  var groups = [], cur = null;
+  list.forEach(function(c){ var d = String(c.ts || c.date || "").slice(0, 10); if (!cur || cur.d !== d){ cur = {d: d, items: []}; groups.push(cur); } cur.items.push(c); });
+  return groups.map(function(g){
+    return '<div class="day-h">' + (g.d ? fd(g.d, true) : "Undated") + '</div><div class="card">' + g.items.map(function(c, i){
+      var aff = arr(c.affects).concat(arr(c.overlaps_experiments)).filter(function(x, j, A){ return x && A.indexOf(x) === j; });
+      var time = c.ts && String(c.ts).length > 10 ? String(c.ts).slice(11, 16) + " UTC" : "";
+      return '<div class="ch' + (c.unlogged ? " unlogged" : "") + '"><div><span class="src">' + esc(SRC[srcOf(c)] || srcOf(c)) + '</span><div class="when">' + esc(time) + '</div></div><div style="min-width:0">' +
+        '<div class="txt" id="cx-' + esc(g.d) + '-' + i + '">' + esc(c.title || c.what || "(no description)") + '</div>' +
+        '<div class="foot">' + (c.unlogged ? '<span class="pill warn"><i></i>Unlogged</span>' : "") + (c.ref ? '<span class="ref">' + esc(c.ref) + '</span>' : "") +
+        (aff.length ? '<span>Affects</span>' + aff.slice(0, 4).map(function(id){ var x = BYID[id]; return '<button class="xchip" data-stop data-xopen="' + esc(id) + '" title="' + esc(x ? nameOf(x) : id) + '">' + esc(trunc(x ? nameOf(x) : id, 42)) + '</button>'; }).join("") + (aff.length > 4 ? '<span>+' + (aff.length - 4) + '</span>' : "") : "") +
+        (String(c.title || c.what || "").length > 170 ? '<button class="linkbtn" data-expand="cx-' + esc(g.d) + '-' + i + '">More</button>' : "") + '</div>' +
+        (c.unlogged ? '<div class="guide">Log it, or confirm it touches no running experiment.</div>' : "") + '</div></div>';
+    }).join("") + '</div>';
+  }).join("");
+}
+function renderRules(){
+  var T = [["Money","payments, pricing, paywall","95%","10%","0.2 pts"],["UX","product changes","90%","10%","0.5 pts"],["Infra","speed, reliability","90%","10%","0.5 pts"]];
+  var HS = [
+    ["guardrail_breach","A guardrail crossed its threshold (e.g. purchases/day down more than 25%, 90% sure)","Pause or revert now"],
+    ["callable_win","Ship bar met, expected loss under the bar, 7+ days","Ship it"],
+    ["callable_loss","Chance ≤ stop bar after half the sample, or ≤ 5% after 7 days","Revert it"],
+    ["needs_call","Past review date with no decision (stale after 3 days)","Make the call"],
+    ["starved","Can't reach a verdict before the hard stop, or < 5 couples/day per side","Shelve or redesign"],
+    ["no_data","No new couples for 3 days, or the metric failed twice","Check tracking"],
+    ["zombie","Live more than twice the planned days","Shelve it"],
+    ["manual_overdue","Reported by hand, no readout for 7 days","Read it out"],
+    ["confounded","Before/after with 2+ overlapping launches","Treat as evidence"],
+    ["spec_incomplete","Missing any of the seven questions","Complete the spec"],
+    ["guardrail_unmonitored","A guardrail can't be measured, so a drop would go unnoticed","Fix the guardrail metric"],
+    ["on_track","None of the above","Keep running"]];
+  var fake = function(h){ var e = {health: h, overdue_days: null, days_running: 30}; if (STALE[h]) e.stale = true; return pill(e); };
+  return '<section class="rules">' +
+    '<div class="card"><h3>When can we call it?</h3><p>Bayesian: the headline is the chance the change beats what it replaced. A call also needs low expected loss and at least 7 days, so every weekday is covered.</p><table class="t"><thead><tr><th>Tier</th><th>Ship when chance ≥</th><th>Stop when ≤</th><th>Max loss</th></tr></thead><tbody>' + T.map(function(r){ return '<tr><td><b>' + r[0] + '</b><br><span style="color:var(--ink-3)">' + r[1] + '</span></td><td class="n">' + r[2] + '</td><td class="n">' + r[3] + '<br><span style="color:var(--ink-3)">after half the sample</span></td><td class="n">' + r[4] + '</td></tr>'; }).join("") + '</tbody></table></div>' +
+    '<div class="card"><h3>What counts as stale?</h3><p>Stale experiments go to the top of the queue and the daily DM until they are called or shelved.</p><table class="t"><tbody>' +
+    [["Call overdue","3+ days past review, no decision"],["Can't finish","won't reach a verdict by the hard stop"],["No data","no new couples for 3 days"],["Overran","live more than 2× planned days"],["No readout","manual, nothing read out for 7 days"]].map(function(r){ return '<tr><td><b>' + r[0] + '</b></td><td>' + r[1] + '</td></tr>'; }).join("") + '</tbody></table>' +
+    '<p style="margin:14px 0 0"><b style="color:var(--ink-2)">Before/after tests</b> are evidence, not proof. With 2+ other launches in the window the verdict is capped at Confounded. <b style="color:var(--ink-2)">Sample plan:</b> n per side = (1.645 + 0.84)² × 2p(1−p) / d², about 80% chance of reaching the ship bar if the true lift is d.</p></div>' +
+    '<div class="card full"><h3>Health states</h3><p>Every live experiment gets exactly one: the first that applies, top to bottom.</p><table class="t"><thead><tr><th style="width:210px">State</th><th>Rule</th><th style="width:170px">Action shown</th></tr></thead><tbody>' + HS.map(function(r){ return '<tr><td>' + fake(r[0]) + '</td><td>' + r[1] + '</td><td><b>' + r[2] + '</b></td></tr>'; }).join("") + '</tbody></table>' +
+    '<p style="margin:14px 0 0">Every experiment states seven things before it goes live: what changed · what it impacts · hypothesis · what it tests · success metric · how long · how it is reported.</p></div>' +
+    '</section>';
+}
+
+function render(){
+  var body = ST.tab === "today" ? renderToday() : ST.tab === "decided" ? renderDecided() : ST.tab === "changes" ? renderChanges() : renderRules();
+  app.innerHTML = renderHeader() + '<div id="panel" role="tabpanel" aria-labelledby="tab-' + ST.tab + '">' + body + '</div>';
+  wire();
+}
+function rerenderList(id, fn){ var el = document.getElementById(id); if (el){ el.innerHTML = fn(); bindRows(el); wireSort(el); } }
+function wireSort(root){
+  root.querySelectorAll("[data-sort]").forEach(function(b){ b.addEventListener("click", function(){ var s = b.getAttribute("data-sort"); if (ST.sort === s) ST.dir = -ST.dir; else { ST.sort = s; ST.dir = 1; } rerenderList("runlist", runningRows); var nb = document.querySelector('[data-sort="' + s + '"]'); if (nb) nb.focus(); }); });
+  root.querySelectorAll("[data-clear]").forEach(function(b){ b.addEventListener("click", function(){ ST.filter = "all"; ST.q = ""; render(); }); });
+}
+function wire(){
+  app.querySelectorAll("[data-tab]").forEach(function(b){
+    b.addEventListener("click", function(){ ST.tab = b.getAttribute("data-tab"); render(); var t = document.getElementById("tab-" + ST.tab); if (t) t.focus(); });
+    b.addEventListener("keydown", function(ev){ var ids = ["today","decided","changes","rules"], i = ids.indexOf(ST.tab); if (ev.key === "ArrowRight" || ev.key === "ArrowLeft"){ ev.preventDefault(); ST.tab = ids[(i + (ev.key === "ArrowRight" ? 1 : 3)) % 4]; render(); document.getElementById("tab-" + ST.tab).focus(); } });
+  });
+  // KPI cards jump to their group (opening it); "No action due" jumps to the filtered running list
+  app.querySelectorAll("[data-kpi]").forEach(function(b){ b.addEventListener("click", function(){
+    var id = b.getAttribute("data-kpi");
+    if (id === "fine") { ST.filter = "healthy"; ST.runOpen = true; render(); var r = document.getElementById("running"); if (r) r.scrollIntoView({behavior: "smooth", block: "start"}); return; }
+    if (!G[id] || !G[id].length) return;
+    ST.open[id] = true; render(); var gh = document.querySelector('[data-group="' + id + '"]'); if (gh){ gh.scrollIntoView({behavior: "smooth", block: "start"}); gh.focus({preventScroll: true}); }
+  }); });
+  app.querySelectorAll("[data-group]").forEach(function(b){ b.addEventListener("click", function(){ var id = b.getAttribute("data-group"); ST.open[id] = !ST.open[id]; render(); var nb = document.querySelector('[data-group="' + id + '"]'); if (nb) nb.focus({preventScroll: true}); }); });
+  app.querySelectorAll("[data-runopen]").forEach(function(b){ b.addEventListener("click", function(){ ST.runOpen = true; render(); var r = document.getElementById("rq"); if (r) r.focus({preventScroll: true}); }); });
+  app.querySelectorAll("[data-more]").forEach(function(b){ b.addEventListener("click", function(){ var id = b.getAttribute("data-more"); ST.more[id] = !ST.more[id]; render(); }); });
+  app.querySelectorAll("[data-sel]").forEach(function(c){ c.addEventListener("change", function(){ var id = c.getAttribute("data-sel"); if (c.checked) ST.sel[id] = 1; else delete ST.sel[id]; render(); var nc = document.querySelector('[data-sel="' + id + '"]'); if (nc) nc.focus({preventScroll: true}); }); });
+  app.querySelectorAll("[data-selall]").forEach(function(b){ b.addEventListener("click", function(){ var all = G.stale.every(function(e){ return ST.sel[e.id]; }); ST.sel = {}; if (!all) G.stale.forEach(function(e){ ST.sel[e.id] = 1; }); ST.more.stale = true; render(); var nb = document.querySelector("[data-selall]"); if (nb) nb.focus({preventScroll: true}); }); });
+  app.querySelectorAll("[data-copy-shelve]").forEach(function(b){ b.addEventListener("click", function(){ copyText(shelveText(), b, document.getElementById("shelve-box")); }); });
+  app.querySelectorAll("[data-open-btn]").forEach(function(b){ b.addEventListener("click", function(ev){ ev.stopPropagation(); openDrawer(b.getAttribute("data-open-btn"), b); }); });
+  app.querySelectorAll("[data-filter]").forEach(function(b){ b.addEventListener("click", function(){ ST.filter = b.getAttribute("data-filter"); app.querySelectorAll("[data-filter]").forEach(function(x){ x.setAttribute("aria-pressed", x === b); }); rerenderList("runlist", runningRows); }); });
+  var rq = document.getElementById("rq"); if (rq) rq.addEventListener("input", function(){ ST.q = rq.value; rerenderList("runlist", runningRows); });
+  app.querySelectorAll("[data-out]").forEach(function(b){ b.addEventListener("click", function(){ ST.dOutcome = b.getAttribute("data-out"); app.querySelectorAll("[data-out]").forEach(function(x){ x.setAttribute("aria-pressed", x === b); }); rerenderList("declist", decidedRows); }); });
+  var dth = document.getElementById("dth"); if (dth) dth.addEventListener("change", function(){ ST.dTheme = dth.value; rerenderList("declist", decidedRows); });
+  var dq = document.getElementById("dq"); if (dq) dq.addEventListener("input", function(){ ST.dQ = dq.value; rerenderList("declist", decidedRows); });
+  app.querySelectorAll("[data-dclear]").forEach(function(b){ b.addEventListener("click", function(){ ST.dOutcome = "all"; ST.dTheme = ""; ST.dQ = ""; render(); }); });
+  app.querySelectorAll("[data-conly]").forEach(function(b){ b.addEventListener("click", function(){ ST.cOnly = b.getAttribute("data-conly") === "1"; render(); }); });
+  var cs = document.getElementById("csrc"); if (cs) cs.addEventListener("change", function(){ ST.cSrc = cs.value; render(); });
+  bindRows(app); wireSort(app);
+}
+function wireDelegated(ev){
+  var x = ev.target.closest("[data-xopen]"); if (x){ ev.preventDefault(); openDrawer(x.getAttribute("data-xopen"), x); return; }
+  var m = ev.target.closest("[data-expand]"); if (m){ var t = document.getElementById(m.getAttribute("data-expand")); if (t){ var o = t.classList.toggle("open"); m.textContent = o ? "Less" : "More"; } return; }
+  var a = ev.target.closest("a[data-open]"); if (a) ev.preventDefault();
+  var ci = ev.target.closest("[data-copy-instr]"); if (ci){ var ce = BYID[ci.getAttribute("data-copy-instr")]; if (ce) copyText(instruction(ce), ci, document.getElementById("instr-box")); return; }
+  var ovm = ev.target.closest("[data-ovmore]"); if (ovm){ drawer.querySelectorAll("#ovl li.more").forEach(function(li){ li.hidden = false; }); ovm.remove(); }
+}
+
+/* ── drawer */
+var lastFocus = null;
+function section(i, title, body){ return '<section class="ds"><div class="ds-h"><span class="i">' + i + '</span><h3>' + title + '</h3></div><div class="ds-b">' + body + '</div></section>'; }
+function missing(t){ return '<span class="missing">' + (t || "Not stated in the registry.") + '</span>'; }
+function posterior(e){
+  var st = statsOf(e), r = ruleOf(e), at = atypeOf(e), a = armsOf(e), m = metricOf(e), plan = planOf(e), dr = daysRunning(e);
+  var h = '<p>' + (m.label ? '<b style="color:var(--ink)">' + esc(cap(m.label)) + '</b>' : missing("No primary metric stated.")) + (m.direction ? ' <span style="color:var(--ink-3)">· want it to ' + esc(m.direction) + '</span>' : "") + (num(m.mde_rel) != null ? ' <span style="color:var(--ink-3)">· smallest lift worth having ' + lift(m.mde_rel) + '</span>' : "") + '</p>';
+  if (st && num(st.p_beat) != null) {
+    var p = num(st.p_beat), cls = p >= r.ship_p ? "win" : (p <= r.stop_p ? "lose" : ""), ev = at === "pre_post" ? " ev" : "";
+    h += '<div class="post"><div class="post-top"><div><div class="big ' + cls + '">' + esc(chance(p)) + '</div><div class="big-l">chance it’s better' + (ev ? " (before/after)" : "") + '</div></div><div>' +
+      '<div class="scale" role="img" aria-label="' + esc(chance(p)) + ' chance; ship bar ' + esc(chance(r.ship_p)) + ', stop bar ' + esc(chance(r.stop_p)) + '"><div class="f ' + cls + ev + '" style="width:' + (p * 100).toFixed(1) + '%"></div><div class="mk stop" style="left:' + r.stop_p * 100 + '%"><span>stop ' + chance(r.stop_p) + '</span></div><div class="mk" style="left:' + r.ship_p * 100 + '%"><span>ship ' + chance(r.ship_p) + '</span></div><span class="ax" style="left:0">0%</span><span class="ax" style="right:0">100%</span></div>';
+    h += '</div></div>';
+    var ci = arr(st.lift_ci95_rel), lo = num(ci[0]), hi = num(ci[1]), med = num(st.lift_median_rel);
+    if (lo != null && hi != null && med != null) {
+      var a0 = Math.min(lo, 0), a1 = Math.max(hi, 0), pad = Math.max(a1 - a0, 0.02) * 0.14;
+      a0 -= pad; a1 += pad;
+      var X = function(v){ return (v - a0) / (a1 - a0) * 100; };
+      var ccls = lo > 0 ? "win" : (hi < 0 ? "lose" : "");
+      var near = function(v){ return Math.abs(X(v) - X(0)) < 9; };
+      h += '<div class="lift"><div><div class="lv">' + lift(med) + '</div><div class="ll">lift, 95% likely ' + lift(lo) + ' to ' + lift(hi) + '</div></div>' +
+        '<div class="ci" role="img" aria-label="Lift ' + esc(lift(med)) + ', 95% credible interval ' + esc(lift(lo)) + ' to ' + esc(lift(hi)) + '"><div class="zero" style="left:' + X(0).toFixed(1) + '%"><span>no change</span></div>' +
+        '<div class="rng ' + ccls + '" style="left:' + X(lo).toFixed(1) + '%;width:' + (X(hi) - X(lo)).toFixed(1) + '%"></div><div class="med" style="left:' + X(med).toFixed(1) + '%"></div>' +
+        (near(lo) ? "" : '<span class="lab" style="left:' + X(lo).toFixed(1) + '%">' + lift(lo) + '</span>') + (near(hi) ? "" : '<span class="lab" style="left:' + X(hi).toFixed(1) + '%">' + lift(hi) + '</span>') + '</div></div>';
+    } else if (med != null) h += '<div class="lift"><div><div class="lv">' + lift(med) + '</div><div class="ll">change</div></div><div></div></div>';
+
+    var c = obj(a.control), t = obj(a.treatment);
+    var names = at === "pre_post" ? ["Before", "After"] : at === "benchmark" ? ["Benchmark", "Now"] : ["Control", "Treatment"];
+    if (st.model === "gamma_poisson") {
+      h += '<table class="arms"><tr><th></th><th class="r">Per day</th></tr><tr><td>' + names[0] + '</td><td class="r">' + (num(st.control_rate) != null ? st.control_rate.toFixed(2) : "–") + '</td></tr><tr><td>' + names[1] + '</td><td class="r">' + (num(st.treatment_rate) != null ? st.treatment_rate.toFixed(2) : "–") + '</td></tr></table>';
+    } else {
+      var cr = num(st.control_rate), tr = num(st.treatment_rate);
+      h += '<table class="arms"><tr><th></th><th class="r">Rate</th><th class="r">Couples</th></tr>' +
+        '<tr><td>' + names[0] + '</td><td class="r">' + pct(cr) + '</td><td class="r">' + (c.n != null ? fmtInt(c.conv) + " of " + fmtInt(c.n) : (st.c_n != null ? fmtInt(st.c_conv) + " of " + fmtInt(st.c_n) : "–")) + '</td></tr>' +
+        '<tr><td>' + names[1] + '</td><td class="r">' + pct(tr) + '</td><td class="r">' + (t.n != null ? fmtInt(t.conv) + " of " + fmtInt(t.n) : "–") + '</td></tr></table>';
+    }
+    h += '</div>';
+    var nper = at === "split" ? Math.min(num(c.n) || 0, num(t.n) || 0) : (num(t.n) || 0);
+    h += '<div class="kv"><div><div class="l">Expected loss if wrong</div><div class="v">' + (st.expected_loss_abs != null ? pts(st.expected_loss_abs) : "–") + '</div><div class="s">bar ' + pts(r.max_loss) + '</div></div>' +
+      '<div><div class="l">Couples ' + (at === "split" ? "per side" : "after") + '</div><div class="v">' + fmtInt(nper) + '</div><div class="s">' + (num(plan.n_per_arm) ? "of ~" + fmtInt(plan.n_per_arm) + " planned" : "no plan") + '</div></div>' +
+      '<div><div class="l">Sample plan</div><div class="v">' + (num(plan.days_needed) ? "≈ " + fmtInt(plan.days_needed) + " days" : "–") + '</div><div class="s">' + (num(plan.daily_exposed_per_arm) ? "at ~" + fmtInt(plan.daily_exposed_per_arm) + " couples/day" + (at === "split" ? " a side" : "") : esc(plan.reason || "")) + '</div></div></div>';
+  } else {
+    h += '<div class="post"><p style="margin:0;color:var(--ink-3)">' + (at === "rollout" ? "Rollout to everyone: no comparison group, so success is judged on adoption and guardrails." : reportingOf(e) === "manual" ? "Reported by hand and no readout has counts yet, so there is no chance-it's-better number. See the results log." : "No numbers yet.") + '</p></div>';
+  }
+  if (at !== "rollout") h += '<div class="thr"><span>Ship when <b>≥ ' + chance(r.ship_p) + '</b></span><span>Stop when <b>≤ ' + chance(r.stop_p) + '</b> after half the sample</span><span>Max loss <b>' + pts(r.max_loss) + '</b></span><span>At least <b>7 days</b></span>'  + '</div>';
+  var gs = guardsOf(e);
+  if (gs.length) h += '<ul class="glist" aria-label="Guardrails">' + gs.map(function(g){ var lim = g.max_rise_rel != null ? "not up > " + Math.round(g.max_rise_rel * 100) + "%" : "not down > " + Math.round((g.max_drop_rel != null ? g.max_drop_rel : 0.25) * 100) + "%"; return '<li><span>Guardrail: ' + esc(guardLabel(g)) + ' <span style="color:var(--ink-3)">(' + lim + ')</span></span>' + (!g.evaluated ? '<span class="pill outline">Not read yet</span>' : g.breached ? '<span class="pill bad"><i></i>Breached' + (g.p_breach != null ? " · " + chance(g.p_breach) + " sure" : "") + '</span>' : '<span class="pill ok"><i></i>Holding</span>') + '</li>'; }).join("") + '</ul>';
+  if (at === "pre_post") {
+    var ov = arr(e.overlapping_changes);
+    h += '<div class="evid"><h4>Evidence, not proof' + (ov.length ? ' · ' + ov.length + ' overlapping change' + (ov.length === 1 ? '' : 's') : '') + '</h4><div style="font-size:13px;color:var(--ink-3)">This compares couples before the launch with couples after it. Anything else that shipped in the window can move the number too.' + (ov.length >= 2 ? " With " + ov.length + " overlapping launches the verdict is capped at Confounded; a 50/50 split (or a quiet window) would settle it." : "") + '</div>' +
+      (ov.length ? '<ol id="ovl">' + ov.slice().sort(function(a, b){ return String(obj(b).date || obj(b).ts || "").localeCompare(String(obj(a).date || obj(a).ts || "")); }).map(function(c, i){ c = obj(c); return '<li' + (i >= 4 ? ' class="more" hidden' : "") + '><span class="num" style="color:var(--ink-3)">' + esc(fd(c.date || c.ts)) + '</span> · ' + esc(trunc(c.what || c.title || "", 150)) + '</li>'; }).join("") + '</ol>' + (ov.length > 4 ? '<button class="linkbtn" data-ovmore style="margin-top:4px">Show all ' + ov.length + ' overlapping changes</button>' : "") : '<div style="font-size:13px;margin-top:6px">No logged changes overlap the window.</div>') + '</div>';
+  }
+  return h;
+}
+function sparkline(e){
+  var hist = arr(e.history).map(obj).filter(function(r){ return r.date; });
+  var stNow = statsOf(e), aNow = armsOf(e);
+  if (hist.length && stNow && num(stNow.p_beat) != null && String(hist[hist.length - 1].date).slice(0, 10) < TODAY)
+    hist = hist.concat([{date: TODAY, p_beat: stNow.p_beat, n_control: obj(aNow.control).n, n_treatment: obj(aNow.treatment).n}]);
+  if (hist.length < 2) return '<div class="spark"><div class="l"><span>Trend</span></div><p style="font-size:12px;color:var(--ink-3);margin:6px 0 8px">The trend appears after the engine has two daily readouts.</p></div>';
+  var r = ruleOf(e), W = 300, Hh = 84, top = 6, ph = 46, by = 82, bh = 22;
+  var n = hist.length, x = function(i){ return (i / (n - 1)) * (W - 4) + 2; };
+  var pts = hist.map(function(h, i){ var p = num(h.p_beat); return p == null ? null : [x(i), top + (1 - p) * ph]; }).filter(Boolean);
+  var tot = hist.map(function(h){ return (num(h.n_control) || 0) + (num(h.n_treatment) || 0); });
+  var daily = tot.map(function(t, i){ return i ? Math.max(t - tot[i - 1], 0) : 0; });
+  var mx = Math.max.apply(null, daily.concat([1]));
+  var bw = Math.max((W - 4) / n - 1.5, 1);
+  var path = pts.map(function(p, i){ return (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(" ");
+  var last = pts[pts.length - 1];
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + (Hh + 6) + '" preserveAspectRatio="none" role="img" aria-label="Chance it is better over ' + n + ' days, now ' + esc(chance(hist[n - 1].p_beat)) + '">' +
+    '<line x1="0" x2="' + W + '" y1="' + (top + (1 - r.ship_p) * ph) + '" y2="' + (top + (1 - r.ship_p) * ph) + '" stroke="var(--ink-4)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>' +
+    '<line x1="0" x2="' + W + '" y1="' + (top + ph) + '" y2="' + (top + ph) + '" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>' +
+    daily.map(function(d, i){ var hgt = d / mx * bh; return i ? '<rect x="' + (x(i) - bw / 2).toFixed(1) + '" y="' + (by - hgt).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + hgt.toFixed(1) + '" fill="var(--line-2)"/>' : ""; }).join("") +
+    '<path d="' + path + '" fill="none" stroke="var(--ink)" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>' +
+    (last ? '<circle cx="' + last[0] + '" cy="' + last[1] + '" r="2.6" fill="var(--ink)"/>' : "") + '</svg>';
+  return '<div class="spark"><div class="l"><span>Chance it’s better, by day <span style="color:var(--ink-4)">(dashed: ship bar ' + chance(r.ship_p) + ')</span></span><span class="num">' + esc(chance(hist[n - 1].p_beat)) + '</span></div>' + svg + '<div class="l"><span>Couples in per day</span><span class="num">' + esc(fd(hist[0].date)) + ' – ' + esc(fd(hist[n - 1].date)) + '</span></div></div>';
+}
+function drawerHTML(e){
+  var isDecided = !e.health && (e.outcome !== undefined || e.takeaway !== undefined || e.decided_on !== undefined) && DECIDED.indexOf(e) >= 0;
+  var t = tlOf(e), dr = daysRunning(e), at = atypeOf(e), aud = audienceOf(e), m = metricOf(e);
+  var head = '<div class="dw-h"><div class="t">' + (isDecided ? outcomePill(e) : pill(e)) + '<h2 id="dw-title">' + esc(nameOf(e)) + '</h2><div class="m"><span class="ref">' + esc(e.id || "") + '</span>' + (e.tier || e.tier_effective ? '<span>' + esc(e.tier || e.tier_effective) + ' tier</span>' : "") + (at ? '<span>' + esc({pre_post: "before/after", split: "50/50 split", benchmark: "vs. benchmark", rollout: "rollout"}[at] || at) + '</span>' : "") + (dr != null && e.health ? '<span>day ' + dr + (t.planned ? (dr > t.planned ? ' (planned ' + t.planned + ')' : ' of ' + t.planned) : "") + '</span>' : "") + (isDecided && (e.decided_on || e.end_date) ? '<span>decided ' + esc(fd(e.decided_on || e.end_date, true)) + '</span>' : "") + '</div></div><button class="x" id="dw-close" aria-label="Close details">' + ICON.x + '</button></div>';
+  var b = "";
+  if (isDecided) {
+    b += '<div class="verdict ' + (OUT[outcomeOf(e)][1] === "win" ? "win" : "") + '"><p>' + esc(e.decision || e.takeaway || "No decision text recorded.") + '</p></div>';
+    var full = BYID[e.id];
+    b += section(1, "Ran", '<p class="num">' + esc(fd(e.start_date, true)) + ' – ' + esc(fd(e.end_date || e.decided_on, true)) + '</p>' + (themesOf(e).length ? '<div class="chips">' + themesOf(e).map(function(x){ return '<span class="tag">' + esc(x) + '</span>'; }).join("") + '</div>' : ""));
+    if (e.takeaway && e.takeaway !== e.decision) b += section(2, "Last readout", '<p class="clamp" id="dk">' + esc(e.takeaway) + '</p>' + (String(e.takeaway).length > 260 ? '<button class="linkbtn" data-expand="dk">More</button>' : ""));
+    return head + '<div class="dw-b">' + b + '</div>';
+  }
+  b += '<div class="verdict ' + ({bad: "bad", win: "win", warn: "warn"}[sev(e)] || "") + '"><p>' + esc(verdict(e)) + '</p>' + (e.health && e.health !== "on_track" && !engineOff(e) ? '<div class="act" style="justify-content:space-between;flex-wrap:wrap"><span>Recommended: ' + esc(actionVerb(e)) + '</span><button class="btn" data-copy-instr="' + esc(e.id) + '" title="Copies one line you can paste into Claude Code">Copy instruction for Claude Code</button></div><div id="instr-box"></div>' : (e.health === "on_track" ? '<div class="act" style="color:var(--ink-3);font-weight:500">' + esc(e.action || "Keep running") + '</div>' : "")) + '</div>';
+  var issues = arr(e.spec_issues).map(obj).filter(function(i){ return i.severity === "error" || i.severity === "warn"; }).sort(function(a, b){ return (a.severity === "error" ? 0 : 1) - (b.severity === "error" ? 0 : 1); });
+  if (issues.length) { var ne = errIssues(e).length; b += '<details class="gaps"' + (e.health === "spec_incomplete" ? " open" : "") + '><summary>' + (ne ? ne + " spec gap" + (ne === 1 ? "" : "s") : "Spec notes") + (issues.length - ne ? " · " + (issues.length - ne) + " note" + (issues.length - ne === 1 ? "" : "s") : "") + '</summary><ul>' + issues.map(function(i){ return '<li class="' + (i.severity === "error" ? "err" : "") + '">' + esc(i.message) + '</li>'; }).join("") + '</ul></details>'; }
+  var flags = arr(e.flags).filter(function(f){ return f !== e.health; });
+  if (flags.length) b += '<div style="margin:-10px 0 18px;font-size:12px;color:var(--ink-3)">Also: ' + flags.map(function(f){ return esc(pillText({health: f, stale: !!STALE[f], overdue_days: e.overdue_days, days_running: e.days_running}).replace(/^Stale · /, "")); }).join(" · ") + '</div>';
+  var links = linksOf(e);
+  b += section(1, "What changed", (whatChanged(e) ? '<p>' + esc(whatChanged(e)) + '</p>' : missing()) + (links.length ? '<div class="chips" style="margin-top:6px">' + links.map(function(l){ return '<span class="tag ref">' + esc(l) + '</span>'; }).join("") + '</div>' : ""));
+  var surf = surfacesOf(e);
+  b += section(2, "What it impacts", (surf.length ? '<div class="chips">' + surf.map(function(s){ return '<span class="tag">' + esc(s) + '</span>'; }).join("") + '</div>' : missing("No surfaces listed.")) + '<p style="margin-top:8px">' + (aud.segment ? esc(cap(aud.segment)) : missing("No audience stated.")) + (num(aud.est_daily_exposed) != null ? ' · <b class="num">~' + fmtInt(aud.est_daily_exposed) + '</b> couples/day' : "") + '</p>');
+  b += section(3, "Hypothesis", e.hypothesis ? '<p class="quote">' + esc(e.hypothesis) + '</p>' : (obj(e.success_metric).goal_v1 ? '<p>' + esc(obj(e.success_metric).goal_v1) + '</p><span class="missing">v1 goal shown; no hypothesis in the If / then / because form.</span>' : missing()));
+  b += section(4, "What it tests", e.tests ? '<p>' + esc(e.tests) + '</p>' : missing());
+  b += section(5, "Success metric & stats", posterior(e) + (!m.label && obj(e.success_metric).primary_metric_v1 ? '<p style="margin-top:10px;font-size:13px;color:var(--ink-3)">v1 metric: ' + esc(obj(e.success_metric).primary_metric_v1) + '</p>' : ""));
+  var rv = reviewDate(e), stop = t.max && t.start ? addDays(t.start, t.max) : null;
+  b += section(6, "Timeline", '<div class="dates"><div>Started<b>' + esc(fd(t.start, true)) + '</b></div><div>Review<b>' + esc(fd(rv, true)) + '</b>' + (num(e.overdue_days) ? '<span style="color:var(--warn-ink)">' + e.overdue_days + 'd overdue</span>' : (rv && dr != null && t.planned ? Math.max(t.planned - dr, 0) + 'd to go' : "")) + '</div><div>Hard stop<b>' + esc(fd(stop, true)) + '</b>' + (t.max ? "day " + t.max : "") + '</div></div>' + (dr != null ? timelineBar(e) : "") + (e.health && !(atypeOf(e) === "rollout" && arr(e.history).length < 2) ? sparkline(e) : ""));
+  var rep = reportingOf(e), ro = readoutOf(e), caveats = arr(e.caveats).concat(arr(ro.caveats)), lr = (ro.computed_at ? String(ro.computed_at).slice(0, 10) : null) || lastResultDate(e);
+  b += section(7, "How it’s reported", '<p><span class="pill ' + (rep === "auto" ? "ok" : "neutral") + '"><i></i>' + (rep === "auto" ? "Automatic" : "Manual") + '</span> <span style="color:var(--ink-3);font-size:13px">' + (rep === "auto" ? "The engine reads it from Xano every 6 h." : "Claude Code appends a readout to the results log.") + ' Last readout ' + esc(lr ? fd(lr, true) : "never") + '.</span></p>' + (m.definition || ro.definition ? '<p style="font-size:13px">' + esc(m.definition || ro.definition) + '</p>' : "") + (caveats.length ? '<ul style="margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--ink-3)">' + caveats.map(function(c){ return '<li>' + esc(c) + '</li>'; }).join("") + '</ul>' : "") + (ro.error && !/no metric runner/.test(ro.error) ? '<p style="font-size:13px;color:var(--warn-ink)">Readout error: ' + esc(ro.error) + '</p>' : ""));
+  var res = arr(e.results).map(obj).slice().reverse();
+  b += '<section class="ds"><div class="ds-h"><span class="i"></span><h3>Results log</h3></div><div class="ds-b">' + (res.length ? '<ul class="log">' + res.map(function(r, i){ var long = String(r.note || "").length > 240; return '<li><span class="d">' + esc(fd(r.date, false)) + '</span><div><div class="clamp" id="rl' + i + '">' + esc(r.note || JSON.stringify(r.counts || {})) + '</div>' + (long ? '<button class="linkbtn" data-expand="rl' + i + '">More</button>' : "") + '</div></li>'; }).join("") + '</ul>' : missing("No readouts recorded yet.")) + '</div></section>';
+  b += '<section class="ds"><div class="ds-h"><span class="i"></span><h3>Decision</h3></div><div class="ds-b">' + (e.decision ? '<p>' + esc(e.decision) + '</p>' : '<p style="color:var(--ink-3)">Not decided. The owner makes the call; Claude Code records the outcome and why.</p>') + (e.rollback ? '<p style="font-size:13px"><span style="color:var(--ink-3)">Rollback:</span> ' + esc(e.rollback) + '</p>' : "") + '</div></section>';
+  return head + '<div class="dw-b">' + b + '</div>';
+}
+function openDrawer(id, opener){
+  var e = null;
+  for (var i = 0; i < EXPS.length; i++) if (EXPS[i].id === id) { e = EXPS[i]; break; }
+  if (!e) for (var j = 0; j < DECIDED.length; j++) if (DECIDED[j].id === id) { e = DECIDED[j]; break; }
+  if (!e) return;
+  lastFocus = opener || document.activeElement;
+  drawer.innerHTML = drawerHTML(e);
+  drawer.classList.add("on"); scrim.classList.add("on");
+  revealFrame();
+  drawer.setAttribute("aria-hidden", "false"); app.setAttribute("aria-hidden", "true");
+  try { app.inert = true; } catch(err) {}
+  document.getElementById("dw-close").addEventListener("click", closeDrawer);
+  drawer.querySelector(".dw-b").scrollTop = 0;
+  setTimeout(function(){ drawer.focus({preventScroll: true}); }, 30);
+}
+function closeDrawer(){
+  if (!drawer.classList.contains("on")) return;
+  drawer.classList.remove("on"); scrim.classList.remove("on");
+  drawer.setAttribute("aria-hidden", "true"); app.removeAttribute("aria-hidden");
+  try { app.inert = false; } catch(err) {}
+  if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
+}
+drawer.addEventListener("click", wireDelegated);
+app.addEventListener("click", wireDelegated);
+scrim.addEventListener("click", closeDrawer);
+document.addEventListener("keydown", function(ev){
+  if (!drawer.classList.contains("on")) return;
+  if (ev.key === "Escape") { ev.preventDefault(); closeDrawer(); return; }
+  if (ev.key === "Tab") {
+    var f = drawer.querySelectorAll('button,[href],input,select,summary,[tabindex]:not([tabindex="-1"])');
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+  }
+});
+
+/* ── Streamlit embedding. The dash renders this page in a same-origin srcdoc iframe with a fixed
+   height. Taller than the window, the page scrolls twice and the drawer (pinned to the frame)
+   opens with its header and close button above the viewport, under the dash's sticky tab bar.
+   So: size the frame to one screen, and scroll the frame into view when the drawer opens.
+   Every access is guarded; standalone (preview) or cross-origin it is a no-op. */
+function hostFrame(){ try { var fe = window.frameElement; return fe && fe.ownerDocument && fe.ownerDocument.defaultView ? fe : null; } catch (err) { return null; } }
+function fitFrame(){
+  var fe = hostFrame(); if (!fe) return;
+  try { var h = Math.max(620, Math.round(fe.ownerDocument.defaultView.innerHeight - 72)); if (Math.abs(fe.offsetHeight - h) > 4) fe.style.height = h + "px"; fe.style.scrollMarginTop = "64px"; } catch (err) {}
+}
+function revealFrame(){
+  var fe = hostFrame(); if (!fe) return;
+  fitFrame();  // a dash rerun can reset the frame height; re-fit before measuring
+  try { var r = fe.getBoundingClientRect(), pv = fe.ownerDocument.defaultView; if (r.top < 56 || r.bottom > pv.innerHeight + 8) fe.scrollIntoView({block: "start", behavior: "smooth"}); } catch (err) {}
+}
+fitFrame();
+try { var hf = hostFrame(); if (hf) hf.ownerDocument.defaultView.addEventListener("resize", fitFrame); } catch (err) {}
+
+render();
+if (H.exp) { openDrawer(H.exp); if (H.sec) setTimeout(function(){ var sx = drawer.querySelectorAll(".ds")[+H.sec - 1]; if (sx) drawer.querySelector(".dw-b").scrollTop = sx.offsetTop - 70; }, 60); }
+if (H.focus === "queue") { var q = document.getElementById("queue"); if (q) q.scrollIntoView(); }
+if (H.focus === "running") { var rr = document.getElementById("running"); if (rr) rr.scrollIntoView(); }
+})();
+</script>
+</body>
+</html>

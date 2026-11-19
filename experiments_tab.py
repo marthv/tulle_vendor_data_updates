@@ -86,7 +86,7 @@ def _what(change):
     return change.get("what") or change.get("name") or "(no description)"
 
 
-def render_experiments_tab():
+def _render_legacy():
     try:
         log = _load()
     except (OSError, ValueError) as exc:
@@ -203,3 +203,45 @@ def render_experiments_tab():
             for e in concluded:
                 if t in e.get("themes", []):
                     st.markdown(f"- {e['name']} ({e['status']}): {e.get('decision') or _latest(e)}")
+
+
+# ── Framework v2 (2026-11-19, experiments/FRAMEWORK.md) ─────────────────────────────────────────────────────
+# The tab now renders one self-contained HTML view (experiments_ui/) from the experiments-engine snapshot.
+# Every click happens inside the iframe, so nothing in this tab causes a Streamlit rerun. The engine runs
+# as its own Railway service (private network); if it is unreachable the view is built from the registry
+# alone (spec + manual results), so the tab never breaks. EXP_TAB_V2=0 brings back the old tab.
+ENGINE_URL = os.environ.get("EXP_ENGINE_URL", "").rstrip("/")
+ENGINE_KEY = os.environ.get("EXP_API_KEY", "")
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _engine_snapshot(url: str, key: str):
+    """(snapshot | None, note). Cached 2 min: st.tabs runs every tab's code on every rerun."""
+    if not url or not key:
+        return None, "engine not configured - showing the registry only"
+    import requests
+    try:
+        r = requests.get(f"{url}/snapshot", params={"history": 30}, headers={"X-Exp-Key": key}, timeout=6)
+        if r.status_code == 503:
+            return None, "engine is warming up (first run) - showing the registry only"
+        r.raise_for_status()
+        return r.json(), ""
+    except Exception as exc:  # noqa: BLE001 - the tab must render regardless
+        return None, f"engine unreachable ({type(exc).__name__}) - showing the registry only"
+
+
+def render_experiments_tab():
+    if os.environ.get("EXP_TAB_V2", "1") == "0":
+        return _render_legacy()
+    from experiments_ui.render import render_experiments_tab_v2
+    snap, note = _engine_snapshot(ENGINE_URL, ENGINE_KEY)
+    # the reason goes into the page's own degraded banner (one warning, not two)
+    reason = note.split(" - ")[0] if note else None
+    history = (snap or {}).pop("history_by_id", None) if isinstance(snap, dict) else None
+    reg = None
+    try:
+        reg = _load()
+    except (OSError, ValueError):
+        pass
+    render_experiments_tab_v2(dict(snap) if snap else None, reg, history_by_id=history,
+                              degraded_reason=None if snap else reason)

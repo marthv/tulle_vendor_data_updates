@@ -1,0 +1,6 @@
+# experiments-engine only (built by experiments_engine/Dockerfile). Deliberately NOT the root
+# requirements.txt: editing that one redeploys weweb-deploy-notify-cron, health-report-cron and
+# (if on main) admin-api. The engine itself is stdlib + requests; fastapi/uvicorn serve the API.
+fastapi>=0.115,<1.0
+uvicorn>=0.30,<1.0
+requests>=2.31,<3.0

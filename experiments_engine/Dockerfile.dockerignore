@@ -1,0 +1,7 @@
+# BuildKit reads <Dockerfile>.dockerignore next to the Dockerfile; the image only COPYs
+# experiments_engine/ and experiments/, so keep the build context to those.
+*
+!experiments_engine/
+!experiments/
+**/__pycache__
+**/*.pyc
