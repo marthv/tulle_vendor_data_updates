@@ -557,7 +557,25 @@ class Engine:
                              "finished_at": lr.get("finished_at")} if lr else None,
                 "next_full_due": _iso(self.next_full_due) if self.next_full_due else None,
                 "scheduler_alive": bool(self._sched and self._sched.is_alive()),
-                "dry_run": alerts.dry_run()}
+                "dry_run": alerts.dry_run(),
+                "last_snapshot": self._health_summary()}
+
+    def _health_summary(self):
+        """Aggregates only (no row data, no error text): safe on the public /health."""
+        snap = self.snapshot or {}
+        try:
+            x = (snap.get("engine") or {}).get("xano") or {}
+            hc = {}
+            for e in snap.get("experiments") or []:
+                if isinstance(e, dict) and e.get("health"):
+                    hc[e["health"]] = hc.get(e["health"], 0) + 1
+            return {"summary": snap.get("summary"),
+                    "xano_requests": x.get("requests"), "xano_budget": x.get("budget"),
+                    "errors": [{"id": er.get("id"), "stage": er.get("stage")}
+                               for er in (snap.get("errors") or [])[:20] if isinstance(er, dict)],
+                    "health_counts": hc}
+        except Exception:  # noqa: BLE001
+            return None
 
 
 # ======================================================================================= HTTP
