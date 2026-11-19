@@ -6,9 +6,12 @@ Usage in dashboard.py::
     with tab_exp:
         render_experiments_tab_v2(snapshot_or_none, registry_dict, theme_mode=_theme_mode)
 
-The whole tab is ONE self-contained HTML page (experiments.html) rendered in a
-``streamlit.components.v1.html`` iframe with the snapshot JSON injected. Every interaction
-(tabs, filters, drawer, sorting) is client-side, so clicks never cause a Streamlit rerun.
+The whole tab is ONE self-contained HTML page (component/index.html). By default it runs as a
+bidirectional Streamlit custom component (declare_component, path=component/): the snapshot goes
+in as an argument, and writing a note in the drawer sends the note back as the component value,
+which is the only thing that triggers a rerun. Browsing (tabs, filters, drawer, sorting,
+calendar, buckets) stays client-side. EXP_TAB_COMPONENT=0 (or a declare_component failure)
+falls back to the old read-only path: the snapshot injected into the same page in an iframe.
 
 This module fetches nothing. If the engine snapshot is None (engine down, not deployed yet),
 it builds a degraded snapshot from the registry alone: the engine's own build_snapshot with
@@ -24,7 +27,12 @@ import math
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_PATH = os.path.join(HERE, "experiments.html")
+COMPONENT_DIR = os.path.join(HERE, "component")
+TEMPLATE_PATH = os.path.join(COMPONENT_DIR, "index.html")
+COMPONENT_NAME = "tulle_experiments_tab"
+NOTE_KINDS = ("note", "decision", "next_step")
+NOTE_CALLS = ("ship", "revert", "shelve", "inconclusive", "keep_running", "resume")
+NOTE_MAX_CHARS = 2000   # the engine refuses longer (notes.MAX_TEXT)
 SNAPSHOT_TOKEN = "/*__SNAPSHOT__*/null"
 THEME_TOKEN = "/*__THEME__*/null"
 THEMES = ("light", "sepia", "dark")
@@ -67,7 +75,7 @@ def build_html(snapshot, theme_mode=None):
     html = _template()
     theme = theme_mode if theme_mode in THEMES else None
     if SNAPSHOT_TOKEN not in html:
-        raise RuntimeError("experiments.html is missing the snapshot placeholder")
+        raise RuntimeError("component/index.html is missing the snapshot placeholder")
     html = html.replace(SNAPSHOT_TOKEN, embed_json(snapshot if isinstance(snapshot, dict) else {}), 1)
     html = html.replace(THEME_TOKEN, embed_json(theme), 1)
     return html
@@ -189,8 +197,76 @@ def attach_history(snapshot, history_by_id):
     return snapshot
 
 
+def snapshot_sig(snapshot):
+    """Short content hash: the page re-renders only when the snapshot really changed."""
+    import hashlib
+    try:
+        return hashlib.sha1(embed_json(snapshot).encode("utf-8")).hexdigest()[:16]
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def clean_note(value):
+    """Validate a note sent back by the page. Returns (exp_id, note_id, body) or None.
+
+    body is what the engine's POST /experiments/{id}/notes takes: author is added by the caller
+    (the logged-in dash user), never trusted from the page."""
+    if not isinstance(value, dict) or value.get("type") != "note":
+        return None
+    nid, exp_id = str(value.get("note_id") or "")[:64], str(value.get("exp_id") or "")[:120]
+    text = str(value.get("text") or "").strip()[:NOTE_MAX_CHARS]
+    kind = value.get("kind") if value.get("kind") in NOTE_KINDS else "note"
+    call = value.get("call") if value.get("call") in NOTE_CALLS else None
+    if not nid or not exp_id or not text or (kind == "decision" and not call):
+        return None
+    body = {"kind": kind, "text": text, "client_id": nid}
+    if kind == "decision":
+        body["call"] = call
+    return exp_id, nid, body
+
+
+def handle_note_value(value, on_note, author, state):
+    """Post a note from the page once. ``state`` is a dict kept in st.session_state
+    (note_id -> {"ok", "error"}), so a rerun that hands back the same component value never
+    double-posts. Returns True when something new was posted (the caller reruns)."""
+    parsed = clean_note(value)
+    if parsed is None:
+        if isinstance(value, dict) and value.get("note_id") and value.get("note_id") not in state:
+            state[str(value.get("note_id"))[:64]] = {"ok": False, "error": "empty note or missing call"}
+            return True
+        return False
+    exp_id, nid, body = parsed
+    if nid in state:
+        return False
+    if on_note is None:
+        state[nid] = {"ok": False, "error": "notes are read-only here"}
+        return True
+    body["author"] = (" ".join(str(author or "dash user").split()) or "dash user")[:80]
+    try:
+        ok, err = on_note(exp_id, body)
+    except Exception as exc:  # noqa: BLE001 - a failed post must show in the page, not crash the tab
+        ok, err = False, f"{type(exc).__name__}"
+    state[nid] = {"ok": bool(ok), "error": None if ok else (str(err)[:200] if err else "not saved")}
+    # keep the last 30 so the args stay small
+    for k in list(state)[:-30]:
+        state.pop(k, None)
+    return True
+
+
+_COMPONENT = None
+
+
+def _component():
+    global _COMPONENT
+    if _COMPONENT is None:
+        import streamlit.components.v1 as components
+        _COMPONENT = components.declare_component(COMPONENT_NAME, path=COMPONENT_DIR)
+    return _COMPONENT
+
+
 def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, theme_mode=None,
-                              height=DEFAULT_HEIGHT, history_by_id=None, degraded_reason=None):
+                              height=DEFAULT_HEIGHT, history_by_id=None, degraded_reason=None,
+                              on_note=None, author=None):
     """Render the Experiments tab.
 
     snapshot_or_none   engine snapshot dict (FRAMEWORK section 5), or None
@@ -203,6 +279,9 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
                        engine snapshot does not inline history; see attach_history)
     degraded_reason    why there is no engine snapshot (e.g. "engine not configured"); shown in
                        the in-page banner so the reason sits next to the warning, not above the frame
+    on_note            callable(exp_id, body) -> (ok, error) that saves a note (the engine's
+                       POST /experiments/{id}/notes); None makes notes read-only
+    author             name of the logged-in dash user, stamped on every note
     """
     import streamlit as st
     import streamlit.components.v1 as components
@@ -223,6 +302,27 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
                                      + (prior[prior.index(" (engine import failed"):] if " (engine import failed" in prior else ""))
     if history_by_id:
         snap = attach_history(dict(snap), history_by_id)
+    degraded = bool(snap.get("degraded"))
+    if os.environ.get("EXP_TAB_COMPONENT", "1") != "0":
+        try:
+            state = st.session_state.setdefault("_exp_note_results", {})
+            can_write = on_note is not None and not degraded
+            if degraded:
+                why = "The experiments engine is unreachable, so notes can't be saved right now. Try again in a few minutes."
+            elif on_note is None:
+                why = "Notes are read-only here."
+            else:
+                why = ""
+            value = _component()(snapshot=_clean(snap), theme=theme_mode if theme_mode in THEMES else None,
+                                 can_write=can_write, write_note=why, note_results=dict(state),
+                                 sig=snapshot_sig(snap), key="tulle_experiments_tab", default=None,
+                                 height=int(height or DEFAULT_HEIGHT))
+            if handle_note_value(value, on_note if can_write else None, author, state):
+                st.rerun()
+            return
+        except Exception as exc:  # noqa: BLE001 - fall back to the read-only iframe
+            if type(exc).__name__ in ("RerunException", "StopException"):
+                raise
     try:
         html = build_html(snap, theme_mode)
     except Exception as exc:

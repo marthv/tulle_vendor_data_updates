@@ -15,6 +15,11 @@ excuses spec_gaps: a new launch must pass strictly.
 Prints a per-experiment report with spec issues and the sample plan (days needed vs
 max_days; warns "Can't reach a verdict").
 
+Rotation (policy 2026-11-19): at most ROTATION_MAX (3) live entries carry ``in_rotation: true``, each
+with a run of at most 14 days (planned_days, or review_date - start_date). ``--id`` fails an in-rotation
+entry that breaks either rule; a full-file run prints a warning. A v2 live/planned/paused entry without a
+``bucket`` gets a warning showing the derived bucket.
+
 Exit codes:
     0  ok (legacy entries may still show issues; known gaps never fail the run)
     1  a live/planned/paused framework_version 2 entry has unacknowledged blocking issues, ids are
@@ -32,7 +37,10 @@ from collections import Counter
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from experiments_engine import spec  # noqa: E402
+from experiments_engine import buckets, spec  # noqa: E402
+from experiments_engine.snapshot import ROTATION_MAX  # noqa: E402
+
+ROTATION_MAX_DAYS = 14
 
 DEFAULT_REGISTRY = os.path.join(HERE, "experiment_log.json")
 
@@ -119,6 +127,15 @@ def main(argv=None):
     for d in dupes:
         failures.append(f"duplicate id {d}")
 
+    all_exps = [x for x in reg["experiments"] if isinstance(x, dict)]
+    live_rot = [x.get("id") for x in all_exps if x.get("in_rotation") and str(x.get("status")) == "live"]
+    if len(live_rot) > ROTATION_MAX:
+        msg = f"{len(live_rot)} live experiments in rotation (max {ROTATION_MAX}): {', '.join(live_rot)}"
+        if strict and args.only_id in live_rot:
+            failures.append(msg)
+        elif not strict:
+            _out(f"WARNING: {msg}")
+
     counts = Counter()
     known_total = 0
     for raw in exps:
@@ -132,6 +149,16 @@ def main(argv=None):
                 if i.get("severity") == "error" and is_known_gap(i, fields):
                     i["severity"] = "known gap"
                     known_total += 1
+        if raw.get("in_rotation"):
+            sd, rd = spec.parse_date(raw.get("start_date")), spec.parse_date(raw.get("review_date"))
+            run = spec._num(raw.get("planned_days")) or ((rd - sd).days if (sd and rd) else None)
+            if run is None or run > ROTATION_MAX_DAYS:
+                issues.append({"severity": "error" if strict else "warn", "question": 6, "field": "planned_days",
+                               "message": f"In rotation: the run must be {ROTATION_MAX_DAYS} days or less "
+                                          f"(got {run if run is not None else 'none'})"})
+        if v2 and enforced and not buckets.derive(raw)[1] == "registry":
+            issues.append({"severity": "warn", "question": 2, "field": "bucket",
+                           "message": f"No bucket; derived '{buckets.derive(raw)[0]}' (one of {', '.join(buckets.KEYS)})"})
         blocking = spec.blocking(issues)
         if (enforced and v2 or strict) and blocking:
             failures.append(f"{e.get('id')}: {len(blocking)} blocking issue(s): "

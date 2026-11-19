@@ -3,8 +3,9 @@
 * :func:`format_digest`    daily, ~14:00 UTC. Returns None when nothing needs action, so the
                            caller sends nothing (calls due, stale, callable, guardrail, unlogged).
 * :func:`format_guardrail` urgent, one experiment, once per breach (caller de-duplicates).
-* :func:`format_weekly`    Monday: what was decided in the last 7 days and the one-line takeaway.
-                           None when nothing was decided.
+* :func:`format_weekly`    Monday "Weekly call" agenda: each rotation experiment's TL;DR and recommended
+                           call, the backlog to clear (top 5 with recommended calls), then what was
+                           decided in the last 7 days. None when all three are empty.
 * :func:`send`             chat.postMessage with ``SLACK_BOT_TOKEN`` to ``SLACK_DM_CHANNEL`` (an
                            existing D... conversation id; Tulle Bot lacks im:write). Never raises.
                            ``DRY_RUN`` (default "1" in code, for safety) logs instead of sending.
@@ -73,11 +74,23 @@ def _bullets(rows, render):
     return lines
 
 
-def _exp_line(row):
-    action = str(row.get('action') or '').rstrip('.?!')
-    line = f"• *{_name(row)}*: {_esc(action)}. {_esc(row.get('reason') or '')}".rstrip()
+def _rec_label(row):
+    rec = (row.get("verdict") or {}).get("recommend") or {}
+    return str(rec.get("label") or row.get("action") or "").rstrip(".?!")
+
+
+def _exp_line(row, unstick=False):
+    line = f"• *{_name(row)}*: {_esc(_rec_label(row))}. {_esc(row.get('reason') or '')}".rstrip()
     c = counts_line(row)
-    return line + (f"\n    {c}" if c else "")
+    line += f"\n    {c}" if c else ""
+    nxt = (row.get("verdict") or {}).get("unstick")
+    if unstick and nxt:
+        line += f"\n    Next: {_esc(nxt)}"
+    return line
+
+
+def _stale_line(row):
+    return _exp_line(row, unstick=True)
 
 
 def _change_line(ev):
@@ -99,7 +112,7 @@ def format_digest(snapshot, unlogged=None):
     if not actionable(snap, unlogged):
         return None
     s = snap.get("summary") or {}
-    exps = [r for r in snap.get("experiments") or [] if r.get("health")]
+    exps = [r for r in snap.get("experiments") or [] if r.get("health") and not r.get("decision_pending")]
     guard = [r for r in exps if r["health"] == "guardrail_breach"]
     calls = [r for r in exps if r["health"] in ("callable_win", "callable_loss", "needs_call")]
     stale = [r for r in exps if r.get("stale") and r not in calls and r not in guard]
@@ -118,7 +131,7 @@ def format_digest(snapshot, unlogged=None):
     if calls:
         out += ["", "*Calls due*"] + _bullets(calls, _exp_line)
     if stale:
-        out += ["", "*Going stale*"] + _bullets(stale, _exp_line)
+        out += ["", "*Going stale*"] + _bullets(stale, _stale_line)
     if unlogged:
         out += ["", "*Shipped changes not in the registry* (add a changes[] entry, or they confound live tests)"]
         out += _bullets(unlogged, _change_line)
@@ -148,31 +161,61 @@ def format_guardrail(row):
     return _cap("\n".join(lines))
 
 
+def _tldr(row, limit=300):
+    t = str((row.get("verdict") or {}).get("tldr") or row.get("reason") or "")
+    return _esc(t if len(t) <= limit else t[: limit - 1].rstrip() + "…")
+
+
 def format_weekly(snapshot, today=None):
-    """Decided in the 7 days before ``today`` (UTC date) with takeaways; None when none."""
+    """Monday "Weekly call" agenda; None when nothing is in rotation, the backlog is empty and nothing was
+    decided in the 7 days before ``today``."""
     snap = snapshot or {}
     today = today or _dt.datetime.now(_dt.timezone.utc).date()
     if isinstance(today, str):
         today = _dt.date.fromisoformat(today[:10])
     lo = today - _dt.timedelta(days=7)
-    rows = []
+    decided = []
     for d in snap.get("decided") or []:
         try:
             dd = _dt.date.fromisoformat(str(d.get("decided_on"))[:10])
         except ValueError:
             continue
         if lo <= dd < today:
-            rows.append(d)
-    if not rows:
+            decided.append(d)
+    decided.sort(key=lambda d: str(d.get("decided_on")))
+    by_id = {r.get("id"): r for r in snap.get("experiments") or [] if isinstance(r, dict)}
+    rot = snap.get("rotation") or {}
+    rotation = [by_id[i] for i in rot.get("in_rotation") or [] if i in by_id]
+    if rot.get("backlog") is None:     # older snapshot: everything live and undecided is backlog
+        backlog = [r for r in by_id.values() if r.get("health") and not r.get("decision_pending")
+                   and not r.get("in_rotation")]
+    else:
+        backlog = [by_id[i] for i in rot.get("backlog") or [] if i in by_id]
+    pending = [r for r in by_id.values() if r.get("decision_pending")]
+    if not rotation and not backlog and not decided:
         return None
-    rows.sort(key=lambda d: str(d.get("decided_on")))
-    out = [f"*Experiments, week to {today.isoformat()}: {len(rows)} decided*"]
-    for d in rows[:MAX_ITEMS * 2]:
-        outcome = d.get("outcome") or d.get("status") or "decided"
-        take = d.get("takeaway") or d.get("decision") or "no takeaway recorded"
-        out.append(f"• *{_name(d)}*: {_esc(outcome)}. {_esc(take)}")
-    s = snap.get("summary") or {}
-    out += ["", f"{s.get('live', 0)} still live, {s.get('needs_call', 0)} need a call. <{dash_url()}|Open the dash>"]
+    out = [f"*Weekly call, {today.isoformat()}: {len(rotation)} in rotation (max {rot.get('max', 3)}), "
+           f"{len(backlog)} in the backlog, {len(decided)} decided last week*"]
+    if rot.get("over_cap"):
+        out.append(":warning: More than the maximum are in rotation: pick which to drop.")
+    if rotation:
+        out += ["", "*In rotation: call or keep each*"]
+        for r in rotation:
+            out.append(f"• *{_name(r)}*: {_tldr(r)}\n    Recommended: *{_esc(_rec_label(r))}*")
+    else:
+        out += ["", "*Nothing in rotation.* Pick up to 3 from the backlog to run this week."]
+    if backlog:
+        out += ["", f"*Backlog: {len(backlog)} to clear* (top {min(MAX_ITEMS, len(backlog))} with recommended calls)"]
+        out += _bullets(backlog, lambda r: f"• *{_name(r)}*: {_esc(_rec_label(r))}")
+    if pending:
+        out += ["", f"{len(pending)} decided in the dash, waiting for the registry update."]
+    if decided:
+        out += ["", f"*Decided last week: {len(decided)}*"]
+        for d in decided[:MAX_ITEMS * 2]:
+            outcome = d.get("outcome") or d.get("status") or "decided"
+            take = d.get("takeaway") or d.get("decision") or "no takeaway recorded"
+            out.append(f"• *{_name(d)}*: {_esc(outcome)}. {_esc(take)}")
+    out += ["", f"To decide: open the experiment in the dash and add a *Decision* note. <{dash_url()}|Open the dash>"]
     return _cap("\n".join(out))
 
 

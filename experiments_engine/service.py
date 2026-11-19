@@ -16,6 +16,10 @@ Endpoints (all but /health and /hooks/railway need header ``X-Exp-Key`` == env `
                                    full run gets 429 + last_full_run; mode=registry is never limited
   GET  /experiments/{id}/history?days=90
   GET  /changes?limit=200          change feed + unlogged changes against the current registry
+  GET  /experiments/{id}/notes     notes for one experiment (latest 50)
+  POST /experiments/{id}/notes     add a note {author, kind: note|decision|next_step, text, call?}; the
+                                   snapshot picks it up at once (notes_by_id, decision_pending)
+  GET  /decisions/pending          decision notes not yet synced into the registry (for Claude Code)
   POST /hooks/railway?k=<secret>   Railway project webhook (k == env EXP_HOOK_SECRET); stores
                                    deploy events on the volume, ignores everything else
 
@@ -49,7 +53,7 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from . import alerts, changefeed, history, snapshot
+from . import alerts, changefeed, history, notes, snapshot
 
 log = logging.getLogger("experiments_engine.service")
 
@@ -150,6 +154,7 @@ class Engine:
         self.sync = sync
         self.registry_file = Path(registry_file) if registry_file else None
         self.store = history.HistoryStore(self.data_dir)
+        self.notes = notes.NotesStore(self.data_dir, clock=self.clock)
         self.snapshot = None
         self.snapshot_gz = None
         self.snapshot_etag = None
@@ -196,6 +201,10 @@ class Engine:
         return reg, hashlib.sha256(raw).hexdigest()
 
     def _set_snapshot(self, snap, persist=True):
+        try:
+            snap = notes.overlay(snap, self.notes)   # notes + decision_pending at serve time
+        except Exception as exc:  # notes must never block a snapshot
+            log.error("notes overlay failed: %s", exc)
         body = json.dumps(snap, separators=(",", ":"), default=str).encode("utf-8")
         gz = gzip.compress(body, compresslevel=6, mtime=0)
         with self._snap_lock:
@@ -272,6 +281,23 @@ class Engine:
                 log.error("start-up: registry unreadable: %s", exc)
         self.next_weweb_due = now
         self._started = True
+
+    # -- notes ---------------------------------------------------------------------------------
+    def registry_ids(self):
+        reg, _sha = self.load_registry()
+        return {e.get("id") for e in reg.get("experiments") or [] if isinstance(e, dict) and e.get("id")}
+
+    def add_note(self, exp_id, body):
+        """Validate + store a note, then re-apply the overlay so the next /snapshot shows it."""
+        if exp_id not in self.registry_ids():
+            raise KeyError(exp_id)
+        note, created = self.notes.add(exp_id, body)
+        if created:
+            with self._snap_lock:
+                if self.snapshot is not None:
+                    self._set_snapshot(self.snapshot)
+            log.info("note added (%s, kind=%s)", exp_id, note.get("kind"))
+        return note, created
 
     # -- refresh -------------------------------------------------------------------------------
     def is_running(self):
@@ -607,6 +633,12 @@ def create_app(engine=None, start_scheduler=None):
     async def lifespan(_app):
         if start_scheduler:
             eng.start_scheduler()
+        elif not eng._started:
+            # EXP_DISABLE_SCHEDULER=1: still load the saved snapshot so /snapshot serves it (no scheduler)
+            try:
+                eng.startup()
+            except Exception as exc:  # noqa: BLE001
+                log.error("start-up without scheduler failed: %s", exc)
         yield
         eng.stop_scheduler()
 
@@ -679,6 +711,39 @@ def create_app(engine=None, start_scheduler=None):
         days = max(1, min(int(days), 365))
         rows = eng.store.load(exp_id, days=days, today=eng.clock().date())
         return {"id": exp_id, "days": days, "rows": rows}
+
+    @app.get("/experiments/{exp_id}/notes")
+    def get_notes(request: Request, exp_id: str):
+        require_key(request)
+        return {"id": exp_id, "notes": [{k: n.get(k) for k in ("id", "ts", "author", "kind", "text", "call", "client_id")}
+                                        for n in eng.notes.load(exp_id)]}
+
+    @app.post("/experiments/{exp_id}/notes")
+    async def post_note(request: Request, exp_id: str):
+        require_key(request)
+        raw = await request.body()
+        if len(raw) > 16 * 1024:
+            raise HTTPException(413, "note too large")
+        try:
+            body = json.loads(raw.decode("utf-8") or "null")
+        except ValueError:
+            raise HTTPException(422, "invalid JSON")
+        try:
+            note, created = eng.add_note(exp_id, body)
+        except KeyError:
+            raise HTTPException(404, "no experiment with that id in the registry")
+        except notes.NoteError as exc:
+            raise HTTPException(422, str(exc))
+        except notes.RateLimited as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=429, headers={"Retry-After": "600"})
+        return JSONResponse({"ok": True, "created": created,
+                             "note": {k: note.get(k) for k in ("id", "ts", "author", "kind", "text", "call", "client_id")}},
+                            status_code=201 if created else 200)
+
+    @app.get("/decisions/pending")
+    def get_pending(request: Request):
+        require_key(request)
+        return {"pending": notes.pending_list(eng.snapshot)}
 
     @app.get("/changes")
     def get_changes(request: Request, limit: int = 200):

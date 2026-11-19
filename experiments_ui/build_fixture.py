@@ -281,6 +281,8 @@ def arms(cn, cc, tn, tc):
 
 
 READOUTS = {
+    # real counts from the 2026-11-19 06:30 engine run (Des's example: "what is the actual result?")
+    "EXP-2026-11-limit-cards-plans-copy": dict(arms=arms(395, 20, 371, 22), split=False, start="2026-11-03"),
     # guardrail breach: purchases/day well down since period 2 (memory 11-18: 4 pays/39 h vs 7.9 mean)
     "EXP-2026-11-price-report-vs-pi-card": dict(
         arms=arms(1700, 254, 262, 17), split=False, start="2026-11-17",
@@ -379,6 +381,32 @@ UNLOGGED = [
 ]
 
 
+# v2.1 UI examples (Des 2026-11-19): two experiments in rotation, a few notes, one decision made
+# in the dash that is waiting for the registry. All invented for design review.
+ROTATION = ["EXP-2026-11-limit-cards-plans-copy", "EXP-2026-11-free-daily-question"]
+NOTES = {
+    "EXP-2026-11-limit-cards-plans-copy": [
+        {"id": "fx1", "ts": "2026-11-17T15:10:00Z", "author": "Des", "kind": "note",
+         "text": "Discussed on the Monday call: the plans CTA feels cleaner. Wondering if the submit-PDF link should come back as a small text link."},
+        {"id": "fx2", "ts": "2026-11-19T10:05:00Z", "author": "Vivek", "kind": "next_step",
+         "text": "If we keep it, try the venue-specific limit card next as its own split."},
+    ],
+    "EXP-2026-11-free-daily-question": [
+        {"id": "fx3", "ts": "2026-11-18T18:30:00Z", "author": "Kate", "kind": "note",
+         "text": "Two couples emailed asking why they can't ask more today. Worth a clearer limit note?"},
+    ],
+    "EXP-2026-10-signup-checkbox": [
+        {"id": "fx4", "ts": "2026-11-19T11:40:00Z", "author": "Des", "kind": "decision", "call": "shelve",
+         "text": "Nobody will read this out; the consent paragraph replaced it anyway. Shelve."},
+    ],
+}
+
+
+class _FixtureNotes:
+    def all_by_id(self):
+        return {k: [dict(n, exp_id=k) for n in v] for k, v in NOTES.items()}
+
+
 def main():
     with open(REGISTRY, encoding="utf-8") as f:
         reg = json.load(f)
@@ -396,6 +424,9 @@ def main():
         if "review_date" not in ov and e.get("start_date") and e.get("planned_days"):
             e["review_date"] = (d(e["start_date"]) + dt.timedelta(days=int(e["planned_days"]))).isoformat()
         e["framework_version"] = 2
+    for e in reg.get("experiments") or []:
+        if e.get("id") in ROTATION:
+            e["in_rotation"] = True
 
     hist = FixtureHistory(READOUTS)
     snap = _snapshot.build_snapshot(reg, metric_runner=metric_runner, history_store=hist, today=TODAY)
@@ -412,9 +443,14 @@ def main():
     snap["change_feed"] = {"events": [dict(c, user_facing=True) for c in UNLOGGED],
                            "unlogged": [dict(c, user_facing=True, why="no changes[] entry within 24 h") for c in UNLOGGED],
                            "notes": [], "collected_at": "2026-11-19T12:00:00Z"}
+    try:  # notes + decision_pending exactly as the engine overlays them at serve time
+        from experiments_engine import notes as _notes
+        snap = _notes.overlay(snap, _FixtureNotes())
+    except Exception as exc:  # noqa: BLE001 - older engine: notes simply absent
+        print("notes overlay skipped:", exc)
     snap["generated_at"] = "2026-11-19T12:00:00Z"
     snap["fixture"] = True
-    snap["fixture_note"] = ("FIXTURE: real registry entries; v2 fields, arm counts, history and the two "
+    snap["fixture_note"] = ("FIXTURE: real registry entries; v2 fields, arm counts, history, the rotation picks, notes and the two "
                             "unlogged changes are invented for design review. Not a readout.")
 
     out_json = os.path.join(HERE, "fixture_snapshot.json")

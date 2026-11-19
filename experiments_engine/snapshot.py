@@ -23,8 +23,13 @@ import datetime as _dt
 import json
 import traceback
 
+from . import buckets as _buckets
 from . import health as _health
 from . import spec
+from . import verdict as _verdict
+
+ROTATION_MAX = 3
+CALL_STATES = ("needs_call", "callable_win", "callable_loss")
 
 SECTION_KEYS = ("what", "impacts", "hypothesis", "tests", "success_metric", "timeline", "reporting")
 
@@ -87,10 +92,39 @@ def _public_results(e):
 def _decided_row(e):
     results = e.get("results") or []
     takeaway = e.get("decision") or (results[-1].get("note") if results else None)
-    return {"id": e.get("id"), "name": e.get("name"), "status": e.get("status"),
-            "outcome": e.get("_outcome"), "decided_on": e.get("decided_on") or e.get("end_date"),
-            "decision": e.get("decision"), "takeaway": takeaway, "themes": e.get("themes") or [],
-            "tier": e.get("tier"), "start_date": e.get("start_date"), "end_date": e.get("end_date")}
+    row = {"id": e.get("id"), "name": e.get("name"), "status": e.get("status"),
+           "outcome": e.get("_outcome"), "decided_on": e.get("decided_on") or e.get("end_date"),
+           "decision": e.get("decision"), "takeaway": takeaway, "themes": e.get("themes") or [],
+           "tier": e.get("tier"), "start_date": e.get("start_date"), "end_date": e.get("end_date"),
+           "lifecycle": "decided"}
+    row["bucket"], row["bucket_source"] = _buckets.derive(e)
+    row.update(calendar_fields(e))
+    row["verdict"] = _verdict.build_decided_verdict(row)
+    return row
+
+
+def calendar_fields(e):
+    """Dates the dash calendar needs: start, review (registry, else start + planned_days), hard stop
+    (start + max_days), decision date and paused ranges [{from, to}] (to None = still paused)."""
+    sd = spec.parse_date(e.get("start_date"))
+    review = spec.parse_date(e.get("review_date"))
+    pdays, mdays = spec._num(e.get("planned_days")), spec._num(e.get("max_days"))
+    if review is None and sd and pdays:
+        review = sd + _dt.timedelta(days=int(pdays))
+    max_end = sd + _dt.timedelta(days=int(mdays)) if (sd and mdays) else None
+    decided = spec.parse_date(e.get("decided_on")) or (
+        spec.parse_date(e.get("end_date")) if e.get("_lifecycle") == "decided" else None)
+    iso = lambda d: d.isoformat() if d else None  # noqa: E731
+    paused = []
+    for rng in e.get("paused_ranges") or []:
+        if isinstance(rng, dict) and spec.parse_date(rng.get("from")):
+            paused.append({"from": iso(spec.parse_date(rng.get("from"))), "to": iso(spec.parse_date(rng.get("to")))})
+    pon = spec.parse_date(e.get("paused_on") or e.get("pause_date") or e.get("paused_at"))
+    if pon and not any(r["from"] == pon.isoformat() for r in paused):
+        end = None if e.get("_lifecycle") == "paused" else (spec.parse_date(e.get("resumed_on")) or decided)
+        paused.append({"from": pon.isoformat(), "to": iso(end)})
+    return {"start_date": iso(sd), "review_date": iso(review), "max_end_date": iso(max_end),
+            "decided_on": iso(decided), "paused_ranges": paused}
 
 
 def _queue_key(row):
@@ -134,7 +168,10 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                    "tier_effective": spec.tier(e), "themes": e.get("themes") or [],
                    "framework_version": e["framework_version"], "legacy": e["_legacy"],
                    "assignment_type": e.get("_assignment_type"),
-                   "spec_issues": issues, "results": _public_results(e)}
+                   "spec_issues": issues, "results": _public_results(e),
+                   "in_rotation": bool(e.get("in_rotation")),
+                   "notes_synced_through": e.get("notes_synced_through")}
+            row["bucket"], row["bucket_source"] = _buckets.derive(e)
             readout, hist, h = None, [], None
             if e["_lifecycle"] in ("live", "paused"):
                 if is_manual(e):
@@ -171,7 +208,8 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                 for k in ("health", "stale", "action", "reason", "days_running", "days_left",
                           "progress", "progress_basis", "flags", "overdue_days", "projected_days",
                           "stats", "guardrails", "evidence_label", "exposure_per_arm_day",
-                          "decision_rule", "guardrail_status", "failed_runs", "paused_days"):
+                          "decision_rule", "guardrail_status", "failed_runs", "paused_days",
+                          "approximate_metric", "capped_win"):
                     row[k] = h.get(k)
                 for g in h.get("guardrail_status") or []:
                     # real computation errors only (not manual guardrails, not "no data yet")
@@ -184,6 +222,8 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
             else:
                 row.update({"health": None, "stale": False, "action": None, "reason": None,
                             "overlapping_changes": []})
+            row.update(calendar_fields(e))
+            row["verdict"] = _verdict.build_verdict(row, today_d)
             experiments.append(row)
         except Exception as exc:
             errors.append({"id": eid, "stage": "evaluate", "error": f"{type(exc).__name__}: {exc}",
@@ -195,11 +235,6 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                                 "overlapping_changes": [], "results": []})
 
     live_rows = [r for r in experiments if r.get("health")]
-    queue = sorted([r for r in live_rows if r["health"] != "on_track" or r.get("stale")], key=_queue_key)
-    action_queue = [{"id": r["id"], "name": r.get("name"), "health": r["health"], "stale": r.get("stale"),
-                     "action": r.get("action"), "reason": r.get("reason"),
-                     "overdue_days": r.get("overdue_days")} for r in queue]
-
     change_rows = []
     for ch in changes:
         try:
@@ -209,17 +244,50 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
         except Exception as exc:
             errors.append({"id": None, "stage": "changes", "error": str(exc)})
 
-    summary = {
-        "needs_call": sum(1 for r in live_rows if r["health"] in ("needs_call", "callable_win", "callable_loss")),
-        "stale": sum(1 for r in live_rows if r.get("stale")),
-        "healthy": sum(1 for r in live_rows if r["health"] == "on_track" and not r.get("stale")),
-        "guardrail": sum(1 for r in live_rows if r["health"] == "guardrail_breach"),
+    snap = {"generated_at": now.isoformat().replace("+00:00", "Z"), "today": today_d.isoformat(),
+            "experiments": experiments, "decided": decided, "changes": change_rows, "errors": errors}
+    recompute_views(snap)
+    return _jsonable(snap)
+
+
+def _next_monday(d):
+    return d + _dt.timedelta(days=(7 - d.weekday()) % 7)
+
+
+def recompute_views(snap):
+    """summary, action_queue, rotation and buckets from the rows. Idempotent; re-run at serve time after
+    notes set ``decision_pending`` on rows (those leave Decide now, the queue and the backlog)."""
+    experiments = [r for r in snap.get("experiments") or [] if isinstance(r, dict)]
+    decided = [r for r in snap.get("decided") or [] if isinstance(r, dict)]
+    today_d = spec.parse_date(snap.get("today")) or _utcnow().date()
+    live_rows = [r for r in experiments if r.get("health")]
+    open_rows = [r for r in live_rows if not r.get("decision_pending")]
+    queue = sorted([r for r in open_rows if r["health"] != "on_track" or r.get("stale")], key=_queue_key)
+    snap["action_queue"] = [{"id": r["id"], "name": r.get("name"), "health": r["health"], "stale": r.get("stale"),
+                             "action": r.get("action"), "reason": r.get("reason"),
+                             "overdue_days": r.get("overdue_days"),
+                             "recommend": ((r.get("verdict") or {}).get("recommend") or {}).get("label"),
+                             "in_rotation": bool(r.get("in_rotation"))} for r in queue]
+    snap["summary"] = {
+        "needs_call": sum(1 for r in open_rows if r["health"] in CALL_STATES),
+        "stale": sum(1 for r in open_rows if r.get("stale")),
+        "healthy": sum(1 for r in open_rows if r["health"] == "on_track" and not r.get("stale")),
+        "guardrail": sum(1 for r in open_rows if r["health"] == "guardrail_breach"),
         "live": len(live_rows),
         "planned": sum(1 for r in experiments if r.get("lifecycle") == "planned"),
         "decided": len(decided),
-        "spec_incomplete": sum(1 for r in live_rows if "spec_incomplete" in (r.get("flags") or [])),
+        "spec_incomplete": sum(1 for r in open_rows if "spec_incomplete" in (r.get("flags") or [])),
+        "decision_pending": sum(1 for r in experiments if r.get("decision_pending")),
+        "in_rotation": sum(1 for r in experiments if r.get("in_rotation") and r.get("lifecycle") == "live"),
     }
-    snap = {"generated_at": now.isoformat().replace("+00:00", "Z"), "today": today_d.isoformat(),
-            "summary": summary, "action_queue": action_queue, "experiments": experiments,
-            "decided": decided, "changes": change_rows, "errors": errors}
-    return _jsonable(snap)
+    rot = [r["id"] for r in experiments if r.get("in_rotation") and r.get("lifecycle") in ("live", "paused")]
+    backlog_rows = sorted([r for r in live_rows if not r.get("in_rotation") and not r.get("decision_pending")],
+                          key=_queue_key)
+    live_rot = [r for r in experiments if r.get("in_rotation") and r.get("lifecycle") == "live"]
+    snap["rotation"] = {"max": ROTATION_MAX, "in_rotation": rot, "over_cap": len(live_rot) > ROTATION_MAX,
+                        "backlog": [r["id"] for r in backlog_rows],
+                        "next_call_date": _next_monday(today_d).isoformat()}
+    snap["buckets"] = _buckets.summary([r for r in experiments if not r.get("decision_pending")], decided)
+    for b in snap["buckets"]:
+        b["decision_pending"] = [r["id"] for r in experiments if r.get("decision_pending") and r.get("bucket") == b["key"]]
+    return snap

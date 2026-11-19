@@ -1,306 +1,6 @@
 {
  "generated_at": "2026-11-19T12:00:00Z",
  "today": "2026-11-19",
- "summary": {
-  "needs_call": 12,
-  "stale": 16,
-  "healthy": 2,
-  "guardrail": 1,
-  "live": 34,
-  "planned": 7,
-  "decided": 15,
-  "spec_incomplete": 22
- },
- "action_queue": [
-  {
-   "id": "EXP-2026-11-price-report-vs-pi-card",
-   "name": "Tulle Price Report replaces the Pricing Intelligence card",
-   "health": "guardrail_breach",
-   "stale": false,
-   "action": "Pause or revert now",
-   "reason": "Guardrail purchases_per_day crossed its threshold (P=0.954097)",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-10-search-railway",
-   "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 50% of users",
-   "health": "callable_win",
-   "stale": true,
-   "action": "Call it: ship",
-   "reason": "P(beat) 1.000 >= 0.9, expected loss 0.0 <= 0.005, day 24",
-   "overdue_days": 10
-  },
-  {
-   "id": "EXP-2026-10-pdf-popup-copy",
-   "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
-   "health": "callable_loss",
-   "stale": true,
-   "action": "Call it: revert",
-   "reason": "P(beat) 0.004 <= 0.1 after 97% of planned sample",
-   "overdue_days": 3
-  },
-  {
-   "id": "EXP-2026-08-pdf-warning-view3",
-   "name": "\"Last free pricing PDF\" warning on the 3rd free view",
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-09-02 passed 78 day(s) ago, no decision",
-   "overdue_days": 78
-  },
-  {
-   "id": "EXP-2026-10-planner-speed-2a",
-   "name": "Planner speed 2a: prefetch caches (benchmarks + saved cards) + Railway search 100% with breaker + reuse today's opening",
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-10-28 passed 22 day(s) ago, no decision",
-   "overdue_days": 22
-  },
-  {
-   "id": "EXP-2026-10-planner-name-lookup",
-   "name": "Planner: instant venue lookup by name (no model)",
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-02 passed 17 day(s) ago, no decision",
-   "overdue_days": 17
-  },
-  {
-   "id": "EXP-2026-10-planner-speed-v3",
-   "name": "Planner speed: pricing cache (1 h, tier-safe) + Railway search 50% + per-turn timing",
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-02 passed 17 day(s) ago, no decision",
-   "overdue_days": 17
-  },
-  {
-   "id": "EXP-2026-10-planner-listings",
-   "name": "Planner: florists, hair & makeup, caterers, planners as listings (no prices)",
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-09 passed 10 day(s) ago, no decision",
-   "overdue_days": 10
-  },
-  {
-   "id": "EXP-2026-10-planner-price-upsell",
-   "name": "Planner: free users' price questions -> answer + PDF first + upgrade card (no refusal); no-views users get the card on the first answer",
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-09 passed 10 day(s) ago, no decision",
-   "overdue_days": 10
-  },
-  {
-   "id": "EXP-2026-10-planner-profile-questions",
-   "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-09 passed 10 day(s) ago, no decision",
-   "overdue_days": 10
-  },
-  {
-   "id": "EXP-2026-10-signup-checkbox",
-   "name": "Remove T&C checkbox on sign-up ('By clicking Sign up, you agree...')",
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-09 passed 10 day(s) ago, no decision",
-   "overdue_days": 10
-  },
-  {
-   "id": "EXP-2026-11-free-daily-question",
-   "name": "Planner: free couples get 3 questions for life, then 1 free question a day (no accumulation)",
-   "health": "starved",
-   "stale": true,
-   "action": "Shelve or redesign",
-   "reason": "Projected 132 days to a verdict > max_days 42",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-10-next-step-chips",
-   "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
-   "health": "no_data",
-   "stale": true,
-   "action": "Check tracking / is it switched on?",
-   "reason": "No new exposure for 3 days",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-10-stop-progress",
-   "name": "Live progress labels + Stop button on planner answers",
-   "health": "zombie",
-   "stale": true,
-   "action": "Shelve",
-   "reason": "Live 24 days, more than 2x planned 10",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-10-chat-cost-cards",
-   "name": "Cost cards inside Tulle Planner chat answers (estimate / split / compare / budget)",
-   "health": "manual_overdue",
-   "stale": true,
-   "action": "Read it out",
-   "reason": "No results[] readout for 24 days",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-contextual-pricing-page",
-   "name": "Contextual pricing page: Vendor Context Card + src tracking when arriving from a vendor",
-   "health": "manual_overdue",
-   "stale": true,
-   "action": "Read it out",
-   "reason": "No results[] readout in 7 days live",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-planner-home-screen",
-   "name": "Planner home screen: no automatic opening, blank start with starter questions",
-   "health": "manual_overdue",
-   "stale": true,
-   "action": "Read it out",
-   "reason": "No results[] readout in 12 days live",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-limit-cards-plans-copy",
-   "name": "PDF limit + last-PDF warning cards back to 'Check out our plans' (submit-PDF link hidden)",
-   "health": "needs_call",
-   "stale": false,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-17 passed 2 day(s) ago, no decision",
-   "overdue_days": 2
-  },
-  {
-   "id": "EXP-2026-11-ask-tulle-bubble",
-   "name": "'Ask Tulle' floating Planner chat on Discovery (Map | Ask Tulle phone dock), Membership and My wedding; empty-results banner",
-   "health": "needs_call",
-   "stale": false,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-18 passed 1 day(s) ago, no decision",
-   "overdue_days": 1
-  },
-  {
-   "id": "EXP-2026-10-trustpilot-5star",
-   "name": "NPS thank-you Trustpilot ask only for 5-star raters (owner test)",
-   "health": "no_data",
-   "stale": false,
-   "action": "Check tracking / is it switched on?",
-   "reason": "metric failed: metric not in catalog yet (fixture)",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-ca-forever-135",
-   "name": "California Forever $149 -> $135 (1 week $39 / 4 weeks $69 kept; International stays $149)",
-   "health": "no_data",
-   "stale": false,
-   "action": "Check tracking / is it switched on?",
-   "reason": "metric failed: metric not in catalog yet (fixture)",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-planner-five-fixes",
-   "name": "Planner subscription-readiness fixes: dead ends, no Forever in openings, light price bands, florist pricing, returning-couple shortlist + date flex",
-   "health": "no_data",
-   "stale": false,
-   "action": "Check tracking / is it switched on?",
-   "reason": "metric failed: metric not in catalog yet (fixture)",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-planner-open-ended-replies",
-   "name": "Planner open-ended replies: no closing question, no suggested-reply chips, no profile questions",
-   "health": "no_data",
-   "stale": false,
-   "action": "Check tracking / is it switched on?",
-   "reason": "metric failed: metric not in catalog yet (fixture)",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-welcome-email-server",
-   "name": "Welcome email rebuilt: server-side Brevo send with new copy + planning-stage opener",
-   "health": "no_data",
-   "stale": false,
-   "action": "Check tracking / is it switched on?",
-   "reason": "metric failed: metric not in catalog yet (fixture)",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-pricing-page-copy",
-   "name": "Pricing page copy: headline 'See what wedding vendors really charge.', outcome subtitles per plan, plain feature lines ('AI wedding planner', 'Unlimited real pricing PDFs', 'No Pricing Intelligence', 'No advanced filters')",
-   "health": "confounded",
-   "stale": false,
-   "action": "Evidence only; consider a split test",
-   "reason": "Pre/post with 4 overlapping changes; a split test (or a quiet window with no other launches) would unconfound it",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-save-offer-60-forever",
-   "name": "'Too expensive' save offer: 60% off Forever, 12 h, server-enforced code + email (replaces 20% / 30 min)",
-   "health": "confounded",
-   "stale": false,
-   "action": "Evidence only; consider a split test",
-   "reason": "Pre/post with 18 overlapping changes; a split test (or a quiet window with no other launches) would unconfound it",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-estimate-card-whatif",
-   "name": "Planner estimate card what-if (guests + state on the card) + 'What will my wedding cost?' on the Planner home",
-   "health": "spec_incomplete",
-   "stale": false,
-   "action": "Complete the spec",
-   "reason": "Spec incomplete: 7 issue(s), first: Missing hypothesis",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-planner-venue-fixes",
-   "name": "Planner venue fixes + venue lookup log (table 91)",
-   "health": "spec_incomplete",
-   "stale": false,
-   "action": "Complete the spec",
-   "reason": "Spec incomplete: 7 issue(s), first: Missing smallest lift worth having (metric.mde_rel or mde_abs)",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-quote-check-everyone",
-   "name": "Planner quote check open to every signed-in couple (was Forever only); 'Got a quote?' home card, one-tap check, 'Save this quote to My wedding'",
-   "health": "spec_incomplete",
-   "stale": false,
-   "action": "Complete the spec",
-   "reason": "Spec incomplete: 2 issue(s), first: Guardrail needs max_drop_rel or max_rise_rel",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-ww-service-prices",
-   "name": "Plan my wedding: catering / hair & makeup / planner rows priced from the vendors' own PDFs",
-   "health": "spec_incomplete",
-   "stale": false,
-   "action": "Complete the spec",
-   "reason": "Spec incomplete: 8 issue(s), first: Missing hypothesis",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-planner-pdf-count-link",
-   "name": "Planner venue cards: centered 'N Pricing PDFs' link under the button",
-   "health": "guardrail_unmonitored",
-   "stale": false,
-   "action": "Fix the guardrail metric (it is not being watched)",
-   "reason": "Guardrail not monitored: purchases_per_day (not computed by the engine)",
-   "overdue_days": null
-  },
-  {
-   "id": "EXP-2026-11-whole-wedding-planner",
-   "name": "Planner 'Plan my wedding' (whole-wedding proposal) for every couple",
-   "health": "guardrail_unmonitored",
-   "stale": false,
-   "action": "Fix the guardrail metric (it is not being watched)",
-   "reason": "Guardrail not monitored: planner_answer_ms_p50 (no data to compare)",
-   "overdue_days": null
-  }
- ],
  "experiments": [
   {
    "id": "EXP-2026-08-pdf-warning-view3",
@@ -351,6 +51,10 @@
      "note": "Correction: PDF wall ~18% of purchases (30/170, 30d), not 40%. Warning CTA 88 clicks -> 11 buys (1d)."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "\"Last free pricing PDF\" warning on the 3rd free view",
     "what_changed": "A non-blocking 'this is your last free pricing PDF' warning on a couple's 3rd (final) free PDF view; the hard block stays at view 4.",
@@ -506,6 +210,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -568,6 +274,26 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-08-19",
+   "review_date": "2026-09-02",
+   "max_end_date": "2026-09-30",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No structured read-out yet. Last note (2026-10-14): Correction: PDF wall ~18% of purchases (30/170, 30d), not 40%. Warning CTA 88 clicks -> 11 buys (1d). No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out \"Last free pricing PDF\" warning on the 3rd free view' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -642,6 +368,10 @@
      "note": "BUG FOUND + FIXED 04:14 UTC: ep7 (Google sign-in) kept the TERMS_REQUIRED check after the checkbox was removed, so NEW users pressing Google on Sign In ('/') were refused and bounced to Sign Up (18 of 93 Google calls failed in the 24h to 11-12 03:38 UTC, all agreed_terms=false; ~half never retried). Sign-up rate since 10-26 is understated for Google; read the 2-week result from 11-12 on, or note the gap."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "onboarding",
+   "bucket_source": "derived",
    "what": {
     "name": "Remove T&C checkbox on sign-up ('By clicking Sign up, you agree...')",
     "what_changed": "The T&C checkbox on sign-up was replaced by a consent line ('By clicking Sign up, you agree...').",
@@ -790,6 +520,8 @@
    "guardrail_status": [],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -900,534 +632,34 @@
      "end_date": "2026-11-07"
     }
    ],
-   "history": []
-  },
-  {
-   "id": "EXP-2026-10-pdf-popup-copy",
-   "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
-   "status": "live",
-   "lifecycle": "live",
-   "tier": "money",
-   "tier_effective": "money",
-   "themes": [
-    "paywall"
-   ],
-   "framework_version": 2,
-   "legacy": false,
-   "assignment_type": "pre_post",
-   "spec_issues": [
-    {
-     "severity": "warn",
-     "question": 3,
-     "field": "hypothesis",
-     "message": "Hypothesis should read \"If we X, then Y moves Z, because W\""
-    }
-   ],
-   "results": [
-    {
-     "date": "2026-10-26",
-     "note": "Started. Launched in the 2026-10-26 ~00:30 UTC production publish (verified in live page data)."
-    }
-   ],
-   "what": {
-    "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
-    "what_changed": "Softer PDF warning + wall copy ('keep going free'), with an inconspicuous submit-a-PDF link.",
-    "links": [
-     "WeWeb publish 2026-10-26"
-    ]
+   "start_date": "2026-10-26",
+   "review_date": "2026-11-09",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No structured read-out yet. Last note (2026-11-12): BUG FOUND + FIXED 04:14 UTC: ep7 (Google sign-in) kept the TERMS_REQUIRED check after the checkbox was removed, so NEW users pressing Google on Sign In ('/') were refused and bounced to Sign Up (18 of 93 Google calls fa… No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Remove T&C checkbox on sign-up ('By clicking Sign up, you agree...')' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
    },
-   "impacts": {
-    "surfaces": [
-     "weweb:vendor-page",
-     "weweb:other-vendors-page"
-    ],
-    "audience": {
-     "segment": "free couples who reach the PDF warning or wall",
-     "est_daily_exposed": 90
-    }
-   },
-   "hypothesis": "If the PDF warning and wall copy are softer, the wall feels less negative while the payment rate holds.",
-   "tests": "Can softer wall copy hold the wall -> purchase rate?",
-   "success_metric": {
-    "metric": {
-     "key": "wall_to_purchase_24h",
-     "direction": "increase",
-     "baseline": 0.06,
-     "mde_rel": 0.3,
-     "label": "wall viewers who buy within 24 h",
-     "definition": "Couples who saw the PDF warning/wall and bought within 24 h / couples who saw it (Mixpanel + table 16)."
-    },
-    "guardrails": [
-     {
-      "key": "purchases_per_day",
-      "max_drop_rel": 0.25,
-      "label": "purchases per day"
-     }
-    ],
-    "decision_rule": {
-     "ship_p": 0.95,
-     "stop_p": 0.1,
-     "max_loss": 0.002,
-     "futility_min_progress": 0.5
-    },
-    "sample_plan": {
-     "n_per_arm": 2150,
-     "days_needed": 26,
-     "d_abs": 0.018,
-     "baseline": 0.06,
-     "daily_exposed_per_arm": 84.71428571428571,
-     "reason": null
-    },
-    "primary_metric_v1": "wall green-CTA click -> purchase (baseline ~140 clicks -> 19 purchases / 30d); warning 88 -> 11",
-    "goal_v1": "Less negative wall experience while holding payment rate"
-   },
-   "timeline": {
-    "start_date": "2026-10-26",
-    "planned_days": 21,
-    "review_date": "2026-11-16",
-    "max_days": 42,
-    "end_date": null
-   },
-   "reporting": "auto",
-   "seven": {
-    "what": {
-     "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
-     "what_changed": "Softer PDF warning + wall copy ('keep going free'), with an inconspicuous submit-a-PDF link.",
-     "links": [
-      "WeWeb publish 2026-10-26"
-     ]
-    },
-    "impacts": {
-     "surfaces": [
-      "weweb:vendor-page",
-      "weweb:other-vendors-page"
-     ],
-     "audience": {
-      "segment": "free couples who reach the PDF warning or wall",
-      "est_daily_exposed": 90
-     }
-    },
-    "hypothesis": "If the PDF warning and wall copy are softer, the wall feels less negative while the payment rate holds.",
-    "tests": "Can softer wall copy hold the wall -> purchase rate?",
-    "success_metric": {
-     "metric": {
-      "key": "wall_to_purchase_24h",
-      "direction": "increase",
-      "baseline": 0.06,
-      "mde_rel": 0.3,
-      "label": "wall viewers who buy within 24 h",
-      "definition": "Couples who saw the PDF warning/wall and bought within 24 h / couples who saw it (Mixpanel + table 16)."
-     },
-     "guardrails": [
-      {
-       "key": "purchases_per_day",
-       "max_drop_rel": 0.25,
-       "label": "purchases per day"
-      }
-     ],
-     "decision_rule": {
-      "ship_p": 0.95,
-      "stop_p": 0.1,
-      "max_loss": 0.002,
-      "futility_min_progress": 0.5
-     },
-     "sample_plan": {
-      "n_per_arm": 2150,
-      "days_needed": 26,
-      "d_abs": 0.018,
-      "baseline": 0.06,
-      "daily_exposed_per_arm": 84.71428571428571,
-      "reason": null
-     },
-     "primary_metric_v1": "wall green-CTA click -> purchase (baseline ~140 clicks -> 19 purchases / 30d); warning 88 -> 11",
-     "goal_v1": "Less negative wall experience while holding payment rate"
-    },
-    "timeline": {
-     "start_date": "2026-10-26",
-     "planned_days": 21,
-     "review_date": "2026-11-16",
-     "max_days": 42,
-     "end_date": null
-    },
-    "reporting": "auto"
-   },
-   "readout": {
-    "exposure_by_day": [
-     {
-      "date": "2026-10-26",
-      "n": 96
-     },
-     {
-      "date": "2026-10-27",
-      "n": 69
-     },
-     {
-      "date": "2026-10-28",
-      "n": 69
-     },
-     {
-      "date": "2026-10-29",
-      "n": 88
-     },
-     {
-      "date": "2026-10-30",
-      "n": 61
-     },
-     {
-      "date": "2026-10-31",
-      "n": 97
-     },
-     {
-      "date": "2026-11-01",
-      "n": 97
-     },
-     {
-      "date": "2026-11-02",
-      "n": 60
-     },
-     {
-      "date": "2026-11-03",
-      "n": 93
-     },
-     {
-      "date": "2026-11-04",
-      "n": 84
-     },
-     {
-      "date": "2026-11-05",
-      "n": 90
-     },
-     {
-      "date": "2026-11-06",
-      "n": 106
-     },
-     {
-      "date": "2026-11-07",
-      "n": 108
-     },
-     {
-      "date": "2026-11-08",
-      "n": 79
-     },
-     {
-      "date": "2026-11-09",
-      "n": 101
-     },
-     {
-      "date": "2026-11-10",
-      "n": 98
-     },
-     {
-      "date": "2026-11-11",
-      "n": 107
-     },
-     {
-      "date": "2026-11-12",
-      "n": 60
-     },
-     {
-      "date": "2026-11-13",
-      "n": 105
-     },
-     {
-      "date": "2026-11-14",
-      "n": 70
-     },
-     {
-      "date": "2026-11-15",
-      "n": 65
-     },
-     {
-      "date": "2026-11-16",
-      "n": 88
-     },
-     {
-      "date": "2026-11-17",
-      "n": 100
-     },
-     {
-      "date": "2026-11-18",
-      "n": 105
-     }
-    ],
-    "guardrails": [
-     {
-      "key": "purchases_per_day",
-      "count": {
-       "pre": {
-        "count": 120,
-        "days": 21
-       },
-       "post": {
-        "count": 131,
-        "days": 24
-       }
-      }
-     }
-    ],
-    "computed_at": "2026-11-19T12:00:00Z",
-    "error": null,
-    "source": "auto",
-    "arms": {
-     "control": {
-      "n": 2150,
-      "conv": 129
-     },
-     "treatment": {
-      "n": 2096,
-      "conv": 88
-     }
-    }
-   },
-   "health": "callable_loss",
-   "stale": true,
-   "action": "Call it: revert",
-   "reason": "P(beat) 0.004 <= 0.1 after 97% of planned sample",
-   "days_running": 24,
-   "days_left": 0,
-   "progress": 0.9749,
-   "progress_basis": "sample",
-   "flags": [
-    "callable_loss",
-    "needs_call",
-    "confounded"
-   ],
-   "overdue_days": 3,
-   "projected_days": 25,
-   "stats": {
-    "p_beat": 0.003841,
-    "lift_median_rel": -0.298043,
-    "lift_ci95_rel": [
-     -0.461875,
-     -0.088484
-    ],
-    "expected_loss_abs": 0.0179867,
-    "control_rate": 0.06,
-    "treatment_rate": 0.041985,
-    "c_n": 2150,
-    "c_conv": 129,
-    "t_n": 2096,
-    "t_conv": 88,
-    "draws": 40000,
-    "method": "exact",
-    "model": "beta_binomial"
-   },
-   "guardrails": [
-    {
-     "key": "purchases_per_day",
-     "breached": false,
-     "p_breach": 0.027612,
-     "p_bar": 0.9,
-     "max_drop_rel": 0.25,
-     "max_rise_rel": null,
-     "error": null,
-     "manual": false
-    }
-   ],
-   "evidence_label": "evidence, not proof",
-   "exposure_per_arm_day": 84.714,
-   "decision_rule": {
-    "ship_p": 0.95,
-    "stop_p": 0.1,
-    "max_loss": 0.002,
-    "futility_min_progress": 0.5
-   },
-   "guardrail_status": [
-    {
-     "key": "purchases_per_day",
-     "status": "ok",
-     "reason": "P=0.027612 <= 0.9"
-    }
-   ],
-   "failed_runs": 0,
-   "paused_days": null,
-   "overlapping_changes": [
-    {
-     "date": "2026-10-14",
-     "end_date": null,
-     "what": "Prices raised (NY/hub), 20% offer, +2 bonus views, assistant free mode - one publish",
-     "source": "weweb+xano",
-     "ref": "10-14 publish"
-    },
-    {
-     "date": "2026-10-26",
-     "end_date": null,
-     "what": "Production publish: Tulle Planner rename + 3 tabs, cost tools tour, tours start with no delay + per-account seen keys, sign-up consent paragraph (no checkbox), /terms, softer PDF popups, compare-venue stacked bars with live totals",
-     "source": "weweb",
-     "ref": "2026-10-26 ~00:30 UTC publish"
-    },
-    {
-     "date": "2026-10-26",
-     "end_date": null,
-     "what": "Onboarding vibes + venue-customization answers saved again (broken since 2026-07-10, ~10.2k users missing)",
-     "source": "weweb",
-     "ref": "2026-10-26 publish"
-    },
-    {
-     "date": "2026-10-26",
-     "what": "Tulle Planner venue cards: 'All-inclusive - seats up to N' line hidden, address shortened to 'City, ST' (published ~01:51 UTC)",
-     "source": "weweb",
-     "ref": "planner-chat card trim ~01:51 UTC"
-    },
-    {
-     "date": "2026-10-26",
-     "what": "WeWeb publish 23:43 UTC (7:43 PM ET): Planner upgrade card + 'Request this venue' button + tracking",
-     "source": "weweb",
-     "ref": "publish 2026-10-26 23:43 UTC"
-    },
-    {
-     "date": "2026-11-03",
-     "what": "PDF limit + warning cards back to 'Check out our plans', submit-PDF link hidden (published + verified ~21:10 UTC). Reverts the 10-26 softer copy.",
-     "affects": [
-      "EXP-2026-10-pdf-popup-copy",
-      "EXP-2026-08-pdf-warning-view3",
-      "EXP-2026-11-limit-cards-plans-copy"
-     ],
-     "source": "weweb",
-     "ref": "publish 2026-11-03 ~21:10 UTC; backup weweb_pdf_limit_cards_pre_plans_revert_2026-11-03.json",
-     "backfilled": true
-    }
-   ],
-   "history": [
-    {
-     "date": "2026-10-27",
-     "p_beat": 0.384398,
-     "n_control": 2150,
-     "n_treatment": 87
-    },
-    {
-     "date": "2026-10-28",
-     "p_beat": 0.175209,
-     "n_control": 2150,
-     "n_treatment": 174
-    },
-    {
-     "date": "2026-10-29",
-     "p_beat": 0.207646,
-     "n_control": 2150,
-     "n_treatment": 262
-    },
-    {
-     "date": "2026-10-30",
-     "p_beat": 0.076515,
-     "n_control": 2150,
-     "n_treatment": 349
-    },
-    {
-     "date": "2026-10-31",
-     "p_beat": 0.043953,
-     "n_control": 2150,
-     "n_treatment": 436
-    },
-    {
-     "date": "2026-11-01",
-     "p_beat": 0.082975,
-     "n_control": 2150,
-     "n_treatment": 524
-    },
-    {
-     "date": "2026-11-02",
-     "p_beat": 0.036031,
-     "n_control": 2150,
-     "n_treatment": 611
-    },
-    {
-     "date": "2026-11-03",
-     "p_beat": 0.046284,
-     "n_control": 2150,
-     "n_treatment": 698
-    },
-    {
-     "date": "2026-11-04",
-     "p_beat": 0.02973,
-     "n_control": 2150,
-     "n_treatment": 786
-    },
-    {
-     "date": "2026-11-05",
-     "p_beat": 0.049478,
-     "n_control": 2150,
-     "n_treatment": 873
-    },
-    {
-     "date": "2026-11-06",
-     "p_beat": 0.009458,
-     "n_control": 2150,
-     "n_treatment": 960
-    },
-    {
-     "date": "2026-11-07",
-     "p_beat": 0.009055,
-     "n_control": 2150,
-     "n_treatment": 1048
-    },
-    {
-     "date": "2026-11-08",
-     "p_beat": 0.021468,
-     "n_control": 2150,
-     "n_treatment": 1135
-    },
-    {
-     "date": "2026-11-09",
-     "p_beat": 0.004498,
-     "n_control": 2150,
-     "n_treatment": 1222
-    },
-    {
-     "date": "2026-11-10",
-     "p_beat": 0.014245,
-     "n_control": 2150,
-     "n_treatment": 1310
-    },
-    {
-     "date": "2026-11-11",
-     "p_beat": 0.004393,
-     "n_control": 2150,
-     "n_treatment": 1397
-    },
-    {
-     "date": "2026-11-12",
-     "p_beat": 0.009941,
-     "n_control": 2150,
-     "n_treatment": 1484
-    },
-    {
-     "date": "2026-11-13",
-     "p_beat": 0.012054,
-     "n_control": 2150,
-     "n_treatment": 1572
-    },
-    {
-     "date": "2026-11-14",
-     "p_beat": 0.003197,
-     "n_control": 2150,
-     "n_treatment": 1659
-    },
-    {
-     "date": "2026-11-15",
-     "p_beat": 0.003188,
-     "n_control": 2150,
-     "n_treatment": 1746
-    },
-    {
-     "date": "2026-11-16",
-     "p_beat": 0.006588,
-     "n_control": 2150,
-     "n_treatment": 1834
-    },
-    {
-     "date": "2026-11-17",
-     "p_beat": 0.008012,
-     "n_control": 2150,
-     "n_treatment": 1921
-    },
-    {
-     "date": "2026-11-18",
-     "p_beat": 0.007738,
-     "n_control": 2150,
-     "n_treatment": 2008
-    }
-   ]
+   "history": [],
+   "decision_pending": {
+    "call": "shelve",
+    "author": "Des",
+    "ts": "2026-11-19T11:40:00Z",
+    "text": "Nobody will read this out; the consent paragraph replaced it anyway. Shelve.",
+    "note_id": "fx4"
+   }
   },
   {
    "id": "EXP-2026-10-trustpilot-5star",
@@ -1506,6 +738,10 @@
      "note": "Table 77, all time (internal excluded): the Trustpilot prompt was shown (offered/declined) to 57 of 71 raters and recorded 0 clicked / 0 completed. Last 7 days: 15 ratings, avg 3.8/5 (prior 7 days 15, 4.5/5); 9 five-star raters shown the ask, 0 clicked. TrustBox iframe clicks (nps-survey f992e72) are not recorded. Daily line in the brief from 11-11."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "retention",
+   "bucket_source": "derived",
    "what": {
     "name": "NPS thank-you Trustpilot ask only for 5-star raters (owner test)",
     "what_changed": "The NPS thank-you step asks for a Trustpilot review only from 5-star raters (reviewMinScore 5).",
@@ -1622,7 +858,7 @@
    },
    "health": "no_data",
    "stale": false,
-   "action": "Check tracking / is it switched on?",
+   "action": "Check tracking (is it switched on?)",
    "reason": "metric failed: metric not in catalog yet (fixture)",
    "days_running": 24,
    "days_left": null,
@@ -1648,6 +884,8 @@
    "guardrail_status": [],
    "failed_runs": 1,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -1721,631 +959,44 @@
      "ref": "ep230"
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers: the metric can't be computed yet (metric not in catalog yet (fixture)).",
+    "numbers": {
+     "unit": "rate",
+     "kind": null,
+     "before_label": null,
+     "after_label": null,
+     "before": null,
+     "after": null,
+     "before_rate": null,
+     "after_rate": null,
+     "baseline": {
+      "label": "Baseline (registry)",
+      "value": "0%",
+      "rate": 0.0,
+      "source": "registry baseline"
+     },
+     "p_beat": null,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "fix_tracking",
+     "label": "Fix the metric (or shelve)",
+     "why": "Without a working metric this experiment can never be called."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
-  },
-  {
-   "id": "EXP-2026-10-search-railway",
-   "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 50% of users",
-   "status": "live",
-   "lifecycle": "live",
-   "tier": "infra",
-   "tier_effective": "infra",
-   "themes": [
-    "performance",
-    "search"
-   ],
-   "framework_version": 2,
-   "legacy": false,
-   "assignment_type": "split",
-   "spec_issues": [
-    {
-     "severity": "warn",
-     "question": 3,
-     "field": "hypothesis",
-     "message": "Hypothesis should read \"If we X, then Y moves Z, because W\""
-    }
-   ],
-   "results": [
-    {
-     "date": "2026-10-25",
-     "note": "baseline: 2026-10-25 end-to-end from outside Railway, real search shapes: ep119 cache-miss p50 1653 / p90 3000 ms; ep119 hit 268 ms; Railway 158 / 186 ms (+~230 ms first search per user for auth/me)"
-    },
-    {
-     "date": "2026-10-26",
-     "note": "Launch check: Georgia barn search on Railway took 234 ms (assistant ep119 avg ~4.1s); whole answer 12.6s. Parity 22/23 same venue sets; popular-sort order drift from stale click counts (now synced hourly)."
-    },
-    {
-     "date": "2026-10-26",
-     "note": "Discovery launch: owner 0.76/1.03s, in-bucket test account 0.98/2.28s on Railway vs 2.5-5.1s ep119; forced fallback (SEARCH_ENABLED=0) returned full results. First push 01:33 failed ('Invalid op: in'), auto-rolled back in 15s, 2 real searches failed. Ramp 15->20% at 01:53 UTC (owner)."
-    },
-    {
-     "date": "2026-10-26",
-     "note": "A/B readout 01:53-21:00 UTC: Discovery cache-miss median 0.44 s Railway vs 1.52 s ep119 (p90 1.40 vs 6.55 s), IP-cluster 95% CI on the difference -1.85..-0.64 s, Mann-Whitney p 7e-11; cache hits identical (~55% of requests). Planner search step 68 ms vs 3,997 ms (7 vs 45 requests, p~1e-5 per user); whole answer 9.4 s vs 14.4 s (loose, CI -8.2..-1.0 s). Fallback 9% (31/345, all http_0), 24 of 31 at 16:00 and 19:00 UTC: ramp rule NOT met before the fixes."
-    },
-    {
-     "date": "2026-10-26",
-     "note": "Root cause of the fallbacks: Meilisearch freezes (8-65 s, ~11/day) - not memory/CPU, not the hourly sync itself; search-api's sync-meta check also blocked user searches on a 60 s client. Fixed 22:03 (breaker + fail-fast meta read). 3 of 4 breaker trips 22:50-23:25 sat inside a PATCH /experimental-features (5.4-48 s) -> fixed 23:32. One more 48 s freeze at 23:58 with no PATCH: residual cause unknown."
-    },
-    {
-     "date": "2026-10-26",
-     "note": "50% read 22:51-23:25 UTC: 179 Discovery searches, all 200; Railway misses median 0.49 s vs ep119 1.57 s; breaker caught 17 searches (fast http_503 fallbacks); slow http_0 5/79 (3 of them instant Xano-side connect failures). Next: 1 clean day with the 23:32 fix -> 100%."
-    },
-    {
-     "date": "2026-10-27",
-     "note": "Discovery ep119 $rw_pct 50 -> 100 at 16:10 UTC (owner). Read before ramp, ep119 history 06:10-14:46 UTC, cache MISSES only: fallback 39% (33/84; 25 breaker 503, 6 http_502, 2 http_0) - above the 10% bar, ramped anyway on the owner's call because the Railway arm INCLUDING fallbacks was faster than Xano: median 0.62 vs 1.93 s, mean 1.52 vs 2.82 s, p90 4.1 vs 6.6 s (n=99 vs 143). Cache hits (60% of calls) ~0.02 s either way. Cause of fallbacks: Meilisearch itself freezes 30-40 s (15:53 UTC a meta doc GET time.busy=33.6 s, a search time.idle=39.3 s) with CPU ~0.1% - likely volume I/O. CORRECTION: earlier today we said the stalled requests never reached Meili (network); wrong, they do. search-api a868650 (fresh-connection retry: 0/7 recovered, now OFF via MEILI_FRESH_RETRY_S=0; /map/all cache-first kept). Meili redeployed 15:55 UTC (same image v1.54.3); froze again ~16:08. Copy test (api 557, deleted) + live smoke: railway, totals identical to fallback (9/1042/227). Backup .claude/xano_backups/api119_live_pre_100pct_2026-10-27.xs; byte-verified push."
-    },
-    {
-     "date": "2026-10-27",
-     "note": "16:25 UTC search-api 554bec3: breaker closes on a probe (min 10 s, every 5 s) - open 10-43 s per freeze vs 120 s; Discovery miss fallback 46% (16:10-16:26) -> 17.5% (16:26-17:06, 10/57). Meili redeploy 15:55 did NOT help (8.4 -> 13.6 freezes/h, busier hour). 17:35 UTC search-api + sync-cron moved to meilisearch-b (fresh volume, us-east4, seeded by meili-b-seed; counts identical). First 20 min on B: no 30-40 s freezes, but a few ~1.0-1.2 s waits failed under MEILI_QUERY_TIMEOUT_S=0.8 -> reverted to 1.5 at ~18:10. ~18:05 UTC ep119 + fn83 got the florals code (owner OK, option A): Flowers skips Railway (Xano path), fl_* filters inert unless sent; non-Flowers unchanged (copy test + live smoke: same totals)."
-    }
-   ],
-   "what": {
-    "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 50% of users",
-    "what_changed": "Venue search served by Railway (Meilisearch) with ep119 as fallback, for the Planner and Discovery.",
-    "links": [
-     "search-api 23:32 fix",
-     "ep119 $rw_pct"
-    ]
-   },
-   "impacts": {
-    "surfaces": [
-     "railway:search-api",
-     "railway:meilisearch",
-     "rec-engine",
-     "xano:ep119"
-    ],
-    "audience": {
-     "segment": "every couple who searches venues",
-     "est_daily_exposed": 420
-    }
-   },
-   "hypothesis": "If search runs on Railway, it is faster without losing reliability.",
-   "tests": "Is Railway search faster than ep119 at an acceptable fallback/error rate?",
-   "success_metric": {
-    "metric": {
-     "key": "search_under_1s",
-     "direction": "increase",
-     "baseline": 0.55,
-     "mde_rel": 0.1,
-     "label": "searches answered in under 1 s",
-     "definition": "Discovery + Planner searches with duration < 1000 ms / all searches, by X-Search-Engine bucket."
-    },
-    "guardrails": [
-     {
-      "key": "search_error_rate",
-      "max_rise_rel": 0.25,
-      "label": "search error rate"
-     }
-    ],
-    "decision_rule": {
-     "ship_p": 0.9,
-     "stop_p": 0.1,
-     "max_loss": 0.005,
-     "futility_min_progress": 0.5
-    },
-    "sample_plan": {
-     "n_per_arm": 1011,
-     "days_needed": 9,
-     "d_abs": 0.055,
-     "baseline": 0.55,
-     "daily_exposed_per_arm": 124.71428571428571,
-     "reason": null
-    },
-    "primary_metric_v1": "assistant search_ms + total latency (table 79 search_engine), Discovery ep119 duration split by X-Search-Engine header; fallback + error rate",
-    "goal_v1": "Faster search without reliability loss"
-   },
-   "timeline": {
-    "start_date": "2026-10-26",
-    "planned_days": 14,
-    "review_date": "2026-11-09",
-    "max_days": 42,
-    "end_date": null
-   },
-   "reporting": "auto",
-   "seven": {
-    "what": {
-     "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 50% of users",
-     "what_changed": "Venue search served by Railway (Meilisearch) with ep119 as fallback, for the Planner and Discovery.",
-     "links": [
-      "search-api 23:32 fix",
-      "ep119 $rw_pct"
-     ]
-    },
-    "impacts": {
-     "surfaces": [
-      "railway:search-api",
-      "railway:meilisearch",
-      "rec-engine",
-      "xano:ep119"
-     ],
-     "audience": {
-      "segment": "every couple who searches venues",
-      "est_daily_exposed": 420
-     }
-    },
-    "hypothesis": "If search runs on Railway, it is faster without losing reliability.",
-    "tests": "Is Railway search faster than ep119 at an acceptable fallback/error rate?",
-    "success_metric": {
-     "metric": {
-      "key": "search_under_1s",
-      "direction": "increase",
-      "baseline": 0.55,
-      "mde_rel": 0.1,
-      "label": "searches answered in under 1 s",
-      "definition": "Discovery + Planner searches with duration < 1000 ms / all searches, by X-Search-Engine bucket."
-     },
-     "guardrails": [
-      {
-       "key": "search_error_rate",
-       "max_rise_rel": 0.25,
-       "label": "search error rate"
-      }
-     ],
-     "decision_rule": {
-      "ship_p": 0.9,
-      "stop_p": 0.1,
-      "max_loss": 0.005,
-      "futility_min_progress": 0.5
-     },
-     "sample_plan": {
-      "n_per_arm": 1011,
-      "days_needed": 9,
-      "d_abs": 0.055,
-      "baseline": 0.55,
-      "daily_exposed_per_arm": 124.71428571428571,
-      "reason": null
-     },
-     "primary_metric_v1": "assistant search_ms + total latency (table 79 search_engine), Discovery ep119 duration split by X-Search-Engine header; fallback + error rate",
-     "goal_v1": "Faster search without reliability loss"
-    },
-    "timeline": {
-     "start_date": "2026-10-26",
-     "planned_days": 14,
-     "review_date": "2026-11-09",
-     "max_days": 42,
-     "end_date": null
-    },
-    "reporting": "auto"
-   },
-   "readout": {
-    "exposure_by_day": [
-     {
-      "date": "2026-10-26",
-      "control": 142,
-      "treatment": 141
-     },
-     {
-      "date": "2026-10-27",
-      "control": 101,
-      "treatment": 101
-     },
-     {
-      "date": "2026-10-28",
-      "control": 102,
-      "treatment": 101
-     },
-     {
-      "date": "2026-10-29",
-      "control": 131,
-      "treatment": 130
-     },
-     {
-      "date": "2026-10-30",
-      "control": 91,
-      "treatment": 90
-     },
-     {
-      "date": "2026-10-31",
-      "control": 144,
-      "treatment": 143
-     },
-     {
-      "date": "2026-11-01",
-      "control": 143,
-      "treatment": 142
-     },
-     {
-      "date": "2026-11-02",
-      "control": 90,
-      "treatment": 89
-     },
-     {
-      "date": "2026-11-03",
-      "control": 137,
-      "treatment": 136
-     },
-     {
-      "date": "2026-11-04",
-      "control": 124,
-      "treatment": 123
-     },
-     {
-      "date": "2026-11-05",
-      "control": 134,
-      "treatment": 133
-     },
-     {
-      "date": "2026-11-06",
-      "control": 157,
-      "treatment": 156
-     },
-     {
-      "date": "2026-11-07",
-      "control": 160,
-      "treatment": 158
-     },
-     {
-      "date": "2026-11-08",
-      "control": 117,
-      "treatment": 116
-     },
-     {
-      "date": "2026-11-09",
-      "control": 149,
-      "treatment": 148
-     },
-     {
-      "date": "2026-11-10",
-      "control": 145,
-      "treatment": 144
-     },
-     {
-      "date": "2026-11-11",
-      "control": 158,
-      "treatment": 157
-     },
-     {
-      "date": "2026-11-12",
-      "control": 89,
-      "treatment": 88
-     },
-     {
-      "date": "2026-11-13",
-      "control": 156,
-      "treatment": 155
-     },
-     {
-      "date": "2026-11-14",
-      "control": 103,
-      "treatment": 102
-     },
-     {
-      "date": "2026-11-15",
-      "control": 96,
-      "treatment": 95
-     },
-     {
-      "date": "2026-11-16",
-      "control": 131,
-      "treatment": 130
-     },
-     {
-      "date": "2026-11-17",
-      "control": 149,
-      "treatment": 148
-     },
-     {
-      "date": "2026-11-18",
-      "control": 155,
-      "treatment": 155
-     }
-    ],
-    "guardrails": [
-     {
-      "key": "search_error_rate",
-      "arms": {
-       "control": {
-        "n": 3104,
-        "conv": 31
-       },
-       "treatment": {
-        "n": 3081,
-        "conv": 27
-       }
-      }
-     }
-    ],
-    "computed_at": "2026-11-19T12:00:00Z",
-    "error": null,
-    "source": "auto",
-    "arms": {
-     "control": {
-      "n": 3104,
-      "conv": 1707
-     },
-     "treatment": {
-      "n": 3081,
-      "conv": 2711
-     }
-    }
-   },
-   "health": "callable_win",
-   "stale": true,
-   "action": "Call it: ship",
-   "reason": "P(beat) 1.000 >= 0.9, expected loss 0.0 <= 0.005, day 24",
-   "days_running": 24,
-   "days_left": 0,
-   "progress": 1.0,
-   "progress_basis": "sample",
-   "flags": [
-    "callable_win",
-    "needs_call"
-   ],
-   "overdue_days": 10,
-   "projected_days": 24,
-   "stats": {
-    "p_beat": 1.0,
-    "lift_median_rel": 0.599579,
-    "lift_ci95_rel": [
-     0.547085,
-     0.655873
-    ],
-    "expected_loss_abs": 0.0,
-    "control_rate": 0.549936,
-    "treatment_rate": 0.879909,
-    "c_n": 3104,
-    "c_conv": 1707,
-    "t_n": 3081,
-    "t_conv": 2711,
-    "draws": 40000,
-    "method": "exact",
-    "model": "beta_binomial"
-   },
-   "guardrails": [
-    {
-     "key": "search_error_rate",
-     "breached": false,
-     "p_breach": 0.08555,
-     "p_bar": 0.9,
-     "max_drop_rel": null,
-     "max_rise_rel": 0.25,
-     "error": null,
-     "manual": false
-    }
-   ],
-   "evidence_label": null,
-   "exposure_per_arm_day": 124.714,
-   "decision_rule": {
-    "ship_p": 0.9,
-    "stop_p": 0.1,
-    "max_loss": 0.005,
-    "futility_min_progress": 0.5
-   },
-   "guardrail_status": [
-    {
-     "key": "search_error_rate",
-     "status": "ok",
-     "reason": "P=0.08555 <= 0.9"
-    }
-   ],
-   "failed_runs": 0,
-   "paused_days": null,
-   "overlapping_changes": [
-    {
-     "date": "2026-10-14",
-     "end_date": null,
-     "what": "Prices raised (NY/hub), 20% offer, +2 bonus views, assistant free mode - one publish",
-     "source": "weweb+xano",
-     "ref": "10-14 publish"
-    },
-    {
-     "date": "2026-10-22",
-     "end_date": "2026-10-24",
-     "what": "Tulle Assistant outage (Anthropic 401), 40 users",
-     "source": "rec-engine",
-     "ref": "Anthropic key revoked"
-    },
-    {
-     "date": "2026-10-24",
-     "end_date": null,
-     "what": "Free views survive account deletion; terms_version + TC_Agreement_Time stamped on sign-up",
-     "source": "xano",
-     "ref": "ep20/ep2"
-    },
-    {
-     "date": "2026-10-24",
-     "end_date": null,
-     "what": "Assistant free questions 1 -> 2",
-     "source": "railway-var",
-     "ref": "REC_FREE_REFINES=2"
-    },
-    {
-     "date": "2026-10-26",
-     "what": "Planner v3 deployed (rec-engine c4ec678, 23:18 UTC): instant name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache, per-turn timing",
-     "source": "rec-engine",
-     "ref": "c4ec678"
-    },
-    {
-     "date": "2026-10-26",
-     "what": "Planner free users: PDF first where they can open one, upgrade card on the first answer when they have no free views (rec-engine ac172c7, 23:33 UTC)",
-     "source": "rec-engine",
-     "ref": "ac172c7"
-    },
-    {
-     "date": "2026-10-27",
-     "what": "rec-engine 12add68 05:53 UTC: Planner prefetch caches, Railway search breaker, reuse today's opening; REC_RAILWAY_SEARCH_PCT 50 -> 100 (Planner only) 05:54 UTC",
-     "source": "rec-engine",
-     "ref": "12add68; REC_RAILWAY_SEARCH_PCT 100"
-    },
-    {
-     "date": "2026-10-27",
-     "what": "ep119 $rw_pct 50 -> 100 at 16:10 UTC: Discovery fully on Railway search, ep119 Xano logic stays as fallback (rollback: push api119_live_pre_100pct_2026-10-27.xs). Meilisearch redeployed 15:55 UTC; search-api a868650 (retry OFF, /map/all cache-first).",
-     "source": "xano",
-     "ref": "ep119 $rw_pct 100; search-api a868650"
-    },
-    {
-     "date": "2026-10-27",
-     "what": "Florals promoted to v1: ep119 + fn83 (fl_* inputs, Flowers on Xano path). Backups api119_live_pre_florals / fn83_live_pre_florals. Meilisearch moved to meilisearch-b 17:35 UTC (rollback: MEILI_URL back to meilisearch.railway.internal). MEILI_QUERY_TIMEOUT_S 1.5 -> 0.8 -> 1.5 (reverted).",
-     "source": "xano",
-     "ref": "ep119 + fn83 florals v1"
-    },
-    {
-     "date": "2026-10-27",
-     "what": "~20:45 UTC florals v2 live (owner 'deploy'): ep119 + fn83 range inputs (fl_min_max + fl_min_include_unknown on new flt_fl_min_eff [stated $, 1 = no minimum, 0 = not stated]; fl_est/bouquet/centerpiece/bridesmaid/boutonniere/arch/aisle/cp_tall min/max). Table 11 +6 cols (5 item 'from' prices + min_eff) for 734 florists, verified read-back. New GET florals/benchmarks (api 560, static state medians/IQR). Rollback: push api119_florals_v1 / fn83_florals_v1. Smoke: NY florists 76; min<=5k 67 (7 excl. unknown); venue/photo unchanged.",
-     "source": "xano",
-     "ref": "ep119 + fn83 florals v2; table 11"
-    },
-    {
-     "date": "2026-10-31",
-     "what": "Texas-only Forever $89 BUILT, switch OFF: fn63 compute_upgrade_offer pushed with a Texas-only block gated on table 17 Product_ID 13 (verified on test accounts: Texas-only -> texas_only_cohort true, price still $135 while parked; Texas+NY / NY / MD / no-location unchanged; throwaway copy gated on 113 returned $89 for Texas-only only). Table 17 row 16 added as Product_ID 113 (parked), Stripe link PENDING (claude.ai Stripe connector not authenticated; owner creates $89 price + link under prod_Ri5UAnkrymjxZ9 with metadata.weeks 'forever weeks'). WeWeb bindings NOT published: .claude/xano_backups/texas_price_forever.js + texas_button_forever.js. Backups: fn63_pre_texas89_2026-10-31.xs, table17_pre_texas89_2026-10-31.json.",
-     "source": "xano",
-     "ref": "fn63; table 17 row 16"
-    },
-    {
-     "date": "2026-11-01",
-     "end_date": null,
-     "what": "Tulle Planner day: rec-engine deploy 5 at 14:14 UTC (pre-search opening, /rec/pdf direct PDF open, 3 picks per answer - 1aca5e9); REC_FREE_REFINES 2 -> 10 at 17:08 UTC (free users: 10 lifetime questions, then one-tap check-in bonus 1, then paywall); planner-chat component v32..latest (search scope removed, preferences 4 steps + write-in, Claude-style redesign, one-row chips, swipeable phone cards, Menu pill, tally in composer, tour ids, startMessage) - owner activates/publishes; WeWeb editor (unpublished until owner publishes): Budget/Cost tools sub-items in the mobile menu, inner-scroll layout so the tab row stays on phones, 'Ask Tulle about this venue/vendor' buttons on both vendor pages linking /assistant?ask=, Assistant intro tour rewritten to 4 steps. Read: planner questions per new member + PDF opens from the planner, opening latency (pre-search), free->paid conversion at the new 10-question limit.",
-     "source": "rec-engine",
-     "ref": "1aca5e9; REC_FREE_REFINES 10"
-    },
-    {
-     "date": "2026-11-09",
-     "end_date": null,
-     "what": "PI first-vendor-free LIVE 14:12 UTC (ep230; see EXP-2026-11-pi-first-vendor-free). Editor, pending publish: auto tours = ONLY Discovery after onboarding + vendor page tour (one step on the pricing PDFs, venue and other-vendor pages); Planner + My wedding intros auto OFF (picker only) - final owner call 2026-11-09 ~15:10 UTC; locked venue PI block 'PI Locked State Averages' (state median, middle-50% bar, blurred This venue; component averages stay paid-only); ww-planner-chat 4586d2b (Ask Tulle question survives the Planner mounting the chat twice) - owner activates.",
-     "source": "xano",
-     "ref": "ep230"
-    }
-   ],
-   "history": [
-    {
-     "date": "2026-10-27",
-     "p_beat": 1.0,
-     "n_control": 129,
-     "n_treatment": 128
-    },
-    {
-     "date": "2026-10-28",
-     "p_beat": 1.0,
-     "n_control": 258,
-     "n_treatment": 256
-    },
-    {
-     "date": "2026-10-29",
-     "p_beat": 1.0,
-     "n_control": 388,
-     "n_treatment": 385
-    },
-    {
-     "date": "2026-10-30",
-     "p_beat": 1.0,
-     "n_control": 517,
-     "n_treatment": 513
-    },
-    {
-     "date": "2026-10-31",
-     "p_beat": 1.0,
-     "n_control": 646,
-     "n_treatment": 641
-    },
-    {
-     "date": "2026-11-01",
-     "p_beat": 1.0,
-     "n_control": 776,
-     "n_treatment": 770
-    },
-    {
-     "date": "2026-11-02",
-     "p_beat": 1.0,
-     "n_control": 905,
-     "n_treatment": 898
-    },
-    {
-     "date": "2026-11-03",
-     "p_beat": 1.0,
-     "n_control": 1034,
-     "n_treatment": 1027
-    },
-    {
-     "date": "2026-11-04",
-     "p_beat": 1.0,
-     "n_control": 1164,
-     "n_treatment": 1155
-    },
-    {
-     "date": "2026-11-05",
-     "p_beat": 1.0,
-     "n_control": 1293,
-     "n_treatment": 1283
-    },
-    {
-     "date": "2026-11-06",
-     "p_beat": 1.0,
-     "n_control": 1422,
-     "n_treatment": 1412
-    },
-    {
-     "date": "2026-11-07",
-     "p_beat": 1.0,
-     "n_control": 1552,
-     "n_treatment": 1540
-    },
-    {
-     "date": "2026-11-08",
-     "p_beat": 1.0,
-     "n_control": 1681,
-     "n_treatment": 1668
-    },
-    {
-     "date": "2026-11-09",
-     "p_beat": 1.0,
-     "n_control": 1810,
-     "n_treatment": 1797
-    },
-    {
-     "date": "2026-11-10",
-     "p_beat": 1.0,
-     "n_control": 1940,
-     "n_treatment": 1925
-    },
-    {
-     "date": "2026-11-11",
-     "p_beat": 1.0,
-     "n_control": 2069,
-     "n_treatment": 2054
-    },
-    {
-     "date": "2026-11-12",
-     "p_beat": 1.0,
-     "n_control": 2198,
-     "n_treatment": 2182
-    },
-    {
-     "date": "2026-11-13",
-     "p_beat": 1.0,
-     "n_control": 2328,
-     "n_treatment": 2310
-    },
-    {
-     "date": "2026-11-14",
-     "p_beat": 1.0,
-     "n_control": 2457,
-     "n_treatment": 2439
-    },
-    {
-     "date": "2026-11-15",
-     "p_beat": 1.0,
-     "n_control": 2586,
-     "n_treatment": 2567
-    },
-    {
-     "date": "2026-11-16",
-     "p_beat": 1.0,
-     "n_control": 2716,
-     "n_treatment": 2695
-    },
-    {
-     "date": "2026-11-17",
-     "p_beat": 1.0,
-     "n_control": 2845,
-     "n_treatment": 2824
-    },
-    {
-     "date": "2026-11-18",
-     "p_beat": 1.0,
-     "n_control": 2974,
-     "n_treatment": 2952
-    }
-   ]
   },
   {
    "id": "EXP-2026-10-chat-cost-cards",
@@ -2381,6 +1032,10 @@
      "note": "Started. Rollback: set REC_COST_TOOLS_IN_CHAT=0 on Railway rec-engine."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Cost cards inside Tulle Planner chat answers (estimate / split / compare / budget)",
     "what_changed": "Planner chat answers carry cost cards (estimate / split / compare / budget) as charts.",
@@ -2503,7 +1158,7 @@
    "health": "manual_overdue",
    "stale": true,
    "action": "Read it out",
-   "reason": "No results[] readout for 24 days",
+   "reason": "No readout for 24 days",
    "days_running": 24,
    "days_left": 36,
    "progress": 0.4,
@@ -2532,6 +1187,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -2652,13 +1309,33 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": "2026-12-25",
+   "max_end_date": "2027-01-24",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No structured read-out yet. Last note (2026-10-26): Started. Rollback: set REC_COST_TOOLS_IN_CHAT=0 on Railway rec-engine. No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Cost cards inside Tulle Planner chat answers (estimate / split / compare / budget)' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
    "id": "EXP-2026-10-next-step-chips",
    "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
-   "status": "live",
-   "lifecycle": "live",
+   "status": "paused",
+   "lifecycle": "paused",
    "tier": "ux",
    "tier_effective": "ux",
    "themes": [
@@ -2688,7 +1365,16 @@
      "message": "Guardrail needs max_drop_rel or max_rise_rel"
     }
    ],
-   "results": [],
+   "results": [
+    {
+     "date": "2026-11-19",
+     "note": "Switched OFF 2026-11-07 as a side effect of open-ended replies (rec e80a904, REC_OPEN_ENDED default on). Status set to paused 2026-11-19: owner to resume or shelve."
+    }
+   ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
     "what_changed": "Next-step planning chips and action chips (Open Cost tools / Open my budget / Add a quote from a PDF) on Planner answers.",
@@ -2943,17 +1629,17 @@
      }
     }
    },
-   "health": "no_data",
-   "stale": true,
-   "action": "Check tracking / is it switched on?",
-   "reason": "No new exposure for 3 days",
+   "health": "paused",
+   "stale": false,
+   "action": "Resume or shelve",
+   "reason": "Paused 12 day(s)",
    "days_running": 24,
    "days_left": 4,
    "progress": 1.0,
    "progress_basis": "sample",
    "flags": [
-    "no_data",
-    "spec_incomplete"
+    "spec_incomplete",
+    "paused"
    ],
    "overdue_days": null,
    "projected_days": 24,
@@ -2992,7 +1678,9 @@
     }
    ],
    "failed_runs": 0,
-   "paused_days": null,
+   "paused_days": 12,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -3101,6 +1789,50 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": "2026-11-23",
+   "max_end_date": "2026-12-07",
+   "decided_on": null,
+   "paused_ranges": [
+    {
+     "from": "2026-11-07",
+     "to": null
+    }
+   ],
+   "verdict": {
+    "result": {
+     "label": "No clear difference",
+     "tone": "neutral"
+    },
+    "tldr": "Paused for 12 day(s). Last note (2026-11-19): Switched OFF 2026-11-07 as a side effect of open-ended replies (rec e80a904, REC_OPEN_ENDED default on). Status set to paused 2026-11-19: owner to resume or shelve.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Control",
+     "after_label": "New version",
+     "before": "37 of 412 (9%)",
+     "after": "41 of 405 (10.1%)",
+     "before_rate": 0.089806,
+     "after_rate": 0.101235,
+     "before_n": 412,
+     "after_n": 405,
+     "baseline": {
+      "label": "Control",
+      "value": "37 of 412 (9%)",
+      "rate": 0.089806,
+      "source": "readout control"
+     },
+     "p_beat": 0.7099,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "resume_or_shelve",
+     "label": "Resume or shelve",
+     "why": "Paused recently; decide whether it comes back."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": [
     {
      "date": "2026-10-27",
@@ -3282,6 +2014,10 @@
      "note": "Baseline answer latency (283 real requests 10-18..10-25): p50 ~12.6s, p90 23-24s; model 43%, Xano 55%."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "reliability",
+   "bucket_source": "derived",
    "what": {
     "name": "Live progress labels + Stop button on planner answers",
     "what_changed": "Planner answers show live progress labels and a Stop button.",
@@ -3548,6 +2284,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-22",
@@ -3621,6 +2359,26 @@
      "ref": "1aca5e9; REC_FREE_REFINES 10"
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": "2026-11-26",
+   "max_end_date": "2026-12-25",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "Nothing to read yet. Last note (2026-10-25): Baseline answer latency (283 real requests 10-18..10-25): p50 ~12.6s, p90 23-24s; model 43%, Xano 55%.",
+    "numbers": null,
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Complete the spec (or shelve)",
+     "why": "Missing rollback; without them it can't be read out or called."
+    },
+    "unstick": "Ask Claude to fill rollback from the launch notes (~10 min), or shelve it if it no longer matters.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -3692,6 +2450,10 @@
      "note": "Two misses from #feedback 11-17 fixed behind REC_NAME_MATCH_V2 (on ~05:36 UTC): 'Holly Hedge' (Forever couple, chat 2544) returned not_found for a venue we have (listing 'HollyHedge Estate'); two Miami area requests (chat 2565) were posted as missing venues. Watch: rec_venue_request posts that are area phrases should stop; area messages now cost a model call."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "reliability",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner: instant venue lookup by name (no model)",
     "what_changed": "Planner answers named-venue questions instantly from search, with no model call; misses are logged.",
@@ -3856,6 +2618,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-22",
@@ -3944,6 +2708,26 @@
      "ref": "rec-engine b5f3edd + REC_VENUE_LOG etc"
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": "2026-11-02",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No structured read-out yet. Last note (2026-11-18): Two misses from #feedback 11-17 fixed behind REC_NAME_MATCH_V2 (on ~05:36 UTC): 'Holly Hedge' (Forever couple, chat 2544) returned not_found for a venue we have (listing 'HollyHedge Estate'); two Miami area requests (ch… No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Planner: instant venue lookup by name (no model)' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -4017,6 +2801,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner: free users' price questions -> answer + PDF first + upgrade card (no refusal); no-views users get the card on the first answer",
     "what_changed": "Free couples' price questions get an answer, a PDF first and an upgrade card instead of a refusal; couples with no free views get the card on the first answer.",
@@ -4177,6 +2965,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -4288,13 +3078,33 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": "2026-11-09",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers recorded yet, and no read-out since launch. No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Planner: free users' price questions -> answer + PDF first + upgrade card (no refusal); no-views users get the card on the first answer' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
    "id": "EXP-2026-10-planner-profile-questions",
    "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
-   "status": "live",
-   "lifecycle": "live",
+   "status": "paused",
+   "lifecycle": "paused",
    "tier": "ux",
    "tier_effective": "ux",
    "themes": [
@@ -4354,7 +3164,16 @@
      "message": "pre_post needs assignment.pre = [start, end]"
     }
    ],
-   "results": [],
+   "results": [
+    {
+     "date": "2026-11-19",
+     "note": "Switched OFF 2026-11-07 as a side effect of open-ended replies (rec e80a904: profile questions only when not OPEN_ENDED). Status set to paused 2026-11-19: owner to resume or shelve."
+    }
+   ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
     "what_changed": "Thin profiles get up to 2 tap questions (guests, area, style) before picks; answers are saved and cost no free question.",
@@ -4480,19 +3299,19 @@
     "arms": null,
     "note": "no results[] entry with counts"
    },
-   "health": "needs_call",
-   "stale": true,
-   "action": "Owner call due",
-   "reason": "Review date 2026-11-09 passed 10 day(s) ago, no decision",
+   "health": "paused",
+   "stale": false,
+   "action": "Resume or shelve",
+   "reason": "Paused 12 day(s)",
    "days_running": 24,
    "days_left": 0,
    "progress": 1.0,
    "progress_basis": "time",
    "flags": [
     "needs_call",
-    "manual_overdue",
     "confounded",
-    "spec_incomplete"
+    "spec_incomplete",
+    "paused"
    ],
    "overdue_days": 10,
    "projected_days": null,
@@ -4514,7 +3333,9 @@
     }
    ],
    "failed_runs": 0,
-   "paused_days": null,
+   "paused_days": 12,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -4605,6 +3426,31 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": "2026-11-09",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [
+    {
+     "from": "2026-11-07",
+     "to": null
+    }
+   ],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "Paused for 12 day(s). Last note (2026-11-19): Switched OFF 2026-11-07 as a side effect of open-ended replies (rec e80a904: profile questions only when not OPEN_ENDED). Status set to paused 2026-11-19: owner to resume or shelv…",
+    "numbers": null,
+    "recommend": {
+     "call": "resume_or_shelve",
+     "label": "Resume or shelve",
+     "why": "Paused recently; decide whether it comes back."
+    },
+    "unstick": "Owner: say resume or shelve with a Decision note. Resuming means switching it back on (Claude, ~5 min); shelving needs nothing else.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -4672,6 +3518,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner: florists, hair & makeup, caterers, planners as listings (no prices)",
     "what_changed": "Planner answers florist, hair & makeup, caterer and planner questions with real listings (no prices).",
@@ -4834,6 +3684,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -4908,6 +3760,26 @@
      "ref": "1aca5e9; REC_FREE_REFINES 10"
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": "2026-11-09",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers recorded yet, and no read-out since launch. No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Planner: florists, hair & makeup, caterers, planners as listings (no prices)' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -4975,6 +3847,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "reliability",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner speed: pricing cache (1 h, tier-safe) + Railway search 50% + per-turn timing",
     "what_changed": "Planner speed: 1 h tier-safe pricing cache + Railway search 50% + per-turn timing.",
@@ -5136,6 +4012,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-22",
@@ -5171,6 +4049,43 @@
      "ref": "1aca5e9; REC_FREE_REFINES 10"
     }
    ],
+   "start_date": "2026-10-26",
+   "review_date": "2026-11-02",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers recorded yet, and no read-out since launch.",
+    "numbers": {
+     "unit": "count",
+     "kind": null,
+     "before_label": null,
+     "after_label": null,
+     "before": null,
+     "after": null,
+     "before_rate": null,
+     "after_rate": null,
+     "baseline": {
+      "label": "Baseline (registry)",
+      "value": "12.3",
+      "rate": 12.3,
+      "source": "registry baseline"
+     },
+     "p_beat": null,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Planner speed: pricing cache (1 h, tier-safe) + Railway search 50% + per-turn timing' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -5256,6 +4171,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "Vendor pages list PDFs Primary first, then newest year (was oldest upload first)",
     "what_changed": "Vendor pages list PDFs Primary first, then newest year (was oldest upload first).",
@@ -5370,6 +4289,26 @@
    "action": null,
    "reason": null,
    "overlapping_changes": [],
+   "start_date": null,
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Not live yet.",
+    "numbers": null,
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Finish the spec before launch",
+     "why": "Missing metric.mde_rel, metric.baseline; the launch check fails until they are set."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -5448,6 +4387,10 @@
      "note": "Live check, owner account 14998 (Forever, 5 saved): fresh opening 9.2 s with prefetch 1.4 s (cold caches); same-day repeat reused in 0.87 s client time, no rec_usage row, counters unchanged; after a context change a fresh run with prefetch 2 ms (2 benchmark + 5 card cache hits) but 18.1 s because the search-api froze (its own breaker 503, Meili ReadTimeout) and ep119 took 12.1 s; our breaker opened and the next search skipped Railway (breaker_open)."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "reliability",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner speed 2a: prefetch caches (benchmarks + saved cards) + Railway search 100% with breaker + reuse today's opening",
     "what_changed": "Planner speed 2a: prefetch caches (benchmarks + saved cards), Railway search 100% with a breaker, and today's opening reused.",
@@ -5637,6 +4580,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-26",
@@ -5664,13 +4609,50 @@
      "ref": "1aca5e9; REC_FREE_REFINES 10"
     }
    ],
+   "start_date": "2026-10-27",
+   "review_date": "2026-10-28",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No structured read-out yet. Last note (2026-10-27): Live check, owner account 14998 (Forever, 5 saved): fresh opening 9.2 s with prefetch 1.4 s (cold caches); same-day repeat reused in 0.87 s client time, no rec_usage row, counters unchanged; after a context change a fre…",
+    "numbers": {
+     "unit": "count",
+     "kind": null,
+     "before_label": null,
+     "after_label": null,
+     "before": null,
+     "after": null,
+     "before_rate": null,
+     "after_rate": null,
+     "baseline": {
+      "label": "Baseline (registry)",
+      "value": "12.7",
+      "rate": 12.7,
+      "source": "registry baseline"
+     },
+     "p_beat": null,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Planner speed 2a: prefetch caches (benchmarks + saved cards) + Railway search 100% with breaker + reuse today's opening' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
    "id": "EXP-2026-11-texas-only-forever-89",
    "name": "Texas-only Forever $89",
-   "status": "planned",
-   "lifecycle": "planned",
+   "status": "live",
+   "lifecycle": "live",
    "tier": "money",
    "tier_effective": "money",
    "themes": [
@@ -5729,7 +4711,16 @@
      "message": "pre_post needs assignment.pre = [start, end]"
     }
    ],
-   "results": [],
+   "results": [
+    {
+     "date": "2026-11-19",
+     "note": "Live since 2026-11-03 ~06:00 UTC (Xano table 17 row 16, Product_ID 13) but was still marked planned. Status corrected 2026-11-19; never read out."
+    }
+   ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "Texas-only Forever $89",
     "what_changed": "Couples whose wedding location is Texas and only Texas see Forever at $89 (vs $135).",
@@ -5795,7 +4786,7 @@
     "goal_v1": "Owner request 2026-10-31: couples whose wedding location is Texas and ONLY Texas see Forever at $89 (vs $135 Rest+TX baseline). Does the lower price lift Texas-only Forever buys/day and revenue per sign-up?"
    },
    "timeline": {
-    "start_date": null,
+    "start_date": "2026-11-03",
     "planned_days": 21,
     "review_date": null,
     "max_days": null,
@@ -5868,7 +4859,7 @@
      "goal_v1": "Owner request 2026-10-31: couples whose wedding location is Texas and ONLY Texas see Forever at $89 (vs $135 Rest+TX baseline). Does the lower price lift Texas-only Forever buys/day and revenue per sign-up?"
     },
     "timeline": {
-     "start_date": null,
+     "start_date": "2026-11-03",
      "planned_days": 21,
      "review_date": null,
      "max_days": null,
@@ -5876,277 +4867,60 @@
     },
     "reporting": "manual"
    },
-   "readout": null,
-   "health": null,
-   "stale": false,
-   "action": null,
-   "reason": null,
-   "overlapping_changes": [],
-   "history": []
-  },
-  {
-   "id": "EXP-2026-11-planner-my-wedding-plan",
-   "name": "Planner 'My wedding' plan (launch to everyone, no holdout)",
-   "status": "live",
-   "lifecycle": "live",
-   "tier": "ux",
-   "tier_effective": "ux",
-   "themes": [
-    "planner",
-    "engagement",
-    "retention"
-   ],
-   "framework_version": 2,
-   "legacy": false,
-   "assignment_type": "rollout",
-   "spec_issues": [
-    {
-     "severity": "warn",
-     "question": 1,
-     "field": "links",
-     "message": "No links (commit, publish id, endpoint)"
-    },
-    {
-     "severity": "warn",
-     "question": 3,
-     "field": "hypothesis",
-     "message": "Hypothesis should read \"If we X, then Y moves Z, because W\""
-    }
-   ],
-   "results": [
-    {
-     "date": "2026-11-11",
-     "note": "Registry fix: launched 2026-11-08 (My wedding v3 server live; REC_PLAN_AB_PCT=100, adoption shown daily by ab_report since 11-08). Call date set to 2 weeks per the plan."
-    }
-   ],
-   "what": {
-    "name": "Planner 'My wedding' plan (launch to everyone, no holdout)",
-    "what_changed": "'Add to my wedding' on every Planner card, a 7-slot plan sheet and one 'next for your wedding' step (Xano table 90).",
-    "links": []
-   },
-   "impacts": {
-    "surfaces": [
-     "rec-engine",
-     "weweb:planner",
-     "xano:table90"
-    ],
-    "audience": {
-     "segment": "every couple who opens My wedding",
-     "est_daily_exposed": 90
-    }
-   },
-   "hypothesis": "If couples can build their wedding plan inside the Planner, they use the Planner more, open more pricing PDFs and pay more often.",
-   "tests": "Does a plan sheet in the Planner raise Planner use, PDF opens and purchases?",
-   "success_metric": {
-    "metric": {
-     "key": "rollout_adoption",
-     "direction": "increase",
-     "label": "adoption (rollout)"
-    },
-    "guardrails": [
-     {
-      "key": "purchases_per_day",
-      "max_drop_rel": 0.25,
-      "label": "purchases per day"
-     }
-    ],
-    "decision_rule": {
-     "ship_p": 0.9,
-     "stop_p": 0.1,
-     "max_loss": 0.005,
-     "futility_min_progress": 0.5
-    },
-    "sample_plan": {
-     "n_per_arm": null,
-     "days_needed": null,
-     "d_abs": null,
-     "baseline": null,
-     "daily_exposed_per_arm": null,
-     "reason": "no baseline rate"
-    },
-    "primary_metric_v1": "Share of Planner couples who add to their plan, couples with 2+ slots, questions per couple, share of free couples opening a PDF, purchases - daily in the compact brief (ab_report.adoption_block).",
-    "goal_v1": "Owner request 2026-11-07: let couples build their wedding inside the Planner - 'Add to my wedding' on every card, a 7-slot plan sheet, and one 'next for your wedding' step once engaged. Free for everyone. Does it make couples use the Planner more, open more pricing PDFs and pay more often?"
-   },
-   "timeline": {
-    "start_date": "2026-11-08",
-    "planned_days": 21,
-    "review_date": "2026-11-29",
-    "max_days": 42,
-    "end_date": null
-   },
-   "reporting": "auto",
-   "seven": {
-    "what": {
-     "name": "Planner 'My wedding' plan (launch to everyone, no holdout)",
-     "what_changed": "'Add to my wedding' on every Planner card, a 7-slot plan sheet and one 'next for your wedding' step (Xano table 90).",
-     "links": []
-    },
-    "impacts": {
-     "surfaces": [
-      "rec-engine",
-      "weweb:planner",
-      "xano:table90"
-     ],
-     "audience": {
-      "segment": "every couple who opens My wedding",
-      "est_daily_exposed": 90
-     }
-    },
-    "hypothesis": "If couples can build their wedding plan inside the Planner, they use the Planner more, open more pricing PDFs and pay more often.",
-    "tests": "Does a plan sheet in the Planner raise Planner use, PDF opens and purchases?",
-    "success_metric": {
-     "metric": {
-      "key": "rollout_adoption",
-      "direction": "increase",
-      "label": "adoption (rollout)"
-     },
-     "guardrails": [
-      {
-       "key": "purchases_per_day",
-       "max_drop_rel": 0.25,
-       "label": "purchases per day"
-      }
-     ],
-     "decision_rule": {
-      "ship_p": 0.9,
-      "stop_p": 0.1,
-      "max_loss": 0.005,
-      "futility_min_progress": 0.5
-     },
-     "sample_plan": {
-      "n_per_arm": null,
-      "days_needed": null,
-      "d_abs": null,
-      "baseline": null,
-      "daily_exposed_per_arm": null,
-      "reason": "no baseline rate"
-     },
-     "primary_metric_v1": "Share of Planner couples who add to their plan, couples with 2+ slots, questions per couple, share of free couples opening a PDF, purchases - daily in the compact brief (ab_report.adoption_block).",
-     "goal_v1": "Owner request 2026-11-07: let couples build their wedding inside the Planner - 'Add to my wedding' on every card, a 7-slot plan sheet, and one 'next for your wedding' step once engaged. Free for everyone. Does it make couples use the Planner more, open more pricing PDFs and pay more often?"
-    },
-    "timeline": {
-     "start_date": "2026-11-08",
-     "planned_days": 21,
-     "review_date": "2026-11-29",
-     "max_days": 42,
-     "end_date": null
-    },
-    "reporting": "auto"
-   },
    "readout": {
-    "exposure_by_day": [
-     {
-      "date": "2026-11-08",
-      "n": 83
-     },
-     {
-      "date": "2026-11-09",
-      "n": 93
-     },
-     {
-      "date": "2026-11-10",
-      "n": 93
-     },
-     {
-      "date": "2026-11-11",
-      "n": 98
-     },
-     {
-      "date": "2026-11-12",
-      "n": 70
-     },
-     {
-      "date": "2026-11-13",
-      "n": 103
-     },
-     {
-      "date": "2026-11-14",
-      "n": 84
-     },
-     {
-      "date": "2026-11-15",
-      "n": 93
-     },
-     {
-      "date": "2026-11-16",
-      "n": 93
-     },
-     {
-      "date": "2026-11-17",
-      "n": 101
-     },
-     {
-      "date": "2026-11-18",
-      "n": 69
-     }
-    ],
-    "guardrails": [
-     {
-      "key": "purchases_per_day",
-      "count": {
-       "pre": {
-        "count": 96,
-        "days": 14
-       },
-       "post": {
-        "count": 79,
-        "days": 11
-       }
-      }
-     }
-    ],
-    "computed_at": "2026-11-19T12:00:00Z",
+    "source": "manual",
+    "computed_at": null,
     "error": null,
-    "source": "auto"
+    "arms": null,
+    "note": "no results[] entry with counts"
    },
-   "health": "on_track",
+   "health": "confounded",
    "stale": false,
-   "action": "Keep running, ~10 days left",
-   "reason": "day 11 of 21",
-   "days_running": 11,
-   "days_left": 10,
-   "progress": 0.5238,
+   "action": "Evidence only; consider a split test",
+   "reason": "Pre/post with 12 overlapping changes; a split test (or a quiet window with no other launches) would unconfound it",
+   "days_running": 16,
+   "days_left": 5,
+   "progress": 0.7619,
    "progress_basis": "time",
-   "flags": [],
+   "flags": [
+    "confounded",
+    "spec_incomplete"
+   ],
    "overdue_days": null,
    "projected_days": null,
    "stats": null,
-   "guardrails": [
-    {
-     "key": "purchases_per_day",
-     "breached": false,
-     "p_breach": 0.013872,
-     "p_bar": 0.9,
-     "max_drop_rel": 0.25,
-     "max_rise_rel": null,
-     "error": null,
-     "manual": false
-    }
-   ],
-   "evidence_label": null,
-   "exposure_per_arm_day": 87.571,
+   "guardrails": [],
+   "evidence_label": "evidence, not proof",
+   "exposure_per_arm_day": null,
    "decision_rule": {
-    "ship_p": 0.9,
+    "ship_p": 0.95,
     "stop_p": 0.1,
-    "max_loss": 0.005,
+    "max_loss": 0.002,
     "futility_min_progress": 0.5
    },
    "guardrail_status": [
     {
-     "key": "purchases_per_day",
-     "status": "ok",
-     "reason": "P=0.013872 <= 0.9"
+     "key": "manual",
+     "status": "manual",
+     "reason": "read out by hand"
+    },
+    {
+     "key": "revenue_per_day",
+     "status": "manual",
+     "reason": "read out by hand"
     }
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
-     "date": "2026-10-22",
-     "end_date": "2026-10-24",
-     "what": "Tulle Assistant outage (Anthropic 401), 40 users",
-     "source": "rec-engine",
-     "ref": "Anthropic key revoked"
+     "date": "2026-10-14",
+     "end_date": null,
+     "what": "Prices raised (NY/hub), 20% offer, +2 bonus views, assistant free mode - one publish",
+     "source": "weweb+xano",
+     "ref": "10-14 publish"
     },
     {
      "date": "2026-10-24",
@@ -6154,13 +4928,6 @@
      "what": "Free views survive account deletion; terms_version + TC_Agreement_Time stamped on sign-up",
      "source": "xano",
      "ref": "ep20/ep2"
-    },
-    {
-     "date": "2026-10-24",
-     "end_date": null,
-     "what": "Assistant free questions 1 -> 2",
-     "source": "railway-var",
-     "ref": "REC_FREE_REFINES=2"
     },
     {
      "date": "2026-10-26",
@@ -6184,33 +4951,9 @@
     },
     {
      "date": "2026-10-26",
-     "what": "Railway search 20% -> 50% (Discovery + Planner) with a 2-min circuit breaker and a 2 s Xano wait (22:03-22:20 UTC)",
-     "source": "railway-var",
-     "ref": "REC_RAILWAY_SEARCH_PCT / ep119 $rw_pct 50"
-    },
-    {
-     "date": "2026-10-26",
-     "what": "Planner v3 deployed (rec-engine c4ec678, 23:18 UTC): instant name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache, per-turn timing",
-     "source": "rec-engine",
-     "ref": "c4ec678"
-    },
-    {
-     "date": "2026-10-26",
-     "what": "Planner free users: PDF first where they can open one, upgrade card on the first answer when they have no free views (rec-engine ac172c7, 23:33 UTC)",
-     "source": "rec-engine",
-     "ref": "ac172c7"
-    },
-    {
-     "date": "2026-10-26",
      "what": "WeWeb publish 23:43 UTC (7:43 PM ET): Planner upgrade card + 'Request this venue' button + tracking",
      "source": "weweb",
      "ref": "publish 2026-10-26 23:43 UTC"
-    },
-    {
-     "date": "2026-10-27",
-     "what": "rec-engine 12add68 05:53 UTC: Planner prefetch caches, Railway search breaker, reuse today's opening; REC_RAILWAY_SEARCH_PCT 50 -> 100 (Planner only) 05:54 UTC",
-     "source": "rec-engine",
-     "ref": "12add68; REC_RAILWAY_SEARCH_PCT 100"
     },
     {
      "date": "2026-10-27",
@@ -6237,13 +4980,6 @@
      "ref": "fn63; table 17 row 16"
     },
     {
-     "date": "2026-11-01",
-     "end_date": null,
-     "what": "Tulle Planner day: rec-engine deploy 5 at 14:14 UTC (pre-search opening, /rec/pdf direct PDF open, 3 picks per answer - 1aca5e9); REC_FREE_REFINES 2 -> 10 at 17:08 UTC (free users: 10 lifetime questions, then one-tap check-in bonus 1, then paywall); planner-chat component v32..latest (search scope removed, preferences 4 steps + write-in, Claude-style redesign, one-row chips, swipeable phone cards, Menu pill, tally in composer, tour ids, startMessage) - owner activates/publishes; WeWeb editor (unpublished until owner publishes): Budget/Cost tools sub-items in the mobile menu, inner-scroll layout so the tab row stays on phones, 'Ask Tulle about this venue/vendor' buttons on both vendor pages linking /assistant?ask=, Assistant intro tour rewritten to 4 steps. Read: planner questions per new member + PDF opens from the planner, opening latency (pre-search), free->paid conversion at the new 10-question limit.",
-     "source": "rec-engine",
-     "ref": "1aca5e9; REC_FREE_REFINES 10"
-    },
-    {
      "date": "2026-11-09",
      "end_date": null,
      "what": "PI first-vendor-free LIVE 14:12 UTC (ep230; see EXP-2026-11-pi-first-vendor-free). Editor, pending publish: auto tours = ONLY Discovery after onboarding + vendor page tour (one step on the pricing PDFs, venue and other-vendor pages); Planner + My wedding intros auto OFF (picker only) - final owner call 2026-11-09 ~15:10 UTC; locked venue PI block 'PI Locked State Averages' (state median, middle-50% bar, blurred This venue; component averages stay paid-only); ww-planner-chat 4586d2b (Ask Tulle question survives the Planner mounting the chat twice) - owner activates.",
@@ -6251,71 +4987,58 @@
      "ref": "ep230"
     },
     {
-     "date": "2026-11-15",
-     "what": "WeWeb publish ~04:40 UTC: pricing page copy + Planner component 23d878c (PDF-count link, free-question note, quote check for everyone, stage starters) + editor cleanup (18 hidden elements, 20 unused library components removed)",
+     "date": "2026-10-28",
+     "what": "Free-PDF-view leak: ep21 '0 == null' meant free views never reached 0, so free couples kept opening PDFs past 3 (fixed 2026-11-09 04:35 UTC). Depressed purchases (~3.4/day, $303/day).",
      "affects": [
-      "EXP-2026-11-ask-tulle-bubble",
-      "EXP-2026-11-free-daily-question",
-      "EXP-2026-11-save-offer-60-forever",
-      "EXP-2026-11-planner-my-wedding-plan"
-     ],
-     "source": "weweb",
-     "ref": "publish ~04:40 UTC, cacheVersion 1397; ww-planner-chat 23d878c"
-    },
-    {
-     "date": "2026-11-17",
-     "what": "rec-engine REC_WHOLE_WEDDING_PCT 0 -> 100 at 16:20 UTC (whole-wedding flow for every couple; visible after the next WeWeb publish with ww-planner-chat 03d4ff5+ active). Server fixes same day: 3780d11 (locked-plan sentence per reader), d1483bc (row photos).",
-     "affects": [
-      "EXP-2026-11-whole-wedding-planner",
-      "EXP-2026-11-planner-my-wedding-plan",
-      "EXP-2026-11-ask-tulle-bubble",
-      "EXP-2026-11-free-daily-question",
-      "EXP-2026-11-pi-first-vendor-free",
-      "EXP-2026-11-quote-check-everyone"
-     ],
-     "source": "railway-var",
-     "ref": "REC_WHOLE_WEDDING_PCT 100"
-    },
-    {
-     "date": "2026-11-17",
-     "what": "WeWeb publish 16:47 UTC (cacheVersion 1398), verified live: Plan my wedding for every couple (ww-planner-chat 03d4ff5), Tulle Price Report replaces the Pricing Intelligence card on both vendor pages (ww-price-report 888aaf3, old card hidden), Meta pixel 4020134954967495 in head, landing pages /lp/real-prices /lp/new-york /lp/ask-tulle, Back to Planner on My wedding, My wedding vendor link sends vendor_idx, Ask Tulle removed from vendor-page phone sticky bar.",
-     "affects": [
-      "EXP-2026-11-whole-wedding-planner",
-      "EXP-2026-11-pi-first-vendor-free",
-      "EXP-2026-11-ask-tulle-bubble",
-      "EXP-2026-11-planner-my-wedding-plan",
-      "EXP-2026-11-pricing-page-copy",
-      "EXP-2026-11-free-daily-question",
-      "EXP-2026-11-save-offer-60-forever"
-     ],
-     "source": "weweb",
-     "ref": "cacheVersion 1398"
-    },
-    {
-     "date": "2026-11-08",
-     "what": "My wedding plan on for every couple (fb52e54, 02:44 UTC) then ROLLED BACK (REC_PLAN_AB_PCT=0, 1f994f7, ~03:21 UTC); free couples = 1 question/day (REC_FREE_DAILY_MODE=1, REFINES=1, FREE_PRICING=none); 'Next for your wedding' off.",
-     "affects": [
-      "EXP-2026-11-planner-my-wedding-plan",
+      "EXP-2026-10-signup-checkbox",
+      "EXP-2026-08-pdf-warning-view3",
+      "EXP-2026-11-limit-cards-plans-copy",
       "EXP-2026-10-planner-price-upsell",
-      "EXP-2026-11-free-daily-question"
+      "EXP-2026-11-texas-only-forever-89"
      ],
-     "source": "railway-var",
-     "ref": "rec-engine fb52e54 / 1f994f7 / 29dfb81 (memory index_overflow)",
-     "backfilled": true
-    },
-    {
-     "date": "2026-11-08",
-     "what": "Native My wedding page v3 (existing Budget-tab packages shown, server 8434d1c 20:55 UTC); Budget and Cost tools tabs gone; Split my budget removed from the Planner (ww-planner-chat 9932264); '/' menu + Tools button; quote check (Forever only then).",
-     "affects": [
-      "EXP-2026-10-chat-cost-cards",
-      "EXP-2026-10-next-step-chips",
-      "EXP-2026-11-planner-my-wedding-plan"
-     ],
-     "source": "rec-engine",
-     "ref": "rec-engine 8434d1c; ww-planner-chat 9932264 / f51794c",
-     "backfilled": true
+     "source": "xano",
+     "ref": "ep21 fix 2026-11-09 04:35 UTC (memory index_overflow)",
+     "backfilled": true,
+     "end_date": "2026-11-09"
     }
    ],
+   "start_date": "2026-11-03",
+   "review_date": "2026-11-24",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No structured read-out yet. Last note (2026-11-19): Live since 2026-11-03 ~06:00 UTC (Xano table 17 row 16, Product_ID 13) but was still marked planned. Status corrected 2026-11-19; never read out.",
+    "numbers": {
+     "unit": "rate",
+     "kind": null,
+     "before_label": null,
+     "after_label": null,
+     "before": null,
+     "after": null,
+     "before_rate": null,
+     "after_rate": null,
+     "baseline": {
+      "label": "Baseline (registry)",
+      "value": "6%",
+      "rate": 0.06,
+      "source": "registry baseline"
+     },
+     "p_beat": null,
+     "bar": 0.95
+    },
+    "recommend": {
+     "call": "keep_running",
+     "label": "Keep running (5 day(s) left)",
+     "why": "Read it out at the review date."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -6356,6 +5079,10 @@
      "note": "Table 79 read (internal excluded). New free couples who typed a question again within 3 days: 2 of 83 after launch (first free question 11-09..11-11) vs 9 of 216 before (10-21..11-05) - about 2% vs 4%, both tiny. Free couples asking on 2+ different days: 1 of 110 (11-09..11-15) vs 8 of 271 (10-25..11-08). 21 couples used all 3 lifetime questions after launch; at most 1 came back for a daily one. Confounds: Planner questions fell ~80% from 11-11 (Ask Tulle bubble replaced the Planner entry), and the 'come back tomorrow' note only went live 11-15. No sign yet that the daily question brings couples back; owner: too early to call - re-read after the note has run a week."
     }
    ],
+   "in_rotation": true,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner: free couples get 3 questions for life, then 1 free question a day (no accumulation)",
     "what_changed": "Free couples get 3 Planner questions for life, then 1 free question per UTC day (no accumulation).",
@@ -6619,6 +5346,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-22",
@@ -6806,6 +5535,45 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-11-09",
+   "review_date": "2026-11-23",
+   "max_end_date": "2026-12-21",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No clear difference",
+     "tone": "neutral"
+    },
+    "tldr": "Started at 4.2% (9 of 216) of new free Planner couples came back within 3 days; after the change 2.4% (2 of 83): 30% chance it's genuinely better; ux tests need 90%. Other changes shipped in the same window, so treat this as evidence, not proof.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Before",
+     "after_label": "After",
+     "before": "9 of 216 (4.2%)",
+     "after": "2 of 83 (2.4%)",
+     "before_rate": 0.041667,
+     "after_rate": 0.024096,
+     "before_n": 216,
+     "after_n": 83,
+     "baseline": {
+      "label": "Before",
+      "value": "9 of 216 (4.2%)",
+      "rate": 0.041667,
+      "source": "readout control"
+     },
+     "p_beat": 0.3013,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "revert",
+     "label": "Leaning worse: revert unless there's a product reason",
+     "why": "Only 30% chance it's better after its planned run."
+    },
+    "unstick": "Owner: make the call at Monday's weekly call, or now with a Decision note in the dash (1 min). Claude then updates the registry.",
+    "confidence_note": null
+   },
    "history": [
     {
      "date": "2026-11-10",
@@ -6905,6 +5673,10 @@
      "note": "Table 1 read: 10 real couples got a TT60 code since 11-11; 2 bought Forever (20%), and the owner confirms both used the code. Old 20% offer: 1 of 32 code holders paid. Bar is >= 3 buyers in ~25 offers - ahead of pace, not called yet (owner: 'this might be a win')."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "'Too expensive' save offer: 60% off Forever, 12 h, server-enforced code + email (replaces 20% / 30 min)",
     "what_changed": "The 'too expensive' save offer became 60% off Forever for 12 h with a server-enforced code and email (from 11-12 06:40 UTC also 20% off 4 weeks, stacked).",
@@ -7151,6 +5923,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-14",
@@ -7304,6 +6078,45 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-11-11",
+   "review_date": "2026-12-02",
+   "max_end_date": "2026-12-23",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Ahead",
+     "tone": "good"
+    },
+    "tldr": "'too expensive' couples who buy: started at 4.8% (10 of 210), after the change 9.3% (5 of 54): 91% chance it's genuinely better; money tests need 95%. Other changes shipped in the same window, so treat this as evidence, not proof.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Before",
+     "after_label": "After",
+     "before": "10 of 210 (4.8%)",
+     "after": "5 of 54 (9.3%)",
+     "before_rate": 0.047619,
+     "after_rate": 0.092593,
+     "before_n": 210,
+     "after_n": 54,
+     "baseline": {
+      "label": "Before",
+      "value": "10 of 210 (4.8%)",
+      "rate": 0.047619,
+      "source": "readout control"
+     },
+     "p_beat": 0.9133,
+     "bar": 0.95
+    },
+    "recommend": {
+     "call": "keep_running",
+     "label": "Keep running (13 day(s) left)",
+     "why": "Still inside its planned run; call it at the review date."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": [
     {
      "date": "2026-11-12",
@@ -7437,6 +6250,10 @@
      "note": "Baseline (table 77, internal excluded): 71 ratings all time; 5 junk comments, 4 on 5 stars; last 7 days 15 ratings avg 3.8/5."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "retention",
+   "bucket_source": "derived",
    "what": {
     "name": "NPS return card: comment optional on 4-5 stars (1-3 stars still required)",
     "what_changed": "On the blocking return-from-PDF NPS card, a comment is optional on 4-5 stars (still required on 1-3).",
@@ -7571,6 +6388,26 @@
    "action": null,
    "reason": null,
    "overlapping_changes": [],
+   "start_date": null,
+   "review_date": "2026-11-25",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Not live yet.",
+    "numbers": null,
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Finish the spec before launch",
+     "why": "Missing metric.mde_rel, guardrails; the launch check fails until they are set."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -7621,6 +6458,10 @@
      "note": "Table 79 (internal excluded): couples asking a Planner question per day 34.3 (11-04..11-10) -> 11.3 (11-11..11-17), bubble couples 3-9/day. NOT a bubble effect alone - CONFOUNDED: the same 11-11 publish removed the Discovery 'Ask Tulle Planner anything' entry block (Mixpanel rec_entry_clicked 11-43 users/day -> 0-2) and limited the bubble to Discovery + My wedding. The free 1-question/day cap (live 11-08) is not the cause: 51 / 38 couples asked on 11-09 / 11-10. The +15% bar assumed the bubble adds to the Discovery block; it replaced it. Purchases/day 11-09..11-15 = 5.86 (payment log) - owner judges on purchases. Bug: 59 of 81 bubble rows log surface 'bubble:/vendors/undefined'."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "'Ask Tulle' floating Planner chat on Discovery (Map | Ask Tulle phone dock), Membership and My wedding; empty-results banner",
     "what_changed": "A floating 'Ask Tulle' Planner chat on Discovery (Map | Ask Tulle phone dock) and My wedding, plus an empty-results banner; the Discovery 'Ask Tulle Planner anything' block was removed in the same publish.",
@@ -7874,6 +6715,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-31",
@@ -8013,6 +6856,45 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-11-11",
+   "review_date": "2026-11-18",
+   "max_end_date": "2026-12-09",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Ahead",
+     "tone": "good"
+    },
+    "tldr": "Couples who ask the Planner something: started at 8% (192 of 2400), after the change 8.9% (201 of 2250): 87% chance it's genuinely better; ux tests need 90%. Other changes shipped in the same window, so treat this as evidence, not proof.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Before",
+     "after_label": "After",
+     "before": "192 of 2400 (8%)",
+     "after": "201 of 2250 (8.9%)",
+     "before_rate": 0.08,
+     "after_rate": 0.089333,
+     "before_n": 2400,
+     "after_n": 2250,
+     "baseline": {
+      "label": "Before",
+      "value": "192 of 2400 (8%)",
+      "rate": 0.08,
+      "source": "readout control"
+     },
+     "p_beat": 0.8736,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "ship",
+     "label": "Keep the change, close as inconclusive",
+     "why": "Leaning better (87%), but a before/after read can't reach the 90% bar; nothing it protects got worse."
+    },
+    "unstick": "Owner: make the call at Monday's weekly call, or now with a Decision note in the dash (1 min). Claude then updates the registry.",
+    "confidence_note": null
+   },
    "history": [
     {
      "date": "2026-11-12",
@@ -8086,6 +6968,10 @@
      "note": "LIVE, verified in the live page data (cacheVersion 1397): new headline, 1 Week + 4 Weeks subtitles, Forever subtitle 'Tools for your whole planning journey, from first tour to final payment.', 13 feature lines. Baseline not pulled yet."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "Pricing page copy: headline 'See what wedding vendors really charge.', outcome subtitles per plan, plain feature lines ('AI wedding planner', 'Unlimited real pricing PDFs', 'No Pricing Intelligence', 'No advanced filters')",
     "what_changed": "Pricing page copy: new headline, outcome subtitles per plan, plain feature lines.",
@@ -8314,6 +7200,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-11-17",
@@ -8368,6 +7256,45 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-11-15",
+   "review_date": "2026-11-29",
+   "max_end_date": "2026-12-27",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Pricing-page visitors who start checkout: started at 7% (69 of 980), after the change 8.3% (24 of 288): 79% chance it's genuinely better; money tests need 95%. Other changes shipped in the same window, so treat this as evidence, not proof.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Before",
+     "after_label": "After",
+     "before": "69 of 980 (7%)",
+     "after": "24 of 288 (8.3%)",
+     "before_rate": 0.070408,
+     "after_rate": 0.083333,
+     "before_n": 980,
+     "after_n": 288,
+     "baseline": {
+      "label": "Before",
+      "value": "69 of 980 (7%)",
+      "rate": 0.070408,
+      "source": "readout control"
+     },
+     "p_beat": 0.7888,
+     "bar": 0.95
+    },
+    "recommend": {
+     "call": "keep_running",
+     "label": "Keep running (10 day(s) left)",
+     "why": "Still inside its planned run; call it at the review date."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": [
     {
      "date": "2026-11-16",
@@ -8423,6 +7350,10 @@
      "note": "LIVE, verified: 'tpc-vall' link code present in the live site script."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner venue cards: centered 'N Pricing PDFs' link under the button",
     "what_changed": "Planner venue cards show a centred 'N Pricing PDFs' link under the button.",
@@ -8628,6 +7559,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-11-01",
@@ -8637,6 +7570,45 @@
      "ref": "1aca5e9; REC_FREE_REFINES 10"
     }
    ],
+   "start_date": "2026-11-15",
+   "review_date": "2026-11-29",
+   "max_end_date": "2026-12-27",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Card viewers who open a PDF: new version 15.2% (49 of 322) vs old 11.6% (37 of 318): 91% chance it's genuinely better; ux tests need 90%.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Control",
+     "after_label": "New version",
+     "before": "37 of 318 (11.6%)",
+     "after": "49 of 322 (15.2%)",
+     "before_rate": 0.116352,
+     "after_rate": 0.152174,
+     "before_n": 318,
+     "after_n": 322,
+     "baseline": {
+      "label": "Control",
+      "value": "37 of 318 (11.6%)",
+      "rate": 0.116352,
+      "source": "readout control"
+     },
+     "p_beat": 0.9069,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "keep_running",
+     "label": "Keep running (10 day(s) left)",
+     "why": "Still inside its planned run; call it at the review date."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": [
     {
      "date": "2026-11-16",
@@ -8693,6 +7665,10 @@
      "note": "LIVE, verified: rec_free_limit_note_shown code present in the live site script."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner: clear 'free question used' note for free couples (pay for more, or come back tomorrow for one more)",
     "what_changed": "A clear 'free question used' note for free couples: pay for more, or come back tomorrow.",
@@ -8840,7 +7816,29 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [],
+   "start_date": "2026-11-15",
+   "review_date": "2026-11-29",
+   "max_end_date": "2026-12-13",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No structured read-out yet. Last note (2026-11-15): LIVE, verified: rec_free_limit_note_shown code present in the live site script. No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "keep_running",
+     "label": "Keep running (10 day(s) left)",
+     "why": "Read it out at the review date."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -8884,6 +7882,10 @@
      "note": "LIVE, verified: /rec/status returns attach_open true (checked with a paid test account only); 'Got a quote' + 'Save this quote to My wedding' code present in the live site script. NOT yet verified end to end for a free couple."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner quote check open to every signed-in couple (was Forever only); 'Got a quote?' home card, one-tap check, 'Save this quote to My wedding'",
     "what_changed": "Planner quote check open to every signed-in couple (was Forever only), with a 'Got a quote?' home card and 'Save this quote to My wedding'.",
@@ -9091,6 +8093,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-11-01",
@@ -9114,6 +8118,45 @@
      "ref": "REC_WHOLE_WEDDING_PCT 100"
     }
    ],
+   "start_date": "2026-11-15",
+   "review_date": "2026-11-29",
+   "max_end_date": "2026-12-27",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Planner couples who check a quote: started at 5% (12 of 240), after the change 8.1% (19 of 236): 91% chance it's genuinely better; ux tests need 90%. Other changes shipped in the same window, so treat this as evidence, not proof.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Old benchmark",
+     "after_label": "Now",
+     "before": "12 of 240 (5%)",
+     "after": "19 of 236 (8.1%)",
+     "before_rate": 0.05,
+     "after_rate": 0.080508,
+     "before_n": 240,
+     "after_n": 236,
+     "baseline": {
+      "label": "Old benchmark",
+      "value": "12 of 240 (5%)",
+      "rate": 0.05,
+      "source": "readout control"
+     },
+     "p_beat": 0.9086,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "keep_running",
+     "label": "Keep running (10 day(s) left)",
+     "why": "Still inside its planned run; call it at the review date."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -9187,6 +8230,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner context-first 50/50 test: starter chips + preference questions first, 'Does X fit our N guests?' chip after venue lookups",
     "what_changed": "Planner context-first 50/50: starter chips + preference questions first, and a 'Does X fit our N guests?' chip after venue lookups.",
@@ -9321,6 +8368,26 @@
    "action": null,
    "reason": null,
    "overlapping_changes": [],
+   "start_date": null,
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Not live yet.",
+    "numbers": null,
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Finish the spec before launch",
+     "why": "Missing metric.mde_rel, metric.baseline; the launch check fails until they are set."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -9356,6 +8423,10 @@
      "note": "LIVE 16:47 UTC (WeWeb publish, cacheVersion 1398), verified in the live site: whole-wedding proposal card, Tools 'Plan my wedding' (03d4ff5) and bar self-check (42dfd3c) in the live wwElement chunk; server REC_WHOLE_WEDDING_PCT=100. Call 2026-12-01."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner 'Plan my wedding' (whole-wedding proposal) for every couple",
     "what_changed": "'Plan my wedding': one tap proposes a whole wedding (a venue plus a pick or labelled estimate per category, total vs budget) that couples can add to My wedding.",
@@ -9580,6 +8651,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-11-09",
@@ -9610,6 +8683,26 @@
      "ref": "7252cee + REC_WW_SERVICE_PRICES=1"
     }
    ],
+   "start_date": "2026-11-17",
+   "review_date": "2026-12-01",
+   "max_end_date": "2026-12-15",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "Nothing to read yet. Last note (2026-11-17): LIVE 16:47 UTC (WeWeb publish, cacheVersion 1398), verified in the live site: whole-wedding proposal card, Tools 'Plan my wedding' (03d4ff5) and bar self-check (42dfd3c) in the live wwElement chunk; server REC_WHOLE_WED…",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "No numbers recorded yet."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -9649,6 +8742,10 @@
      "note": "Period 2 starts 06:47 UTC (publish 1401): simpler report for paid couples + fully locked card for everyone unpaid (and no free first vendor since 05:39 UTC). Read 11-17 16:47..11-18 06:47 (period 1, ~14 h) and 11-18 06:47 onward (period 2) separately; the 12-01 call reads period 2 against the old card's 14.9% baseline."
     }
    ],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "Tulle Price Report replaces the Pricing Intelligence card",
     "what_changed": "The Tulle Price Report (ww-price-report) replaced the Pricing Intelligence card on both vendor pages.",
@@ -9880,6 +8977,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-11-09",
@@ -9912,6 +9011,45 @@
      "ref": "cacheVersion 1401"
     }
    ],
+   "start_date": "2026-11-17",
+   "review_date": "2026-12-01",
+   "max_end_date": "2026-12-15",
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Behind",
+     "tone": "bad"
+    },
+    "tldr": "A guardrail broke: Guardrail purchases_per_day crossed its threshold (P=0.954097). Vendor-page visitors who tap Unlock: started at 14.9% (254 of 1700), after the change 6.5% (17 of 262): 1% chance it's genuinely better; money tests need 95%. Other changes shipped in the same window, so treat this as evidence, not proof.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Before",
+     "after_label": "After",
+     "before": "254 of 1700 (14.9%)",
+     "after": "17 of 262 (6.5%)",
+     "before_rate": 0.149412,
+     "after_rate": 0.064885,
+     "before_n": 1700,
+     "after_n": 262,
+     "baseline": {
+      "label": "Before",
+      "value": "254 of 1700 (14.9%)",
+      "rate": 0.149412,
+      "source": "readout control"
+     },
+     "p_beat": 0.0,
+     "bar": 0.95
+    },
+    "recommend": {
+     "call": "revert",
+     "label": "Revert now",
+     "why": "A guardrail metric crossed its limit; protect it first, then investigate."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": [
     {
      "date": "2026-11-18",
@@ -9996,6 +9134,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner venue fixes + venue lookup log (table 91)",
     "what_changed": "Planner venue fixes for every couple: did-you-mean + state hints, non-venue text kept out of the name lookup, the vendor-page bubble knows 'this venue', lookups never limit-blocked; venue lookup log (table 91).",
@@ -10196,6 +9338,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-11-09",
@@ -10205,6 +9349,43 @@
      "ref": "ep230"
     }
    ],
+   "start_date": "2026-11-18",
+   "review_date": "2026-12-02",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers recorded yet, and no read-out since launch.",
+    "numbers": {
+     "unit": "rate",
+     "kind": null,
+     "before_label": null,
+     "after_label": null,
+     "before": null,
+     "after": null,
+     "before_rate": null,
+     "after_rate": null,
+     "baseline": {
+      "label": "Baseline (registry)",
+      "value": "27%",
+      "rate": 0.27,
+      "source": "registry baseline"
+     },
+     "p_beat": null,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Complete the spec (or shelve)",
+     "why": "Missing metric.mde_rel, guardrails; without them it can't be read out or called."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -10277,6 +9458,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner open-ended replies: no closing question, no suggested-reply chips, no profile questions",
     "what_changed": "Planner answers end on the answer: no trailing question, no chips (except lookup name choices), no thin-profile questions.",
@@ -10391,7 +9576,7 @@
    },
    "health": "no_data",
    "stale": false,
-   "action": "Check tracking / is it switched on?",
+   "action": "Check tracking (is it switched on?)",
    "reason": "metric failed: metric not in catalog yet (fixture)",
    "days_running": 12,
    "days_left": null,
@@ -10417,6 +9602,8 @@
    "guardrail_status": [],
    "failed_runs": 1,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-22",
@@ -10490,6 +9677,26 @@
      "ref": "1aca5e9; REC_FREE_REFINES 10"
     }
    ],
+   "start_date": "2026-11-07",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers: the metric can't be computed yet (metric not in catalog yet (fixture)).",
+    "numbers": null,
+    "recommend": {
+     "call": "fix_tracking",
+     "label": "Fix the metric (or shelve)",
+     "why": "Without a working metric this experiment can never be called."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -10562,6 +9769,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner subscription-readiness fixes: dead ends, no Forever in openings, light price bands, florist pricing, returning-couple shortlist + date flex",
     "what_changed": "Five Planner changes: fewer dead ends, no Forever line in openings, rounded price bands for light detail, florist pricing, shortlist opening for returning couples + cheaper-date check.",
@@ -10680,7 +9891,7 @@
    },
    "health": "no_data",
    "stale": false,
-   "action": "Check tracking / is it switched on?",
+   "action": "Check tracking (is it switched on?)",
    "reason": "metric failed: metric not in catalog yet (fixture)",
    "days_running": 12,
    "days_left": null,
@@ -10706,6 +9917,8 @@
    "guardrail_status": [],
    "failed_runs": 1,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-22",
@@ -10779,6 +9992,26 @@
      "ref": "1aca5e9; REC_FREE_REFINES 10"
     }
    ],
+   "start_date": "2026-11-07",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers: the metric can't be computed yet (metric not in catalog yet (fixture)).",
+    "numbers": null,
+    "recommend": {
+     "call": "fix_tracking",
+     "label": "Fix the metric (or shelve)",
+     "why": "Without a working metric this experiment can never be called."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -10857,6 +10090,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "California Forever $149 -> $135 (1 week $39 / 4 weeks $69 kept; International stays $149)",
     "what_changed": "California couples see Forever at $135 instead of $149.",
@@ -10977,7 +10214,7 @@
    },
    "health": "no_data",
    "stale": false,
-   "action": "Check tracking / is it switched on?",
+   "action": "Check tracking (is it switched on?)",
    "reason": "metric failed: metric not in catalog yet (fixture)",
    "days_running": 11,
    "days_left": null,
@@ -11003,6 +10240,8 @@
    "guardrail_status": [],
    "failed_runs": 1,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-26",
@@ -11062,6 +10301,26 @@
      "ref": "ep230"
     }
    ],
+   "start_date": "2026-11-08",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers: the metric can't be computed yet (metric not in catalog yet (fixture)).",
+    "numbers": null,
+    "recommend": {
+     "call": "fix_tracking",
+     "label": "Fix the metric (or shelve)",
+     "why": "Without a working metric this experiment can never be called."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -11134,6 +10393,10 @@
     }
    ],
    "results": [],
+   "in_rotation": true,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "PDF limit + last-PDF warning cards back to 'Check out our plans' (submit-PDF link hidden)",
     "what_changed": "The PDF limit and warning cards say 'See what vendors actually charge.' with a green 'Check out our plans' CTA; the submit-a-PDF link is hidden.",
@@ -11179,9 +10442,9 @@
      "n_per_arm": null,
      "days_needed": null,
      "d_abs": null,
-     "baseline": null,
+     "baseline": 0.050633,
      "daily_exposed_per_arm": null,
-     "reason": "no baseline rate"
+     "reason": "no smallest-lift-worth-having (mde_rel or mde_abs)"
     },
     "primary_metric_v1": "wall CTA click / wall view; purchases (Mixpanel weekly uniques)",
     "goal_v1": "Owner 11-03: the 10-24 'keep going free' copy may have cost payments and did not lift PDF submissions."
@@ -11240,9 +10503,9 @@
       "n_per_arm": null,
       "days_needed": null,
       "d_abs": null,
-      "baseline": null,
+      "baseline": 0.050633,
       "daily_exposed_per_arm": null,
-      "reason": "no baseline rate"
+      "reason": "no smallest-lift-worth-having (mde_rel or mde_abs)"
      },
      "primary_metric_v1": "wall CTA click / wall view; purchases (Mixpanel weekly uniques)",
      "goal_v1": "Owner 11-03: the 10-24 'keep going free' copy may have cost payments and did not lift PDF submissions."
@@ -11257,8 +10520,86 @@
     "reporting": "auto"
    },
    "readout": {
-    "error": "metric not in catalog yet (fixture)",
-    "computed_at": null
+    "exposure_by_day": [
+     {
+      "date": "2026-11-03",
+      "n": 23
+     },
+     {
+      "date": "2026-11-04",
+      "n": 24
+     },
+     {
+      "date": "2026-11-05",
+      "n": 27
+     },
+     {
+      "date": "2026-11-06",
+      "n": 28
+     },
+     {
+      "date": "2026-11-07",
+      "n": 28
+     },
+     {
+      "date": "2026-11-08",
+      "n": 21
+     },
+     {
+      "date": "2026-11-09",
+      "n": 28
+     },
+     {
+      "date": "2026-11-10",
+      "n": 21
+     },
+     {
+      "date": "2026-11-11",
+      "n": 20
+     },
+     {
+      "date": "2026-11-12",
+      "n": 17
+     },
+     {
+      "date": "2026-11-13",
+      "n": 23
+     },
+     {
+      "date": "2026-11-14",
+      "n": 18
+     },
+     {
+      "date": "2026-11-15",
+      "n": 19
+     },
+     {
+      "date": "2026-11-16",
+      "n": 24
+     },
+     {
+      "date": "2026-11-17",
+      "n": 26
+     },
+     {
+      "date": "2026-11-18",
+      "n": 24
+     }
+    ],
+    "guardrails": [],
+    "computed_at": "2026-11-19T12:00:00Z",
+    "error": null,
+    "source": "auto",
+    "arms": {
+     "control": {
+      "n": 395,
+      "conv": 20
+     },
+     "treatment": {
+      "n": 371,
+      "conv": 22
+     }
+    }
    },
    "health": "needs_call",
    "stale": false,
@@ -11270,17 +10611,33 @@
    "progress_basis": "time",
    "flags": [
     "needs_call",
-    "no_data",
     "confounded",
     "spec_incomplete",
     "guardrail_unmonitored"
    ],
    "overdue_days": 2,
    "projected_days": null,
-   "stats": null,
+   "stats": {
+    "p_beat": 0.700367,
+    "lift_median_rel": 0.164438,
+    "lift_ci95_rel": [
+     -0.343387,
+     1.08654
+    ],
+    "expected_loss_abs": 0.00316772,
+    "control_rate": 0.050633,
+    "treatment_rate": 0.059299,
+    "c_n": 395,
+    "c_conv": 20,
+    "t_n": 371,
+    "t_conv": 22,
+    "draws": 40000,
+    "method": "exact",
+    "model": "beta_binomial"
+   },
    "guardrails": [],
    "evidence_label": "evidence, not proof",
-   "exposure_per_arm_day": null,
+   "exposure_per_arm_day": 21.571,
    "decision_rule": {
     "ship_p": 0.95,
     "stop_p": 0.1,
@@ -11291,11 +10648,13 @@
     {
      "key": "purchases_per_day",
      "status": "unmonitored",
-     "reason": "primary metric failed: metric not in catalog yet (fixture)"
+     "reason": "not computed by the engine"
     }
    ],
-   "failed_runs": 1,
+   "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-26",
@@ -11351,7 +10710,137 @@
      "backfilled": true
     }
    ],
-   "history": []
+   "start_date": "2026-11-03",
+   "review_date": "2026-11-17",
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No clear difference",
+     "tone": "neutral"
+    },
+    "tldr": "Started at 5.1% (20 of 395) of couples who hit the PDF limit paid within 1 day; after the change 5.9% (22 of 371): 70% chance it's genuinely better; money tests need 95%. Other changes shipped in the same window, so treat this as evidence, not proof.",
+    "numbers": {
+     "unit": "rate",
+     "kind": "rate",
+     "before_label": "Before",
+     "after_label": "After",
+     "before": "20 of 395 (5.1%)",
+     "after": "22 of 371 (5.9%)",
+     "before_rate": 0.050633,
+     "after_rate": 0.059299,
+     "before_n": 395,
+     "after_n": 371,
+     "baseline": {
+      "label": "Before",
+      "value": "20 of 395 (5.1%)",
+      "rate": 0.050633,
+      "source": "readout control"
+     },
+     "p_beat": 0.7004,
+     "bar": 0.95
+    },
+    "recommend": {
+     "call": "ship",
+     "label": "Keep the change, close as inconclusive",
+     "why": "Leaning better (70%), but a before/after read can't reach the 95% bar; nothing it protects got worse."
+    },
+    "unstick": "Owner: make the call at Monday's weekly call, or now with a Decision note in the dash (1 min). Claude then updates the registry.",
+    "confidence_note": null
+   },
+   "history": [
+    {
+     "date": "2026-11-04",
+     "p_beat": 0.863642,
+     "n_control": 395,
+     "n_treatment": 23
+    },
+    {
+     "date": "2026-11-05",
+     "p_beat": 0.550463,
+     "n_control": 395,
+     "n_treatment": 46
+    },
+    {
+     "date": "2026-11-06",
+     "p_beat": 0.683328,
+     "n_control": 395,
+     "n_treatment": 69
+    },
+    {
+     "date": "2026-11-07",
+     "p_beat": 0.628736,
+     "n_control": 395,
+     "n_treatment": 92
+    },
+    {
+     "date": "2026-11-08",
+     "p_beat": 0.586348,
+     "n_control": 395,
+     "n_treatment": 115
+    },
+    {
+     "date": "2026-11-09",
+     "p_beat": 0.766212,
+     "n_control": 395,
+     "n_treatment": 139
+    },
+    {
+     "date": "2026-11-10",
+     "p_beat": 0.630546,
+     "n_control": 395,
+     "n_treatment": 162
+    },
+    {
+     "date": "2026-11-11",
+     "p_beat": 0.695509,
+     "n_control": 395,
+     "n_treatment": 185
+    },
+    {
+     "date": "2026-11-12",
+     "p_beat": 0.745527,
+     "n_control": 395,
+     "n_treatment": 208
+    },
+    {
+     "date": "2026-11-13",
+     "p_beat": 0.551173,
+     "n_control": 395,
+     "n_treatment": 231
+    },
+    {
+     "date": "2026-11-14",
+     "p_beat": 0.610145,
+     "n_control": 395,
+     "n_treatment": 255
+    },
+    {
+     "date": "2026-11-15",
+     "p_beat": 0.66314,
+     "n_control": 395,
+     "n_treatment": 278
+    },
+    {
+     "date": "2026-11-16",
+     "p_beat": 0.569045,
+     "n_control": 395,
+     "n_treatment": 301
+    },
+    {
+     "date": "2026-11-17",
+     "p_beat": 0.685623,
+     "n_control": 395,
+     "n_treatment": 324
+    },
+    {
+     "date": "2026-11-18",
+     "p_beat": 0.774079,
+     "n_control": 395,
+     "n_treatment": 347
+    }
+   ]
   },
   {
    "id": "EXP-2026-11-contextual-pricing-page",
@@ -11436,6 +10925,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "Contextual pricing page: Vendor Context Card + src tracking when arriving from a vendor",
     "what_changed": "Arriving at /pricing from a vendor shows a Vendor Context Card naming that vendor; every upgrade entry point tags src.",
@@ -11564,7 +11057,7 @@
    "health": "manual_overdue",
    "stale": true,
    "action": "Read it out",
-   "reason": "No results[] readout in 7 days live",
+   "reason": "No readout in 7 days live",
    "days_running": 7,
    "days_left": null,
    "progress": null,
@@ -11594,6 +11087,8 @@
    ],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-11-12",
@@ -11610,6 +11105,26 @@
      "backfilled": true
     }
    ],
+   "start_date": "2026-11-12",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers recorded yet, and no read-out since launch. No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Contextual pricing page: Vendor Context Card + src tracking when arriving from a vendor' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -11627,6 +11142,10 @@
    "assignment_type": "pre_post",
    "spec_issues": [],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "Venue-specific PDF limit card ('Unlock {Venue}'s real pricing.') with plan row",
     "what_changed": "The PDF limit card names the venue, shows a blurred 'Next: {Venue}'s full pricing guide' preview and Forever / 4 weeks buttons that open /pricing with vendor context.",
@@ -11745,6 +11264,26 @@
    "action": null,
    "reason": null,
    "overlapping_changes": [],
+   "start_date": null,
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "Nothing to read yet.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "No numbers recorded yet."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -11763,6 +11302,10 @@
    "assignment_type": "pre_post",
    "spec_issues": [],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "Discovery advanced filters unblurred (still locked; click -> upsell)",
     "what_changed": "Locked advanced filters (venue, photo, entertainment, florals) on Discovery are no longer blurred; they stay locked and open the upsell on click.",
@@ -11875,6 +11418,26 @@
    "action": null,
    "reason": null,
    "overlapping_changes": [],
+   "start_date": null,
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "Nothing to read yet.",
+    "numbers": null,
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "No numbers recorded yet."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -11948,6 +11511,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "onboarding",
+   "bucket_source": "derived",
    "what": {
     "name": "Welcome email rebuilt: server-side Brevo send with new copy + planning-stage opener",
     "what_changed": "New sign-ups get a Brevo-sent welcome email with new copy and a planning-stage opener (was a browser-side Gmail send).",
@@ -12068,7 +11635,7 @@
    },
    "health": "no_data",
    "stale": false,
-   "action": "Check tracking / is it switched on?",
+   "action": "Check tracking (is it switched on?)",
    "reason": "metric failed: metric not in catalog yet (fixture)",
    "days_running": 7,
    "days_left": null,
@@ -12094,6 +11661,8 @@
    "guardrail_status": [],
    "failed_runs": 1,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-31",
@@ -12109,6 +11678,26 @@
      "ref": "ep230"
     }
    ],
+   "start_date": "2026-11-12",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "No data",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers: the metric can't be computed yet (metric not in catalog yet (fixture)).",
+    "numbers": null,
+    "recommend": {
+     "call": "fix_tracking",
+     "label": "Fix the metric (or shelve)",
+     "why": "Without a working metric this experiment can never be called."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -12188,6 +11777,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "onboarding",
+   "bucket_source": "derived",
    "what": {
     "name": "Meta ads landing pages (/lp/real-prices, /lp/new-york, /lp/ask-tulle) + pixel",
     "what_changed": "Three landing pages for paid ads plus the Meta pixel and purchase events.",
@@ -12302,6 +11895,26 @@
    "action": null,
    "reason": null,
    "overlapping_changes": [],
+   "start_date": null,
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Not live yet.",
+    "numbers": null,
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Finish the spec before launch",
+     "why": "Missing hypothesis, metric.mde_rel; the launch check fails until they are set."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -12375,6 +11988,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner estimate card what-if (guests + state on the card) + 'What will my wedding cost?' on the Planner home",
     "what_changed": "The cost-estimate card takes a new guest count and state right on the card; the Planner home has a 'What will my wedding cost?' button.",
@@ -12518,7 +12135,46 @@
    "guardrail_status": [],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [],
+   "start_date": "2026-11-18",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers recorded yet, and no read-out since launch.",
+    "numbers": {
+     "unit": "count",
+     "kind": null,
+     "before_label": null,
+     "after_label": null,
+     "before": null,
+     "after": null,
+     "before_rate": null,
+     "after_rate": null,
+     "baseline": {
+      "label": "Baseline (registry)",
+      "value": "10",
+      "rate": 10.0,
+      "source": "registry baseline"
+     },
+     "p_beat": null,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Complete the spec (or shelve)",
+     "why": "Missing hypothesis, metric.mde_rel; without them it can't be read out or called."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -12593,6 +12249,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Plan my wedding: catering / hair & makeup / planner rows priced from the vendors' own PDFs",
     "what_changed": "Full members see a worked-out estimate from each caterer / beauty / planner's own price sheet in 'Plan my wedding'; free couples see a locked row.",
@@ -12738,6 +12398,8 @@
    "guardrail_status": [],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-11-09",
@@ -12747,6 +12409,26 @@
      "ref": "ep230"
     }
    ],
+   "start_date": "2026-11-18",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers recorded yet, and no read-out since launch. No starting point recorded.",
+    "numbers": null,
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Complete the spec (or shelve)",
+     "why": "Missing hypothesis, metric.mde_rel; without them it can't be read out or called."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -12813,6 +12495,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
    "what": {
     "name": "Planner home screen: no automatic opening, blank start with starter questions",
     "what_changed": "The Planner opens on a home screen with starters instead of generating an automatic opening.",
@@ -12931,7 +12617,7 @@
    "health": "manual_overdue",
    "stale": true,
    "action": "Read it out",
-   "reason": "No results[] readout in 12 days live",
+   "reason": "No readout in 12 days live",
    "days_running": 12,
    "days_left": null,
    "progress": null,
@@ -12956,6 +12642,8 @@
    "guardrail_status": [],
    "failed_runs": 0,
    "paused_days": null,
+   "approximate_metric": null,
+   "capped_win": null,
    "overlapping_changes": [
     {
      "date": "2026-10-22",
@@ -13029,6 +12717,43 @@
      "ref": "1aca5e9; REC_FREE_REFINES 10"
     }
    ],
+   "start_date": "2026-11-07",
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Not measured",
+     "tone": "unknown"
+    },
+    "tldr": "No numbers recorded yet, and no read-out since launch.",
+    "numbers": {
+     "unit": "rate",
+     "kind": null,
+     "before_label": null,
+     "after_label": null,
+     "before": null,
+     "after": null,
+     "before_rate": null,
+     "after_rate": null,
+     "baseline": {
+      "label": "Baseline (registry)",
+      "value": "32%",
+      "rate": 0.32,
+      "source": "registry baseline"
+     },
+     "p_beat": null,
+     "bar": 0.9
+    },
+    "recommend": {
+     "call": "read_out",
+     "label": "Read it out, then decide",
+     "why": "Nobody has measured it; a 10-minute read from Xano turns it into a call."
+    },
+    "unstick": "Ask Claude: 'read out Planner home screen: no automatic opening, blank start with starter questions' (~10 min from Xano). If nobody will act on the answer, shelve it.",
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -13095,6 +12820,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "PDF limit -> soft redirect to /pricing?src=pdf_limit with 'Keep browsing'",
     "what_changed": "Hitting the PDF limit sends couples to the plans page (src=pdf_limit) with a 'Keep browsing' way back, instead of the limit popup.",
@@ -13233,6 +12962,26 @@
    "action": null,
    "reason": null,
    "overlapping_changes": [],
+   "start_date": null,
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Not live yet.",
+    "numbers": null,
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Finish the spec before launch",
+     "why": "Missing guardrails, audience.est_daily_exposed; the launch check fails until they are set."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   },
   {
@@ -13318,6 +13067,10 @@
     }
    ],
    "results": [],
+   "in_rotation": false,
+   "notes_synced_through": null,
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
    "what": {
     "name": "Price Report locked view: compact member layout with blurred numbers + one 'See the Exact Number' CTA",
     "what_changed": "Free couples see the Price Report layout with numbers hidden and a single dark-green 'See the Exact Number' panel.",
@@ -13442,6 +13195,26 @@
    "action": null,
    "reason": null,
    "overlapping_changes": [],
+   "start_date": null,
+   "review_date": null,
+   "max_end_date": null,
+   "decided_on": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Too early",
+     "tone": "unknown"
+    },
+    "tldr": "Not live yet.",
+    "numbers": null,
+    "recommend": {
+     "call": "complete_spec",
+     "label": "Finish the spec before launch",
+     "why": "Missing metric.mde_rel, metric.baseline; the launch check fails until they are set."
+    },
+    "unstick": null,
+    "confidence_note": null
+   },
    "history": []
   }
  ],
@@ -13460,7 +13233,26 @@
    ],
    "tier": "money",
    "start_date": "2026-08-09",
-   "end_date": "2026-09-27"
+   "end_date": "2026-09-27",
+   "lifecycle": "decided",
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Reverted",
+     "tone": "bad"
+    },
+    "tldr": "Reverted on 2026-09-27: Killed 2026-09-27",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-09-27",
+    "status": "reverted"
+   }
   },
   {
    "id": "EXP-2026-10-ny-149",
@@ -13475,7 +13267,26 @@
    ],
    "tier": "money",
    "start_date": "2026-10-01",
-   "end_date": "2026-10-06"
+   "end_date": "2026-10-06",
+   "lifecycle": "decided",
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Reverted",
+     "tone": "bad"
+    },
+    "tldr": "Reverted on 2026-10-07: Moved NY to $35/$60/$135 on 2026-10-07",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-07",
+    "status": "reverted"
+   }
   },
   {
    "id": "EXP-2026-10-ca-intl-149",
@@ -13490,7 +13301,26 @@
    ],
    "tier": "money",
    "start_date": "2026-10-01",
-   "end_date": "2026-10-25"
+   "end_date": "2026-10-25",
+   "lifecycle": "decided",
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
+   "review_date": "2026-11-04",
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped on 2026-10-25: Kept (owner 2026-10-25: \"we're keeping the prices\")",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-25",
+    "status": "concluded"
+   }
   },
   {
    "id": "EXP-2026-10-assistant-forever-beta",
@@ -13505,7 +13335,26 @@
    ],
    "tier": "ux",
    "start_date": "2026-10-03",
-   "end_date": "2026-10-14"
+   "end_date": "2026-10-14",
+   "lifecycle": "decided",
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped on 2026-10-14: Opened to all signed-in users with a free question allowance (10-14)",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-14",
+    "status": "concluded"
+   }
   },
   {
    "id": "EXP-2026-10-handoff-card",
@@ -13520,7 +13369,26 @@
    ],
    "tier": "ux",
    "start_date": "2026-10-14",
-   "end_date": "2026-10-14"
+   "end_date": "2026-10-14",
+   "lifecycle": "decided",
+   "bucket": "onboarding",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Reverted",
+     "tone": "bad"
+    },
+    "tldr": "Reverted on 2026-10-14: Removed 2026-10-14",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-14",
+    "status": "reverted"
+   }
   },
   {
    "id": "EXP-2026-10-after-onboarding-tour",
@@ -13535,7 +13403,26 @@
    ],
    "tier": "ux",
    "start_date": "2026-10-16",
-   "end_date": "2026-10-17"
+   "end_date": "2026-10-17",
+   "lifecycle": "decided",
+   "bucket": "onboarding",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped on 2026-10-17: Kept",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-17",
+    "status": "concluded"
+   }
   },
   {
    "id": "EXP-2026-10-nps-forced",
@@ -13550,7 +13437,26 @@
    ],
    "tier": "ux",
    "start_date": "2026-10-12",
-   "end_date": null
+   "end_date": null,
+   "lifecycle": "decided",
+   "bucket": "retention",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped: Kept",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": null,
+    "status": "concluded"
+   }
   },
   {
    "id": "EXP-2026-10-ep119-cache-24h",
@@ -13566,7 +13472,26 @@
    ],
    "tier": "infra",
    "start_date": "2026-10-03",
-   "end_date": "2026-10-05"
+   "end_date": "2026-10-05",
+   "lifecycle": "decided",
+   "bucket": "reliability",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped on 2026-10-05: Kept; accepted up to 24h staleness for hidden vendors",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-05",
+    "status": "concluded"
+   }
   },
   {
    "id": "EXP-2026-10-pricing-phase2",
@@ -13581,7 +13506,26 @@
    ],
    "tier": "money",
    "start_date": "2026-10-01",
-   "end_date": "2026-10-25"
+   "end_date": "2026-10-25",
+   "lifecycle": "decided",
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped on 2026-10-25: Kept (owner 2026-10-25: \"we're keeping the prices\")",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-25",
+    "status": "concluded"
+   }
   },
   {
    "id": "EXP-2026-10-ny-tier",
@@ -13596,7 +13540,26 @@
    ],
    "tier": "money",
    "start_date": "2026-10-07",
-   "end_date": "2026-10-25"
+   "end_date": "2026-10-25",
+   "lifecycle": "decided",
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped on 2026-10-25: Kept (owner 2026-10-25: \"we're keeping the prices\")",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-25",
+    "status": "concluded"
+   }
   },
   {
    "id": "EXP-2026-10-hub-pricing",
@@ -13612,7 +13575,26 @@
    ],
    "tier": "money",
    "start_date": "2026-10-14",
-   "end_date": "2026-10-25"
+   "end_date": "2026-10-25",
+   "lifecycle": "decided",
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped on 2026-10-25: Kept (owner 2026-10-25: \"we're keeping the prices\")",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-25",
+    "status": "concluded"
+   }
   },
   {
    "id": "EXP-2026-10-free-assistant",
@@ -13628,7 +13610,60 @@
    ],
    "tier": "ux",
    "start_date": "2026-10-14",
-   "end_date": "2026-11-09"
+   "end_date": "2026-11-09",
+   "lifecycle": "decided",
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shelved",
+     "tone": "neutral"
+    },
+    "tldr": "Shelved on 2026-11-11: Superseded: free-question rules changed 10-31 (open Planner daily allowance) and 11-09 (3 for life, then 1/day) - see EXP-2026-11-free-daily-question. No read was recorded.",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-11-11",
+    "status": "concluded"
+   }
+  },
+  {
+   "id": "EXP-2026-10-pdf-popup-copy",
+   "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
+   "status": "reverted",
+   "outcome": "reverted",
+   "decided_on": "2026-11-03",
+   "decision": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Softer copy reverted 2026-11-03 ~21:10 UTC (limit + warning cards back to 'Check out our plans'), published and verified. No read of the result was recorded before the revert.",
+   "takeaway": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Softer copy reverted 2026-11-03 ~21:10 UTC (limit + warning cards back to 'Check out our plans'), published and verified. No read of the result was recorded before the revert.",
+   "themes": [
+    "paywall"
+   ],
+   "tier": "money",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "lifecycle": "decided",
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
+   "review_date": "2026-11-16",
+   "max_end_date": "2026-12-07",
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Reverted",
+     "tone": "bad"
+    },
+    "tldr": "Reverted on 2026-11-03: Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Softer copy reverted 2026-11-03 ~21:10 UTC (limit + warning cards back to 'Check out our plans'), published and verified. No read of the result was recorded before the revert.",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-11-03",
+    "status": "reverted"
+   }
   },
   {
    "id": "EXP-2026-10-tours-v2",
@@ -13644,23 +13679,132 @@
    ],
    "tier": "ux",
    "start_date": "2026-10-26",
-   "end_date": "2026-11-09"
+   "end_date": "2026-11-09",
+   "lifecycle": "decided",
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
+   "review_date": null,
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shelved",
+     "tone": "neutral"
+    },
+    "tldr": "Shelved on 2026-11-09: Superseded 2026-11-09: tours cut to 2 auto tours (Discovery + vendor page PDFs step), the rest picker-only. No read was recorded.",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-11-09",
+    "status": "concluded"
+   }
+  },
+  {
+   "id": "EXP-2026-10-search-railway",
+   "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 50% of users",
+   "status": "shipped",
+   "outcome": "shipped",
+   "decided_on": "2026-10-27",
+   "decision": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Split ended 2026-10-27: REC_RAILWAY_SEARCH_PCT 50->100 (05:54 UTC, Planner) and ep119 $rw_pct 50->100 (16:10 UTC, Discovery). Railway search serves everyone since.",
+   "takeaway": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Split ended 2026-10-27: REC_RAILWAY_SEARCH_PCT 50->100 (05:54 UTC, Planner) and ep119 $rw_pct 50->100 (16:10 UTC, Discovery). Railway search serves everyone since.",
+   "themes": [
+    "performance",
+    "search"
+   ],
+   "tier": "infra",
+   "start_date": "2026-10-26",
+   "end_date": null,
+   "lifecycle": "decided",
+   "bucket": "reliability",
+   "bucket_source": "derived",
+   "review_date": "2026-11-09",
+   "max_end_date": "2026-12-07",
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shipped",
+     "tone": "good"
+    },
+    "tldr": "Shipped on 2026-10-27: Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Split ended 2026-10-27: REC_RAILWAY_SEARCH_PCT 50->100 (05:54 UTC, Planner) and ep119 $rw_pct 50->100 (16:10 UTC, Discovery). Railway search serves everyone since.",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-10-27",
+    "status": "shipped"
+   }
+  },
+  {
+   "id": "EXP-2026-11-planner-my-wedding-plan",
+   "name": "Planner 'My wedding' plan (launch to everyone, no holdout)",
+   "status": "reverted",
+   "outcome": "reverted",
+   "decided_on": "2026-11-08",
+   "decision": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Rolled back 2026-11-08 ~03:21 UTC (REC_PLAN_AB_PCT=0; commits 1f994f7/dfdff4f), about 38 min after going on. Table 90 holds only owner test rows.",
+   "takeaway": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Rolled back 2026-11-08 ~03:21 UTC (REC_PLAN_AB_PCT=0; commits 1f994f7/dfdff4f), about 38 min after going on. Table 90 holds only owner test rows.",
+   "themes": [
+    "planner",
+    "engagement",
+    "retention"
+   ],
+   "tier": "ux",
+   "start_date": "2026-11-08",
+   "end_date": null,
+   "lifecycle": "decided",
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
+   "review_date": "2026-11-29",
+   "max_end_date": "2026-12-20",
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Reverted",
+     "tone": "bad"
+    },
+    "tldr": "Reverted on 2026-11-08: Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Rolled back 2026-11-08 ~03:21 UTC (REC_PLAN_AB_PCT=0; commits 1f994f7/dfdff4f), about 38 min after going on. Table 90 holds only owner test rows.",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-11-08",
+    "status": "reverted"
+   }
   },
   {
    "id": "EXP-2026-11-pi-first-vendor-free",
    "name": "Pricing Intelligence free on the first vendor only, then locked until a plan",
-   "status": "ended",
+   "status": "shelved",
    "outcome": "shelved",
    "decided_on": "2026-11-18",
-   "decision": "ENDED EARLY by owner 2026-11-18 ('users don't get to see the first one for free', Price Report and Pricing Intelligence alike): ep230 free_allowance branch removed 05:39:52 UTC (backup tulletogether .claude/xano_backups/ep230_pre_no_free_vendor_2026-11-18.xs). Not called on the bar: the clean purchases window (from 11-16) had only 2 days, and the Price Report replaced the PI card on 11-17.",
-   "takeaway": "ENDED EARLY by owner 2026-11-18 ('users don't get to see the first one for free', Price Report and Pricing Intelligence alike): ep230 free_allowance branch removed 05:39:52 UTC (backup tulletogether .claude/xano_backups/ep230_pre_no_free_vendor_2026-11-18.xs). Not called on the bar: the clean purchases window (from 11-16) had only 2 days, and the Price Report replaced the PI card on 11-17.",
+   "decision": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Owner ended it early 2026-11-18 05:39:52 UTC (ep230 allowance removed). 'ended' is not a v2 status.",
+   "takeaway": "Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Owner ended it early 2026-11-18 05:39:52 UTC (ep230 allowance removed). 'ended' is not a v2 status.",
    "themes": [
     "paywall",
     "pricing-intelligence"
    ],
    "tier": "money",
    "start_date": "2026-11-09",
-   "end_date": "2026-11-18"
+   "end_date": "2026-11-18",
+   "lifecycle": "decided",
+   "bucket": "payment_funnel",
+   "bucket_source": "derived",
+   "review_date": "2026-11-23",
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shelved",
+     "tone": "neutral"
+    },
+    "tldr": "Shelved on 2026-11-18: Record corrected 2026-11-19 (framework v2 reality audit, evidence in audit_2026_11_19). Owner ended it early 2026-11-18 05:39:52 UTC (ep230 allowance removed). 'ended' is not a v2 status.",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-11-18",
+    "status": "shelved"
+   }
   },
   {
    "id": "EXP-2026-11-planner-open-week",
@@ -13676,7 +13820,26 @@
    ],
    "tier": "ux",
    "start_date": "2026-11-01",
-   "end_date": "2026-11-07"
+   "end_date": "2026-11-07",
+   "lifecycle": "decided",
+   "bucket": "planner_engagement",
+   "bucket_source": "derived",
+   "review_date": "2026-11-08",
+   "max_end_date": null,
+   "paused_ranges": [],
+   "verdict": {
+    "result": {
+     "label": "Shelved",
+     "tone": "neutral"
+    },
+    "tldr": "Shelved on 2026-11-07: Closed back up 2026-11-07 as planned (owner: 'set up the gating again'); 11-07 subscription readout (memory project_planner_subscription_readout_2026-11-07) is the only read and is confounded.",
+    "numbers": null,
+    "recommend": null,
+    "unstick": null,
+    "confidence_note": null,
+    "decided_on": "2026-11-07",
+    "status": "shelved"
+   }
   }
  ],
  "changes": [
@@ -13689,14 +13852,13 @@
    "overlaps_experiments": [
     "EXP-2026-08-pdf-warning-view3",
     "EXP-2026-10-signup-checkbox",
-    "EXP-2026-10-pdf-popup-copy",
     "EXP-2026-10-trustpilot-5star",
-    "EXP-2026-10-search-railway",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
     "EXP-2026-10-planner-price-upsell",
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-save-offer-60-forever"
    ]
   },
@@ -13707,7 +13869,6 @@
    "source": "rec-engine",
    "ref": "Anthropic key revoked",
    "overlaps_experiments": [
-    "EXP-2026-10-search-railway",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
     "EXP-2026-10-stop-progress",
@@ -13716,7 +13877,6 @@
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
     "EXP-2026-10-planner-speed-v3",
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-planner-open-ended-replies",
     "EXP-2026-11-planner-five-fixes",
@@ -13732,8 +13892,7 @@
    "overlaps_experiments": [
     "EXP-2026-10-signup-checkbox",
     "EXP-2026-10-trustpilot-5star",
-    "EXP-2026-10-search-railway",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever"
    ]
@@ -13755,7 +13914,6 @@
    "source": "railway-var",
    "ref": "REC_FREE_REFINES=2",
    "overlaps_experiments": [
-    "EXP-2026-10-search-railway",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
     "EXP-2026-10-stop-progress",
@@ -13764,7 +13922,6 @@
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
     "EXP-2026-10-planner-speed-v3",
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-planner-open-ended-replies",
     "EXP-2026-11-planner-five-fixes",
@@ -13780,7 +13937,6 @@
    "overlaps_experiments": [
     "EXP-2026-08-pdf-warning-view3",
     "EXP-2026-10-signup-checkbox",
-    "EXP-2026-10-pdf-popup-copy",
     "EXP-2026-10-trustpilot-5star",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
@@ -13789,7 +13945,7 @@
     "EXP-2026-10-planner-price-upsell",
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-planner-open-ended-replies",
@@ -13808,7 +13964,6 @@
    "overlaps_experiments": [
     "EXP-2026-08-pdf-warning-view3",
     "EXP-2026-10-signup-checkbox",
-    "EXP-2026-10-pdf-popup-copy",
     "EXP-2026-10-trustpilot-5star",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
@@ -13817,7 +13972,7 @@
     "EXP-2026-10-planner-price-upsell",
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-planner-open-ended-replies",
@@ -13835,7 +13990,6 @@
    "overlaps_experiments": [
     "EXP-2026-08-pdf-warning-view3",
     "EXP-2026-10-signup-checkbox",
-    "EXP-2026-10-pdf-popup-copy",
     "EXP-2026-10-trustpilot-5star",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
@@ -13844,7 +13998,7 @@
     "EXP-2026-10-planner-price-upsell",
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-planner-open-ended-replies",
@@ -13868,7 +14022,6 @@
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
     "EXP-2026-10-planner-speed-2a",
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-planner-open-ended-replies",
     "EXP-2026-11-planner-five-fixes",
@@ -13888,12 +14041,10 @@
    "source": "rec-engine",
    "ref": "c4ec678",
    "overlaps_experiments": [
-    "EXP-2026-10-search-railway",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
     "EXP-2026-10-stop-progress",
     "EXP-2026-10-planner-speed-2a",
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-planner-open-ended-replies",
     "EXP-2026-11-planner-five-fixes",
@@ -13906,7 +14057,6 @@
    "source": "rec-engine",
    "ref": "ac172c7",
    "overlaps_experiments": [
-    "EXP-2026-10-search-railway",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
     "EXP-2026-10-stop-progress",
@@ -13915,7 +14065,6 @@
     "EXP-2026-10-planner-listings",
     "EXP-2026-10-planner-speed-v3",
     "EXP-2026-10-planner-speed-2a",
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-planner-open-ended-replies",
     "EXP-2026-11-planner-five-fixes",
@@ -13930,7 +14079,6 @@
    "overlaps_experiments": [
     "EXP-2026-08-pdf-warning-view3",
     "EXP-2026-10-signup-checkbox",
-    "EXP-2026-10-pdf-popup-copy",
     "EXP-2026-10-trustpilot-5star",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
@@ -13939,7 +14087,7 @@
     "EXP-2026-10-planner-price-upsell",
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-planner-open-ended-replies",
@@ -13955,7 +14103,6 @@
    "source": "rec-engine",
    "ref": "12add68; REC_RAILWAY_SEARCH_PCT 100",
    "overlaps_experiments": [
-    "EXP-2026-10-search-railway",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
     "EXP-2026-10-stop-progress",
@@ -13964,7 +14111,6 @@
     "EXP-2026-10-planner-profile-questions",
     "EXP-2026-10-planner-listings",
     "EXP-2026-10-planner-speed-v3",
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-planner-open-ended-replies",
     "EXP-2026-11-planner-five-fixes",
@@ -13979,8 +14125,7 @@
    "overlaps_experiments": [
     "EXP-2026-10-signup-checkbox",
     "EXP-2026-10-trustpilot-5star",
-    "EXP-2026-10-search-railway",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-ca-forever-135"
@@ -13994,8 +14139,7 @@
    "overlaps_experiments": [
     "EXP-2026-10-signup-checkbox",
     "EXP-2026-10-trustpilot-5star",
-    "EXP-2026-10-search-railway",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-ca-forever-135"
@@ -14009,8 +14153,7 @@
    "overlaps_experiments": [
     "EXP-2026-10-signup-checkbox",
     "EXP-2026-10-trustpilot-5star",
-    "EXP-2026-10-search-railway",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-ca-forever-135"
@@ -14024,8 +14167,7 @@
    "overlaps_experiments": [
     "EXP-2026-10-signup-checkbox",
     "EXP-2026-10-trustpilot-5star",
-    "EXP-2026-10-search-railway",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-ask-tulle-bubble",
@@ -14040,7 +14182,6 @@
    "source": "rec-engine",
    "ref": "1aca5e9; REC_FREE_REFINES 10",
    "overlaps_experiments": [
-    "EXP-2026-10-search-railway",
     "EXP-2026-10-chat-cost-cards",
     "EXP-2026-10-next-step-chips",
     "EXP-2026-10-stop-progress",
@@ -14050,7 +14191,6 @@
     "EXP-2026-10-planner-listings",
     "EXP-2026-10-planner-speed-v3",
     "EXP-2026-10-planner-speed-2a",
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-ask-tulle-bubble",
     "EXP-2026-11-planner-pdf-count-link",
@@ -14069,8 +14209,7 @@
    "overlaps_experiments": [
     "EXP-2026-10-signup-checkbox",
     "EXP-2026-10-trustpilot-5star",
-    "EXP-2026-10-search-railway",
-    "EXP-2026-11-planner-my-wedding-plan",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-ask-tulle-bubble",
@@ -14172,7 +14311,6 @@
    "source": "weweb",
    "ref": "publish ~04:40 UTC, cacheVersion 1397; ww-planner-chat 23d878c",
    "overlaps_experiments": [
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-ask-tulle-bubble"
@@ -14192,7 +14330,6 @@
    "source": "railway-var",
    "ref": "REC_WHOLE_WEDDING_PCT 100",
    "overlaps_experiments": [
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-ask-tulle-bubble",
     "EXP-2026-11-quote-check-everyone"
@@ -14213,7 +14350,6 @@
    "source": "weweb",
    "ref": "cacheVersion 1398",
    "overlaps_experiments": [
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question",
     "EXP-2026-11-save-offer-60-forever",
     "EXP-2026-11-ask-tulle-bubble",
@@ -14312,6 +14448,7 @@
     "EXP-2026-08-pdf-warning-view3",
     "EXP-2026-10-signup-checkbox",
     "EXP-2026-10-planner-price-upsell",
+    "EXP-2026-11-texas-only-forever-89",
     "EXP-2026-11-limit-cards-plans-copy"
    ]
   },
@@ -14328,7 +14465,6 @@
    "backfilled": true,
    "overlaps_experiments": [
     "EXP-2026-08-pdf-warning-view3",
-    "EXP-2026-10-pdf-popup-copy",
     "EXP-2026-11-limit-cards-plans-copy"
    ]
   },
@@ -14392,7 +14528,6 @@
    "backfilled": true,
    "overlaps_experiments": [
     "EXP-2026-10-planner-price-upsell",
-    "EXP-2026-11-planner-my-wedding-plan",
     "EXP-2026-11-free-daily-question"
    ]
   },
@@ -14421,8 +14556,7 @@
    "backfilled": true,
    "overlaps_experiments": [
     "EXP-2026-10-chat-cost-cards",
-    "EXP-2026-10-next-step-chips",
-    "EXP-2026-11-planner-my-wedding-plan"
+    "EXP-2026-10-next-step-chips"
    ]
   },
   {
@@ -14480,14 +14614,543 @@
    "error": "metric not in catalog yet (fixture)"
   },
   {
-   "id": "EXP-2026-11-limit-cards-plans-copy",
-   "stage": "metric",
-   "error": "metric not in catalog yet (fixture)"
-  },
-  {
    "id": "EXP-2026-11-welcome-email-server",
    "stage": "metric",
    "error": "metric not in catalog yet (fixture)"
+  }
+ ],
+ "action_queue": [
+  {
+   "id": "EXP-2026-11-price-report-vs-pi-card",
+   "name": "Tulle Price Report replaces the Pricing Intelligence card",
+   "health": "guardrail_breach",
+   "stale": false,
+   "action": "Pause or revert now",
+   "reason": "Guardrail purchases_per_day crossed its threshold (P=0.954097)",
+   "overdue_days": null,
+   "recommend": "Revert now",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-08-pdf-warning-view3",
+   "name": "\"Last free pricing PDF\" warning on the 3rd free view",
+   "health": "needs_call",
+   "stale": true,
+   "action": "Owner call due",
+   "reason": "Review date 2026-09-02 passed 78 day(s) ago, no decision",
+   "overdue_days": 78,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-planner-speed-2a",
+   "name": "Planner speed 2a: prefetch caches (benchmarks + saved cards) + Railway search 100% with breaker + reuse today's opening",
+   "health": "needs_call",
+   "stale": true,
+   "action": "Owner call due",
+   "reason": "Review date 2026-10-28 passed 22 day(s) ago, no decision",
+   "overdue_days": 22,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-planner-name-lookup",
+   "name": "Planner: instant venue lookup by name (no model)",
+   "health": "needs_call",
+   "stale": true,
+   "action": "Owner call due",
+   "reason": "Review date 2026-11-02 passed 17 day(s) ago, no decision",
+   "overdue_days": 17,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-planner-speed-v3",
+   "name": "Planner speed: pricing cache (1 h, tier-safe) + Railway search 50% + per-turn timing",
+   "health": "needs_call",
+   "stale": true,
+   "action": "Owner call due",
+   "reason": "Review date 2026-11-02 passed 17 day(s) ago, no decision",
+   "overdue_days": 17,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-planner-listings",
+   "name": "Planner: florists, hair & makeup, caterers, planners as listings (no prices)",
+   "health": "needs_call",
+   "stale": true,
+   "action": "Owner call due",
+   "reason": "Review date 2026-11-09 passed 10 day(s) ago, no decision",
+   "overdue_days": 10,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-planner-price-upsell",
+   "name": "Planner: free users' price questions -> answer + PDF first + upgrade card (no refusal); no-views users get the card on the first answer",
+   "health": "needs_call",
+   "stale": true,
+   "action": "Owner call due",
+   "reason": "Review date 2026-11-09 passed 10 day(s) ago, no decision",
+   "overdue_days": 10,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-free-daily-question",
+   "name": "Planner: free couples get 3 questions for life, then 1 free question a day (no accumulation)",
+   "health": "starved",
+   "stale": true,
+   "action": "Shelve or redesign",
+   "reason": "Projected 132 days to a verdict > max_days 42",
+   "overdue_days": null,
+   "recommend": "Leaning worse: revert unless there's a product reason",
+   "in_rotation": true
+  },
+  {
+   "id": "EXP-2026-10-stop-progress",
+   "name": "Live progress labels + Stop button on planner answers",
+   "health": "zombie",
+   "stale": true,
+   "action": "Shelve",
+   "reason": "Live 24 days, more than 2x planned 10",
+   "overdue_days": null,
+   "recommend": "Complete the spec (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-chat-cost-cards",
+   "name": "Cost cards inside Tulle Planner chat answers (estimate / split / compare / budget)",
+   "health": "manual_overdue",
+   "stale": true,
+   "action": "Read it out",
+   "reason": "No readout for 24 days",
+   "overdue_days": null,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-contextual-pricing-page",
+   "name": "Contextual pricing page: Vendor Context Card + src tracking when arriving from a vendor",
+   "health": "manual_overdue",
+   "stale": true,
+   "action": "Read it out",
+   "reason": "No readout in 7 days live",
+   "overdue_days": null,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-planner-home-screen",
+   "name": "Planner home screen: no automatic opening, blank start with starter questions",
+   "health": "manual_overdue",
+   "stale": true,
+   "action": "Read it out",
+   "reason": "No readout in 12 days live",
+   "overdue_days": null,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-limit-cards-plans-copy",
+   "name": "PDF limit + last-PDF warning cards back to 'Check out our plans' (submit-PDF link hidden)",
+   "health": "needs_call",
+   "stale": false,
+   "action": "Owner call due",
+   "reason": "Review date 2026-11-17 passed 2 day(s) ago, no decision",
+   "overdue_days": 2,
+   "recommend": "Keep the change, close as inconclusive",
+   "in_rotation": true
+  },
+  {
+   "id": "EXP-2026-11-ask-tulle-bubble",
+   "name": "'Ask Tulle' floating Planner chat on Discovery (Map | Ask Tulle phone dock), Membership and My wedding; empty-results banner",
+   "health": "needs_call",
+   "stale": false,
+   "action": "Owner call due",
+   "reason": "Review date 2026-11-18 passed 1 day(s) ago, no decision",
+   "overdue_days": 1,
+   "recommend": "Keep the change, close as inconclusive",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-trustpilot-5star",
+   "name": "NPS thank-you Trustpilot ask only for 5-star raters (owner test)",
+   "health": "no_data",
+   "stale": false,
+   "action": "Check tracking (is it switched on?)",
+   "reason": "metric failed: metric not in catalog yet (fixture)",
+   "overdue_days": null,
+   "recommend": "Fix the metric (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-ca-forever-135",
+   "name": "California Forever $149 -> $135 (1 week $39 / 4 weeks $69 kept; International stays $149)",
+   "health": "no_data",
+   "stale": false,
+   "action": "Check tracking (is it switched on?)",
+   "reason": "metric failed: metric not in catalog yet (fixture)",
+   "overdue_days": null,
+   "recommend": "Fix the metric (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-planner-five-fixes",
+   "name": "Planner subscription-readiness fixes: dead ends, no Forever in openings, light price bands, florist pricing, returning-couple shortlist + date flex",
+   "health": "no_data",
+   "stale": false,
+   "action": "Check tracking (is it switched on?)",
+   "reason": "metric failed: metric not in catalog yet (fixture)",
+   "overdue_days": null,
+   "recommend": "Fix the metric (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-planner-open-ended-replies",
+   "name": "Planner open-ended replies: no closing question, no suggested-reply chips, no profile questions",
+   "health": "no_data",
+   "stale": false,
+   "action": "Check tracking (is it switched on?)",
+   "reason": "metric failed: metric not in catalog yet (fixture)",
+   "overdue_days": null,
+   "recommend": "Fix the metric (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-welcome-email-server",
+   "name": "Welcome email rebuilt: server-side Brevo send with new copy + planning-stage opener",
+   "health": "no_data",
+   "stale": false,
+   "action": "Check tracking (is it switched on?)",
+   "reason": "metric failed: metric not in catalog yet (fixture)",
+   "overdue_days": null,
+   "recommend": "Fix the metric (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-pricing-page-copy",
+   "name": "Pricing page copy: headline 'See what wedding vendors really charge.', outcome subtitles per plan, plain feature lines ('AI wedding planner', 'Unlimited real pricing PDFs', 'No Pricing Intelligence', 'No advanced filters')",
+   "health": "confounded",
+   "stale": false,
+   "action": "Evidence only; consider a split test",
+   "reason": "Pre/post with 4 overlapping changes; a split test (or a quiet window with no other launches) would unconfound it",
+   "overdue_days": null,
+   "recommend": "Keep running (10 day(s) left)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-save-offer-60-forever",
+   "name": "'Too expensive' save offer: 60% off Forever, 12 h, server-enforced code + email (replaces 20% / 30 min)",
+   "health": "confounded",
+   "stale": false,
+   "action": "Evidence only; consider a split test",
+   "reason": "Pre/post with 18 overlapping changes; a split test (or a quiet window with no other launches) would unconfound it",
+   "overdue_days": null,
+   "recommend": "Keep running (13 day(s) left)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-texas-only-forever-89",
+   "name": "Texas-only Forever $89",
+   "health": "confounded",
+   "stale": false,
+   "action": "Evidence only; consider a split test",
+   "reason": "Pre/post with 12 overlapping changes; a split test (or a quiet window with no other launches) would unconfound it",
+   "overdue_days": null,
+   "recommend": "Keep running (5 day(s) left)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-estimate-card-whatif",
+   "name": "Planner estimate card what-if (guests + state on the card) + 'What will my wedding cost?' on the Planner home",
+   "health": "spec_incomplete",
+   "stale": false,
+   "action": "Complete the spec",
+   "reason": "Spec incomplete: 7 issue(s), first: Missing hypothesis",
+   "overdue_days": null,
+   "recommend": "Complete the spec (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-planner-venue-fixes",
+   "name": "Planner venue fixes + venue lookup log (table 91)",
+   "health": "spec_incomplete",
+   "stale": false,
+   "action": "Complete the spec",
+   "reason": "Spec incomplete: 7 issue(s), first: Missing smallest lift worth having (metric.mde_rel or mde_abs)",
+   "overdue_days": null,
+   "recommend": "Complete the spec (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-quote-check-everyone",
+   "name": "Planner quote check open to every signed-in couple (was Forever only); 'Got a quote?' home card, one-tap check, 'Save this quote to My wedding'",
+   "health": "spec_incomplete",
+   "stale": false,
+   "action": "Complete the spec",
+   "reason": "Spec incomplete: 2 issue(s), first: Guardrail needs max_drop_rel or max_rise_rel",
+   "overdue_days": null,
+   "recommend": "Keep running (10 day(s) left)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-ww-service-prices",
+   "name": "Plan my wedding: catering / hair & makeup / planner rows priced from the vendors' own PDFs",
+   "health": "spec_incomplete",
+   "stale": false,
+   "action": "Complete the spec",
+   "reason": "Spec incomplete: 8 issue(s), first: Missing hypothesis",
+   "overdue_days": null,
+   "recommend": "Complete the spec (or shelve)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-planner-pdf-count-link",
+   "name": "Planner venue cards: centered 'N Pricing PDFs' link under the button",
+   "health": "guardrail_unmonitored",
+   "stale": false,
+   "action": "Fix the guardrail metric (it is not being watched)",
+   "reason": "Guardrail not monitored: purchases_per_day (not computed by the engine)",
+   "overdue_days": null,
+   "recommend": "Keep running (10 day(s) left)",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-11-whole-wedding-planner",
+   "name": "Planner 'Plan my wedding' (whole-wedding proposal) for every couple",
+   "health": "guardrail_unmonitored",
+   "stale": false,
+   "action": "Fix the guardrail metric (it is not being watched)",
+   "reason": "Guardrail not monitored: planner_answer_ms_p50 (no data to compare)",
+   "overdue_days": null,
+   "recommend": "Read it out, then decide",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-planner-profile-questions",
+   "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
+   "health": "paused",
+   "stale": false,
+   "action": "Resume or shelve",
+   "reason": "Paused 12 day(s)",
+   "overdue_days": 10,
+   "recommend": "Resume or shelve",
+   "in_rotation": false
+  },
+  {
+   "id": "EXP-2026-10-next-step-chips",
+   "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
+   "health": "paused",
+   "stale": false,
+   "action": "Resume or shelve",
+   "reason": "Paused 12 day(s)",
+   "overdue_days": null,
+   "recommend": "Resume or shelve",
+   "in_rotation": false
+  }
+ ],
+ "summary": {
+  "needs_call": 8,
+  "stale": 11,
+  "healthy": 1,
+  "guardrail": 1,
+  "live": 32,
+  "planned": 6,
+  "decided": 18,
+  "spec_incomplete": 22,
+  "decision_pending": 1,
+  "in_rotation": 2
+ },
+ "rotation": {
+  "max": 3,
+  "in_rotation": [
+   "EXP-2026-11-free-daily-question",
+   "EXP-2026-11-limit-cards-plans-copy"
+  ],
+  "over_cap": false,
+  "backlog": [
+   "EXP-2026-11-price-report-vs-pi-card",
+   "EXP-2026-08-pdf-warning-view3",
+   "EXP-2026-10-planner-speed-2a",
+   "EXP-2026-10-planner-name-lookup",
+   "EXP-2026-10-planner-speed-v3",
+   "EXP-2026-10-planner-listings",
+   "EXP-2026-10-planner-price-upsell",
+   "EXP-2026-10-stop-progress",
+   "EXP-2026-10-chat-cost-cards",
+   "EXP-2026-11-contextual-pricing-page",
+   "EXP-2026-11-planner-home-screen",
+   "EXP-2026-11-ask-tulle-bubble",
+   "EXP-2026-10-trustpilot-5star",
+   "EXP-2026-11-ca-forever-135",
+   "EXP-2026-11-planner-five-fixes",
+   "EXP-2026-11-planner-open-ended-replies",
+   "EXP-2026-11-welcome-email-server",
+   "EXP-2026-11-pricing-page-copy",
+   "EXP-2026-11-save-offer-60-forever",
+   "EXP-2026-11-texas-only-forever-89",
+   "EXP-2026-11-estimate-card-whatif",
+   "EXP-2026-11-planner-venue-fixes",
+   "EXP-2026-11-quote-check-everyone",
+   "EXP-2026-11-ww-service-prices",
+   "EXP-2026-11-planner-pdf-count-link",
+   "EXP-2026-11-whole-wedding-planner",
+   "EXP-2026-10-planner-profile-questions",
+   "EXP-2026-10-next-step-chips",
+   "EXP-2026-11-free-question-limit-note"
+  ],
+  "next_call_date": "2026-11-23"
+ },
+ "buckets": [
+  {
+   "key": "payment_funnel",
+   "label": "Payment funnel",
+   "running": [
+    "EXP-2026-11-texas-only-forever-89",
+    "EXP-2026-11-save-offer-60-forever",
+    "EXP-2026-11-pricing-page-copy",
+    "EXP-2026-11-price-report-vs-pi-card",
+    "EXP-2026-11-ca-forever-135"
+   ],
+   "waiting": [
+    "EXP-2026-08-pdf-warning-view3",
+    "EXP-2026-11-limit-cards-plans-copy",
+    "EXP-2026-11-contextual-pricing-page"
+   ],
+   "decided": {
+    "shipped": 4,
+    "reverted": 3,
+    "shelved": 1,
+    "inconclusive": 0
+   },
+   "planned": [
+    "EXP-2026-10-vendor-pdf-order",
+    "EXP-2026-11-pdf-limit-soft-redirect",
+    "EXP-2026-11-price-report-locked-compact"
+   ],
+   "decision_pending": []
+  },
+  {
+   "key": "planner_engagement",
+   "label": "Planner engagement",
+   "running": [
+    "EXP-2026-10-next-step-chips",
+    "EXP-2026-10-planner-profile-questions",
+    "EXP-2026-11-planner-pdf-count-link",
+    "EXP-2026-11-free-question-limit-note",
+    "EXP-2026-11-quote-check-everyone",
+    "EXP-2026-11-whole-wedding-planner",
+    "EXP-2026-11-planner-venue-fixes",
+    "EXP-2026-11-planner-open-ended-replies",
+    "EXP-2026-11-planner-five-fixes",
+    "EXP-2026-11-estimate-card-whatif",
+    "EXP-2026-11-ww-service-prices"
+   ],
+   "waiting": [
+    "EXP-2026-10-chat-cost-cards",
+    "EXP-2026-10-planner-price-upsell",
+    "EXP-2026-10-planner-listings",
+    "EXP-2026-11-free-daily-question",
+    "EXP-2026-11-ask-tulle-bubble",
+    "EXP-2026-11-planner-home-screen"
+   ],
+   "decided": {
+    "shipped": 1,
+    "reverted": 1,
+    "shelved": 3,
+    "inconclusive": 0
+   },
+   "planned": [
+    "EXP-2026-11-planner-context-first"
+   ],
+   "decision_pending": []
+  },
+  {
+   "key": "search",
+   "label": "Search",
+   "running": [],
+   "waiting": [],
+   "decided": {
+    "shipped": 0,
+    "reverted": 0,
+    "shelved": 0,
+    "inconclusive": 0
+   },
+   "planned": [],
+   "decision_pending": []
+  },
+  {
+   "key": "data",
+   "label": "Data",
+   "running": [],
+   "waiting": [],
+   "decided": {
+    "shipped": 0,
+    "reverted": 0,
+    "shelved": 0,
+    "inconclusive": 0
+   },
+   "planned": [],
+   "decision_pending": []
+  },
+  {
+   "key": "reliability",
+   "label": "Reliability",
+   "running": [],
+   "waiting": [
+    "EXP-2026-10-stop-progress",
+    "EXP-2026-10-planner-name-lookup",
+    "EXP-2026-10-planner-speed-v3",
+    "EXP-2026-10-planner-speed-2a"
+   ],
+   "decided": {
+    "shipped": 2,
+    "reverted": 0,
+    "shelved": 0,
+    "inconclusive": 0
+   },
+   "planned": [],
+   "decision_pending": []
+  },
+  {
+   "key": "onboarding",
+   "label": "Onboarding",
+   "running": [
+    "EXP-2026-11-welcome-email-server"
+   ],
+   "waiting": [],
+   "decided": {
+    "shipped": 1,
+    "reverted": 1,
+    "shelved": 0,
+    "inconclusive": 0
+   },
+   "planned": [
+    "EXP-2026-11-meta-landing-pages"
+   ],
+   "decision_pending": [
+    "EXP-2026-10-signup-checkbox"
+   ]
+  },
+  {
+   "key": "retention",
+   "label": "Retention",
+   "running": [
+    "EXP-2026-10-trustpilot-5star"
+   ],
+   "waiting": [],
+   "decided": {
+    "shipped": 1,
+    "reverted": 0,
+    "shelved": 0,
+    "inconclusive": 0
+   },
+   "planned": [
+    "EXP-2026-11-nps-optional-comment-high-stars"
+   ],
+   "decision_pending": []
   }
  ],
  "change_feed": {
@@ -14540,6 +15203,46 @@
   "notes": [],
   "collected_at": "2026-11-19T12:00:00Z"
  },
+ "notes_by_id": {
+  "EXP-2026-10-signup-checkbox": [
+   {
+    "id": "fx4",
+    "ts": "2026-11-19T11:40:00Z",
+    "author": "Des",
+    "kind": "decision",
+    "text": "Nobody will read this out; the consent paragraph replaced it anyway. Shelve.",
+    "call": "shelve"
+   }
+  ],
+  "EXP-2026-11-free-daily-question": [
+   {
+    "id": "fx3",
+    "ts": "2026-11-18T18:30:00Z",
+    "author": "Kate",
+    "kind": "note",
+    "text": "Two couples emailed asking why they can't ask more today. Worth a clearer limit note?",
+    "call": null
+   }
+  ],
+  "EXP-2026-11-limit-cards-plans-copy": [
+   {
+    "id": "fx1",
+    "ts": "2026-11-17T15:10:00Z",
+    "author": "Des",
+    "kind": "note",
+    "text": "Discussed on the Monday call: the plans CTA feels cleaner. Wondering if the submit-PDF link should come back as a small text link.",
+    "call": null
+   },
+   {
+    "id": "fx2",
+    "ts": "2026-11-19T10:05:00Z",
+    "author": "Vivek",
+    "kind": "next_step",
+    "text": "If we keep it, try the venue-specific limit card next as its own split.",
+    "call": null
+   }
+  ]
+ },
  "fixture": true,
- "fixture_note": "FIXTURE: real registry entries; v2 fields, arm counts, history and the two unlogged changes are invented for design review. Not a readout."
+ "fixture_note": "FIXTURE: real registry entries; v2 fields, arm counts, history, the rotation picks, notes and the two unlogged changes are invented for design review. Not a readout."
 }

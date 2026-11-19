@@ -77,7 +77,7 @@ def memory_top(path: Path = KNOW / "memory" / "MEMORY.md", max_chars: int = 1200
 BOT_DROP_KEYS = frozenset({
     "spec_gaps", "metric", "audit_2026_11_19", "audience", "assignment", "guardrails", "rollback", "surfaces",
     "tests", "tier", "max_days", "planned_days", "hypothesis_reconstructed", "backfilled", "framework_version",
-    "decision_rule", "links", "reporting", "what_changed", "hypothesis",
+    "decision_rule", "links", "reporting", "what_changed", "hypothesis", "notes_synced_through", "paused_ranges",
 })
 
 

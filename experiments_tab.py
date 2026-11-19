@@ -207,7 +207,7 @@ def _render_legacy():
 
 # ── Framework v2 (2026-11-19, experiments/FRAMEWORK.md) ─────────────────────────────────────────────────────
 # The tab now renders one self-contained HTML view (experiments_ui/) from the experiments-engine snapshot.
-# Every click happens inside the iframe, so nothing in this tab causes a Streamlit rerun. The engine runs
+# Every click happens inside the page; only saving a note (drawer > Notes) reruns the dash, to post it to the engine. The engine runs
 # as its own Railway service (private network); if it is unreachable the view is built from the registry
 # alone (spec + manual results), so the tab never breaks. EXP_TAB_V2=0 brings back the old tab.
 ENGINE_URL = os.environ.get("EXP_ENGINE_URL", "").rstrip("/")
@@ -230,6 +230,37 @@ def _engine_snapshot(url: str, key: str):
         return None, f"engine unreachable ({type(exc).__name__}) - showing the registry only"
 
 
+def _post_note(exp_id: str, body: dict):
+    """Save a note on the engine (private network). Returns (ok, error). On success the 2-minute
+    snapshot cache is cleared so the rerun shows the note from the engine, not just locally."""
+    if not ENGINE_URL or not ENGINE_KEY:
+        return False, "engine not configured"
+    import requests
+    from urllib.parse import quote
+    try:
+        r = requests.post(f"{ENGINE_URL}/experiments/{quote(exp_id, safe='')}/notes", json=body,
+                          headers={"X-Exp-Key": ENGINE_KEY}, timeout=6)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"engine unreachable ({type(exc).__name__})"
+    if r.status_code >= 300:
+        try:
+            detail = r.json().get("detail") or r.json().get("error")
+        except Exception:  # noqa: BLE001
+            detail = None
+        return False, f"engine said {r.status_code}" + (f": {str(detail)[:120]}" if detail else "")
+    _engine_snapshot.clear()
+    return True, None
+
+
+def _dash_author() -> str:
+    """The logged-in dash user (dashboard.py keeps the Google login in session_state)."""
+    name = st.session_state.get("user_name") or ""
+    email = st.session_state.get("user_email") or ""
+    if name and email and name != email:
+        return name
+    return name or email or "dash user"
+
+
 def render_experiments_tab():
     if os.environ.get("EXP_TAB_V2", "1") == "0":
         return _render_legacy()
@@ -244,4 +275,5 @@ def render_experiments_tab():
     except (OSError, ValueError):
         pass
     render_experiments_tab_v2(dict(snap) if snap else None, reg, history_by_id=history,
-                              degraded_reason=None if snap else reason)
+                              degraded_reason=None if snap else reason,
+                              on_note=_post_note if snap else None, author=_dash_author())

@@ -18,7 +18,7 @@ experiment missing one as **Spec incomplete**.
 | # | Question | Registry field(s) |
 |---|---|---|
 | 1 | **What is the experiment?** The concrete change couples see. | `name`, `what_changed`, `links` |
-| 2 | **What does it impact?** Systems touched and who sees it. | `surfaces[]`, `audience` |
+| 2 | **What does it impact?** Systems touched, who sees it, and the one thing it is meant to improve (its bucket). | `surfaces[]`, `audience`, `bucket` |
 | 3 | **Hypothesis**: "If we X, then metric Y moves Z, because W." | `hypothesis` |
 | 4 | **What is it trying to test?** The single question it answers. | `tests` |
 | 5 | **Success metric**: primary metric, direction, the smallest lift worth having, decision thresholds, guardrails, couples impacted. | `metric`, `guardrails[]`, `decision_rule` (defaults by tier), `audience.est_daily_exposed` |
@@ -46,6 +46,11 @@ written to this standard.
   "themes": ["planner"],                         // v1
   "what_changed": "Free couples get 3 Planner questions for life, then 1 per UTC day.",
   "surfaces": ["rec-engine", "weweb:planner", "xano:table79"],
+  "bucket": "planner_engagement",                // payment_funnel | planner_engagement | search | data |
+                                                 // reliability | onboarding | retention (derived if missing)
+  "in_rotation": true,                           // one of the <= 3 experiments called each week (section 12)
+  "notes_synced_through": "2026-11-23T15:00:00Z",  // decision notes up to here are already in the registry
+  "paused_ranges": [{"from": "2026-11-07", "to": null}],  // optional; paused_on also works
   "audience": {"segment": "free couples who open the Planner", "est_daily_exposed": 35},
   "hypothesis": "If free couples get a daily question, more of them return within 3 days, because there is a reason to come back.",
   "tests": "Does a daily allowance bring free Planner couples back?",
@@ -223,7 +228,11 @@ that touches a user-facing surface. It appears on the Changes tab and in the dai
   callable, unlogged changes, and a one-line "N running healthy".
 - **Urgent**: a guardrail breach, checked every 6 h. Sent once per breach per experiment
   (de-duplicated on the volume).
-- **Weekly** (Monday): what was decided last week and what was learned.
+- **Weekly call** (Monday): the agenda. Each in-rotation experiment's TL;DR and recommended call,
+  then the backlog to clear (top 5, each with its recommended call), then what was decided last
+  week. Decisions are made by adding a **Decision** note in the dash (section 12).
+- The daily digest lists each item with its recommended call (section 12), and stale items with
+  the concrete step that moves them along ("Next: ...").
 - Every message links to the dash. No message is sent when nothing changed.
 - Sent with `HEALTH_SLACK_BOT_TOKEN` to `HEALTH_SLACK_USER_ID` (an existing DM conversation id;
   Tulle Bot lacks `im:write`). These are Railway reference variables to health-report-cron.
@@ -248,3 +257,85 @@ that touches a user-facing surface. It appears on the Changes tab and in the dai
 - **Call**: owner decides. Claude Code records `outcome`, `decided_on` and `decision`, and
   sets `status` to the outcome.
 - **One change per experiment.** Split tests use a per-experiment salt.
+- **Sync decisions** made in the dash: `GET /decisions/pending` on the engine lists decision notes not
+  yet in the registry. For each, set `status`/`outcome`/`decided_on`/`decision` (or a new `review_date`
+  for keep_running, `status: live` for resume), then set `notes_synced_through` to the note's `ts`.
+
+## 12. Verdicts, notes and the weekly rotation (2026-11-19)
+
+### Verdicts and next steps
+
+Every row in the snapshot carries `verdict` (experiments_engine/verdict.py), so nobody has to work out
+what a result means:
+
+- `result`: Ahead · Behind · No clear difference · Too early · Not measured · No data · Biased metric
+  (decided rows: Shipped · Reverted · Shelved · Inconclusive · Concluded).
+- `tldr`: one plain sentence that starts from where it began. "Started at 5.1% (20 of 395, 10-20..11-03)
+  of couples who hit the PDF limit paid within 1 day; after the change 5.9% (22 of 371, 11-03..11-19):
+  70% chance it's genuinely better; money tests need 95%." Before/after reads add "treat this as
+  evidence, not proof". With no starting point the TL;DR says "No starting point recorded".
+- `numbers`: baseline {label, value, rate, source: readout control | registry baseline}, before/after
+  strings and rates, chance it's better, the bar (for charts).
+- `recommend`: {call (ship | revert | shelve | inconclusive | keep_running | read_out | fix_tracking |
+  resume_or_shelve | complete_spec | split_test), label (30 chars or so), why}. `unstick`: who does what, and how long it takes, when the experiment
+  is stale or past its review date. `confidence_note`: pending couples, small numbers, defaulted windows.
+
+Rules, first match wins:
+
+| situation | call | label |
+|---|---|---|
+| draft / planned | complete_spec / keep_running | "Finish the spec before launch" (always for drafts) / "Launch when ready" |
+| paused | resume_or_shelve | "Resume or shelve"; "Shelve it (or resume)" after 14 days paused |
+| guardrail breach | revert | "Revert now" |
+| approximate (biased) metric | split_test | "Judge it with a fair test" (no call on the numbers) |
+| metric failing, no numbers | fix_tracking | "Fix the metric (or shelve)" |
+| zero conversions in both periods | fix_tracking | "Check the tracking (or shelve)" |
+| site-wide count metric, before/after or benchmark, inside its run | keep_running | "Keep running (N days left)"; "Keep running (set a review date)" with no planned run |
+| site-wide count metric (purchases / revenue / ratings per day) on a before/after or benchmark read, past its run | inconclusive | "Keep it, close inconclusive" (leaning better) / "Close inconclusive"; never ship or revert, because a whole-site count can't credit one change (run a split test if it matters) |
+| chance >= tier bar, >= 7 days, expected loss <= max_loss (section 4) | ship | "Ship it"; "Keep the change (ship)" when confounded |
+| chance <= stop bar (loss callable or past planned run) | revert | "Revert it" |
+| between the bars, inside the planned run | keep_running | "Keep running (N days left)" |
+| between the bars (or over the bar with too much expected loss), past the run (or starved), chance >= 50%, guardrails ok | inconclusive | "Keep it, close inconclusive" |
+| between the bars, past the run, chance < 50% | revert | "Revert (leaning worse)" (why: unless there is a product reason) |
+| manual, no numbers, due (review passed / overdue / stale) | read_out | "Read it out, then decide" |
+| manual, not due | keep_running | "Keep running (N days left)" |
+| spec incomplete, nothing to read | complete_spec | "Complete the spec (or shelve)", naming the top 2 missing fields |
+
+"Past the run" means days_left is 0 (a planned run or review date exists and has passed), a call is due,
+or the experiment is starved or a zombie. No planned run or review date is not "past the run".
+
+Result label from the chance it's better: >= 80% Ahead, <= 20% Behind, otherwise No clear difference;
+under 7 days running is Too early.
+
+### Buckets (what it is meant to improve)
+
+`bucket` groups experiments for the dash: payment_funnel · planner_engagement · search · data ·
+reliability · onboarding · retention. Set it in the registry (question 2); when missing the engine derives
+it (experiments_engine/buckets.py: performance -> reliability; sign-up/T&C/welcome -> onboarding; a money
+metric -> payment_funnel; NPS/Trustpilot/email -> retention; Planner -> planner_engagement; search ->
+search; extraction/data -> data; paywall/pricing -> payment_funnel). `validate.py` warns when a v2 entry
+has no bucket. `snapshot.buckets` lists running / waiting / decided counts per bucket, in a fixed order.
+Each row also carries calendar dates: `start_date`, `review_date`, `max_end_date`, `decided_on`,
+`paused_ranges`.
+
+### Notes: a live record of what we discussed
+
+Anyone on the dash can add a note to an experiment: `note` (discussion), `next_step`, or `decision`
+(with a call: ship | revert | shelve | inconclusive | keep_running | resume). The dash sends a
+`client_id`, so a retried POST returns the stored note instead of adding a duplicate. Notes live on the engine
+volume (`notes.jsonl`), never in the registry, and show at once (attached when the snapshot is served).
+A decision note newer than the entry's `notes_synced_through` marks the row **decided in dash, registry
+update pending**: it leaves Decide now, the queue and the backlog until Claude Code syncs it (section 10).
+Engine endpoints (private network + key): `GET/POST /experiments/{id}/notes`, `GET /decisions/pending`.
+
+### The weekly rotation
+
+- At most **3** experiments are **in rotation** (`in_rotation: true`, live) at any time. `validate.py --id`
+  fails a fourth.
+- Each in-rotation experiment has a run of **14 days or less** (planned_days or review_date), so it comes
+  up for a call within two weeks.
+- **Calls happen every Monday** (the Weekly call DM is the agenda). Each in-rotation experiment gets a
+  call or an explicit "keep running". Anything else live is **backlog**: clear it (ship as is, revert,
+  shelve) or promote it into a free slot.
+- New launches go into rotation only when a slot is free. A change shipped outside rotation is logged as
+  a `changes[]` entry or a rollout, not as an experiment that needs a call.
