@@ -522,6 +522,113 @@ details.seven>summary:hover{color:var(--ink)}
 .bempty{font-size:13px;color:var(--ink-3)}
 .dcount{font-size:12px;color:var(--ink-3);padding-top:3px}
 .dcount b{color:var(--ink-2);font-weight:600}
+
+/* ── v3 (2026-11-19): one view. Calendar strip, toolbar, card grid. ───── */
+.hdr-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.needbadge{cursor:pointer;font-weight:600}
+.ovf{position:relative}
+.ovf>summary{list-style:none;display:inline-flex;align-items:center;gap:6px}
+.ovf>summary::marker{content:""}
+.ovf>summary::-webkit-details-marker{display:none}
+.ovf .dot{position:static;width:6px;height:6px;border-radius:50%;background:var(--warn-fill);display:inline-block}
+.ovf .menu{position:absolute;right:0;top:calc(100% + 6px);z-index:20;min-width:260px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r8);box-shadow:var(--sh2);padding:4px;display:flex;flex-direction:column}
+.ovf .menu button{appearance:none;border:0;background:none;text-align:left;padding:8px 10px;border-radius:6px;font-size:13px;color:var(--ink);cursor:pointer}
+.ovf .menu button:hover{background:var(--surface-2)}
+.back{margin:14px 0 18px}
+.xbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 8px}
+.xbar2{margin:0 0 12px}
+.xq{flex:1 1 280px;min-width:200px}
+.xbar .sel{flex:0 1 auto;max-width:100%}
+.cal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);box-shadow:var(--sh1);padding:10px 0 6px;margin:14px 0 10px;--cl:190px}
+.cal-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:0 14px 6px}
+.cal-h h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0}
+.cal-h>span{font-size:12px;color:var(--ink-3)}
+.ckey{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ckey i{display:inline-block;width:12px;height:6px;border-radius:3px;margin-left:6px}
+.k-rot,.cb.rot{background:var(--g700)} .k-live,.cb.live{background:var(--g500)} .k-call,.cb.call{background:var(--warn-fill)}
+.k-dec,.cb.dec{background:var(--ink-5)} .k-plan{border:1.5px dashed var(--ink-4);height:6px}
+.cs{max-height:230px;overflow:auto;position:relative;overscroll-behavior:contain}
+.cin{position:relative}
+.cr{display:flex;align-items:center;height:20px}
+.cl{position:sticky;left:0;z-index:3;flex:none;width:var(--cl);padding:0 10px 0 14px;font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--surface);line-height:20px}
+.ct{position:relative;height:20px;flex:none}
+.chead{position:sticky;top:0;z-index:4;background:var(--surface);height:24px;border-bottom:1px solid var(--line)}
+.chead .cl{height:24px}
+.chead .ct{height:24px}
+.cw{position:absolute;top:0;height:24px;appearance:none;border:0;border-left:1px solid var(--line);background:none;font-size:11px;color:var(--ink-3);text-align:left;padding:0 0 0 4px;cursor:pointer;white-space:nowrap;overflow:hidden}
+.cw b{color:var(--ink-2);font-weight:600}
+.cw:hover,.cw.on{background:var(--win-tint);color:var(--win-ink)}
+.cbody{position:relative;padding:3px 0}
+.cgrid{position:absolute;top:0;bottom:0;left:var(--cl);pointer-events:none}
+.cg{position:absolute;top:0;bottom:0;border-left:1px solid var(--line)}
+.cg.on{background:color-mix(in srgb,var(--g500) 9%,transparent)}
+.ctoday{position:absolute;top:0;bottom:0;width:2px;background:var(--bad-fill);opacity:.8}
+.cb{position:absolute;top:5px;height:10px;border-radius:5px;border:0;padding:0;cursor:pointer;appearance:none}
+.cb.plan{background:transparent;border:1.5px dashed var(--ink-4)}
+.cb.tail{background:color-mix(in srgb,var(--g500) 22%,transparent);pointer-events:none;border-radius:0 5px 5px 0}
+.cb:hover{filter:brightness(1.1);box-shadow:0 0 0 2px color-mix(in srgb,var(--focus) 35%,transparent)}
+.cb.on{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink)}
+.cfoot{margin:6px 14px 2px;font-size:12px;color:var(--ink-3)}
+.showing{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);background:var(--win-tint);border:1px solid var(--win-line);border-radius:999px;padding:4px 12px;margin:0 0 12px;width:fit-content;max-width:100%}
+.xg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:980px){.xg{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:620px){.xg{grid-template-columns:minmax(0,1fr)}.cal{--cl:0px}.cl{padding:0;width:0}.ckey{display:none}.xbar .sel{flex:1 1 140px}.bk-tag{display:none}}
+.xc{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);box-shadow:var(--sh1);padding:12px 14px;cursor:pointer;min-width:0;transition:border-color .15s,box-shadow .15s,transform .15s}
+.xc:hover{border-color:var(--line-2);box-shadow:var(--sh2);transform:translateY(-1px)}
+.xc:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.xc.s-call{border-left:3px solid var(--warn-fill)}
+.xc.s-running{border-left:3px solid var(--g500)}
+.xc.s-planned{border-left:3px dashed var(--line-2)}
+.xt{display:flex;gap:6px;align-items:center;min-width:0}
+.xt .pill{flex:none}
+.rotp{font-size:11px}
+.bk-tag{font-size:11px;color:var(--ink-3);background:var(--neutral-tint);padding:1px 8px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
+.xc h3{font-family:var(--font-d);font-weight:600;font-size:16px;line-height:1.3;margin:2px 0 0;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.xs{margin:0;font-size:13px;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.xs b{color:var(--ink-3);font-weight:500}
+.xs.muted{color:var(--ink-4)}
+.xw{font-size:12px;color:var(--ink-3)}
+.xp{height:4px;border-radius:2px;background:var(--track);overflow:hidden}
+.xp i{display:block;height:100%;background:var(--g500);border-radius:2px}
+.xp.over i{background:var(--warn-fill)}
+.xp.none{background:transparent}
+.xo{font-size:13px;color:var(--ink-2);padding:6px 8px;background:var(--surface-2);border-radius:var(--r6)}
+.xo .k{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3)}
+.xo .arw{color:var(--ink-4);margin:0 2px}
+.xo b{font-weight:600}
+.xo b.up{color:var(--win-ink)} .xo b.dn{color:var(--bad-ink)}
+.xo .ml{font-size:11px;color:var(--ink-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xo.none{color:var(--ink-4);font-size:12px}
+.xo.none span{color:var(--ink-3);font-weight:500}
+.xr{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;min-height:22px}
+.xn{color:var(--ink-3)} .xn b{color:var(--ink);font-weight:600}
+.xf{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-3);margin-top:auto}
+.xh{display:inline-flex;gap:4px;align-items:center;color:var(--warn-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.xnn{white-space:nowrap}
+.sc{background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);padding:8px 14px;margin:0 0 4px;font-size:13px}
+.sc>summary{cursor:pointer;color:var(--ink-2);list-style:none;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.sc>summary::-webkit-details-marker{display:none}
+.sc>summary::before{content:"";width:0;height:0;border:4px solid transparent;border-left:5px solid var(--ink-4);margin-right:2px;align-self:center;transition:transform .15s}
+.sc[open]>summary::before{transform:rotate(90deg) translateX(2px)}
+.sc-in{display:inline-flex;gap:14px;flex-wrap:wrap}
+.sc-i{white-space:nowrap;color:var(--ink-3)} .sc-i b{color:var(--ink);font-weight:600}
+.sc-hint{font-size:12px;color:var(--ink-4);margin-left:auto}
+.sc-g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
+@media (max-width:620px){.sc-g{grid-template-columns:minmax(0,1fr)}.sc-hint{display:none}}
+.sc-t{background:var(--surface-2);border-radius:var(--r8);padding:8px 10px;min-width:0}
+.sc-l{font-size:12px;color:var(--ink-3)}
+.sc-v b{font-family:var(--font-d);font-size:18px;font-weight:600;color:var(--ink)}
+.sc-c,.sc-w{font-size:12px;color:var(--ink-3)}
+.sc-d{font-size:12px;color:var(--ink-3)} .sc-d.up{color:var(--win-ink)} .sc-d.dn{color:var(--bad-ink)}
+.sc-na{font-size:12px;color:var(--ink-4)}
+.wh{background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);padding:14px 18px;margin-bottom:14px}
+.wh h3{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px}
+.wh .tldr{font-family:var(--font-d);font-size:16px;line-height:1.5;color:var(--ink);margin:0 0 8px}
+.wh p{margin:0 0 8px;font-size:14px;color:var(--ink-2)}
+.wh dl{display:grid;grid-template-columns:130px minmax(0,1fr);gap:6px 14px;margin:0;font-size:14px}
+.wh dt{color:var(--ink-3);font-weight:500}
+.wh dd{margin:0;color:var(--ink-2)}
+@media (max-width:620px){.wh dl{grid-template-columns:1fr}.wh dt{margin-top:6px}}
 </style>
 </head>
 <body>
@@ -803,7 +910,8 @@ function tldrOf(e){ return V(e).tldr || ""; }
 function subLine(e){ return tldrOf(e) || shortReason(e); }
 function unstickOf(e){ return V(e).unstick || ""; }
 var RTONE = {good: "win", bad: "bad", neutral: "neutral", unknown: "outline"};
-function resultPill(e){ var r = obj(V(e).result); if (!r.label) return ""; return '<span class="pill ' + (RTONE[r.tone] || "outline") + '">' + (r.tone === "good" ? ICON.check.replace('width="16" height="16"', 'width="11" height="11"') : "<i></i>") + esc(r.label) + '</span>'; }
+function isMeasuring(e){ return /^measuring$/i.test(String(obj(V(e).result).label || "")); }
+function resultPill(e){ var r = obj(V(e).result); if (!r.label) return ""; return '<span class="pill ' + (isMeasuring(e) ? "neutral" : (RTONE[r.tone] || "outline")) + '">' + (r.tone === "good" ? ICON.check.replace('width="16" height="16"', 'width="11" height="11"') : "<i></i>") + esc(r.label) + '</span>'; }
 function pBeatOf(e){ var n = obj(V(e).numbers); if (num(n.p_beat) != null) return num(n.p_beat); var st = statsOf(e); return st && num(st.p_beat) != null ? num(st.p_beat) : null; }
 function barOf(e){ var n = obj(V(e).numbers); return num(n.bar) != null ? num(n.bar) : ruleOf(e).ship_p; }
 var ROT = obj(S.rotation);
@@ -895,38 +1003,6 @@ var FILTERS = {
   healthy: function(e){ var g = groupOf(e); return g === "evidence" || g === "waiting" || (!g && e.health === "on_track"); }
 };
 
-/* ── state */
-var TABS = ["today","calendar","buckets","decided","changes","rules"];
-var ST = KEEP.ST || { tab: TABS.indexOf(H.tab) >= 0 ? H.tab : "today", filter: H.filter === "healthy" ? "healthy" : "all", q: "", sort: "sev", dir: 1, queueAll: H.queue === "all", dOutcome: "all", dTheme: "", dQ: "", cOnly: H.unlogged === "1", cSrc: "",
-  runOpen: H.focus === "running" || H.filter === "healthy", calF: H.cal || "live",
-  open: {decide: true, overdue: true, stale: true, spec: H.queue === "all", waiting: H.queue === "all", evidence: H.queue === "all", backlog: H.queue === "all" || H.queue === "backlog", pending: true}, more: {}, sel: {} };
-KEEP.ST = ST;
-/* queue grouped by what the founder has to do; each live row lands in at most one group */
-var G = {decide: [], stale: [], spec: [], waiting: [], evidence: [], backlog: [], pending: [], overdue: []};
-if (ROTMODE) {
-  // rotation mode: lead with the 2-3 experiments in rotation; everything else live is backlog
-  // to clear (one recommended call each); decisions made in the dash wait for the registry
-  LIVE.slice().sort(function(a, b){ return cmpKey(sevKey(a), sevKey(b)); }).forEach(function(e){
-    if (pendingDec(e)) { G.pending.push(e); return; }
-    var g = groupOf(e);
-    if (e.health === "guardrail_breach") { G.decide.push(e); return; }
-    if (inRot(e)) { if (g === "decide" || g === "stale") G.decide.push(e); return; }
-    // overdue calls only (what the engine's summary.needs_call and the daily DM count); paused rows
-    // stay in the backlog with "Resume or shelve"
-    if (/^(needs_call|callable_win|callable_loss)$/.test(e.health)) { G.overdue.push(e); return; }
-    G.backlog.push(e);
-  });
-  G.backlog.sort(function(a, b){ var sa = isStaleish(a) ? 0 : 1, sb = isStaleish(b) ? 0 : 1; if (sa !== sb) return sa - sb; return (staleAge(b) || 0) - (staleAge(a) || 0) || cmpKey(sevKey(a), sevKey(b)); });
-} else {
-  QUEUE.forEach(function(e){ if (pendingDec(e)) { G.pending.push(e); return; } var g = groupOf(e); if (g) G[g].push(e); });
-}
-// inside "stale", the oldest problem first; inside "decide", guardrails then calls
-G.stale.sort(function(a, b){ return (staleAge(b) || 0) - (staleAge(a) || 0); });
-G.overdue.sort(function(a, b){ return (num(b.overdue_days) || 0) - (num(a.overdue_days) || 0); });
-var GROUP_OVERDUE = {id: "overdue", title: "Overdue in backlog", cls: "g-warn", guide: "Not in rotation, but the review date has passed or the data is ready. Make the call or shelve."};
-var GROUP_BACKLOG = {id: "backlog", title: "Backlog to clear", cls: "", guide: "Live but not in rotation. Each row has one recommended call; clear them so only 2-3 run at a time."};
-var GROUP_PENDING = {id: "pending", title: "Decided, registry update pending", cls: "", guide: "Called from this page. Claude Code records each one in the registry, then it moves to Decided."};
-var GROUP_DECIDE_ROT = {id: "decide", title: "Decide now", cls: "g-warn", guide: "In rotation and due a call, or a guardrail alert."};
 function staleAge(e){
   // how long it has been stuck: days past review, days without a readout, or days live past 2x plan
   if (e.health === "needs_call") return num(e.overdue_days);
@@ -934,9 +1010,6 @@ function staleAge(e){
   if (e.health === "zombie") { var t = tlOf(e), dr = daysRunning(e); return t.planned && dr != null ? dr - 2 * t.planned : null; }
   return num(e.overdue_days);
 }
-var FINE = LIVE.filter(function(e){ return e.health === "on_track" && !e.stale; });
-var FILTER_TO_GROUP = {call: "decide", guard: "decide", stale: "stale", spec: "spec", waiting: "waiting", evidence: "evidence"};
-if (FILTER_TO_GROUP[H.filter]) ST.open[FILTER_TO_GROUP[H.filter]] = true;
 
 /* ── components */
 function timelineBar(e, compact){
@@ -982,385 +1055,30 @@ function bindRows(root){
 }
 
 /* ── views */
-function renderHeader(){
-  var gen = S.generated_at ? String(S.generated_at) : "";
-  var genTxt = gen ? fd(gen) + " " + (gen.slice(11,16) ? gen.slice(11,16) + " UTC" : "") : "unknown";
-  var unlogged = CHANGES.filter(function(c){ return c.unlogged; }).length;
-  var nDraft = PLANNED.filter(function(e){ return e.lifecycle === "draft" || e.status === "draft"; }).length;
-  var h = '<div class="hdr"><div><h1>Experiments</h1><div class="meta num">Updated ' + esc(genTxt) + ' · ' + LIVE.length + ' running · ' + (PLANNED.length - nDraft) + ' planned' + (nDraft ? ' · ' + nDraft + ' draft' : '') + ' · ' + DECIDED.length + ' decided</div></div>' +
-    (S.fixture ? '<span class="badge-fixture" title="' + esc(S.fixture_note || "") + '">Fixture data · not a readout</span>' : "") + '</div>';
-  if (S.degraded) h += '<div class="banner warn" role="status">' + esc(S.degraded_note || "Engine snapshot unavailable: registry view only.") + '</div>';
-  h += '<div class="tabs" role="tablist" aria-label="Experiments views">' +
-    tabBtn("today", "Today", ROTMODE ? todayBadge() : QUEUE.filter(function(e){ var g = groupOf(e); return g && g !== "evidence"; }).length) + tabBtn("calendar", "Calendar") + tabBtn("buckets", "Buckets") + tabBtn("decided", "Results", DECIDED.length) +
-    tabBtn("changes", "Changes", CHANGES.length, unlogged) + tabBtn("rules", "Rules") + '</div>';
-  return h;
-}
 /* Today badge = the engine's own count (summary.needs_call + guardrail), so it always matches the
    daily DM; computed from the groups only when an old snapshot has no summary */
 function todayBadge(){
   if (num(SUM.needs_call) != null) return num(SUM.needs_call) + (num(SUM.guardrail) || 0);
-  return G.decide.length + G.overdue.length;
-}
-function tabBtn(id, label, n, dot){
-  return '<button class="tab" role="tab" id="tab-' + id + '" aria-controls="panel" aria-selected="' + (ST.tab === id) + '" tabindex="' + (ST.tab === id ? 0 : -1) + '" data-tab="' + id + '">' + label + (n != null ? '<span class="tab-n">' + n + '</span>' : "") + (dot ? '<span class="dot" title="' + dot + ' unlogged"></span><span class="sr">' + dot + ' unlogged</span>' : "") + '</button>';
+  return ALL.filter(function(e){ return statusOf(e) === "call"; }).length;
 }
 function shortReason(e){ return humanReason(e).replace(/ (Ask Claude Code for a readout, or shelve it|Call it from what you know, or shelve it)\.$/, ""); }
-function qRow(e, selectable){
-  var due = "";
-  if (e.health === "callable_win" || e.health === "callable_loss" || e.health === "guardrail_breach") { var od = num(e.overdue_days); if (od) due = od + "d past review"; }
-  var si = staleIn(e); if (si != null) due = si === 0 ? "stale today" : "goes stale in " + si + "d";
-  var dl = decLine(e), sl = subLine(e), un = isStaleish(e) ? unstickOf(e) : "";
-  var act = dl ? "Decided" : actionLabel(e), tone = dl ? "neutral" : actionTone(e);
-  var label = nameOf(e) + ". " + pillText(e) + ". " + act + ". " + (dl || sl);
-  return '<div class="row q-row sev-' + sev(e) + (selectable ? " sel-row" : "") + '" data-open="' + esc(e.id) + '">' +
-    (selectable ? '<div class="q-c" data-stop><input type="checkbox" data-sel="' + esc(e.id) + '"' + (ST.sel[e.id] ? " checked" : "") + ' aria-label="Select ' + esc(trunc(nameOf(e), 60)) + '"></div>' : "") +
-    '<div class="q-p">' + pill(e) + '</div><div class="q-t" style="min-width:0"><button class="ttl-btn ttl" data-open-btn="' + esc(e.id) + '" aria-label="' + esc(label) + '" title="' + esc(nameOf(e)) + '">' + esc(nameOf(e)) + '</button>' +
-    (dl ? '<div class="sub" title="' + esc(dl) + '">' + esc(dl) + '</div>' : '<div class="sub" title="' + esc(sl) + '">' + esc(sl) + '</div>' + (un ? '<div class="sub2" title="' + esc(un) + '"><b>To move it along:</b> ' + esc(un) + '</div>' : "")) + '</div>' +
-    '<div class="q-a" style="display:flex;gap:10px;align-items:center;min-width:0">' + (due && !dl ? '<span class="q-due">' + esc(due) + '</span>' : "") + '<span class="q-act' + (tone ? " rec-" + tone : "") + '" title="' + esc(act) + '">' + esc(act) + ICON.arrow + '</span></div></div>';
-}
-function renderGroup(g){
-  var list = G[g.id], open = !!ST.open[g.id];
-  var guard = g.id === "decide" && list.some(function(e){ return e.health === "guardrail_breach"; });
-  var h = '<div class="qg ' + (guard ? "g-bad" : g.cls) + (open ? " open" : "") + '" id="g-' + g.id + '">' +
-    '<button class="qg-h" data-group="' + g.id + '" aria-expanded="' + open + '" aria-controls="gb-' + g.id + '"><span class="chev">' + ICON.arrow + '</span><span class="gt">' + g.title + '<span class="gn">' + list.length + '</span></span><span class="gg">' + g.guide + '</span><span class="gx">' + (open ? "Hide" : "Show") + '</span></button>';
-  h += '<div class="qg-b" id="gb-' + g.id + '">';
-  var LIM = 10, rows = ST.more[g.id] ? list : list.slice(0, LIM);
-  rows.forEach(function(e){ h += qRow(e, g.id === "stale" || g.id === "backlog"); });
-  if (list.length > LIM) h += '<div class="q-more"><button class="linkbtn" data-more="' + g.id + '">' + (ST.more[g.id] ? "Show fewer" : "Show all " + list.length) + '</button></div>';
-  if (g.id === "backlog") {
-    var nb = list.filter(function(e){ return ST.sel[e.id]; }).length;
-    h += '<div class="q-foot"><button class="btn" data-selall-b>' + (nb && nb === list.length ? "Clear selection" : "Select all") + '</button><button class="btn primary" data-copy-backlog>Copy backlog decisions for Claude Code (' + (nb || list.length) + ')</button><span>' + (nb ? "Copies the ticked rows" : "Copies every row") + ' with its recommended call. Paste into Claude Code to record them, or edit the calls first.</span><div id="backlog-box" style="flex-basis:100%"></div></div>';
-  }
-  if (g.id === "stale") {
-    var n = list.filter(function(e){ return ST.sel[e.id]; }).length;
-    h += '<div class="q-foot"><button class="btn" data-selall>' + (n === list.length ? "Clear selection" : "Select all") + '</button><button class="btn primary" data-copy-shelve' + (n ? "" : " disabled") + '>Copy shelve list for Claude Code' + (n ? " (" + n + ")" : "") + '</button><span>Tick the ones to shelve, paste the list into Claude Code, and it records the decisions.</span><div id="shelve-box" style="flex-basis:100%"></div></div>';
-  }
-  return h + '</div></div>';
-}
 function backlogText(){
   var sel = G.backlog.filter(function(e){ return ST.sel[e.id]; }), list = sel.length ? sel : G.backlog;
   return "Backlog decisions from the Experiments tab (" + TODAY + "), " + list.length + " experiment" + (list.length === 1 ? "" : "s") + ". For each, record the call in experiments/experiment_log.json (status, outcome, decided_on, decision with the one-line learning). Check each recommended call with me before recording if it says 'needs work':\n" +
     list.map(function(e){ var r = recOf(e); return "- " + (e.id || nameOf(e)) + " (" + nameOf(e) + "): " + (r ? r.label + ". Why: " + (r.why || subLine(e)) : actionVerb(e) + ". Why: " + shortReason(e)) + (tldrOf(e) ? " | Result: " + tldrOf(e) : ""); }).join("\n");
 }
-function shelveText(){
-  var picked = G.stale.filter(function(e){ return ST.sel[e.id]; });
-  return "Shelve these " + picked.length + " stale experiment" + (picked.length === 1 ? "" : "s") + " (decided from the Experiments tab, " + TODAY + "). For each, set the outcome to shelved in experiments/experiment_log.json with the reason below:\n" +
-    picked.map(function(e){ return "- " + (e.id || nameOf(e)) + " (" + nameOf(e) + "): " + shortReason(e); }).join("\n");
-}
-function renderToday(){
-  if (ROTMODE) return renderTodayRot();
-  var guards = G.decide.filter(function(e){ return e.health === "guardrail_breach"; });
-  var nEv = G.evidence.length, nWait = G.waiting.length;
-  var oldest = G.stale.length ? staleAge(G.stale[0]) : null;
-  var soon = G.decide.filter(function(e){ return staleIn(e) != null; }).length;
-  var k = function(id, n, label, sub, cls){ return '<button class="kpi ' + (n ? cls : "zero") + '" data-kpi="' + id + '"><div class="k-n">' + n + '</div><div class="k-l">' + label + '</div><div class="k-s">' + sub + '</div></button>'; };
-  var h = "";
-  guards.forEach(function(e){ h += '<div class="alert" role="alert"><div><b>Guardrail breach:</b> ' + esc(nameOf(e)) + '. ' + esc(humanReason(e)) + '</div><button class="btn" data-open-btn="' + esc(e.id) + '">Pause or revert now</button></div>'; });
-  h += '<div class="strip" role="group" aria-label="Today at a glance">' +
-    k("decide", G.decide.length, "Decide now", guards.length ? guards.length + " guardrail alert" + (guards.length === 1 ? "" : "s") + ", pause or revert" : G.decide.length ? (soon ? soon + " go" + (soon === 1 ? "es" : "") + " stale within 3 days" : "ready to call or past review") : "nothing to decide", guards.length ? "bad" : "warn") +
-    k("stale", G.stale.length, "Stale", G.stale.length ? (oldest != null ? "oldest stuck " + oldest + " days" : "call it or shelve") : "nothing going stale", "warn") +
-    k("spec", G.spec.length, "Fix the setup", G.spec.length ? "spec gaps or metric not read" : "every spec complete", "") +
-    k("fine", FINE.length + nEv + nWait, "No action due", FINE.length + " on track" + (nWait ? " · " + nWait + " waiting for numbers" : "") + (nEv ? " · " + nEv + " before/after only" : ""), "win") + '</div>';
-  var total = G.decide.length + G.stale.length + G.spec.length;
-  h += '<section class="sec" id="queue" aria-labelledby="q-h"><div class="sec-h"><h2 id="q-h">Needs you</h2><span class="aside">' + (total ? total + " to act on, grouped by what to do" : "") + '</span></div>';
-  if (!total && !nEv && !nWait) {
-    h += '<div class="card"><div class="empty"><div class="ic">' + ICON.check + '</div><b>Nothing needs you today.</b>' + FINE.length + ' experiment' + (FINE.length === 1 ? "" : "s") + ' running on track.</div></div>';
-  } else {
-    if (!total) h += '<div class="card" style="margin-bottom:12px"><div class="empty"><div class="ic">' + ICON.check + '</div><b>Nothing needs you today.</b></div></div>';
-    GROUPS.forEach(function(g){ if (G[g.id].length) h += renderGroup(g); });
-    if (G.pending.length) h += renderGroup(GROUP_PENDING);
-  }
-  h += '</section>';
-  return h + runningSection();
-}
-function renderTodayRot(){
-  var guards = G.decide.filter(function(e){ return e.health === "guardrail_breach"; });
-  var h = "";
-  guards.forEach(function(e){ h += '<div class="alert" role="alert"><div><b>Guardrail breach:</b> ' + esc(nameOf(e)) + '. ' + esc(humanReason(e)) + '</div><button class="btn" data-open-btn="' + esc(e.id) + '">Pause or revert now</button></div>'; });
-  var rot = LIVE.filter(inRot), mx = num(ROT.max) || 3;
-  var nextCall = ROT.next_call_date ? (function(){ var d = pd(ROT.next_call_date); return d ? ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getUTCDay()] + " " + fd(ROT.next_call_date) : null; })() : null;
-  h += '<section class="sec" aria-labelledby="rot-h"><div class="rot-h"><h2 id="rot-h">In rotation</h2><span class="m"><b class="num">' + rot.length + '/' + mx + '</b> running' + (nextCall ? ' · Next call <b>' + esc(nextCall) + '</b>' : "") + ' · decide on each at the weekly call</span></div>';
-  if (ROT.over_cap || rot.length > mx) h += '<div class="cap-note" role="status">Over the cap: ' + rot.length + ' in rotation, the limit is ' + mx + '. Close one before starting another.</div>';
-  h += '<div class="rot">';
-  rot.forEach(function(e){
-    var r = recOf(e), dl = decLine(e);
-    h += '<button class="rcard" data-open-btn="' + esc(e.id) + '" aria-label="' + esc(nameOf(e) + ". " + (tldrOf(e) || shortReason(e))) + '"><div style="display:flex;gap:6px;flex-wrap:wrap">' + (resultPill(e) || pill(e)) + '</div><div class="nm">' + esc(nameOf(e)) + '</div><div class="tl2">' + esc(dl || tldrOf(e) || shortReason(e)) + '</div><div class="ft"><span>' + (dl ? "Decided" : "Recommended") + '</span><b>' + esc(dl ? (CALL_LABEL[callKey(pendingDec(e).call)] || pendingDec(e).call) : (r ? r.label : actionVerb(e))) + '</b></div></button>';
-  });
-  for (var i = rot.length; i < mx; i++) h += '<div class="rcard empty-slot" aria-hidden="true">Open slot. Pick the next experiment from the backlog, or launch a new one.</div>';
-  h += '</div></section>';
-  h += overview();
-  var nNeed = G.decide.length + G.overdue.length;
-  var nReads = G.backlog.filter(function(e){ return e.health === "manual_overdue"; }).length;
-  h += '<section class="sec" id="queue" aria-labelledby="q-h"><div class="sec-h"><h2 id="q-h">Needs you</h2><span class="aside">' + (nNeed ? nNeed + " to decide now" : "nothing to decide now") + (G.backlog.length ? " · " + G.backlog.length + " more in the backlog" : "") + (nReads ? " · " + nReads + " overdue read-out" + (nReads === 1 ? "" : "s") + " in it" : "") + '</span></div>';
-  if (G.decide.length) h += renderGroup(GROUP_DECIDE_ROT);
-  if (G.overdue.length) h += renderGroup(GROUP_OVERDUE);
-  if (!nNeed) h += '<div class="card" style="margin-bottom:12px"><div class="empty"><div class="ic">' + ICON.check + '</div><b>Nothing to decide right now.</b>The rotation is running; the next call is ' + esc(nextCall || "at the weekly call") + '.</div></div>';
-  if (G.backlog.length) {
-    var ns = G.backlog.filter(isStaleish).length;
-    var gb = Object.assign({}, GROUP_BACKLOG, {guide: (ns ? ns + " stale · " : "") + GROUP_BACKLOG.guide});
-    h += renderGroup(gb);
-  }
-  if (G.pending.length) h += renderGroup(GROUP_PENDING);
-  h += '</section>';
-  return h + runningSection();
-}
 /* overview: every live experiment with a number on one "chance it's better" axis, in two lanes
    (rotation, backlog), coloured by the recommended call; the tier bars are the dashed lines */
-function overview(){
-  var lanes = [["In rotation", LIVE.filter(function(e){ return inRot(e); })], ["Backlog", G.overdue.concat(G.backlog, G.pending)]];
-  var none = 0, used = {}, bars = {};
-  var laneHtml = lanes.map(function(L){
-    var pts = [], miss = 0;
-    L[1].forEach(function(e){ var p = pBeatOf(e); if (p == null) { miss++; return; } var tone = pendingDec(e) ? callTone(pendingDec(e).call) : (actionTone(e) || (p >= barOf(e) ? "win" : "warn")); used[tone] = 1; bars[Math.round(barOf(e) * 100)] = 1; pts.push({e: e, p: p, tone: tone}); });
-    none += miss;
-    pts.sort(function(a, b){ return a.p - b.p; });
-    var levels = []; // simple collision avoidance: stack dots that sit within 2.2 points of each other
-    pts.forEach(function(d){ var k = 0; while (levels[k] != null && d.p - levels[k] < 0.022) k++; levels[k] = d.p; d.k = k; });
-    var maxK = Math.max.apply(null, pts.map(function(d){ return d.k; }).concat([0]));
-    var hgt = Math.max(34, 18 + (maxK + 1) * 15);
-    var dots = pts.map(function(d){
-      var y = hgt / 2 + (d.k % 2 ? -1 : 1) * Math.ceil(d.k / 2) * 15;
-      var lab = nameOf(d.e) + ": " + chance(d.p) + " chance it's better (bar " + chance(barOf(d.e)) + "). " + (pendingDec(d.e) ? decLine(d.e) : "Recommended: " + actionLabel(d.e));
-      return '<button class="dot c-' + d.tone + (L[0] === "In rotation" ? " rot" : "") + '" style="left:' + (d.p * 100).toFixed(1) + '%;top:' + y + 'px" data-open-btn="' + esc(d.e.id) + '" data-tip="' + esc(d.e.id) + '" aria-label="' + esc(lab) + '"></button>';
-    }).join("");
-    var barLines = Object.keys(bars).map(function(b){ return '<div class="bar" style="left:' + b + '%"></div>'; }).join("");
-    return {html: '<div class="lane"><div class="ll2">' + L[0] + (miss ? '<div style="font-weight:400;font-size:11px;color:var(--ink-4)">+' + miss + ' no number</div>' : "") + '</div><div class="trk" style="height:' + hgt + 'px"><div class="base"></div>' + barLines + dots + '</div></div>', n: pts.length};
-  });
-  if (!laneHtml[0].n && !laneHtml[1].n) return '<div class="ov" id="overview"><div class="ov-h"><b>Where everything stands</b><span>No live experiment has a chance-it’s-better number yet (' + none + ' without one).</span></div></div>';
-  var barKeys = Object.keys(bars).map(Number).sort(function(a, b){ return a - b; });
-  var axis = '<div class="axis">' + [0, 25, 50, 75, 100].map(function(v){ return '<span style="left:' + v + '%">' + v + '%</span>'; }).join("") + '</div>';
-  var barLabels = '<div style="height:8px"></div>';
-  var lgd = '<div class="lgd" aria-label="Colour key">' + ["win", "bad", "calm", "warn", "rs", "neutral"].filter(function(t){ return used[t]; }).map(function(t){ return '<span><i class="c-' + t + '"></i>' + TONE_NAME[t] + '</span>'; }).join("") + '<span style="color:var(--ink-4)">dashed line' + (barKeys.length > 1 ? "s" : "") + ': the bar to call it (' + (barKeys.length > 1 && barKeys.join() === "90,95" ? "UX 90%, money 95%" : barKeys.map(function(b){ return b + "%"; }).join(", ")) + ')</span></div>';
-  return '<div class="ov" id="overview"><div class="ov-h"><b>Where everything stands: chance each change is better</b><span>Hover a dot for the call; click to open. Before/after reads are evidence, not proof.</span></div>' + lgd + barLabels + laneHtml.map(function(x){ return x.html; }).join("") + axis + '<div class="tip" id="ovtip" hidden></div></div>';
-}
-function wireOverview(){
-  var ov = document.getElementById("overview"), tip = document.getElementById("ovtip");
-  if (!ov || !tip) return;
-  var show = function(el){
-    var e = findExp(el.getAttribute("data-tip")); if (!e) return;
-    var p = pBeatOf(e);
-    tip.innerHTML = '<b>' + esc(trunc(nameOf(e), 80)) + '</b><br>' + esc(chance(p)) + ' chance it’s better · bar ' + esc(chance(barOf(e))) + '<br>' + esc(pendingDec(e) ? decLine(e) : "Recommended: " + actionLabel(e));
-    tip.hidden = false;
-    var r = el.getBoundingClientRect(), o = ov.getBoundingClientRect();
-    var x = r.left - o.left + r.width / 2, w = tip.offsetWidth;
-    tip.style.left = Math.min(Math.max(8, x - w / 2), o.width - w - 8) + "px";
-    tip.style.top = (r.top - o.top - tip.offsetHeight - 8) + "px";
-  };
-  ov.querySelectorAll("[data-tip]").forEach(function(el){
-    el.addEventListener("mouseenter", function(){ show(el); }); el.addEventListener("focus", function(){ show(el); });
-    el.addEventListener("mouseleave", function(){ tip.hidden = true; }); el.addEventListener("blur", function(){ tip.hidden = true; });
-  });
-}
-function runningSection(){
-  var h = "";
-  h += '<section class="sec" id="running" aria-labelledby="r-h"><div class="sec-h"><h2 id="r-h">Running</h2><span class="aside">' + LIVE.length + ' live</span></div>';
-  // the running list repeats every queued row; collapsed by default while the queue has work
-  if (!ST.runOpen && (G.decide.length + G.stale.length + G.spec.length + G.backlog.length + G.overdue.length)) {
-    h += '<div class="qg"><button class="qg-h" data-runopen aria-expanded="false"><span class="chev">' + ICON.arrow + '</span><span class="gt">All ' + LIVE.length + ' running</span><span class="gg">Timeline, numbers and health for every live experiment, including the ones above.</span><span class="gx">Show</span></button></div>';
-  } else {
-  h += '<div class="toolbar"><div class="seg" role="group" aria-label="Filter running experiments">' +
-    [["all","All"],["call","Decide now"],["stale","Stale"],["spec","Fix the setup"],["healthy","No action due"]].map(function(f){ return '<button data-filter="' + f[0] + '" aria-pressed="' + (ST.filter === f[0]) + '">' + f[1] + '</button>'; }).join("") +
-    '</div><span class="grow"></span><label class="sr" for="rq">Search running</label><input id="rq" class="inp" type="search" placeholder="Search name or theme" value="' + esc(ST.q) + '"></div>';
-  h += '<div class="card" id="runlist">' + runningRows() + '</div>';
-  }
-  if (PLANNED.length) h += '<details class="planned"><summary>' + PLANNED.length + ' planned or draft, not switched on</summary><ul>' + PLANNED.map(function(e){ return '<li><a href="#" class="linkbtn" data-open="' + esc(e.id) + '">' + esc(trunc(nameOf(e), 110)) + '</a><span>' + (errIssues(e).length ? errIssues(e).length + " spec gaps" : "spec complete") + '</span></li>'; }).join("") + '</ul></details>';
-  h += '</section>';
-  if (arr(S.errors).length) h += '<details class="foot-err"><summary>' + S.errors.length + ' engine error' + (S.errors.length === 1 ? "" : "s") + ' this run</summary><pre>' + esc(S.errors.map(function(x){ x = obj(x); return (x.id || "-") + " [" + (x.stage || "") + "] " + (x.error || ""); }).join("\n")) + '</pre></details>';
-  return h;
-}
-function runningRows(){
-  var q = ST.q.trim().toLowerCase();
-  var list = LIVE.filter(FILTERS[ST.filter]).filter(function(e){ return !q || (nameOf(e) + " " + themesOf(e).join(" ") + " " + (e.id || "")).toLowerCase().indexOf(q) >= 0; });
-  var key = {
-    sev: function(e){ return sevKey(e); },
-    name: function(e){ return [nameOf(e).toLowerCase()]; },
-    day: function(e){ return [-(daysRunning(e) || 0)]; },
-    chance: function(e){ var s = statsOf(e); return [s && num(s.p_beat) != null ? -s.p_beat : 2]; }
-  }[ST.sort];
-  list.sort(function(a, b){ return cmpKey(key(a), key(b)) * ST.dir; });
-  // registry-only view (or no readouts at all): the metric and chance columns would be all dashes
-  var hasStats = LIVE.some(function(e){ var st = statsOf(e), a = armsOf(e); return (st && (num(st.p_beat) != null || num(st.control_rate) != null)) || obj(a.control).n != null || atypeOf(e) === "rollout"; });
-  var ns = hasStats ? "" : " nostats";
-  var sortBtn = function(id, label){ var on = ST.sort === id; return '<button data-sort="' + id + '" aria-sort="' + (on ? (ST.dir === 1 ? "ascending" : "descending") : "none") + '">' + label + '<span class="ar"></span></button>'; };
-  var h = '<div class="r-head' + ns + '" role="row"><div>' + sortBtn("name", "Experiment") + '</div><div>' + sortBtn("day", "Timeline") + '</div>' + (hasStats ? '<div>Primary metric</div><div>' + sortBtn("chance", "Chance it’s better") + '</div>' : "") + '<div>' + sortBtn("sev", "Health") + '</div></div>';
-  if (!list.length) {
-    var none = ST.filter !== "all" || q;
-    return h + '<div class="empty">' + (none ? 'No running experiments match.<br><button class="linkbtn" data-clear>Clear filters</button>' : (S.degraded ? "No live experiments in the registry." : "No experiments running.")) + '</div>';
-  }
-  list.forEach(function(e){
-    h += '<div class="row r-row' + ns + '" role="button" tabindex="0" data-open="' + esc(e.id) + '" aria-label="' + esc(nameOf(e) + ". " + pillText(e)) + '">' +
-      '<div class="c-n r-name" style="min-width:0"><div class="ttl" title="' + esc(nameOf(e)) + '">' + esc(nameOf(e)) + '</div><div class="themes">' + themesOf(e).slice(0, 3).map(function(t){ return '<span class="theme">' + esc(t) + '</span>'; }).join("") + '</div></div>' +
-      '<div class="c-t">' + timelineBar(e) + '</div>' + (hasStats ? '<div class="c-m" style="min-width:0">' + metricCell(e) + '</div><div class="c-g">' + gauge(e) + '</div>' : "") + '<div class="c-h" style="min-width:0">' + pill(e) + '</div></div>';
-  });
-  return h;
-}
 
 var OUT = {shipped: ["Shipped","win"], reverted: ["Reverted","warn"], shelved: ["Shelved","neutral"], inconclusive: ["Inconclusive","outline"], unknown: ["Concluded","outline"]};
 function outcomeOf(d){ var o = String(d.outcome || "").toLowerCase(); return OUT[o] ? o : (OUT[String(d.status || "").toLowerCase()] ? String(d.status).toLowerCase() : "unknown"); }
 function outcomePill(d){ var o = OUT[outcomeOf(d)]; return '<span class="pill ' + o[1] + '"><i></i>' + o[0] + '</span>'; }
-function renderDecided(){
-  var counts = {all: DECIDED.length}; DECIDED.forEach(function(d){ var o = outcomeOf(d); counts[o] = (counts[o] || 0) + 1; });
-  var themes = {}; DECIDED.forEach(function(d){ themesOf(d).forEach(function(t){ themes[t] = 1; }); });
-  var h = '<section class="sec"><div class="sec-h"><h2>Results log</h2><span class="aside">Every call we made: what it was, what happened, what we decided</span></div>';
-  h += '<div class="toolbar"><div class="chipbar" role="group" aria-label="Outcome">' + ["all","shipped","reverted","shelved","inconclusive","unknown"].filter(function(o){ return o === "all" || counts[o]; }).map(function(o){ return '<button class="chip" data-out="' + o + '" aria-pressed="' + (ST.dOutcome === o) + '">' + (o === "all" ? "All" : OUT[o][0]) + '<span class="c">' + (counts[o] || 0) + '</span></button>'; }).join("") + '</div><span class="grow"></span>' +
-    '<label class="sr" for="dth">Theme</label><select id="dth" class="sel"><option value="">All themes</option>' + Object.keys(themes).sort().map(function(t){ return '<option' + (ST.dTheme === t ? " selected" : "") + '>' + esc(t) + '</option>'; }).join("") + '</select>' +
-    '<label class="sr" for="dq">Search results</label><input id="dq" class="inp" type="search" placeholder="Search results, decisions, notes" value="' + esc(ST.dQ) + '"></div>';
-  h += '<div class="card" id="declist">' + decidedRows() + '</div></section>';
-  return h;
-}
 function finalLine(d){ return tldrOf(d) || d.decision || d.takeaway || ""; }
-function decidedRows(){
-  var q = ST.dQ.trim().toLowerCase();
-  var list = DECIDED.filter(function(d){
-    if (ST.dOutcome !== "all" && outcomeOf(d) !== ST.dOutcome) return false;
-    if (ST.dTheme && themesOf(d).indexOf(ST.dTheme) < 0) return false;
-    if (!q) return true;
-    var hay = [nameOf(d), d.id, finalLine(d), d.decision, d.takeaway, themesOf(d).join(" ")].concat(arr(NOTES[d.id]).map(function(n){ return obj(n).text; })).join(" ").toLowerCase();
-    return hay.indexOf(q) >= 0;
-  }).sort(function(a, b){ return String(b.decided_on || b.end_date || b.start_date || "").localeCompare(String(a.decided_on || a.end_date || a.start_date || "")); });
-  if (!list.length) return '<div class="empty">' + (DECIDED.length ? 'Nothing matches.<br><button class="linkbtn" data-dclear>Clear filters</button>' : "Nothing decided yet. Calls you make will collect here as a log of what worked.") + '</div>';
-  return list.map(function(d){
-    var when = d.decided_on || d.end_date, nn = arr(NOTES[d.id]).length, fin = finalLine(d);
-    var dates = (d.start_date ? fd(d.start_date) : "?") + " – " + (when ? fd(when, true) : "?");
-    return '<div class="row d-row" role="button" tabindex="0" data-open="' + esc(d.id) + '" aria-label="' + esc(nameOf(d) + ". " + OUT[outcomeOf(d)][0] + ". " + fin) + '"><div class="d-b">' + outcomePill(d) + '</div><div class="d-t" style="min-width:0"><div class="ttl">' + esc(nameOf(d)) + '</div><div class="fin">' + esc(fin || "No outcome recorded.") + '</div>' + (nn ? '<div class="ncount">' + nn + ' note' + (nn === 1 ? "" : "s") + '</div>' : "") + '</div><div class="d-meta num">' + esc(dates) + '<br>' + esc(themesOf(d).slice(0, 2).join(" · ")) + '</div></div>';
-  }).join("");
-}
 /* ── Calendar: one row per experiment; solid bar start→review (or decision), faded to the hard
    stop, hatched while paused; today line and Monday call lines. Scrolls inside its own box. */
 var DAY_PX = 16;
 var CAL_UNDATED = 0, CAL_OLD = 0;
-function calRows(){
-  var f = ST.calF;
-  var rows = [];
-  CAL_UNDATED = 0;
-  var add = function(e, kind){ if (pd(tlOf(e).start || e.start_date)) rows.push({e: e, kind: kind}); else CAL_UNDATED++; };
-  if (f === "rotation") LIVE.filter(inRot).forEach(function(e){ add(e, "rot"); });
-  else if (f === "live") LIVE.forEach(function(e){ add(e, inRot(e) ? "rot" : "live"); });
-  else if (f === "decided") DECIDED.forEach(function(e){ add(e, "dec"); });
-  else { LIVE.forEach(function(e){ add(e, inRot(e) ? "rot" : "live"); }); PLANNED.forEach(function(e){ add(e, "plan"); }); DECIDED.forEach(function(e){ add(e, "dec"); }); }
-  rows.sort(function(a, b){ var ra = a.kind === "rot" ? 0 : 1, rb = b.kind === "rot" ? 0 : 1; if (ra !== rb) return ra - rb; return String(tlOf(a.e).start || a.e.start_date).localeCompare(String(tlOf(b.e).start || b.e.start_date)); });
-  return rows;
-}
-function upcoming(){
-  var t = pd(TODAY), dow = (t.getUTCDay() + 6) % 7; // Monday = 0
-  var wk0 = addDays(TODAY, -dow), wk1 = addDays(wk0, 7), wk2 = addDays(wk0, 14);
-  var over = [], thisW = [], nextW = [];
-  LIVE.forEach(function(e){ if (pendingDec(e)) return; var rv = reviewDate(e); if (!rv) return; if (rv < TODAY) over.push(e); else if (rv < wk1) thisW.push(e); else if (rv < wk2) nextW.push(e); });
-  var byRv = function(a, b){ return String(reviewDate(a)).localeCompare(String(reviewDate(b))); };
-  over.sort(byRv); thisW.sort(byRv); nextW.sort(byRv);
-  var col = function(title, list, emptyTxt, overdue){
-    return '<div class="card"><h3>' + title + ' <span class="tab-n">' + list.length + '</span></h3>' + (list.length ? '<ul>' + list.slice(0, 8).map(function(e){ return '<li><button class="linkbtn" data-open-btn="' + esc(e.id) + '" title="' + esc(nameOf(e)) + '">' + esc(trunc(nameOf(e), 60)) + '</button><span>' + (overdue ? (num(e.overdue_days) || daysBetween(reviewDate(e), TODAY)) + "d late" : fd(reviewDate(e))) + '</span></li>'; }).join("") + (list.length > 8 ? '<li><span>+' + (list.length - 8) + ' more</span></li>' : "") + '</ul>' : '<p class="nro" style="margin:0">' + emptyTxt + '</p>') + '</div>';
-  };
-  return '<div class="upc">' + col("Overdue calls", over, "None overdue.", true) + col("Due this week", thisW, "Nothing due this week.") + col("Due next week", nextW, "Nothing due next week.") + '</div>';
-}
-function renderCalendar(){
-  var rows = calRows();
-  var h = '<section class="sec"><div class="sec-h"><h2>Calls due</h2><span class="aside">From each review date; the weekly call is on Mondays</span></div>' + upcoming() + '</section>';
-  h += '<section class="sec"><div class="sec-h"><h2>Calendar</h2><span class="aside">%%CALN%% shown</span></div>';
-  h += '<div class="toolbar"><div class="seg" role="group" aria-label="Show on calendar">' + [["rotation","In rotation"],["live","Live"],["decided","Decided"],["all","All"]].map(function(x){ return '<button data-calf="' + x[0] + '" aria-pressed="' + (ST.calF === x[0]) + '">' + x[1] + '</button>'; }).join("") + '</div></div>';
-  if (!rows.length) return h.replace("%%CALN%%", "0") + '<div class="card"><div class="empty">Nothing to show for this filter.</div></div>' + (CAL_UNDATED ? '<p class="nro" style="margin-top:8px">' + CAL_UNDATED + ' with no dates recorded, not shown.</p>' : "") + '</section>';
-  // range: earliest start (max 120 days back) to 6 weeks ahead or the latest stop (max 120 days ahead)
-  var lo = TODAY, hi = addDays(TODAY, 42);
-  rows.forEach(function(r){ var t = tlOf(r.e), s = t.start || r.e.start_date; if (s && s < lo) lo = s; var end = r.kind === "dec" ? (r.e.decided_on || r.e.end_date) : (t.max && s ? addDays(s, t.max) : reviewDate(r.e)); if (end && end > hi) hi = end; });
-  if (daysBetween(lo, TODAY) > 120) lo = addDays(TODAY, -120);
-  if (daysBetween(TODAY, hi) > 120) hi = addDays(TODAY, 120);
-  // rows that ended before the window would be empty lines: count them in the footnote instead
-  var cut = lo; CAL_OLD = 0;
-  rows = rows.filter(function(r){ var t = tlOf(r.e), s = t.start || r.e.start_date; var end = r.kind === "dec" ? (r.e.decided_on || r.e.end_date || s) : TODAY; if (end < cut) { CAL_OLD++; return false; } return true; });
-  var d0 = pd(lo); lo = addDays(lo, -((d0.getUTCDay() + 6) % 7)); // start on a Monday
-  h = h.replace("%%CALN%%", String(rows.length));
-  var nDays = daysBetween(lo, hi) + 7, W = nDays * DAY_PX;
-  var X = function(s){ var n = daysBetween(lo, s); return n == null ? null : Math.max(0, Math.min(nDays, n)) * DAY_PX; };
-  var head = "", grid = "";
-  for (var i = 0; i <= nDays; i += 7) {
-    var ds = addDays(lo, i), isCall = ds >= TODAY;
-    grid += '<div class="gmon' + (isCall ? " call" : "") + '" style="left:' + (i * DAY_PX) + 'px"></div>';
-    head += '<span class="gw-l" style="left:' + (i * DAY_PX) + 'px">' + pd(ds).getUTCDate() + (isCall && i < daysBetween(lo, TODAY) + 7 ? " · call" : "") + '</span>';
-  }
-  for (var k = 0; k <= nDays; k++) { var dk = addDays(lo, k); if (pd(dk).getUTCDate() === 1 || k === 0) head += '<span class="gm-l" style="left:' + (k * DAY_PX + 3) + 'px">' + MON[pd(dk).getUTCMonth()] + (k === 0 || pd(dk).getUTCMonth() === 0 ? " " + pd(dk).getUTCFullYear() : "") + '</span>'; }
-  var tx = X(TODAY);
-  head += '<span class="gw-l today" style="left:' + (tx + 2) + 'px;top:22px;background:var(--surface)">Today</span>';
-  var body = rows.map(function(r){
-    var e = r.e, t = tlOf(e), s = t.start || e.start_date, rv = reviewDate(e), x0 = X(s), bars = "";
-    var lab = nameOf(e) + ": started " + fd(s, true);
-    if (r.kind === "dec") {
-      var de = e.decided_on || e.end_date || TODAY, x1 = X(de);
-      bars += '<button class="gbar dec" style="left:' + x0 + 'px;width:' + Math.max(x1 - x0, 4) + 'px" data-open-btn="' + esc(e.id) + '" aria-label="' + esc(lab + ", decided " + fd(de, true) + " (" + OUT[outcomeOf(e)][0] + ")") + '" title="' + esc(nameOf(e) + " · " + OUT[outcomeOf(e)][0]) + '"></button>';
-      bars += '<span class="gmk" style="left:' + x0 + 'px"></span><span class="gmk dec" style="left:' + x1 + 'px"></span>';
-    } else if (r.kind === "plan") {
-      var pe = rv || addDays(s, t.planned || 14);
-      bars += '<button class="gbar plan" style="left:' + x0 + 'px;width:' + Math.max(X(pe) - x0, 8) + 'px" data-open-btn="' + esc(e.id) + '" aria-label="' + esc(lab + " (planned)") + '"></button>';
-    } else {
-      var solidEnd = rv ? (rv > TODAY ? rv : TODAY) : TODAY, x1s = X(solidEnd), stop = t.max && s ? addDays(s, t.max) : null;
-      bars += '<button class="gbar ' + (r.kind === "rot" ? "rot" : "live") + '" style="left:' + x0 + 'px;width:' + Math.max(x1s - x0, 4) + 'px" data-open-btn="' + esc(e.id) + '" aria-label="' + esc(lab + (rv ? ", review " + fd(rv, true) : ", no review date") + (stop ? ", hard stop " + fd(stop, true) : "")) + '" title="' + esc(nameOf(e) + (rv ? " · review " + fd(rv) : "")) + '"></button>';
-      if (stop && stop > solidEnd) bars += '<button class="gbar tail" tabindex="-1" style="left:' + x1s + 'px;width:' + (X(stop) - x1s) + 'px" data-open-btn="' + esc(e.id) + '" aria-hidden="true" title="Until the hard stop ' + esc(fd(stop)) + '"></button>';
-      var pr = arr(e.paused_ranges).map(obj).filter(function(r){ return r.from; });
-      if (!pr.length && (e.health === "paused" || e.lifecycle === "paused")) pr = [{from: addDays(TODAY, -(num(e.paused_days) || 0)), to: null}];
-      pr.forEach(function(r){ var pe2 = r.to || TODAY; bars += '<span class="gbar pause" style="left:' + X(r.from) + 'px;width:' + Math.max(X(pe2) - X(r.from), 4) + 'px;pointer-events:none" title="Paused ' + esc(fd(r.from)) + (r.to ? " – " + esc(fd(r.to)) : " – now") + '"></span>'; });
-      bars += '<span class="gmk" style="left:' + x0 + 'px"></span>';
-      if (rv && rv < TODAY) bars += '<span class="gmk" style="left:' + X(rv) + 'px;border-color:var(--warn-fill)" title="review date passed"></span>';
-    }
-    return '<div class="grow2"><div class="glab"><button class="linkbtn" data-open-btn="' + esc(e.id) + '" title="' + esc(nameOf(e)) + '">' + esc(nameOf(e)) + '</button></div><div class="gtrack" style="width:' + W + 'px">' + bars + '</div></div>';
-  }).join("");
-  h += '<div class="gantt" id="gscroll" role="region" aria-label="Experiment calendar, scrolls sideways" tabindex="0"><div class="gin" style="width:calc(' + W + 'px + var(--gl))">' +
-    '<div class="grow2 ghead" style="border-top:0;height:40px"><div class="glab" style="height:40px;font-size:12px;color:var(--ink-3)">Experiment</div><div class="gtrack" style="width:' + W + 'px;height:40px">' + head + '</div></div>' +
-    '<div style="position:relative"><div style="position:absolute;top:0;bottom:0;left:var(--gl);width:' + W + 'px;pointer-events:none" class="gridlayer">' + grid + '<div class="gtoday" style="left:' + tx + 'px"></div></div>' + body + '</div></div></div>';
-  if (CAL_UNDATED || CAL_OLD) h += '<p class="nro" style="margin:8px 0 0">' + [CAL_OLD ? CAL_OLD + " ended before " + fd(cut, true) + ", not shown" : "", CAL_UNDATED ? CAL_UNDATED + " with no dates recorded, not shown" : ""].filter(Boolean).join(" · ") + '.</p>';
-  h += '<div class="gkey"><span><i style="background:var(--g700)"></i>In rotation</span><span><i style="background:var(--g500)"></i>Live, to review date</span><span><i style="background:color-mix(in srgb,var(--g500) 25%,transparent)"></i>To hard stop</span><span><i style="background-image:repeating-linear-gradient(135deg,var(--ink-4) 0 2px,transparent 2px 6px);background-color:var(--neutral-tint)"></i>Paused</span><span><i style="background:var(--ink-5)"></i>Decided</span><span><i style="border:1.5px dashed var(--ink-4)"></i>Planned</span><span><i style="background:var(--bad-fill);width:2px"></i>Today</span><span>○ launch · ◆ decision · dashed lines: Monday calls</span></div>';
-  return h + '</section>';
-}
 /* ── Buckets: what each experiment is meant to improve; running vs waiting vs decided. */
-function renderBuckets(){
-  var by = {}, order = null, decCounts = {};
-  var SB = arr(S.buckets).map(obj).filter(function(b){ return b.key; });
-  if (SB.length) {
-    // the engine's own grouping (same as the digest): running / waiting / planned / decided counts
-    order = [];
-    SB.forEach(function(b){
-      order.push(b.key); if (!BUCKET_NAME[b.key]) BUCKET_NAME[b.key] = b.label || b.key;
-      var pend = {}; arr(b.decision_pending).forEach(function(id){ pend[id] = 1; });
-      LIVE.forEach(function(e){ if (pendingDec(e) && bucketOf(e) === b.key) pend[e.id] = 1; });
-      var get = function(ids){ return arr(ids).map(findExp).filter(Boolean); };
-      by[b.key] = {run: get(b.running).filter(function(e){ return !pend[e.id]; }),
-                   wait: get(b.waiting).filter(function(e){ return !pend[e.id]; }),
-                   pend: get(Object.keys(pend)),
-                   dec: DECIDED.filter(function(e){ return bucketOf(e) === b.key; })};
-      get(b.planned).forEach(function(e){ by[b.key].run.push(Object.assign({}, e, {__planned: true})); });
-      if (b.decided && typeof b.decided === "object") decCounts[b.key] = b.decided;
-    });
-  } else {
-    BUCKETS.concat([["other", "Other"]]).forEach(function(b){ by[b[0]] = {run: [], wait: [], dec: [], pend: []}; });
-    LIVE.forEach(function(e){ var b = by[bucketOf(e)]; var g = groupOf(e); if (pendingDec(e)) b.pend.push(e); else if (g === "decide" || g === "stale" || e.health === "needs_call") b.wait.push(e); else b.run.push(e); });
-    PLANNED.forEach(function(e){ by[bucketOf(e)].run.push(Object.assign({}, e, {__planned: true})); });
-    DECIDED.forEach(function(e){ by[bucketOf(e)].dec.push(e); });
-  }
-  var chip = function(e, state){
-    var col = state === "rot" ? "var(--g700)" : state === "run" ? "var(--g500)" : state === "plan" ? "var(--ink-5)" : state === "wait" ? "var(--warn-fill)" : state === "pend" ? "var(--ink-2)" : {shipped: "var(--win-fill)", reverted: "var(--bad-fill)"}[outcomeOf(e)] || "var(--ink-4)";
-    var lbl = state === "rot" ? "In rotation" : state === "run" ? "Running" : state === "plan" ? "Planned" : state === "wait" ? "Waiting on a call" : state === "pend" ? decLine(e) || "Decided in dash" : OUT[outcomeOf(e)][0];
-    return '<button class="bchip' + (state === "rot" ? " rot" : "") + '" data-open-btn="' + esc(e.id) + '" title="' + esc(nameOf(e) + " · " + lbl + (tldrOf(e) ? " · " + tldrOf(e) : "")) + '" aria-label="' + esc(nameOf(e) + ", " + lbl) + '"><i style="background:' + col + '"></i>' + esc(trunc(nameOf(e), 44)) + '</button>';
-  };
-  var keys = order || BUCKETS.map(function(b){ return b[0]; }); if (!order && by.other.run.length + by.other.wait.length + by.other.dec.length) keys.push("other");
-  var realRun = function(b){ return b.run.filter(function(e){ return !e.__planned; }); };
-  var nEmpty = keys.filter(function(k){ return !realRun(by[k]).length && !by[k].wait.length && !by[k].pend.length; }).length;
-  var h = '<section class="sec"><div class="sec-h"><h2>By what it improves</h2><span class="aside">' + (nEmpty ? nEmpty + " area" + (nEmpty === 1 ? "" : "s") + " with nothing testing right now" : "every area has something running") + '</span></div>';
-  h += '<div class="lgd" style="margin-bottom:12px"><span><i style="background:var(--g700)"></i>In rotation</span><span><i style="background:var(--g500)"></i>Running</span><span><i style="background:var(--warn-fill)"></i>Waiting on a call</span><span><i style="background:var(--ink-2)"></i>Decided in dash</span><span><i style="background:var(--ink-5)"></i>Planned</span><span><i style="background:var(--win-fill)"></i>Shipped</span><span><i style="background:var(--bad-fill)"></i>Reverted</span><span><i style="background:var(--ink-4)"></i>Shelved / other</span></div>';
-  h += '<div class="bk">' + keys.map(function(k){
-    var b = by[k], name = BUCKET_NAME[k] || "Other", active = realRun(b).length + b.wait.length + b.pend.length, planned = b.run.filter(function(e){ return e.__planned; });
-    var oc = {};
-    if (decCounts[k]) Object.keys(decCounts[k]).forEach(function(o){ if (num(decCounts[k][o])) oc[OUT[o] ? o : "unknown"] = (oc[OUT[o] ? o : "unknown"] || 0) + num(decCounts[k][o]); });
-    else b.dec.forEach(function(d){ var o = outcomeOf(d); oc[o] = (oc[o] || 0) + 1; });
-    var nDec = Object.keys(oc).reduce(function(t, o){ return t + oc[o]; }, 0);
-    var decTxt = Object.keys(oc).map(function(o){ return '<b>' + oc[o] + '</b> ' + OUT[o][0].toLowerCase(); }).join(" · ");
-    var runChips = realRun(b).sort(function(x, y){ return (inRot(y) ? 1 : 0) - (inRot(x) ? 1 : 0); }).map(function(e){ return chip(e, inRot(e) ? "rot" : "run"); }).join("");
-    return '<div class="bcard' + (active ? "" : " bc-empty") + '"><h3>' + esc(name) + '</h3><div class="bs">' + (active ? realRun(b).length + " running · " + b.wait.length + " waiting on a call" : '<span class="bempty">Nothing testing ' + esc(name.replace(/ &.*$/, "")) + ' right now.</span>') + (planned.length ? " · " + planned.length + " planned" : "") + (b.pend.length ? " · " + b.pend.length + " decided in dash" : "") + (nDec ? " · " + nDec + " decided" : "") + '</div>' +
-      '<div class="bl"><span class="t">Running</span><div class="bchips">' + (runChips || '<span class="bnone">None</span>') + '</div></div>' +
-      (planned.length ? '<div class="bl"><span class="t">Planned</span><div class="bchips">' + planned.map(function(e){ return chip(e, "plan"); }).join("") + '</div></div>' : "") +
-      '<div class="bl"><span class="t">Waiting on a call</span><div class="bchips">' + (b.wait.length ? b.wait.map(function(e){ return chip(e, "wait"); }).join("") : '<span class="bnone">None</span>') + '</div></div>' +
-      (b.pend.length ? '<div class="bl"><span class="t">Decided in dash</span><div class="bchips">' + b.pend.map(function(e){ return chip(e, "pend"); }).join("") + '</div></div>' : "") +
-      '<div class="bl"><span class="t">Decided</span><div>' + (nDec ? '<div class="dcount">' + decTxt + '</div>' + (b.dec.length ? '<details style="margin-top:4px"><summary class="linkbtn" style="font-size:12px">Show ' + b.dec.length + '</summary><div class="bchips" style="margin-top:6px">' + b.dec.map(function(e){ return chip(e, "dec"); }).join("") + '</div></details>' : "") : '<span class="bnone">None yet</span>') + '</div></div></div>';
-  }).join("") + '</div></section>';
-  return h;
-}
 var SRC = {weweb: "WeWeb", "rec-engine": "rec-engine", "railway-var": "Railway var", railway: "Railway", xano: "Xano", github: "GitHub", brevo: "Brevo", stripe: "Stripe", manual: "Logged"};
 function srcOf(c){ var s = String(c.source || "").toLowerCase(); if (s) return s; var t = String(c.what || c.title || "").toLowerCase(); if (/weweb/.test(t)) return "weweb"; if (/rec-engine|rec_/.test(t)) return "rec-engine"; if (/\bep\d+|xano/.test(t)) return "xano"; return "manual"; }
 function renderChanges(){
@@ -1418,50 +1136,305 @@ function renderRules(){
     '</section>';
 }
 
+/* ── ONE view (owner 2026-11-19: "too many tabs and too many places to look"). A calendar strip
+   on top (click a bar or a week to filter the cards), one toolbar (search, status, bucket,
+   rotation, sort) and a card per experiment. Shipped changes and the rules live behind "More". */
+var ALL = EXPS.slice(); (function(){ var seen = {}; EXPS.forEach(function(e){ if (e.id) seen[e.id] = 1; }); DECIDED.forEach(function(d){ if (!d.id || !seen[d.id]) ALL.push(d); }); })();
+var CALL_STATES = {needs_call: 1, callable_win: 1, callable_loss: 1, guardrail_breach: 1};
+function isDecidedRow(e){ return DECIDED.indexOf(e) >= 0 || (!e.health && !!e.outcome && e.lifecycle !== "planned"); }
+function isPaused(e){ return /paused/.test(String(e.lifecycle || "") + " " + String(e.status || "") + " " + String(e.health || "")); }
+function statusOf(e){
+  if (isDecidedRow(e)) return outcomeOf(e);
+  if (pendingDec(e)) return "pending";
+  if (CALL_STATES[e.health]) return "call";
+  if (isPaused(e)) return "paused";
+  if (e.health) return "running";
+  return "planned";
+}
+var STATUS = {call: ["Needs a call", "warn"], running: ["Running", "ok"], paused: ["Paused", "neutral"], planned: ["Planned", "outline"], pending: ["Decided in dash", "neutral"]};
+function statusMeta(e){ var s = statusOf(e); if (STATUS[s]) return e.health === "guardrail_breach" ? ["Needs a call · guardrail", "bad"] : STATUS[s]; return OUT[s] || OUT.unknown; }
+function statusGroup(e){ var s = statusOf(e); return s === "call" ? "call" : (s === "running" || s === "paused") ? "running" : s === "planned" ? "planned" : "decided"; }
+function startOf(e){ return tlOf(e).start || e.start_date || null; }
+function stopOf(e){ var t = tlOf(e), s = startOf(e); return t.max && s ? addDays(s, t.max) : null; }
+function endOf(e){
+  if (isDecidedRow(e)) return e.decided_on || e.end_date || null;
+  var t = tlOf(e), s = startOf(e);
+  return reviewDate(e) || stopOf(e) || (s && t.planned ? addDays(s, t.planned) : null);
+}
+function timeText(e){
+  var s = startOf(e), en = endOf(e), dr = daysRunning(e), t = tlOf(e), sg = statusOf(e);
+  if (isDecidedRow(e)) return (s ? fd(s) + " → " : "") + "decided " + (en ? fd(en, true) : "(date not recorded)");
+  if (sg === "planned") return s && s > TODAY ? "Planned · starts " + fd(s) : (s ? "Planned · start " + fd(s) : "Planned · not scheduled");
+  if (!s) return "No start date recorded";
+  var planned = t.planned || (en ? daysBetween(s, en) : null);
+  if (!en) return "Started " + fd(s) + (dr != null ? " · day " + dr : "") + " · no end set";
+  return fd(s) + " → " + fd(en) + (dr != null ? " · day " + dr + (planned ? " of " + planned : "") : "") + (en < TODAY && !isDecidedRow(e) ? " · " + daysBetween(en, TODAY) + "d past" : "");
+}
+function runFrac(e){
+  if (isDecidedRow(e)) return 1;
+  var s = startOf(e), en = endOf(e), dr = daysRunning(e);
+  if (!s || !en || dr == null || statusOf(e) === "planned") return null;
+  var tot = daysBetween(s, en); return tot > 0 ? dr / tot : 1;
+}
+function testingOf(e){ return e.tests || e.hypothesis || whatChanged(e) || ""; }
+function noStartWhy(e){
+  var err = String(readoutOf(e).error || "");
+  if (statusOf(e) === "planned") return "not started";
+  if (err && !/no metric runner/i.test(err)) return trunc(err.replace(/^metric failed:\s*/i, "").replace(/^unsupported param:\s*/i, ""), 90);
+  if (reportingOf(e) === "manual") return "reported by hand; nothing read out";
+  if (engineOff(e)) return "engine not connected";
+  return isDecidedRow(e) ? "no numbers kept" : "not measured yet";
+}
+function outLine(e){
+  var sp = startPoint(e), hasB = sp.b != null && sp.b !== "", hasA = sp.a != null && sp.a !== "";
+  if (!hasB && !hasA && isMeasuring(e)) return '<div class="xo none"><span>Measuring</span> · ' + esc(trunc(tldrOf(e) || "the starting point is being measured", 110)) + '</div>';
+  if (!hasB && !hasA) return '<div class="xo none"><span>No starting point yet</span> · ' + esc(noStartWhy(e)) + '</div>';
+  var bv = hasB ? (sp.bText || fmtVal(sp.b, sp.perDay)) : "–", av = hasA ? fmtVal(sp.a, sp.perDay) : "not yet";
+  var tone = obj(V(e).result).tone, cls = tone === "good" ? "up" : tone === "bad" ? "dn" : "";
+  return '<div class="xo"><span class="k">Start</span> <b class="num">' + esc(bv) + '</b> <span class="arw">→</span> <span class="k">' + (isDecidedRow(e) ? "Result" : "Now") + '</span> <b class="num ' + cls + '">' + esc(av) + '</b>' + (metricOf(e).label ? '<div class="ml" title="' + esc(metricOf(e).label) + '">' + esc(trunc(metricOf(e).label, 60)) + '</div>' : "") + '</div>';
+}
+function card(e){
+  var m = statusMeta(e), sg = statusOf(e), f = runFrac(e), nn = notesFor(e.id).length, rec = recOf(e), b = bucketOf(e);
+  var over = f != null && f > 1 && !isDecidedRow(e);
+  var health = e.health && e.health !== "on_track" && !CALL_STATES[e.health] ? '<span class="xh" title="' + esc(humanReason(e)) + '">' + (isStaleish(e) ? ICON.clock : "") + esc(pillText(e)) + '</span>' : "";
+  var next = !isDecidedRow(e) && sg !== "pending" ? (rec ? rec.label : (e.health ? actionVerb(e) : "")) : (sg === "pending" ? decLine(e).replace(/ — registry update pending$/, "") : "");
+  return '<article class="xc s-' + sg + '" role="button" tabindex="0" data-open="' + esc(e.id) + '" aria-label="' + esc(nameOf(e) + ". " + m[0] + ". " + timeText(e)) + '">' +
+    '<div class="xt"><span class="pill ' + m[1] + '"><i></i>' + esc(m[0]) + '</span>' + (inRot(e) && !isDecidedRow(e) ? '<span class="pill ok rotp" title="In rotation: called at the Monday meeting">In rotation</span>' : "") + '<span class="grow"></span><span class="bk-tag">' + esc(BUCKET_NAME[b] || "Other") + '</span></div>' +
+    '<h3>' + esc(nameOf(e)) + '</h3>' +
+    (testingOf(e) ? '<p class="xs"><b>Testing:</b> ' + esc(testingOf(e)) + '</p>' : '<p class="xs muted">What it tests isn’t stated yet.</p>') +
+    '<div class="xw num">' + esc(timeText(e)) + '</div>' +
+    (f != null ? '<div class="xp' + (over ? " over" : "") + '" aria-hidden="true"><i style="width:' + Math.min(f * 100, 100).toFixed(0) + '%"></i></div>' : '<div class="xp none" aria-hidden="true"></div>') +
+    outLine(e) +
+    '<div class="xr">' + (resultPill(e) || "") + (next ? '<span class="xn">' + (isDecidedRow(e) ? "" : "Next: ") + '<b>' + esc(next) + '</b></span>' : "") + '</div>' +
+    '<div class="xf">' + health + '<span class="grow"></span>' + (nn ? '<span class="xnn">' + nn + ' note' + (nn === 1 ? "" : "s") + '</span>' : "") + '</div>' +
+    '</article>';
+}
+
+/* ── state (kept across re-renders; sort/filters also in localStorage, best effort) */
+var LS_KEY = "tulle-exp-ui-v3";
+var SAVED = {}; try { SAVED = JSON.parse(window.localStorage.getItem(LS_KEY) || "{}") || {}; } catch (err) { SAVED = {}; }
+var SORTS = [["needs", "Needs a call first"], ["ending", "Ending soonest"], ["newest", "Newest"], ["oldest", "Oldest"], ["chance", "Chance it beats (high → low)"], ["bucket", "Bucket"], ["az", "A–Z"]];
+var STATUSES = [["all", "All"], ["call", "Needs a call"], ["running", "Running"], ["planned", "Planned"], ["decided", "Decided"]];
+var hashStatus = H.tab === "decided" ? "decided" : ({call: "call", guard: "call", stale: "running", healthy: "running"})[H.filter] || null;
+var ST = KEEP.ST || {
+  view: H.tab === "changes" || H.tab === "rules" ? H.tab : "grid",
+  q: "", status: hashStatus || (STATUSES.some(function(s){ return s[0] === SAVED.status; }) ? SAVED.status : "all"),
+  bucket: SAVED.bucket || "", rot: !!SAVED.rot,
+  sort: SORTS.some(function(s){ return s[0] === SAVED.sort; }) ? SAVED.sort : "needs",
+  cal: null, cOnly: H.unlogged === "1", cSrc: "", sel: {}
+};
+KEEP.ST = ST;
+function saveST(){ try { window.localStorage.setItem(LS_KEY, JSON.stringify({status: ST.status, bucket: ST.bucket, rot: ST.rot, sort: ST.sort})); } catch (err) {} }
+/* backlog (live, not in rotation, not yet decided) for the "Copy backlog decisions" action */
+var G = {backlog: LIVE.filter(function(e){ return !inRot(e) && !pendingDec(e); }).sort(function(a, b){ return cmpKey(sevKey(a), sevKey(b)); })};
+
+function hay(e){ return [nameOf(e), e.id, whatChanged(e), e.hypothesis, e.tests, metricOf(e).label, BUCKET_NAME[bucketOf(e)], themesOf(e).join(" "), tldrOf(e), e.decision].concat(notesFor(e.id).map(function(n){ return n.text; })).join(" ").toLowerCase(); }
+function calActive(e, sel){
+  if (!sel) return true;
+  if (sel.type === "exp") return e.id === sel.id;
+  var s = startOf(e); if (!s) return false;
+  var en = endOf(e); if (!isDecidedRow(e) && statusOf(e) !== "planned") en = en && en > TODAY ? en : TODAY;
+  var to = addDays(sel.from, 6);
+  return s <= to && (en || s) >= sel.from;
+}
+function passes(e, skip){
+  if (skip !== "status" && ST.status !== "all" && statusGroup(e) !== ST.status) return false;
+  if (ST.bucket && bucketOf(e) !== ST.bucket) return false;
+  if (ST.rot && !(inRot(e) && !isDecidedRow(e))) return false;
+  var q = ST.q.trim().toLowerCase();
+  if (q && hay(e).indexOf(q) < 0) return false;
+  if (skip !== "cal" && !calActive(e, ST.cal)) return false;
+  return true;
+}
+var SG_RANK = {call: 0, running: 1, planned: 2, decided: 3};
+function sortKey(e){
+  var g = SG_RANK[statusGroup(e)], en = endOf(e), s = startOf(e), p = pBeatOf(e);
+  switch (ST.sort) {
+    case "ending": return [g === 3 ? 1 : 0, g === 3 ? -(pd(en) || 0) : (en ? +pd(en) : 9e15), nameOf(e)];
+    case "newest": return [s ? -pd(s) : 1, nameOf(e)];
+    case "oldest": return [s ? +pd(s) : 9e15, nameOf(e)];
+    case "chance": return [p == null ? 1 : 0, p == null ? 0 : -p, g, nameOf(e)];
+    case "bucket": return [BUCKET_NAME[bucketOf(e)] || "~", g, nameOf(e)];
+    case "az": return [nameOf(e).toLowerCase()];
+    default: return [g, inRot(e) ? 0 : 1].concat(e.health ? sevKey(e) : [0, 0, 0]).concat([g === 3 ? -(pd(en) || 0) : 0, nameOf(e)]);
+  }
+}
+function listed(){ return ALL.filter(function(e){ return passes(e); }).sort(function(a, b){ return cmpKey(sortKey(a), sortKey(b)); }); }
+
+/* ── calendar strip: one thin row per experiment the other filters leave in. Click a bar to show
+   just that experiment; click a week to show everything active that week. */
+var DAY_PX = 10;
+function calStrip(){
+  var rows = ALL.filter(function(e){ return passes(e, "cal") && startOf(e) && pd(startOf(e)); });
+  var undated = ALL.filter(function(e){ return passes(e, "cal") && !(startOf(e) && pd(startOf(e))); }).length;
+  var CAL_RANK = {call: 0, running: 1, planned: 2, decided: 3};
+  rows.sort(function(a, b){ var ra = CAL_RANK[statusGroup(a)], rb = CAL_RANK[statusGroup(b)]; if (ra !== rb) return ra - rb; var ia = inRot(a) ? 0 : 1, ib = inRot(b) ? 0 : 1; if (ia !== ib) return ia - ib; return ra === 3 ? String(endOf(b) || "").localeCompare(String(endOf(a) || "")) : String(startOf(a)).localeCompare(String(startOf(b))); });
+  var lo = addDays(TODAY, -42), hi = addDays(TODAY, 28);
+  rows.forEach(function(e){ var s = startOf(e), en = endOf(e) || s, st = stopOf(e); if (s < lo) lo = s; [en, st].forEach(function(x){ if (x && x > hi) hi = x; }); });
+  if (daysBetween(lo, TODAY) > 150) lo = addDays(TODAY, -150);
+  if (daysBetween(TODAY, hi) > 90) hi = addDays(TODAY, 90);
+  lo = addDays(lo, -((pd(lo).getUTCDay() + 6) % 7));
+  var n = daysBetween(lo, hi) + 7, W = n * DAY_PX;
+  var X = function(s){ var k = daysBetween(lo, s); return k == null ? null : Math.max(0, Math.min(n, k)) * DAY_PX; };
+  var head = "", grid = "";
+  for (var i = 0; i < n; i += 7) {
+    var ds = addDays(lo, i), on = ST.cal && ST.cal.type === "week" && ST.cal.from === ds, dd = pd(ds);
+    head += '<button class="cw' + (on ? " on" : "") + '" style="left:' + (i * DAY_PX) + 'px;width:' + (7 * DAY_PX) + 'px" data-calweek="' + ds + '" aria-pressed="' + !!on + '" title="Show experiments active the week of ' + esc(fd(ds, true)) + '">' + (dd.getUTCDate() <= 7 ? '<b>' + MON[dd.getUTCMonth()] + '</b> ' : "") + dd.getUTCDate() + '</button>';
+    grid += '<div class="cg' + (on ? " on" : "") + '" style="left:' + (i * DAY_PX) + 'px;width:' + (7 * DAY_PX) + 'px"></div>';
+  }
+  var body = rows.map(function(e){
+    var s = startOf(e), en = endOf(e), sg = statusOf(e), dec = isDecidedRow(e), x0 = X(s), x1;
+    if (dec) x1 = X(en || s);
+    else if (sg === "planned") x1 = X(en || addDays(s, tlOf(e).planned || 14));
+    else x1 = X(en && en > TODAY ? en : TODAY);
+    var st = !dec && sg !== "planned" ? stopOf(e) : null, sel = ST.cal && ST.cal.type === "exp" && ST.cal.id === e.id;
+    var cls = dec ? "dec" : sg === "planned" ? "plan" : sg === "call" ? "call" : inRot(e) ? "rot" : "live";
+    var tip = nameOf(e) + " · " + statusMeta(e)[0] + " · " + timeText(e);
+    return '<div class="cr"><span class="cl" title="' + esc(nameOf(e)) + '">' + esc(nameOf(e)) + '</span><div class="ct" style="width:' + W + 'px">' +
+      (st && X(st) > x1 ? '<span class="cb tail" style="left:' + x1 + 'px;width:' + (X(st) - x1) + 'px"></span>' : "") +
+      '<button class="cb ' + cls + (sel ? " on" : "") + '" style="left:' + x0 + 'px;width:' + Math.max(x1 - x0, 6) + 'px" data-calexp="' + esc(e.id) + '" aria-pressed="' + sel + '" title="' + esc(tip) + '" aria-label="' + esc("Filter to " + tip) + '"></button></div></div>';
+  }).join("");
+  var tx = X(TODAY);
+  return '<section class="cal" aria-label="Calendar"><div class="cal-h"><h2>Calendar</h2><span>Click a bar to show that experiment, or a week to show what ran then.</span><span class="grow"></span><span class="ckey"><i class="k-rot"></i>In rotation <i class="k-live"></i>Running <i class="k-call"></i>Needs a call <i class="k-plan"></i>Planned <i class="k-dec"></i>Decided</span></div>' +
+    (rows.length ? '<div class="cs" id="cscroll" tabindex="0" role="region" aria-label="Experiment calendar, scrolls sideways"><div class="cin" style="width:calc(' + W + 'px + var(--cl))">' +
+      '<div class="cr chead"><span class="cl"></span><div class="ct" style="width:' + W + 'px">' + head + '</div></div>' +
+      '<div class="cbody"><div class="cgrid" style="width:' + W + 'px">' + grid + '<div class="ctoday" style="left:' + tx + 'px" title="Today"></div></div>' + body + '</div></div></div>'
+      : '<div class="empty" style="padding:14px">Nothing with dates matches these filters.</div>') +
+    (undated ? '<p class="cfoot">' + undated + ' without a start date ' + (undated === 1 ? "isn’t" : "aren’t") + ' on the calendar (still in the cards below).</p>' : "") + '</section>';
+}
+function showingChip(){
+  if (!ST.cal) return "";
+  var t = ST.cal.type === "exp" ? (findExp(ST.cal.id) ? nameOf(findExp(ST.cal.id)) : ST.cal.id) : "Active the week of " + fd(ST.cal.from, true);
+  return '<div class="showing"><span>Showing: <b>' + esc(trunc(t, 80)) + '</b></span><button class="linkbtn" data-calclear aria-label="Clear calendar filter">✕ clear</button></div>';
+}
+function gridHTML(){
+  var list = listed();
+  if (!list.length) return '<div class="card"><div class="empty">' + (ALL.length ? 'Nothing matches.<br><button class="linkbtn" data-clearall>Clear search and filters</button>' : (S.degraded ? "No experiments in the registry." : "No experiments yet.")) + '</div></div>';
+  return '<div class="xg">' + list.map(card).join("") + '</div>';
+}
+function counts(){
+  var c = {all: 0, call: 0, running: 0, planned: 0, decided: 0};
+  ALL.forEach(function(e){ if (!passes(e, "status")) return; c.all++; c[statusGroup(e)]++; });
+  return c;
+}
+function renderHeader(){
+  var gen = S.generated_at ? String(S.generated_at) : "";
+  var genTxt = gen ? fd(gen) + " " + (gen.slice(11,16) ? gen.slice(11,16) + " UTC" : "") : "unknown";
+  var unlogged = CHANGES.filter(function(c){ return c.unlogged; }).length, nb = todayBadge();
+  var nRot = LIVE.filter(inRot).length, mx = num(ROT.max) || 3;
+  var h = '<div class="hdr"><div><h1>Experiments</h1><div class="meta num">Updated ' + esc(genTxt) + ' · ' + LIVE.length + ' running' + (ROTMODE || nRot ? ' (' + nRot + '/' + mx + ' in rotation' + (ROT.next_call_date ? ', next call ' + esc(fd(ROT.next_call_date)) : "") + ')' : "") + ' · ' + PLANNED.length + ' planned · ' + DECIDED.length + ' decided</div></div>' +
+    '<div class="hdr-r">' + (nb ? '<button class="pill warn needbadge" data-status-go="call" title="Same count as the daily DM">' + nb + ' need' + (nb === 1 ? "s" : "") + ' a call</button>' : '<span class="pill ok"><i></i>Nothing waiting on a call</span>') +
+    (S.fixture ? '<span class="badge-fixture" title="' + esc(S.fixture_note || "") + '">Fixture data · not a readout</span>' : "") +
+    '<details class="ovf"><summary class="btn" aria-label="More actions">More' + (unlogged ? ' <span class="dot" aria-hidden="true"></span>' : "") + '</summary><div class="menu" role="menu">' +
+      '<button role="menuitem" data-view="changes">Shipped changes' + (unlogged ? ' · <b>' + unlogged + ' unlogged</b>' : "") + '</button>' +
+      '<button role="menuitem" data-view="rules">How calls are made</button>' +
+      (G.backlog.length ? '<button role="menuitem" data-copy-backlog>Copy backlog decisions for Claude Code (' + G.backlog.length + ')</button>' : "") +
+    '</div></details></div></div>';
+  if (S.degraded) h += '<div class="banner warn" role="status">' + esc(S.degraded_note || "Engine snapshot unavailable: registry view only.") + '</div>';
+  h += '<div id="backlog-box"></div>';
+  return h;
+}
+function toolbar(){
+  var c = counts();
+  var bks = {}; ALL.forEach(function(e){ bks[bucketOf(e)] = 1; });
+  return '<div class="xbar">' +
+    '<label class="sr" for="xq">Search experiments</label><input id="xq" class="inp xq" type="search" placeholder="Search name, what it tests, metric, notes…" value="' + esc(ST.q) + '">' +
+    '<label class="sr" for="xb">Bucket</label><select id="xb" class="sel"><option value="">All buckets</option>' + Object.keys(bks).sort(function(a, b){ return String(BUCKET_NAME[a] || "~").localeCompare(String(BUCKET_NAME[b] || "~")); }).map(function(k){ return '<option value="' + esc(k) + '"' + (ST.bucket === k ? " selected" : "") + '>' + esc(BUCKET_NAME[k] || "Other") + '</option>'; }).join("") + '</select>' +
+    '<label class="sr" for="xs">Sort</label><select id="xs" class="sel" title="Sort">' + SORTS.map(function(s){ return '<option value="' + s[0] + '"' + (ST.sort === s[0] ? " selected" : "") + '>Sort: ' + s[1] + '</option>'; }).join("") + '</select>' +
+  '</div><div class="xbar2">' +
+    '<div class="chipbar" role="group" aria-label="Status">' + STATUSES.map(function(s){ return '<button class="chip" data-status="' + s[0] + '" aria-pressed="' + (ST.status === s[0]) + '">' + s[1] + '<span class="c" data-count="' + s[0] + '">' + c[s[0]] + '</span></button>'; }).join("") +
+      '<button class="chip" data-rot aria-pressed="' + ST.rot + '">In rotation</button></div>' +
+  '</div>';
+}
+/* Planner scorecard (owner 2026-11-19): is the Planner working, by who uses it? One quiet,
+   collapsible row of tiles from snapshot.scorecards.planner; counts always shown with the rate. */
+function scoreTile(t){
+  t = obj(t);
+  var rate = function(x){ x = obj(x); return num(x.n) ? num(x.conv) / num(x.n) : null; };
+  var a = obj(t.after), b = obj(t.before), ra = rate(a), rb = rate(b);
+  var val = t.error ? '<span class="sc-na">' + esc(trunc(t.error, 70)) + '</span>' : ra == null ? '<span class="sc-na">No couples yet</span>' :
+    '<b class="num">' + esc(pct(ra)) + '</b> <span class="sc-c num">(' + fmtInt(a.conv) + ' of ' + fmtInt(a.n) + ')</span>';
+  var delta = "";
+  if (!t.error && ra != null && rb != null) { var d = ra - rb, arrow = Math.abs(d) < 0.005 ? "→" : d > 0 ? "↑" : "↓"; delta = '<span class="sc-d ' + (arrow === "↑" ? "up" : arrow === "↓" ? "dn" : "") + '">' + arrow + ' from ' + esc(pct(rb)) + ' <span class="num">(' + fmtInt(b.conv) + ' of ' + fmtInt(b.n) + ')</span></span>'; }
+  var tip = (t.definition || "") + (t.after_label ? " · " + t.after_label + " vs " + (t.before_label || "before") : "") + (num(t.pending) ? " · " + t.pending + " still inside their window, not counted yet" : "");
+  return '<div class="sc-t" tabindex="0" title="' + esc(tip) + '"><div class="sc-l">' + esc(t.label || t.key || "") + '</div><div class="sc-v">' + val + '</div>' + (delta ? '<div>' + delta + '</div>' : "") + '<div class="sc-w">' + esc(t.after_label || "") + '</div></div>';
+}
+function scorecardStrip(){
+  var sc = obj(S.scorecards), rows = arr(sc.planner).map(obj).filter(function(t){ return t.key || t.label; });
+  if (!rows.length) return "";
+  var SHORT = {free_pdf_open: "Free → PDF", forever_return: "Forever → came back", forever_second_question: "Forever → 2nd question"};
+  var inline = rows.map(function(t){ var a = obj(t.after); return '<span class="sc-i">' + esc(SHORT[t.key] || trunc(t.label || t.key, 24)) + ' <b class="num">' + (t.error || !num(a.n) ? "–" : esc(pct(num(a.conv) / num(a.n))) + '</b> <span class="sc-c num">(' + fmtInt(a.conv) + '/' + fmtInt(a.n) + ')</span>') + (t.error || !num(a.n) ? "</b>" : "") + '</span>'; }).join("");
+  return '<details class="sc"' + (KEEP.scOpen ? " open" : "") + ' id="scard"><summary><b>Planner</b><span class="sc-in">' + inline + '</span><span class="sc-hint">last 7 days · open for details</span></summary><div class="sc-g">' + rows.map(scoreTile).join("") + '</div></details>';
+}
+function resultsHTML(){ return showingChip() + gridHTML(); }
+function engineErrors(){
+  if (!arr(S.errors).length) return "";
+  return '<details class="foot-err"><summary>' + S.errors.length + ' engine error' + (S.errors.length === 1 ? "" : "s") + ' this run</summary><pre>' + esc(S.errors.map(function(x){ x = obj(x); return (x.id || "") + " " + (x.stage || "") + " " + (x.key || "") + ": " + (x.error || x.message || JSON.stringify(x)); }).join("\n")) + '</pre></details>';
+}
 function render(){
-  var body = ST.tab === "today" ? renderToday() : ST.tab === "calendar" ? renderCalendar() : ST.tab === "buckets" ? renderBuckets() : ST.tab === "decided" ? renderDecided() : ST.tab === "changes" ? renderChanges() : renderRules();
-  app.innerHTML = renderHeader() + '<div id="panel" role="tabpanel" aria-labelledby="tab-' + ST.tab + '">' + body + '</div>';
+  if (ST.view === "changes" || ST.view === "rules") {
+    app.innerHTML = renderHeader() + '<div class="back"><button class="linkbtn" data-view="grid">← All experiments</button></div>' + (ST.view === "changes" ? renderChanges() : renderRules());
+  } else {
+    app.innerHTML = renderHeader() + '<div id="calwrap">' + calStrip() + '</div>' + scorecardStrip() + toolbar() + '<div id="results">' + resultsHTML() + '</div>' + engineErrors();
+  }
   wire();
 }
-function rerenderList(id, fn){ var el = document.getElementById(id); if (el){ el.innerHTML = fn(); bindRows(el); wireSort(el); } }
-function wireSort(root){
-  root.querySelectorAll("[data-sort]").forEach(function(b){ b.addEventListener("click", function(){ var s = b.getAttribute("data-sort"); if (ST.sort === s) ST.dir = -ST.dir; else { ST.sort = s; ST.dir = 1; } rerenderList("runlist", runningRows); var nb = document.querySelector('[data-sort="' + s + '"]'); if (nb) nb.focus(); }); });
-  root.querySelectorAll("[data-clear]").forEach(function(b){ b.addEventListener("click", function(){ ST.filter = "all"; ST.q = ""; render(); }); });
+function rerenderResults(){
+  var r = document.getElementById("results"); if (!r) return render();
+  r.innerHTML = resultsHTML();
+  var cw = document.getElementById("calwrap"); if (cw) { cw.innerHTML = calStrip(); wireResults(cw); }
+  var c = counts(); app.querySelectorAll("[data-count]").forEach(function(s){ s.textContent = c[s.getAttribute("data-count")]; });
+  wireResults(r);
+}
+function wireResults(root){
+  root.querySelectorAll("[data-calexp]").forEach(function(b){ b.addEventListener("click", function(){ var id = b.getAttribute("data-calexp"); ST.cal = ST.cal && ST.cal.type === "exp" && ST.cal.id === id ? null : {type: "exp", id: id}; rerenderResults(); var nb = document.querySelector('[data-calexp="' + id + '"]'); if (nb) nb.focus({preventScroll: true}); }); });
+  root.querySelectorAll("[data-calweek]").forEach(function(b){ b.addEventListener("click", function(){ var w = b.getAttribute("data-calweek"); ST.cal = ST.cal && ST.cal.type === "week" && ST.cal.from === w ? null : {type: "week", from: w}; rerenderResults(); var nb = document.querySelector('[data-calweek="' + w + '"]'); if (nb) nb.focus({preventScroll: true}); }); });
+  root.querySelectorAll("[data-calclear]").forEach(function(b){ b.addEventListener("click", function(){ ST.cal = null; rerenderResults(); }); });
+  root.querySelectorAll("[data-clearall]").forEach(function(b){ b.addEventListener("click", function(){ ST.q = ""; ST.status = "all"; ST.bucket = ""; ST.rot = false; ST.cal = null; saveST(); render(); }); });
+  var cs = root.querySelector("#cscroll");
+  if (cs) {
+    if (KEEP.cscroll != null) cs.scrollLeft = KEEP.cscroll;
+    else { var tl = cs.querySelector(".ctoday"); if (tl) cs.scrollLeft = Math.max(0, tl.offsetLeft - cs.clientWidth * 0.6); }
+    cs.addEventListener("scroll", function(){ KEEP.cscroll = cs.scrollLeft; });
+  }
+  bindRows(root);
 }
 function wire(){
-  app.querySelectorAll("[data-tab]").forEach(function(b){
-    b.addEventListener("click", function(){ ST.tab = b.getAttribute("data-tab"); render(); var t = document.getElementById("tab-" + ST.tab); if (t) t.focus(); });
-    b.addEventListener("keydown", function(ev){ var ids = TABS, i = ids.indexOf(ST.tab); if (ev.key === "ArrowRight" || ev.key === "ArrowLeft"){ ev.preventDefault(); ST.tab = ids[(i + (ev.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length]; render(); document.getElementById("tab-" + ST.tab).focus(); } });
-  });
-  // KPI cards jump to their group (opening it); "No action due" jumps to the filtered running list
-  app.querySelectorAll("[data-kpi]").forEach(function(b){ b.addEventListener("click", function(){
-    var id = b.getAttribute("data-kpi");
-    if (id === "fine") { ST.filter = "healthy"; ST.runOpen = true; render(); var r = document.getElementById("running"); if (r) r.scrollIntoView({behavior: "smooth", block: "start"}); return; }
-    if (!G[id] || !G[id].length) return;
-    ST.open[id] = true; render(); var gh = document.querySelector('[data-group="' + id + '"]'); if (gh){ gh.scrollIntoView({behavior: "smooth", block: "start"}); gh.focus({preventScroll: true}); }
-  }); });
-  app.querySelectorAll("[data-group]").forEach(function(b){ b.addEventListener("click", function(){ var id = b.getAttribute("data-group"); ST.open[id] = !ST.open[id]; render(); var nb = document.querySelector('[data-group="' + id + '"]'); if (nb) nb.focus({preventScroll: true}); }); });
-  app.querySelectorAll("[data-runopen]").forEach(function(b){ b.addEventListener("click", function(){ ST.runOpen = true; render(); var r = document.getElementById("rq"); if (r) r.focus({preventScroll: true}); }); });
-  app.querySelectorAll("[data-more]").forEach(function(b){ b.addEventListener("click", function(){ var id = b.getAttribute("data-more"); ST.more[id] = !ST.more[id]; render(); }); });
-  app.querySelectorAll("[data-sel]").forEach(function(c){ c.addEventListener("change", function(){ var id = c.getAttribute("data-sel"); if (c.checked) ST.sel[id] = 1; else delete ST.sel[id]; render(); var nc = document.querySelector('[data-sel="' + id + '"]'); if (nc) nc.focus({preventScroll: true}); }); });
-  app.querySelectorAll("[data-selall]").forEach(function(b){ b.addEventListener("click", function(){ var all = G.stale.every(function(e){ return ST.sel[e.id]; }); ST.sel = {}; if (!all) G.stale.forEach(function(e){ ST.sel[e.id] = 1; }); ST.more.stale = true; render(); var nb = document.querySelector("[data-selall]"); if (nb) nb.focus({preventScroll: true}); }); });
-  app.querySelectorAll("[data-copy-shelve]").forEach(function(b){ b.addEventListener("click", function(){ copyText(shelveText(), b, document.getElementById("shelve-box")); }); });
-  app.querySelectorAll("[data-copy-backlog]").forEach(function(b){ b.addEventListener("click", function(){ copyText(backlogText(), b, document.getElementById("backlog-box")); }); });
-  app.querySelectorAll("[data-selall-b]").forEach(function(b){ b.addEventListener("click", function(){ var all = G.backlog.every(function(e){ return ST.sel[e.id]; }); G.backlog.forEach(function(e){ if (all) delete ST.sel[e.id]; else ST.sel[e.id] = 1; }); ST.more.backlog = true; render(); var nb = document.querySelector("[data-selall-b]"); if (nb) nb.focus({preventScroll: true}); }); });
-  app.querySelectorAll("[data-calf]").forEach(function(b){ b.addEventListener("click", function(){ ST.calF = b.getAttribute("data-calf"); render(); var nb = document.querySelector('[data-calf="' + ST.calF + '"]'); if (nb) nb.focus({preventScroll: true}); }); });
-  var gsc = document.getElementById("gscroll");
-  if (gsc) { if (KEEP.gscroll != null) gsc.scrollLeft = KEEP.gscroll; else { var tl = gsc.querySelector(".gtoday"); if (tl) gsc.scrollLeft = Math.max(0, tl.offsetLeft - 520); } gsc.addEventListener("scroll", function(){ KEEP.gscroll = gsc.scrollLeft; }); }
-  wireOverview();
-  app.querySelectorAll("[data-open-btn]").forEach(function(b){ b.addEventListener("click", function(ev){ ev.stopPropagation(); openDrawer(b.getAttribute("data-open-btn"), b); }); });
-  app.querySelectorAll("[data-filter]").forEach(function(b){ b.addEventListener("click", function(){ ST.filter = b.getAttribute("data-filter"); app.querySelectorAll("[data-filter]").forEach(function(x){ x.setAttribute("aria-pressed", x === b); }); rerenderList("runlist", runningRows); }); });
-  var rq = document.getElementById("rq"); if (rq) rq.addEventListener("input", function(){ ST.q = rq.value; rerenderList("runlist", runningRows); });
-  app.querySelectorAll("[data-out]").forEach(function(b){ b.addEventListener("click", function(){ ST.dOutcome = b.getAttribute("data-out"); app.querySelectorAll("[data-out]").forEach(function(x){ x.setAttribute("aria-pressed", x === b); }); rerenderList("declist", decidedRows); }); });
-  var dth = document.getElementById("dth"); if (dth) dth.addEventListener("change", function(){ ST.dTheme = dth.value; rerenderList("declist", decidedRows); });
-  var dq = document.getElementById("dq"); if (dq) dq.addEventListener("input", function(){ ST.dQ = dq.value; rerenderList("declist", decidedRows); });
-  app.querySelectorAll("[data-dclear]").forEach(function(b){ b.addEventListener("click", function(){ ST.dOutcome = "all"; ST.dTheme = ""; ST.dQ = ""; render(); }); });
+  app.querySelectorAll("[data-view]").forEach(function(b){ b.addEventListener("click", function(){ ST.view = b.getAttribute("data-view"); render(); window.scrollTo(0, 0); }); });
+  app.querySelectorAll("[data-copy-backlog]").forEach(function(b){ b.addEventListener("click", function(){ copyText(backlogText(), b, document.getElementById("backlog-box")); var d = b.closest("details"); if (d) setTimeout(function(){ d.open = false; }, 900); }); });
+  app.querySelectorAll("[data-status-go]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status-go"); ST.view = "grid"; ST.cal = null; saveST(); render(); }); });
+  app.querySelectorAll("[data-status]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status"); saveST(); app.querySelectorAll("[data-status]").forEach(function(x){ x.setAttribute("aria-pressed", x === b); }); rerenderResults(); }); });
+  app.querySelectorAll("[data-rot]").forEach(function(b){ b.addEventListener("click", function(){ ST.rot = !ST.rot; saveST(); b.setAttribute("aria-pressed", ST.rot); rerenderResults(); }); });
+  var xq = document.getElementById("xq"); if (xq) xq.addEventListener("input", function(){ ST.q = xq.value; rerenderResults(); });
+  var xb = document.getElementById("xb"); if (xb) xb.addEventListener("change", function(){ ST.bucket = xb.value; saveST(); rerenderResults(); });
+  var xs = document.getElementById("xs"); if (xs) xs.addEventListener("change", function(){ ST.sort = xs.value; saveST(); rerenderResults(); });
   app.querySelectorAll("[data-conly]").forEach(function(b){ b.addEventListener("click", function(){ ST.cOnly = b.getAttribute("data-conly") === "1"; render(); }); });
-  var cs = document.getElementById("csrc"); if (cs) cs.addEventListener("change", function(){ ST.cSrc = cs.value; render(); });
-  bindRows(app); wireSort(app);
+  var csrc = document.getElementById("csrc"); if (csrc) csrc.addEventListener("change", function(){ ST.cSrc = csrc.value; render(); });
+  CUR.closeMenus = closeMenus;
+  if (!KEEP.menuHooked) { document.addEventListener("click", function(ev){ if (CUR.closeMenus) CUR.closeMenus(ev); }); KEEP.menuHooked = true; }
+  var r = document.getElementById("results"); if (r) wireResults(r); else bindRows(app);
+  var cw = document.getElementById("calwrap"); if (cw) wireResults(cw);
+  var scd = document.getElementById("scard"); if (scd) scd.addEventListener("toggle", function(){ KEEP.scOpen = scd.open; });
+}
+function closeMenus(ev){ app.querySelectorAll("details.ovf[open]").forEach(function(d){ if (!d.contains(ev.target)) d.open = false; }); }
+
+/* ── drawer: why it is / isn't working, and how the call gets made (owner 2026-11-19: no fixed
+   time box; every experiment says why and how instead) */
+function whyHow(e){
+  var v = V(e), rec = recOf(e), hw = obj(v.how_we_call), p = pBeatOf(e), bar = barOf(e);
+  var why = '<section class="wh" aria-labelledby="why-h"><h3 id="why-h">Why it is / isn’t working</h3><p class="tldr">' + esc(v.tldr || verdict(e)) + '</p>' +
+    (rec && rec.why ? '<p>' + esc(rec.why) + '</p>' : (!rec && e.health ? '<p>' + esc(shortReason(e)) + '</p>' : "")) +
+    (unstickOf(e) ? '<div class="unstick"><b>To move it along:</b> ' + esc(unstickOf(e)) + '</div>' : "") + '</section>';
+  var rows = [];
+  var barTxt = hw.bar || (e.health && atypeOf(e) !== "rollout" ? "Ship when there’s at least a " + chance(bar) + " chance it’s better than what it replaced, after at least 7 days, with a low expected loss." : "");
+  if (barTxt) rows.push(["The bar", barTxt]);
+  if (hw.ship_if) rows.push(["Ship if", hw.ship_if]);
+  if (hw.revert_if) rows.push(["Revert if", hw.revert_if]);
+  if (hw.otherwise) rows.push(["Otherwise", hw.otherwise]);
+  var now = hw.now || (p != null ? "Now: " + chance(p) + " chance it’s better against a " + chance(bar) + " bar." + (v.confidence_note ? " " + v.confidence_note : "") : v.confidence_note || "");
+  if (now) rows.push(["Where it stands", now]);
+  var how = rows.length ? '<section class="wh how" aria-labelledby="how-h"><h3 id="how-h">How we’ll make the call</h3><dl>' + rows.map(function(r){ return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join("") + '</dl></section>' : "";
+  return why + how;
 }
 function wireDelegated(ev){
   var x = ev.target.closest("[data-xopen]"); if (x){ ev.preventDefault(); openDrawer(x.getAttribute("data-xopen"), x); return; }
@@ -1549,7 +1522,7 @@ function sparkline(e){
 }
 /* ── Outcome block: result, TL;DR, the starting point (status quo) vs now, a small chart, the
    recommended next step and, for stuck ones, how to move it along. First thing in the drawer. */
-function fmtVal(v, perDay){ if (typeof v === "string" && !/^\s*-?[\d.]+\s*$/.test(v)) return v; v = num(v); if (v == null) return "–"; return perDay ? (v >= 100 ? fmtInt(v) : v.toFixed(1)) + "/day" : pct(v); }
+function fmtVal(v, perDay){ if (typeof v === "string" && !/^\s*-?[\d.]+\s*$/.test(v)) return v; v = num(v); if (v == null) return "–"; return perDay ? (v >= 100 ? fmtInt(v) : v.toFixed(v < 1 ? 2 : 1)) + "/day" : pct(v); }
 function windowsOf(e){
   var def = String(readoutOf(e).definition || ""), out = [null, null];
   var b = def.match(/before (\d{4}-\d\d-\d\d)[^v]*? to (\d{4}-\d\d-\d\d)/), a = def.match(/after (\d{4}-\d\d-\d\d)[^;]*? to (\d{4}-\d\d-\d\d)/);
@@ -1600,11 +1573,11 @@ function compareBars(e, sp, tone){
   return '<div class="bb" role="img" aria-label="' + esc(sp.bLabel + " " + fmtVal(b, sp.perDay) + ", " + sp.aLabel + " " + fmtVal(a, sp.perDay) + (target != null ? ", target " + fmtVal(target) : "")) + '">' +
     row("Starting", b, "sq0", "") + row(sp.aLabel.split(" (")[0], a, "", "background:" + fill) + '</div>';
 }
-function outcomeBlock(e, isDecided){
+function outcomeBlock(e, isDecided, lean){
   var v = V(e), res = obj(v.result), rec = recOf(e);
   var chip = isDecided ? outcomePill(e) + (res.label ? " " + resultPill(e) : "") : (resultPill(e) || pill(e));
   var tl = v.tldr || (isDecided ? (e.decision || e.takeaway || "No outcome recorded.") : verdict(e));
-  var h = '<div class="oc" aria-labelledby="oc-l"><div class="oc-top"><span class="lbl" id="oc-l">' + (isDecided ? "Final outcome" : "Outcome so far") + '</span>' + chip + '</div><p class="tldr">' + esc(tl) + '</p>';
+  var h = '<div class="oc" aria-labelledby="oc-l"><div class="oc-top"><span class="lbl" id="oc-l">' + (isDecided ? "Final outcome" : "Outcome so far") + '</span>' + chip + '</div>' + (lean ? "" : '<p class="tldr">' + esc(tl) + '</p>');
   var dl = !isDecided ? decLine(e) : "";
   if (dl) h += '<div class="decbanner">' + esc(dl) + '</div>';
   var sp = startPoint(e), hasB = sp.b != null && sp.b !== "", hasA = sp.a != null && sp.a !== "";
@@ -1632,11 +1605,11 @@ function outcomeBlock(e, isDecided){
     if (e.decision && v.tldr && e.decision !== v.tldr) h += '<div class="nx"><div class="h">Decision</div><p>' + esc(e.decision) + '</p></div>';
   } else if (e.health) {
     var lbl = rec ? rec.label : actionVerb(e), why = rec ? (rec.why || "") : shortReason(e);
-    h += '<div class="nx"><div class="h">Recommended next step</div><div class="call">' + esc(lbl) + (!engineOff(e) ? '<button class="btn" data-copy-instr="' + esc(e.id) + '" title="Copies one line you can paste into Claude Code" style="margin-left:auto">Copy for Claude Code</button>' : "") + '</div>' + (why ? '<p>' + esc(why) + '</p>' : "") + '<div id="instr-box"></div></div>';
+    h += '<div class="nx"><div class="h">Recommended next step</div><div class="call">' + esc(lbl) + (!engineOff(e) ? '<button class="btn" data-copy-instr="' + esc(e.id) + '" title="Copies one line you can paste into Claude Code" style="margin-left:auto">Copy for Claude Code</button>' : "") + '</div>' + (why && !lean ? '<p>' + esc(why) + '</p>' : "") + '<div id="instr-box"></div></div>';
     var un = unstickOf(e);
-    if (un) h += '<div class="unstick"><b>To move it along:</b> ' + esc(un) + '</div>';
+    if (un && !lean) h += '<div class="unstick"><b>To move it along:</b> ' + esc(un) + '</div>';
   }
-  if (v.confidence_note) h += '<div class="cnote">' + esc(v.confidence_note) + '</div>';
+  if (v.confidence_note && !lean) h += '<div class="cnote">' + esc(v.confidence_note) + '</div>';
   return h + '</div>';
 }
 /* ── Notes: the live record of what was discussed. */
@@ -1693,7 +1666,7 @@ function drawerHTML(e){
   var isDecided = !e.health && DECIDED.indexOf(e) >= 0;
   var t = tlOf(e), dr = daysRunning(e), at = atypeOf(e), aud = audienceOf(e), m = metricOf(e);
   var head = '<div class="dw-h"><div class="t">' + (isDecided ? outcomePill(e) : pill(e)) + (inRot(e) ? ' <span class="pill ok"><i></i>In rotation</span>' : "") + '<h2 id="dw-title">' + esc(nameOf(e)) + '</h2><div class="m"><span class="ref">' + esc(e.id || "") + '</span>' + (e.tier || e.tier_effective ? '<span>' + esc(e.tier || e.tier_effective) + ' tier</span>' : "") + (at ? '<span>' + esc({pre_post: "before/after", split: "50/50 split", benchmark: "vs. benchmark", rollout: "rollout"}[at] || at) + '</span>' : "") + (dr != null && e.health ? '<span>day ' + dr + (t.planned ? (dr > t.planned ? ' (planned ' + t.planned + ')' : ' of ' + t.planned) : "") + '</span>' : "") + (isDecided && (e.decided_on || e.end_date) ? '<span>decided ' + esc(fd(e.decided_on || e.end_date, true)) + '</span>' : "") + '</div></div><button class="x" id="dw-close" aria-label="Close details">' + ICON.x + '</button></div>';
-  var b = outcomeBlock(e, isDecided) + notesSection(e);
+  var b = (isDecided ? outcomeBlock(e, true) : whyHow(e) + outcomeBlock(e, false, true)) + notesSection(e);
   if (isDecided) {
     b += section(1, "Ran", '<p class="num">' + esc(fd(e.start_date, true)) + ' – ' + esc(fd(e.end_date || e.decided_on, true)) + '</p>' + (themesOf(e).length ? '<div class="chips">' + themesOf(e).map(function(x){ return '<span class="tag">' + esc(x) + '</span>'; }).join("") + '</div>' : ""));
     if (e.takeaway && e.takeaway !== e.decision) b += section(2, "Last readout", '<p class="clamp" id="dk">' + esc(e.takeaway) + '</p>' + (String(e.takeaway).length > 260 ? '<button class="linkbtn" data-expand="dk">More</button>' : ""));
@@ -1808,9 +1781,6 @@ if (!firstBoot && KEEP.openId) {
   if (H.sec === "notes") setTimeout(function(){ var nn = drawer.querySelector(".notes"); if (nn) drawer.querySelector(".dw-b").scrollTop = nn.offsetTop - 70; }, 60);
   else if (H.sec) setTimeout(function(){ var sx = drawer.querySelectorAll(".ds")[+H.sec - 1]; if (sx) drawer.querySelector(".dw-b").scrollTop = sx.offsetTop - 70; }, 60);
 }
-if (firstBoot && H.focus === "queue") { var q = document.getElementById("queue"); if (q) q.scrollIntoView(); }
-if (firstBoot && H.focus === "running") { var rr = document.getElementById("running"); if (rr) rr.scrollIntoView(); }
-if (firstBoot && H.focus === "overview") { var ovv = document.getElementById("overview"); if (ovv) ovv.scrollIntoView(); }
 }  /* end boot */
 
 if (window.__SNAPSHOT__) boot(window.__SNAPSHOT__, window.__THEME__);

@@ -282,6 +282,8 @@ class DataContext:
         self.record_pdf_history = record_pdf_history
         self.data_dir = data_dir
         self._pdf_hist = None
+        self._loc_cache = None
+        self.location_lookups = 0
         self.load_log = []         # [(view, since_ms, rows)]
 
     # planning ----------------------------------------------------------------------------
@@ -300,7 +302,7 @@ class DataContext:
             specs += [(g.get("key"), g.get("params") or {}) for g in e.get("guardrails") or []
                       if isinstance(g, dict)]
             for key, params in specs:
-                if params.get("cohort"):
+                if params.get("cohort") and not (key in GEO_METRICS and geo_cohort(params["cohort"])):
                     continue              # compute() refuses these: don't load data for them
                 need = NEEDS.get(key)
                 if need:
@@ -360,6 +362,47 @@ class DataContext:
             out.setdefault(uid, []).append((t, float(p.get("Amount") or 0), str(p.get("Type") or "")))
         for v in out.values():
             v.sort()
+        return out
+
+    def locations(self, uids):
+        """{uid: tokens | None}. Order: table-1 rows already loaded this run, the volume cache,
+        then up to LOCATION_LOOKUPS_PER_RUN get_row calls (None = not looked up yet)."""
+        if self._loc_cache is None:
+            self._loc_cache = LocationCache(self.data_dir)
+        cache, out = self._loc_cache, {}
+        loaded = {}
+        for name in ("users", "offer_holders", "pricing_viewers"):
+            for r in (self._loaded.get(name) or (None, {}))[1].values():
+                if LOCATION_FIELD in r:
+                    loaded[_x.to_int(r.get("id"))] = r.get(LOCATION_FIELD)
+        for uid in sorted(set(uids)):
+            if uid in loaded:
+                toks = location_tokens(loaded[uid])
+                cache.put(uid, toks, self.now_ms)
+                out[uid] = toks
+                continue
+            hit = cache.get(uid, self.now_ms)
+            if hit is not None:
+                out[uid] = hit
+                continue
+            if self.location_lookups >= LOCATION_LOOKUPS_PER_RUN:
+                out[uid] = None
+                continue
+            self.location_lookups += 1
+            try:
+                row = self.client.get_row(TABLE_USER, uid)   # BudgetExceeded propagates (run aborts)
+            except _x.BudgetExceeded:
+                raise
+            except Exception:              # one failed lookup = unresolved, retried next run
+                out[uid] = None
+                continue
+            toks = location_tokens((row or {}).get(LOCATION_FIELD))
+            cache.put(uid, toks, self.now_ms)
+            out[uid] = toks
+        try:
+            cache.save()
+        except OSError:
+            pass                       # read-only volume in tests: lookups simply repeat next run
         return out
 
     def pdf_history(self):
@@ -443,6 +486,87 @@ class PdfFirstOpenHistory:
             return False      # still 0 views at a run after their window closed
         return None
 
+
+
+# ---------------------------------------------------------------------------
+# geo cohorts (wedding location), same rule as the WeWeb price bindings / bnpl_watch.arm_for:
+# Wedding_Location_Updated items, comma-packed parts split, trimmed, lower-cased.
+# ---------------------------------------------------------------------------
+
+LOCATION_FIELD = "Wedding_Location_Updated"
+GEO_COHORTS = {
+    # cohort -> (label, test(tokens))
+    "texas_only": ("Texas-only couples", lambda t: t == {"texas"}),
+    "texas": ("couples with Texas in their wedding location", lambda t: "texas" in t),
+    "ca": ("California couples", lambda t: "california" in t),
+    "california": ("California couples", lambda t: "california" in t),
+    "ny": ("New York couples", lambda t: "new york" in t),
+    "new_york": ("New York couples", lambda t: "new york" in t),
+}
+GEO_METRICS = ("purchases_per_day", "revenue_per_day")
+LOCATION_LOOKUPS_PER_RUN = 30         # get_row calls per run for payers not already loaded/cached
+LOCATION_MIN_COVERAGE = 0.95          # below this a geo readout is withheld, never guessed
+LOCATION_TTL_DAYS = 30
+
+
+def location_tokens(raw):
+    items = raw if isinstance(raw, list) else ([raw] if raw else [])
+    out = set()
+    for it in items:
+        for part in str(it if it is not None else "").split(","):
+            t = part.strip().lower()
+            if t:
+                out.add(t)
+    return out
+
+
+def geo_cohort(name):
+    return GEO_COHORTS.get(str(name or "").strip().lower())
+
+
+class LocationCache:
+    """{uid: {"loc": [tokens], "t": ms}} on the engine volume (``locations.json``). Locations are
+    looked up once per couple (refreshed after 30 days), so after the first runs a geo readout
+    costs no extra Xano requests. Holds lower-cased US-state/country words only, nothing else."""
+
+    FILE = "locations.json"
+
+    def __init__(self, data_dir=None):
+        data_dir = data_dir or os.environ.get("EXP_DATA_DIR")
+        self.path = os.path.join(data_dir, self.FILE) if data_dir else None   # None = in memory only
+        self._data = None
+        self.dirty = False
+
+    def load(self):
+        if self._data is None and self.path is None:
+            self._data = {}
+        if self._data is None:
+            try:
+                with open(self.path, encoding="utf-8") as f:
+                    self._data = json.load(f)
+            except (OSError, ValueError):
+                self._data = {}
+        return self._data
+
+    def get(self, uid, now_ms):
+        rec = self.load().get(str(uid))
+        if not rec or (now_ms - (rec.get("t") or 0)) > LOCATION_TTL_DAYS * DAY:
+            return None
+        return set(rec.get("loc") or [])
+
+    def put(self, uid, tokens, now_ms):
+        self.load()[str(uid)] = {"loc": sorted(tokens), "t": now_ms}
+        self.dirty = True
+
+    def save(self):
+        if not self.dirty or self.path is None:
+            return
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=os.path.dirname(self.path) or ".")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(self._data, f, separators=(",", ":"))
+        os.replace(tmp, self.path)
+        self.dirty = False
 
 # ---------------------------------------------------------------------------
 # cohort builders
@@ -582,36 +706,83 @@ def m_pdf_open_within_1d(ctx, params, window):
     return ro
 
 
+SEGMENTS = {"all": "", "free": "free ", "paid": "paid ", "forever": "Forever "}
+
+
+def _segment_of(params, default="all"):
+    seg = str(params.get("segment") or default).lower()
+    if seg not in SEGMENTS:
+        raise UnsupportedParam("segment=%r (known: %s)" % (seg, ", ".join(SEGMENTS)))
+    return seg
+
+
+class _SegmentTracker:
+    """Per-couple tier from their table-79 rows in the scan: ``forever`` (rec_service writes the
+    account's Forever flag on every row), ``free`` (a counted-free or free-limit row, or no access),
+    ``paid`` (has_access on a row). A couple seen both free and paid in the scan counts as paid."""
+
+    def __init__(self):
+        self.forever, self.free, self.paid = set(), set(), set()
+
+    def see(self, uid, status, r):
+        if r.get("forever") is True:
+            self.forever.add(uid)
+        if r.get("has_access") is True:
+            self.paid.add(uid)
+        if r.get("counted_as_free") or status == "blocked_free_limit" or r.get("has_access") is False:
+            self.free.add(uid)
+
+    def keep(self, uid, seg):
+        if seg == "all":
+            return True
+        if seg == "forever":
+            return uid in self.forever
+        if seg == "paid":
+            return uid in self.paid or uid in self.forever
+        return uid in self.free and uid not in self.paid and uid not in self.forever
+
+
 def m_planner_second_question(ctx, params, window):
     n_days = float(params.get("days", 1))
     follow = int(n_days * DAY)
     scan = _scan_from(window, params, 14)
+    seg = _segment_of(params)
+    tiers = _SegmentTracker()
     qs = {}
-    for uid, t, kind, status, _r in _usage_rows(ctx, scan):
+    for uid, t, kind, status, r in _usage_rows(ctx, scan):
+        tiers.see(uid, status, r)
         if kind == "refine" and status == "ok":
             qs.setdefault(uid, []).append(t)
     units = []
     for uid, ts in qs.items():
+        if not tiers.keep(uid, seg):
+            continue
         t0 = ts[0]
         if day_of(t0) <= day_of(scan):
             continue          # seen on the scan's first day: may not be their first question
         units.append({"uid": uid, "anchor": t0, "pending": t0 + follow > ctx.now_ms,
                       "conv": sum(1 for t in ts if t <= t0 + follow) >= 2})
-    return rate_readout(units, window, "share of couples asking their first Planner question who ask a second "
-                        "within %g day(s)" % n_days,
+    return rate_readout(units, window, "share of %scouples asking their first Planner question who ask a second "
+                        "within %g day(s)" % (SEGMENTS[seg], n_days),
                         ["'First' = first in a %d-day lookback, not first ever." % int(params.get("lookback_days", 14)),
-                         "Free couples are capped (3 lifetime + 1/day since 11-09); not segmented free/paid."])
+                         "Free couples are capped (3 lifetime + 1/day since 11-09)." + (
+                             "" if seg != "all" else " Not segmented free/paid (params.segment).")])
 
 
 def m_planner_return_within_days(ctx, params, window):
     n_days = int(params.get("days", 3))
-    free_only = bool(params.get("free_only", True))
+    if params.get("segment"):
+        seg = _segment_of(params)
+    else:
+        seg = "free" if bool(params.get("free_only", True)) else "all"
     scan = _scan_from(window, params, 7)
+    tiers = _SegmentTracker()
     scan_day = day_of(scan)
     use_days, first_t, free = {}, {}, set()
     for uid, t, kind, status, r in _usage_rows(ctx, scan):
         if kind.startswith("ww_"):
             continue
+        tiers.see(uid, status, r)
         if r.get("counted_as_free") or status == "blocked_free_limit":
             free.add(uid)
         if kind in PLANNER_USE_KINDS and status == "ok":
@@ -620,7 +791,10 @@ def m_planner_return_within_days(ctx, params, window):
     today = day_of(ctx.now_ms)
     units = []
     for uid, t0 in first_t.items():
-        if free_only and uid not in free:
+        if seg == "free":
+            if uid not in free:
+                continue
+        elif not tiers.keep(uid, seg):
             continue
         d0 = day_of(t0)
         if d0 <= scan_day:
@@ -630,7 +804,7 @@ def m_planner_return_within_days(ctx, params, window):
         last = day_of(base + n_days * DAY)
         units.append({"uid": uid, "anchor": t0, "pending": last >= today,
                       "conv": bool(use_days[uid] & later)})
-    who = "free " if free_only else ""
+    who = SEGMENTS[seg]
     return rate_readout(units, window, "share of new %sPlanner couples who use the Planner again on a later UTC "
                         "day within %d days (opening/refine/lookup/more, status ok)" % (who, n_days),
                         ["Free status is inferred (counted_as_free or blocked_free_limit row).",
@@ -769,7 +943,7 @@ def _payment_events(ctx, params, window, value):
     types = [str(t).lower() for t in (params.get("types") or ([params["plan"]] if params.get("plan") else []))]
     since = (window["pre"][0] if window["pre"] else window["start_ms"] - int(params.get("baseline_days", 14)) * DAY)
     internal = ctx.internal_uids()
-    ev = []
+    rows = []
     for p in ctx.view("payments", since):
         uid = _x.to_int(p.get("Client_Reference_ID"))
         t = _x.to_ms(p.get("Time_of_Payment"))
@@ -778,30 +952,78 @@ def _payment_events(ctx, params, window, value):
         ty = str(p.get("Type") or "").lower()
         if types and not any(ty.startswith(x) for x in types):
             continue
-        ev.append((t, value(p)))
-    return ev
+        rows.append((uid, t, p))
+    geo = geo_cohort(params.get("cohort")) if params.get("cohort") else None
+    if params.get("cohort") and geo is None:
+        raise UnsupportedParam("cohort=%r (known: %s)" % (params["cohort"], ", ".join(sorted(GEO_COHORTS))))
+    if geo is None:
+        return [(t, value(p)) for _u, t, p in rows], None
+    label, test = geo
+    payers = [u for u, _t, _p in rows if u]
+    locs = ctx.locations(payers)
+    unresolved = sum(1 for u in set(payers) if locs.get(u) is None)
+    gifts = sum(1 for u, _t, _p in rows if not u)
+    total = len(set(payers))
+    cov = 1.0 if not total else (total - unresolved) / total
+    info = {"cohort": params["cohort"], "label": label, "payers": total, "unresolved": unresolved,
+            "coverage": round(cov, 3), "gifts_skipped": gifts}
+    if cov < LOCATION_MIN_COVERAGE:
+        raise GeoPending(info)
+    ev = [(t, value(p)) for u, t, p in rows if u and locs.get(u) is not None and test(locs[u])]
+    return ev, info
+
+
+class GeoPending(Exception):
+    """Payer locations are still being looked up: withhold the readout rather than guess."""
+
+    def __init__(self, info):
+        super().__init__("location lookups pending")
+        self.info = info
+
+
+def _geo_caveats(info):
+    if not info:
+        return []
+    out = ["Cohort: %s, by the wedding location on the account today (Wedding_Location_Updated, same rule as "
+           "the app's price buttons); a couple who changed location after paying is counted where they are now."
+           % info["label"]]
+    if info["unresolved"]:
+        out.append("%d of %d payers' locations not looked up yet (left out of both periods)."
+                   % (info["unresolved"], info["payers"]))
+    if info["gifts_skipped"]:
+        out.append("%d gift payment(s) without an account left out." % info["gifts_skipped"])
+    return out
 
 
 def m_purchases_per_day(ctx, params, window):
-    ev = _payment_events(ctx, params, window, lambda p: 1)
+    ev, geo = _payment_events(ctx, params, window, lambda p: 1)
     types = params.get("types") or ([params["plan"]] if params.get("plan") else [])
     what = ("purchases of type %s*" % "/".join(types)) if types else "purchases"
+    if geo:
+        what += " by %s" % geo["label"]
     cav = [] if types else ["Includes upgrades and gifts (filter with params.types)."]
-    return count_readout(ev, window, "non-internal %s per UTC day" % what, cav,
-                         int(params.get("baseline_days", 14)))
+    ro = count_readout(ev, window, "non-internal %s per UTC day" % what, cav + _geo_caveats(geo),
+                       int(params.get("baseline_days", 14)))
+    if geo:
+        ro["geo"] = geo
+    return ro
 
 
 def m_revenue_per_day(ctx, params, window):
-    ev = _payment_events(ctx, params, window, lambda p: float(p.get("Amount") or 0))
+    ev, geo = _payment_events(ctx, params, window, lambda p: float(p.get("Amount") or 0))
     total = sum(v for _t, v in ev)
     ticket = total / len(ev) if ev else 0.0
     # Gamma-Poisson needs event counts: express revenue in purchase-equivalents (dollars / mean
     # ticket over both periods), so the dispersion is that of purchases, not of single dollars.
     scaled = [(t, v / ticket) for t, v in ev] if ticket else []
-    ro = count_readout(scaled, window, "gross revenue per UTC day, in purchase-equivalents of the mean ticket",
+    who = (" from %s" % geo["label"]) if geo else ""
+    ro = count_readout(scaled, window, "gross revenue%s per UTC day, in purchase-equivalents of the mean ticket" % who,
                        ["Gross incl. tax, refunds (~6%) not netted.",
-                        "Scored as counts of mean-ticket purchases ($%.2f); 'dollars' has the raw sums." % ticket],
+                        "Scored as counts of mean-ticket purchases ($%.2f); 'dollars' has the raw sums." % ticket]
+                       + _geo_caveats(geo),
                        int(params.get("baseline_days", 14)))
+    if geo:
+        ro["geo"] = geo
     raw = count_readout(ev, window, "", [], int(params.get("baseline_days", 14)))["count"]
     ro["dollars"] = {"pre": raw["pre"]["count"], "post": raw["post"]["count"], "mean_ticket": round(ticket, 2)}
     return ro
@@ -846,16 +1068,20 @@ def m_planner_pdf_open_rate(ctx, params, window):
     n_days = float(params.get("days", 7))
     follow = int(n_days * DAY)
     scan = _scan_from(window, params, 0)
+    seg = _segment_of(params)
+    tiers = _SegmentTracker()
     first, pdfs = {}, {}
-    for uid, t, kind, status, _r in _usage_rows(ctx, scan):
+    for uid, t, kind, status, r in _usage_rows(ctx, scan):
+        tiers.see(uid, status, r)
         if kind in PLANNER_USE_KINDS and status == "ok":
             first.setdefault(uid, t)
         elif kind == "pdf" and status in PDF_OK:
             pdfs.setdefault(uid, []).append(t)
     units = [{"uid": uid, "anchor": t0, "pending": t0 + follow > ctx.now_ms,
-              "conv": any(t0 <= t <= t0 + follow for t in pdfs.get(uid, ()))} for uid, t0 in first.items()]
-    return rate_readout(units, window, "share of Planner couples who open a PDF from a Planner card within %g "
-                        "day(s) of first use" % n_days,
+              "conv": any(t0 <= t <= t0 + follow for t in pdfs.get(uid, ()))} for uid, t0 in first.items()
+             if tiers.keep(uid, seg)]
+    return rate_readout(units, window, "share of %sPlanner couples who open a PDF from a Planner card within %g "
+                        "day(s) of first use" % (SEGMENTS[seg], n_days),
                         ["Planner-card opens only; vendor-page PDF opens are not logged in table 79."])
 
 
@@ -906,15 +1132,15 @@ ACCEPTED = {
     "gate_hitters_paid": {"gate", "days", "views", "statuses", "lookback_days"},
     "pdf_open_rate_new": {"min_age_days", "days", "window_hours"},
     "pdf_open_within_1d": {"days"},
-    "planner_second_question": {"days", "lookback_days"},
-    "planner_return_within_days": {"days", "free_only", "lookback_days"},
+    "planner_second_question": {"days", "lookback_days", "segment"},
+    "planner_return_within_days": {"days", "free_only", "lookback_days", "segment"},
     "offer_code_buyers": {"prefix", "offer_hours", "since"},
     "nps_avg_stars": set(), "nps_low_share": {"max_low"}, "nps_ratings_per_day": {"baseline_days"},
     "trustpilot_completion": set(),
     "purchases_per_day": {"types", "plan", "baseline_days"},
     "revenue_per_day": {"types", "plan", "baseline_days"},
     "paid_after_pricing_view": {"days", "src"},
-    "planner_pdf_open_rate": {"days", "lookback_days"},
+    "planner_pdf_open_rate": {"days", "lookback_days", "segment"},
 }
 
 
@@ -980,9 +1206,10 @@ def compute(ctx, key, params, window):
         extra = sorted(set(p) - ACCEPTED[canon] - {"cohort"})
         if extra:
             return {"error": "unsupported param(s) for %s: %s" % (key, ", ".join(extra)), "metric": key}
-    if p.get("cohort") and key not in ("manual", "planner_thumbs_down_rate"):
-        return {"error": "unsupported param: cohort=%r (geo cohorts need a wedding-location join that "
-                         "metrics.py does not do yet)" % p["cohort"], "metric": key}
+    if p.get("cohort") and key not in ("manual", "planner_thumbs_down_rate") and not (
+            canon in GEO_METRICS and geo_cohort(p["cohort"])):
+        return {"error": "unsupported param: cohort=%r for %s (geo cohorts work on purchases_per_day and "
+                         "revenue_per_day: %s)" % (p["cohort"], key, ", ".join(sorted(GEO_COHORTS))), "metric": key}
     if window["type"] == "split" and window["assignment"].get("rule") not in SPLIT_RULES:
         return {"error": "unsupported split rule %r (supported: %s)" % (
             window["assignment"].get("rule"), ", ".join(SPLIT_RULES)), "metric": key}
@@ -992,6 +1219,12 @@ def compute(ctx, key, params, window):
         raise
     except UnsupportedParam as exc:
         return {"error": "unsupported param: %s" % exc, "metric": key}
+    except GeoPending as exc:
+        i = exc.info
+        runs = -(-i["unresolved"] // max(LOCATION_LOOKUPS_PER_RUN, 1))
+        return {"error": "looking up wedding locations: %d of %d payers done; the starting point appears "
+                         "in about %d more run(s) (every 6 h)" % (i["payers"] - i["unresolved"], i["payers"], runs),
+                "pending_geo": i, "metric": key}
     except Exception as exc:  # one metric failing never takes down the others
         return {"error": "%s: %s" % (type(exc).__name__, exc), "metric": key}
     ro.setdefault("metric", key)
@@ -1019,7 +1252,8 @@ def run_experiment(ctx, entry):
     return ro
 
 
-def run_all(entries, client, now_ms=None, statuses=("live",), record_pdf_history=False, data_dir=None):
+def run_all(entries, client, now_ms=None, statuses=("live",), record_pdf_history=False, data_dir=None,
+            scorecards=False):
     """Compute every auto experiment in ``entries``. Returns (readouts{id: readout}, ctx).
 
     On BudgetExceeded the run stops: experiments already computed keep their readout, the rest
@@ -1027,6 +1261,8 @@ def run_all(entries, client, now_ms=None, statuses=("live",), record_pdf_history
     """
     ctx = DataContext(client, now_ms=now_ms, record_pdf_history=record_pdf_history, data_dir=data_dir)
     todo = [e for e in entries if is_auto(e) and str(e.get("status") or "") in statuses]
+    if scorecards:
+        todo = todo + scorecard_entries(ctx.now_ms)
     ctx.prepare(todo)
     out = {}
     for i, e in enumerate(todo):
@@ -1036,4 +1272,58 @@ def run_all(entries, client, now_ms=None, statuses=("live",), record_pdf_history
             for rest in todo[i:]:
                 out[rest.get("id")] = {"error": "budget exceeded: %s" % exc}
             break
+    if scorecards:
+        sc = [e for e in todo if e.get("_scorecard")]
+        ctx.scorecards = {"planner": scorecard_rows(out, sc), "computed_at": _iso(ctx.now_ms)}
+        for e in sc:
+            out.pop(e["id"], None)
     return out, ctx
+
+
+
+# ---------------------------------------------------------------------------
+# standing Planner scorecard (owner 2026-11-19): is the Planner working, by who uses it?
+#   free couples   -> the Planner's job is to get them opening pricing PDFs (on the way to the paywall)
+#   Forever couples -> retention: do they come back, and do they keep asking
+# Last 7 complete days vs the 7 before, from the same table-79 load as the experiments (no extra requests
+# beyond widening the usage view by a few days).
+# ---------------------------------------------------------------------------
+
+SCORECARD_PLANNER = [
+    ("free_pdf_open", "Free couples who open a PDF from the Planner within 3 days",
+     "planner_pdf_open_rate", {"days": 3, "segment": "free"}),
+    ("forever_return", "Forever couples who come back to the Planner within 3 days",
+     "planner_return_within_days", {"days": 3, "segment": "forever"}),
+    ("forever_second_question", "Forever couples who ask a second question within 3 days",
+     "planner_second_question", {"days": 3, "segment": "forever"}),
+]
+
+
+def scorecard_entries(now_ms):
+    today = day_start(now_ms)
+    pre0, post0 = today - 14 * DAY, today - 7 * DAY
+    def d(ms):
+        return _dt.datetime.fromtimestamp(ms / 1000, _dt.timezone.utc).strftime("%Y-%m-%d")
+    out = []
+    for key, label, metric, params in SCORECARD_PLANNER:
+        out.append({"id": "SCORECARD-planner-" + key, "status": "live", "reporting": "auto",
+                    "metric": {"key": metric, "params": dict(params), "label": label},
+                    "assignment": {"type": "pre_post", "pre": [d(pre0), d(post0 - DAY)],
+                                   "post_start": d(post0) + "T00:00:00Z"},
+                    "end_date": d(today - DAY), "_scorecard": (key, label)})
+    return out
+
+
+def scorecard_rows(readouts, entries):
+    """[{key, label, before:{n,conv}, after:{n,conv}, pending, definition, error}] for the dash."""
+    rows = []
+    for e in entries:
+        key, label = e["_scorecard"]
+        ro = readouts.get(e["id"]) or {}
+        arms = ro.get("arms") or {}
+        rows.append({"key": key, "label": label,
+                     "before": arms.get("control"), "after": arms.get("treatment"),
+                     "before_label": "7 days before", "after_label": "Last 7 days",
+                     "pending": sum((ro.get("pending") or {}).values()) if isinstance(ro.get("pending"), dict) else 0,
+                     "definition": ro.get("definition"), "error": ro.get("error")})
+    return rows

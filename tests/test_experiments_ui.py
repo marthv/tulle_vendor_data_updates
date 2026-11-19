@@ -119,7 +119,60 @@ def test_fixture_has_the_v21_examples():
         snap = json.load(f)
     assert snap.get("fixture") is True
     rows = {r["id"]: r for r in snap["experiments"]}
-    pdf = rows["EXP-2026-11-limit-cards-plans-copy"]
-    assert pdf.get("in_rotation") and (pdf.get("verdict") or {}).get("tldr")
+    fdq = rows["EXP-2026-11-free-daily-question"]
+    assert fdq.get("in_rotation") and (fdq.get("verdict") or {}).get("tldr")
+    assert (fdq["verdict"].get("how_we_call") or {}).get("ship_if")
+    tx = (rows["EXP-2026-11-texas-only-forever-89"].get("verdict") or {}).get("numbers") or {}
+    assert tx.get("before") and tx.get("after"), tx      # geo row has a starting point
     assert any(r.get("decision_pending") for r in snap["experiments"])
     assert snap.get("notes_by_id")
+
+
+def _page():
+    with open(render.TEMPLATE_PATH, encoding="utf-8") as f:
+        return f.read()
+
+
+def test_one_view_no_tab_bar():
+    # owner 2026-11-19: "too many tabs" - one view, changes and rules behind "More"
+    html = _page()
+    assert 'role="tablist"' not in html and 'data-tab=' not in html
+    assert 'data-view="changes"' in html and 'data-view="rules"' in html
+
+
+def test_toolbar_search_status_bucket_rotation_sort():
+    html = _page()
+    assert 'id="xq"' in html and 'type="search"' in html
+    for key in ("all", "call", "running", "planned", "decided"):
+        assert '["%s", ' % key in html
+    assert 'id="xb"' in html and 'id="xs"' in html and "data-rot" in html
+    for key in ("needs", "ending", "newest", "oldest", "chance", "bucket", "az"):
+        assert '["%s", ' % key in html
+    assert "localStorage" in html and "try {" in html
+
+
+def test_card_per_experiment_and_calendar_filters_grid():
+    html = _page()
+    assert 'class="xc s-' in html and "list.map(card)" in html
+    assert "data-calexp" in html and "data-calweek" in html and "data-calclear" in html
+    assert "Showing: " in html and "calActive(e, ST.cal)" in html
+
+
+def test_drawer_why_and_how_sections():
+    html = _page()
+    assert "Why it is / isn’t working" in html and "How we’ll make the call" in html
+    for k in ("bar", "ship_if", "revert_if", "otherwise", "now"):
+        assert "hw.%s" % k in html
+    # notes protocol unchanged
+    assert '"streamlit:setComponentValue"' in html and 'type: "note"' in html
+
+
+def test_planner_scorecard_strip_and_measuring():
+    html = _page()
+    assert "S.scorecards" in html and "scorecardStrip()" in html and '<details class="sc"' in html
+    assert "' of ' + fmtInt(a.n)" in html          # counts shown with every rate
+    assert "isMeasuring(e)" in html and "Measuring" in html
+    with open(os.path.join(ROOT, "experiments_ui", "fixture_snapshot.json"), encoding="utf-8") as f:
+        snap = json.load(f)
+    keys = [t["key"] for t in snap["scorecards"]["planner"]]
+    assert keys == ["free_pdf_open", "forever_return", "forever_second_question"]

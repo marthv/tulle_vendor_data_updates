@@ -8,7 +8,8 @@
                  "after", "before_rate", "after_rate", "p_beat", "bar", "unit"} | None,
      "recommend": {"call", "label", "why"},
      "unstick": concrete step (who, what, effort) when stale / overdue, else None,
-     "confidence_note": str | None}
+     "confidence_note": str | None,
+     "how_we_call": {"bar", "ship_if", "revert_if", "otherwise", "now"} (plain-English decision rule)}
 
 :func:`build_decided_verdict` does the same for decided rows (lookback): result from the outcome, the
 final outcome line as the TL;DR, no recommendation.
@@ -50,13 +51,13 @@ PHRASES = {
     "new_paid_within_n_days": ("new couples", "paid within {days} {dayword}"),
     "gate_hitters_paid": ("couples who hit the {gate}", "paid within {days} {dayword}"),
     "pdf_open_rate_new": ("new members", "opened a PDF"),
-    "planner_second_question": ("new Planner couples", "asked a second question"),
-    "planner_return_within_days": ("new free Planner couples", "came back within {days} days"),
+    "planner_second_question": ("new {seg}Planner couples", "asked a second question"),
+    "planner_return_within_days": ("new {seg}Planner couples", "came back within {days} days"),
     "offer_code_buyers": ("offer-code holders", "bought"),
     "nps_low_share": ("ratings", "were 1-3 stars"),
     "trustpilot_completion": ("raters shown the Trustpilot ask", "left a review"),
     "paid_after_pricing_view": ("couples who saw the pricing page", "paid within {days} {dayword}"),
-    "planner_pdf_open_rate": ("Planner couples", "opened a PDF"),
+    "planner_pdf_open_rate": ("{seg}Planner couples", "opened a PDF"),
 }
 COUNT_UNITS = {
     "purchases_per_day": "all-site purchases a day",
@@ -113,6 +114,17 @@ def _metric(row):
     return sm.get("metric") or {}
 
 
+def _is_geo(row):
+    """A purchases/revenue metric filtered to one wedding-location cohort: everyone it counts saw the
+    change, so it is not a whole-site count."""
+    return bool((_metric(row).get("params") or {}).get("cohort")) and \
+        str(_metric(row).get("key") or "") in SITEWIDE_METRICS
+
+
+def _sitewide(row):
+    return str(_metric(row).get("key") or "") in SITEWIDE_METRICS and not _is_geo(row)
+
+
 def _params(row):
     ro = row.get("readout") or {}
     p = dict(_metric(row).get("params") or {})
@@ -139,8 +151,12 @@ def _phrase(row):
         days = p.get("days") or 1
         dayword = "day" if str(days) == "1" else "days"
         gate = GATES.get(str(p.get("gate") or ""), str(p.get("gate") or "limit").replace("_", " "))
-        return (who.format(gate=gate, days=days, dayword=dayword),
-                did.format(gate=gate, days=days, dayword=dayword))
+        seg = str(p.get("segment") or "").lower()
+        if not seg and key == "planner_return_within_days":
+            seg = "free" if p.get("free_only", True) else ""
+        seg = {"free": "free ", "paid": "paid ", "forever": "Forever "}.get(seg, "")
+        return (who.format(gate=gate, days=days, dayword=dayword, seg=seg).replace("  ", " "),
+                did.format(gate=gate, days=days, dayword=dayword, seg=seg))
     label = _metric(row).get("label") or key or "the metric"
     return None, str(label)
 
@@ -200,7 +216,8 @@ def numbers(row):
     if st.get("model") == "gamma_poisson" or (ro.get("count") and not ro.get("arms")):
         cnt = ro.get("count") or {}
         pre, post = cnt.get("pre") or {}, cnt.get("post") or {}
-        unit = COUNT_UNITS.get(str(m.get("key") or ""), m.get("label") or "a day")
+        unit = (m.get("label") or "a day") if _is_geo(row) else \
+            COUNT_UNITS.get(str(m.get("key") or ""), m.get("label") or "a day")
         b_rate = _num(st.get("control_rate"))
         a_rate = _num(st.get("treatment_rate"))
         if b_rate is None and _num(pre.get("days")):
@@ -370,7 +387,7 @@ def _confidence(row, nums):
         if ns and min(ns) < SMALL_N:
             notes.append(f"Small numbers (as few as {int(min(ns))}), so one couple moves the rate a lot.")
     key = str(_metric(row).get("key") or "")
-    if key in SITEWIDE_METRICS:
+    if key in SITEWIDE_METRICS and not _is_geo(row):
         notes.append(f"This counts {SITEWIDE_METRICS[key]} on the whole site, not only couples who saw this change; "
                      "many things move it, so a rise can't be credited to this change alone.")
     for c in ro.get("caveats") or []:
@@ -386,7 +403,7 @@ def build_verdict(row, today=None):
     except Exception as exc:  # a verdict must never break the snapshot
         return {"result": {"label": "No data", "tone": "unknown"},
                 "tldr": f"No verdict (engine error: {type(exc).__name__}).", "numbers": None,
-                "recommend": None, "unstick": None, "confidence_note": None}
+                "recommend": None, "unstick": None, "confidence_note": None, "how_we_call": {}}
 
 
 def _build(row):
@@ -454,6 +471,15 @@ def _build(row):
         return _out(result, tldr, nums, rec, row)
 
     has_numbers = p is not None
+    pending_geo = (row.get("readout") or {}).get("pending_geo")
+    if not has_numbers and pending_geo:
+        result = {"label": "Measuring", "tone": "unknown"}
+        done = pending_geo.get("payers", 0) - pending_geo.get("unresolved", 0)
+        tldr = (f"Starting point on its way: the engine is looking up the wedding location of each payer "
+                f"({done} of {pending_geo.get('payers', 0)} done) so it can count {pending_geo.get('label', 'this cohort')} only.")
+        rec = _rec("keep_running", "Keep running (numbers on the way)",
+                   "Locations are looked up a few dozen per run (every 6 h); the before/after appears when they are done.")
+        return _out(result, tldr, nums, rec, row)
     # metric failing ------------------------------------------------------------------------
     if not has_numbers and (health == "no_data" or "no_data" in flags) and \
             str(row.get("reporting") or "").lower() == "auto":
@@ -486,7 +512,7 @@ def _build(row):
         loss = st_loss(row)
         max_loss = _num(rule.get("max_loss"))
         loss_ok = (loss is None and (row.get("stats") or {}).get("model") == "gamma_poisson") or             (loss is not None and (max_loss is None or loss <= max_loss))
-        sitewide = str(_metric(row).get("key") or "") in SITEWIDE_METRICS and prepost
+        sitewide = _sitewide(row) and prepost
         if sitewide and not past:
             if has_run:
                 rec = _rec("keep_running", f"Keep running ({days_left} {'day' if days_left == 1 else 'days'} left)",
@@ -587,11 +613,64 @@ def _label(p, days):
     return "No clear difference", "neutral"
 
 
+def how_we_call(row, nums=None, rec=None):
+    """The decision rule in plain words: what clears the bar, what triggers a revert, what happens
+    otherwise, and where it stands now. Every key optional; never raises."""
+    try:
+        rule = row.get("decision_rule") or {}
+        bar = _num(rule.get("ship_p")) or 0.9
+        stop = _num(rule.get("stop_p")) or 0.1
+        lifecycle = row.get("lifecycle")
+        m = _metric(row)
+        manual = str(row.get("reporting") or "manual").lower() == "manual" or             str(m.get("key") or "manual") == "manual"
+        what = m.get("label") or "the main measure"
+        direction = "down" if str(m.get("direction") or "").lower() == "decrease" else "up"
+        tier = str(row.get("tier_effective") or row.get("tier") or "ux")
+        guards = [g.get("label") or g.get("key") for g in ((row.get("success_metric") or {}).get("guardrails") or row.get("guardrails") or [])
+                  if isinstance(g, dict)]
+        guard_txt = (" and nothing it protects (" + ", ".join(str(g) for g in guards[:3]) + ") gets worse")             if guards else ""
+        out = {}
+        if manual:
+            out["bar"] = f"Measured by hand: {what} should move {direction}."
+            out["ship_if"] = "A read-out shows it moved the right way" + guard_txt + "."
+            out["revert_if"] = "A read-out shows it moved the wrong way, or something it protects got worse."
+            out["otherwise"] = ("No read-out by the review date means it comes up as 'read it out, then decide'; "
+                                "if nobody will measure it, shelve it.")
+        elif _sitewide(row) and row.get("assignment_type") in ("pre_post", "benchmark"):
+            out["bar"] = (f"{what} counts the whole site, so a before/after can show a direction but can't "
+                          "credit this change.")
+            out["ship_if"] = ("It can't be shipped on these numbers alone; at the end it closes as inconclusive "
+                              "(keep it if leaning better).")
+            out["revert_if"] = "A guardrail breaks."
+            out["otherwise"] = "If the answer matters, run a split test."
+        else:
+            tname = {"ux": "UX", "money": "Money", "infra": "Infra"}.get(tier.lower(), tier.capitalize())
+            out["bar"] = (f"{tname} tests need a {_p(bar)} chance that {what} really moved {direction}, "
+                          f"after at least {TOO_EARLY_DAYS} days.")
+            out["ship_if"] = f"Chance it's better reaches {_p(bar)}" + guard_txt + "."
+            out["revert_if"] = f"Chance it's better falls to {_p(stop)} or below, or a guardrail breaks."
+            out["otherwise"] = ("At the end of the run, leaning better (over 50%) with nothing worse means keep it and "
+                                "close inconclusive; leaning worse means revert unless there's a product reason.")
+        if lifecycle in ("planned", "draft"):
+            out["now"] = "Not live yet."
+        elif nums and nums.get("p_beat") is not None:
+            d, left = row.get("days_running"), row.get("days_left")
+            out["now"] = (f"Now: {_p(nums['p_beat'])} chance it's better (bar {_p(nums.get('bar') or bar)})"
+                          + (f", day {d}" if d is not None else "")
+                          + (f" of {d + left}" if d is not None and left else "") + ".")
+        elif rec and rec.get("why"):
+            out["now"] = "Now: " + rec["why"]
+        return out
+    except Exception:  # never break the snapshot
+        return {}
+
+
 def _out(result, tldr, nums, rec, row):
     if rec and rec["call"] == "complete_spec" and not rec["label"].endswith("shelve)") and row.get("lifecycle") not in ("planned", "draft"):
         rec["label"] += " (or shelve)"
     return {"result": result, "tldr": tldr, "numbers": nums, "recommend": rec,
-            "unstick": _unstick(row, rec), "confidence_note": _confidence(row, nums)}
+            "unstick": _unstick(row, rec), "confidence_note": _confidence(row, nums),
+            "how_we_call": how_we_call(row, nums, rec)}
 
 
 def build_decided_verdict(row):

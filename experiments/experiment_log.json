@@ -2429,6 +2429,10 @@
         {
           "date": "2026-11-19",
           "note": "Live since 2026-11-03 ~06:00 UTC (Xano table 17 row 16, Product_ID 13) but was still marked planned. Status corrected 2026-11-19; never read out."
+        },
+        {
+          "date": "2026-11-19",
+          "note": "Engine now filters payments by wedding location (same rule as the app's price buttons): reporting switched to auto so the before/after (Texas-only Forever buys/day, 14 days before 11-03 vs since) is computed every 6 h."
         }
       ],
       "stat_sig": "not computed",
@@ -2479,11 +2483,11 @@
         },
         {
           "key": "revenue_per_day",
-          "label": "Texas-only $/sign-up",
+          "label": "Texas-only revenue/day (all plans)",
           "params": {
-            "cohort": "texas_only",
-            "per": "signup"
-          }
+            "cohort": "texas_only"
+          },
+          "note": "2026-11-19: was $/sign-up (params.per, unsupported by the engine); revenue/day from the same Texas-only couples guards the same risk (the $89 price losing money)."
         }
       ],
       "assignment": {
@@ -2494,7 +2498,7 @@
       },
       "planned_days": 21,
       "max_days": null,
-      "reporting": "manual",
+      "reporting": "auto",
       "rollback": "Set table 17 row 16 Product_ID 13 -> 113 (one write, no publish); revert_geo_pricing.py --off also parks it and restores flat fn63 (risks field)",
       "spec_gaps": [
         "metric.mde_rel: no lift size stated; at ~0.06 Forever buys/day a verdict inside 6 weeks is very unlikely",
@@ -4100,7 +4104,12 @@
       "review_date": null,
       "dates_note": "fn63 LIVE 2026-11-08 03:01 UTC (CA joins $is_ny_cohort; verified CA 135, Intl 149, TX-only 89); WeWeb Membership Lifetime Price af5d09b0 + Forever button wf 8605fcc5 edited in editor - publish not separately verified. Backup .claude/xano_backups/fn63_pre_ca135_2026-11-07.xs. Source: memory index_overflow (moved 2026-11-08).",
       "design": "pre/post",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-19",
+          "note": "Engine now filters payments by wedding location: CA revenue/day before vs after 11-08 is computed every 6 h (was blocked: 'geo cohorts need a wedding-location join')."
+        }
+      ],
       "decision": "",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",

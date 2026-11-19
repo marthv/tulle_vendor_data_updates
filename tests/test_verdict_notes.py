@@ -554,3 +554,46 @@ def test_l6_startup_runs_without_scheduler(napp, monkeypatch):
         assert fresh._started and fresh.snapshot is not None
         assert c.get("/snapshot", headers=H).status_code == 200
         assert fresh._sched is None                     # scheduler not started
+
+
+# --------------------------------------------------------------------------- 2026-11-19: how we call it, geo
+
+def test_how_we_call_on_every_verdict():
+    v = verdict.build_verdict(base_row(stats=stats(0.6), days_left=4))
+    h = v["how_we_call"]
+    assert set(h) >= {"bar", "ship_if", "revert_if", "otherwise", "now"}
+    assert "90%" in h["bar"] and "second question" in h["bar"] and "60%" in h["now"]
+    m = verdict.build_verdict(base_row(reporting="manual", stats={}, health="on_track",
+                                       success_metric={"metric": {"key": "manual", "label": "PDF opens"}}))
+    assert m["how_we_call"]["bar"].startswith("Measured by hand")
+    assert verdict.build_verdict(base_row(lifecycle="planned"))["how_we_call"]["now"] == "Not live yet."
+
+
+def geo_row(p=0.97, **kw):
+    r = base_row(assignment_type="pre_post", tier_effective="money", decision_rule={"ship_p": 0.95, "stop_p": 0.05},
+                 success_metric={"metric": {"key": "purchases_per_day", "label": "Texas-only Forever buys/day",
+                                            "params": {"cohort": "texas_only", "plan": "forever"}}},
+                 stats={"model": "gamma_poisson", "p_beat": p, "control_rate": 0.06, "treatment_rate": 0.4,
+                        "expected_loss_abs": 0.0001},
+                 readout={"count": {"pre": {"count": 1, "days": 14}, "post": {"count": 6, "days": 16}}},
+                 days_running=16, days_left=0, health="callable_win")
+    r.update(kw)
+    return r
+
+
+def test_geo_cohort_is_not_a_sitewide_count():
+    v = verdict.build_verdict(geo_row())
+    assert v["recommend"]["call"] == "ship"                       # not forced to "inconclusive"
+    assert v["numbers"]["unit"] == "Texas-only Forever buys/day"
+    assert "whole site" not in (v["confidence_note"] or "") and "whole site" not in v["how_we_call"]["bar"]
+    sw = geo_row(success_metric={"metric": {"key": "purchases_per_day", "label": "purchases"}})
+    assert verdict.build_verdict(sw)["recommend"]["call"] == "inconclusive"
+
+
+def test_geo_pending_is_measuring_not_fix_tracking():
+    r = geo_row(stats={}, readout={"error": "looking up wedding locations: 40 of 90 payers done",
+                                   "pending_geo": {"payers": 90, "unresolved": 50, "label": "Texas-only couples"}},
+                health="no_data", flags=["no_data"])
+    v = verdict.build_verdict(r)
+    assert v["result"]["label"] == "Measuring" and v["recommend"]["call"] == "keep_running"
+    assert "40 of 90" in v["tldr"]

@@ -49,6 +49,8 @@ TEXT_KEYS = {"name", "what_changed", "hypothesis", "tests", "surfaces", "rollbac
 PURCHASES = {"key": "purchases_per_day", "max_drop_rel": 0.25, "label": "purchases per day"}
 
 OVERLAYS = {
+    # read automatically once the engine's wedding-location join ships (owner 2026-11-19)
+    "EXP-2026-11-texas-only-forever-89": dict(reporting="auto"),
     "EXP-2026-11-price-report-vs-pi-card": dict(
         name="Tulle Price Report replaces the Pricing Intelligence card",
         tier="money", what_changed="Vendor pages show the Tulle Price Report (one line per cost, guest slider) instead of the Pricing Intelligence card. Free couples see one locked unlock card.",
@@ -314,6 +316,10 @@ READOUTS = {
     ),
     "EXP-2026-10-stop-progress": dict(arms=None, split=False, start="2026-10-26", total=2600,
         guardrails=[{"key": "planner_answer_ms_p50", "breached": False}]),
+    # geo cohort (Texas-only couples): Forever buys a day before vs after the $89 price. Fixture
+    # counts in the shape the engine's count readout returns once the wedding-location join lands.
+    "EXP-2026-11-texas-only-forever-89": dict(arms=None, split=False, start="2026-11-03", total=160,
+        count={"pre": {"count": 1, "days": 17}, "post": {"count": 5, "days": 16}}),
     "EXP-2026-11-planner-my-wedding-plan": dict(arms=None, split=False, start="2026-11-08", total=980,
         guardrails=[{"key": "purchases_per_day", "count": {"pre": {"count": 96, "days": 14}, "post": {"count": 79, "days": 11}}}]),
 }
@@ -337,6 +343,8 @@ def metric_runner(entry):
            "computed_at": "2026-11-19T12:00:00Z", "error": None, "source": "auto"}
     if a:
         out["arms"] = a
+    if spec_.get("count"):
+        out["count"] = spec_["count"]
     return out
 
 
@@ -383,7 +391,7 @@ UNLOGGED = [
 
 # v2.1 UI examples (Des 2026-11-19): two experiments in rotation, a few notes, one decision made
 # in the dash that is waiting for the registry. All invented for design review.
-ROTATION = ["EXP-2026-11-limit-cards-plans-copy", "EXP-2026-11-free-daily-question"]
+ROTATION = ["EXP-2026-11-free-daily-question", "EXP-2026-11-save-offer-60-forever", "EXP-2026-11-price-report-vs-pi-card"]
 NOTES = {
     "EXP-2026-11-limit-cards-plans-copy": [
         {"id": "fx1", "ts": "2026-11-17T15:10:00Z", "author": "Des", "kind": "note",
@@ -395,10 +403,36 @@ NOTES = {
         {"id": "fx3", "ts": "2026-11-18T18:30:00Z", "author": "Kate", "kind": "note",
          "text": "Two couples emailed asking why they can't ask more today. Worth a clearer limit note?"},
     ],
+    "EXP-2026-11-planner-home-screen": [
+        {"id": "fx5", "ts": "2026-11-19T12:20:00Z", "author": "Des", "kind": "decision", "call": "shelve",
+         "text": "No read-out in 9 days and the home screen changed again since. Shelve and log it as a change."},
+    ],
     "EXP-2026-10-signup-checkbox": [
         {"id": "fx4", "ts": "2026-11-19T11:40:00Z", "author": "Des", "kind": "decision", "call": "shelve",
          "text": "Nobody will read this out; the consent paragraph replaced it anyway. Shelve."},
     ],
+}
+
+
+# "How we'll make the call" (verdict.how_we_call), invented wording for design review. The engine
+# fills this field itself; the fixture only adds it where the engine left it out.
+HOW_WE_CALL = {
+    "EXP-2026-11-free-daily-question": {
+        "bar": "Ship when there's at least a 90% chance more new free couples come back to ask again within 3 days, after 7+ days.",
+        "ship_if": "The return rate clears the 90% bar and purchases a day hold (no drop of more than 25%).",
+        "revert_if": "The chance it's better falls under 10%, or purchases a day drop more than 25%.",
+        "otherwise": "Close as inconclusive at the 12-01 call and keep the daily limit only if it costs nothing.",
+        "now": "Before/after only, with 3 other launches in the window: evidence, not proof."},
+    "EXP-2026-11-save-offer-60-forever": {
+        "bar": "Money tier: ship at a 95% chance the offer turns more holders into Forever buyers than the old 20% offer.",
+        "ship_if": "95%+ and the full-price Forever rate doesn't fall.",
+        "revert_if": "Under 10%, or full-price Forever buys fall.",
+        "otherwise": "Keep running to 12-02, then call it on what we have."},
+    "EXP-2026-11-texas-only-forever-89": {
+        "bar": "Site-wide counts can't be shipped from a before/after alone; this one is called at the review on Texas-only Forever buys a day.",
+        "ship_if": "Texas-only Forever buys a day stay clearly above the $135 starting point with revenue per sign-up holding.",
+        "revert_if": "Revenue per Texas sign-up falls below the $135 period.",
+        "otherwise": "Close as inconclusive and keep $89 only if revenue held."},
 }
 
 
@@ -436,6 +470,9 @@ def main():
         h = hist.load(row.get("id"))
         row["history"] = [{"date": r["date"], "p_beat": r["p_beat"], "n_control": r["n_control"],
                            "n_treatment": r["n_treatment"]} for r in h]
+        hw = HOW_WE_CALL.get(row.get("id"))
+        if hw and isinstance(row.get("verdict"), dict) and not row["verdict"].get("how_we_call"):
+            row["verdict"]["how_we_call"] = hw
         ov = OVERLAYS.get(row.get("id")) or {}
         if ov.get("caveats"):
             row["caveats"] = ov["caveats"]
@@ -448,6 +485,22 @@ def main():
         snap = _notes.overlay(snap, _FixtureNotes())
     except Exception as exc:  # noqa: BLE001 - older engine: notes simply absent
         print("notes overlay skipped:", exc)
+    # Planner scorecard (engine: metrics.scorecard_rows -> snapshot.scorecards). Invented counts.
+    if not snap.get("scorecards"):
+        snap["scorecards"] = {"computed_at": "2026-11-19T12:00:00Z", "planner": [
+            {"key": "free_pdf_open", "label": "Free couples → open a PDF within 3 days of using the Planner",
+             "before": {"n": 133, "conv": 41}, "after": {"n": 120, "conv": 41}, "before_label": "7 days before",
+             "after_label": "Last 7 days", "pending": 18, "error": None,
+             "definition": "Free couples whose first Planner use was in the window, who opened a pricing PDF from a Planner card within 3 days."},
+            {"key": "forever_return", "label": "Forever couples → back on a later day within 7 days",
+             "before": {"n": 38, "conv": 15}, "after": {"n": 41, "conv": 19}, "before_label": "7 days before",
+             "after_label": "Last 7 days", "pending": 6, "error": None,
+             "definition": "Forever buyers who used the Planner, and used it again on a later UTC day within 7 days."},
+            {"key": "forever_second_question", "label": "Forever couples → ask a 2nd question within 1 day",
+             "before": {"n": 40, "conv": 27}, "after": {"n": 44, "conv": 28}, "before_label": "7 days before",
+             "after_label": "Last 7 days", "pending": 3, "error": None,
+             "definition": "Forever buyers asking their first Planner question in the window who ask a second within 1 day."},
+        ]}
     snap["generated_at"] = "2026-11-19T12:00:00Z"
     snap["fixture"] = True
     snap["fixture_note"] = ("FIXTURE: real registry entries; v2 fields, arm counts, history, the rotation picks, notes and the two "

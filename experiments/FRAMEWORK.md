@@ -188,26 +188,21 @@ decided or shelved.
 
 ## 7. Reporting in the Tulle Admin Dash (Experiments tab)
 
-The design principle is one question per screen region. Nothing is shown that doesn't lead to an action or a learning.
+One screen, no sub-tabs (owner 2026-11-19: "too many tabs and too many places to look").
 
-1. **Today strip**: four numbers that never overlap and add up to the live count. Decide now ·
-   Stale · Fix the setup · No action due. A guardrail breach also gets a red banner on top.
-2. **Action queue**: grouped by what to do, worst first inside each group.
-   - **Decide now**: guardrail breach, ready to ship, likely worse, or call due.
-   - **Stale: call it or shelve**: each row says why it is stuck. Rows have tick boxes, and
-     **Copy shelve list for Claude Code** turns the selection into a ready-to-paste instruction.
-   - **Fix the setup**: spec gaps, metric not read, guardrail unmonitored.
-   - **Before/after only**: no action needed.
-   Each row has one verb ("Ship it", "Call it or shelve", "Get a readout").
-3. **Running**: compact rows. Name · day X of Y (progress bar) · primary metric control -> treatment ·
-   chance it's better (gauge) · health pill. A row opens the **detail drawer**.
-4. **Detail drawer**: the seven sections in order (What · Impacts · Hypothesis · Tests · Success metric
-   & stats · Timeline · Reporting), plus a trend chart of P(beat) and couples-in over time,
-   overlapping changes, the readout log and the decision.
-5. **Decided**: a learnings library. Outcome badges, filterable by theme and outcome, each with
-   its one-line takeaway.
-6. **Changes**: the shipped-change feed. Unlogged changes are highlighted.
-7. **Rules**: this framework, rendered.
+1. **Calendar strip** (top): one bar per experiment over time, with a line for today. Clicking a bar,
+   or a week, filters the grid below to that experiment or to what was running then. A chip shows
+   the filter and clears it.
+2. **Planner scorecard**: one quiet strip of three tiles (see section 13), collapsible.
+3. **Toolbar**: a search box (name, change, hypothesis, what it tests, metric, bucket, notes); status
+   chips (All · Needs a call · Running · Planned · Decided) with counts; a bucket filter; and a sort
+   (Needs a call first · Ending soonest · Newest · Oldest · Chance it's better · Bucket · A-Z).
+4. **Card grid**: one card per experiment. Each card shows status, the in-rotation marker, what it
+   tests, its bucket, its time bound (start -> end, day X of Y), the starting point -> now, the
+   result and the recommended call. A card opens the **detail drawer**.
+5. **Detail drawer**: the outcome first; then **Why it is / isn't working** (TL;DR plus the reason for
+   the recommended call, and the step that unsticks it when stale); then **How we'll make the call**
+   (verdict.how_we_call, section 12); then notes, and the seven sections collapsed.
 
 ## 8. Change feed (Railway, GitHub, WeWeb, Xano, Slack)
 
@@ -339,3 +334,36 @@ Engine endpoints (private network + key): `GET/POST /experiments/{id}/notes`, `G
   shelve) or promote it into a free slot.
 - New launches go into rotation only when a slot is free. A change shipped outside rotation is logged as
   a `changes[]` entry or a rollout, not as an experiment that needs a call.
+
+## 13. Geo cohorts, Planner segments and the Planner scorecard (2026-11-19)
+
+**Geo cohorts.** `purchases_per_day` and `revenue_per_day` accept `params.cohort`: texas_only, texas,
+ca/california or ny/new_york. A payer's cohort comes from `Wedding_Location_Updated` on their account,
+using the same rule as the app's price buttons: items split on commas, trimmed and lower-cased;
+`texas_only` means the set is exactly {texas}.
+- Locations are looked up once per couple. The source is the table-1 rows the run already loaded,
+  else `locations.json` on the engine volume (refreshed every 30 days), else at most 30 `get_row`
+  calls per run.
+- While under 95% of payers are resolved, the readout is held back. The verdict then says
+  "Measuring" with a progress count, never a guessed number.
+- A geo-filtered count is not a whole-site count, so it can be shipped or reverted like any other
+  metric (money tier: 95%).
+- Caveat: location is read as it stands today, not as it was at payment time.
+
+**Planner segments.** `planner_return_within_days`, `planner_second_question` and
+`planner_pdf_open_rate` accept `params.segment`: all, free, paid or forever. The segment comes from
+the couple's table-79 rows: `forever` on any row, `has_access`, and counted-free or free-limit rows.
+
+**Planner scorecard** (`snapshot.scorecards.planner`). It is the owner's success test for the Planner,
+by who uses it. Every full run computes it from the same usage load, comparing the last 7 complete days
+with the 7 days before:
+- Free couples who open a PDF from the Planner within 3 days (the Planner's job for free couples
+  is to get them to pricing, on the way to the paywall).
+- Forever couples who come back to the Planner within 3 days (retention).
+- Forever couples who ask a second question within 3 days.
+
+It is a health read, not an experiment: no ship or revert comes from it.
+
+**How we'll make the call** (`verdict.how_we_call`). Every verdict states its decision rule in plain
+words: `bar`, `ship_if`, `revert_if`, `otherwise` and `now`. There is no standard time box. Each
+experiment carries its own rule and its current position against it.

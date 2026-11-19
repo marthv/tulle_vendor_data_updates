@@ -52,6 +52,10 @@ class FakeTransport:
             st = self.statuses.pop(0)
             if st != 200:
                 return st, {}, None
+        g = re.search(r"/table/(\d+)/content/(\d+)$", url)
+        if method == "GET" and g:
+            hit = [r for r in self.tables.get(int(g.group(1)), []) if str(r.get("id")) == g.group(2)]
+            return (200, {}, copy.deepcopy(hit[0])) if hit else (404, {}, None)
         m = re.search(r"/table/(\d+)/content/search$", url)
         assert method == "POST" and m, (method, url)
         rows = self.tables.get(int(m.group(1)), [])
@@ -634,7 +638,9 @@ def test_registry_shapes_handled():
                    {"type": "pre_post", "pre": None, "post_start": "2026-11-09T00:00:00Z"})
     assert arms(ro)["control"] == (2, 1) and any("defaulted" in c for c in ro["caveats"])
     # unsupported things are reported, not computed as something else
-    ro, c, _ = run("revenue_per_day", {"cohort": "CA"})
+    ro, c, _ = run("revenue_per_day", {"cohort": "Atlantis"})
+    assert "cohort" in ro["error"]
+    ro, c, _ = run("new_paid_within_days", {"cohort": "CA"})
     assert "cohort" in ro["error"] and c.requests == 0
     ro, _, _ = run("purchases_per_day", {"plan": "forever", "full_price": True})
     assert "full_price" in ro["error"]
@@ -664,4 +670,112 @@ def test_real_registry_runs_offline(tmp_path):
         assert "computed_at" in ro or ro.get("error"), (eid, ro)
         assert not str(ro.get("error") or "").startswith(("KeyError", "TypeError", "AttributeError",
                                                           "ValueError", "ZeroDivision")), (eid, ro)
-    assert c.requests <= 6
+    # table loads stay ~6; geo cohorts (Texas / CA) add bounded per-payer location lookups
+    assert c.requests - ctx.location_lookups <= 6
+    assert ctx.location_lookups <= M.LOCATION_LOOKUPS_PER_RUN
+
+
+
+# --------------------------------------------------------------------------- geo cohorts (2026-11-19)
+
+def geo_tables():
+    t = make_tables()
+    loc = {1002: ["Texas"], 1003: ["California, Nevada"], 1006: ["Texas", "Oklahoma"], 2001: ["texas"]}
+    for u in t[1]:
+        if u["id"] in loc:
+            u["Wedding_Location_Updated"] = loc[u["id"]]
+    t[1].append(U(3002, "2025-06-01T00:00:00Z", 1, Wedding_Location_Updated=["California"]))
+    return t
+
+
+GEO_ASSIGN = {"type": "pre_post", "pre": ["2026-11-01", "2026-11-09"], "post_start": "2026-11-09T00:00:00Z"}
+
+
+def test_geo_texas_only_counts_only_texas_only_payers(tmp_path):
+    ro, c, _ = run("purchases_per_day", {"cohort": "texas_only"}, GEO_ASSIGN, tables=geo_tables(), data_dir=str(tmp_path))
+    assert not ro.get("error"), ro
+    # pre: 1006 is Texas+Oklahoma (not Texas-only), 3002 California -> 0; post: 1002 + 2001 Texas-only
+    assert ro["count"]["pre"]["count"] == 0 and ro["count"]["post"]["count"] == 2
+    assert ro["geo"]["coverage"] == 1.0 and ro["geo"]["gifts_skipped"] == 1
+    assert any("Texas-only" in x for x in ro["caveats"])
+    assert "Texas-only couples" in ro["definition"]
+
+
+def test_geo_ca_revenue_and_cache_reuse(tmp_path):
+    ro, c1, _ = run("revenue_per_day", {"cohort": "CA"}, GEO_ASSIGN, tables=geo_tables(), data_dir=str(tmp_path))
+    assert not ro.get("error"), ro
+    assert ro["dollars"]["pre"] == 30.0 and ro["dollars"]["post"] == 30.0     # 3002 pre, 1003 post
+    assert os.path.exists(os.path.join(str(tmp_path), "locations.json"))
+    # second run, same volume: old-account payers come from the cache, no per-payer GETs
+    c, tr, _ = fake_client(geo_tables())
+    ctx = M.DataContext(c, now_ms=NOW, data_dir=str(tmp_path))
+    e = entry("revenue_per_day", {"cohort": "CA"}, GEO_ASSIGN)
+    ctx.prepare([e])
+    M.run_experiment(ctx, e)
+    assert ctx.location_lookups == 0
+    assert not any(m == "GET" for m, _u, _b in tr.calls)
+
+
+def test_geo_withheld_until_locations_looked_up(tmp_path, monkeypatch):
+    monkeypatch.setattr(M, "LOCATION_LOOKUPS_PER_RUN", 0)
+    ro, _, _ = run("purchases_per_day", {"cohort": "texas_only"}, GEO_ASSIGN, tables=geo_tables(),
+                   data_dir=str(tmp_path))
+    assert ro["error"].startswith("looking up wedding locations") and ro["pending_geo"]["unresolved"] >= 1
+    assert "count" not in ro
+
+
+def test_geo_failed_lookup_is_unresolved_not_fatal(tmp_path):
+    t = geo_tables()
+    t[1] = [u for u in t[1] if u["id"] != 3002]          # GET 3002 -> 404
+    ro, _, _ = run("purchases_per_day", {"cohort": "texas_only"}, GEO_ASSIGN, tables=t, data_dir=str(tmp_path))
+    # 1 of 5 payers unresolved = 80% coverage < 95% -> withheld, not crashed
+    assert ro["error"].startswith("looking up wedding locations")
+
+
+def test_location_tokens_rule():
+    assert M.location_tokens(["Texas"]) == {"texas"}
+    assert M.location_tokens(["California, Nevada", None]) == {"california", "nevada"}
+    assert M.location_tokens("New York") == {"new york"}
+    assert M.location_tokens(None) == set()
+    assert M.GEO_COHORTS["texas_only"][1]({"texas"}) and not M.GEO_COHORTS["texas_only"][1]({"texas", "oklahoma"})
+
+
+# --------------------------------------------------------------------------- Planner segments (2026-11-19)
+
+def seg_tables():
+    t = make_tables()
+    for r in t[79]:
+        if r["user_id"] == 3003:
+            r["forever"] = True
+            r["has_access"] = True
+        elif r["user_id"] == 3004:
+            r["has_access"] = False
+    return t
+
+
+def test_planner_return_forever_segment():
+    ro, _, _ = run("planner_return_within_days", {"days": 3, "segment": "forever"}, tables=seg_tables())
+    assert not ro.get("error"), ro
+    total = sum(a["n"] for a in ro["arms"].values()) + sum(ro["pending"].values())
+    assert total == 1                                     # only 3003 is Forever
+    assert "Forever Planner couples" in ro["definition"]
+    ro2, _, _ = run("planner_return_within_days", {"days": 3}, tables=seg_tables())   # default stays free-only
+    assert "free Planner couples" in ro2["definition"]
+
+
+def test_planner_pdf_open_free_segment_and_bad_segment():
+    ro, _, _ = run("planner_pdf_open_rate", {"days": 7, "segment": "free"}, tables=seg_tables())
+    assert not ro.get("error") and "free Planner couples" in ro["definition"]
+    ro, _, _ = run("planner_second_question", {"segment": "vip"}, tables=seg_tables())
+    assert "segment" in ro["error"]
+
+
+def test_planner_scorecard_rides_the_same_load():
+    c, _, _ = fake_client(seg_tables())
+    out, ctx = M.run_all([], c, now_ms=NOW, scorecards=True)
+    assert out == {}
+    rows = ctx.scorecards["planner"]
+    assert [r["key"] for r in rows] == ["free_pdf_open", "forever_return", "forever_second_question"]
+    assert all(not r["error"] for r in rows), rows
+    assert all(r["before_label"] == "7 days before" and r["after_label"] == "Last 7 days" for r in rows)
+    assert c.requests == 1          # one usage load serves all three

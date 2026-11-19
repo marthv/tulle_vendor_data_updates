@@ -111,8 +111,11 @@ def default_metric_runner_factory(registry, now, data_dir):
     entries = [e for e in (registry.get("experiments") or []) if isinstance(e, dict)]
     readouts, _ctx = metrics.run_all(entries, client, now_ms=int(now.timestamp() * 1000),
                                      statuses=("live", "paused"), record_pdf_history=True,
-                                     data_dir=data_dir)
+                                     data_dir=data_dir, scorecards=True)
     stats = dict(client.stats)
+    stats["location_lookups"] = getattr(_ctx, "location_lookups", 0)
+    if getattr(_ctx, "scorecards", None):
+        stats["scorecards"] = _ctx.scorecards
     stats["has_token"] = client.has_token
 
     def runner(entry):
@@ -385,6 +388,8 @@ class Engine:
             include = ("railway",)
         snap = snapshot.build_snapshot(reg, runner, self.store, now.date())
         snap["generated_at"] = _iso(now)      # the run's clock (staleness + schedule use it)
+        sc = xstats.pop("scorecards", None) if isinstance(xstats, dict) else None
+        snap["scorecards"] = sc if sc is not None else (self.snapshot or {}).get("scorecards")
         cf =changefeed.collect(self.http, self.feed_dir, now, include=include)
         if "weweb" in include:
             self.next_weweb_due = now + WEWEB_EVERY
