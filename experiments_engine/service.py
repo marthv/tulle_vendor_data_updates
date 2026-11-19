@@ -262,11 +262,12 @@ class Engine:
             self.next_full_due = now
         else:
             self.next_full_due = t + REFRESH_EVERY
+            # Always rescore from cached readouts on start-up (no Xano): a deploy changes either the
+            # registry or the engine's own rules, and both should show at once, not 6 h later.
             try:
-                _reg, sha = self.load_registry()
-                if sha != ((self.snapshot or {}).get("engine") or {}).get("registry_sha256"):
-                    log.info("start-up: registry changed since the last snapshot -> rebuild from cache (no Xano)")
-                    self.start_refresh("registry")
+                self.load_registry()
+                log.info("start-up: snapshot fresh -> rescore from cache (no Xano)")
+                self.start_refresh("registry")
             except Exception as exc:
                 log.error("start-up: registry unreadable: %s", exc)
         self.next_weweb_due = now
