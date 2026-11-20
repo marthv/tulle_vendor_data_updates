@@ -115,14 +115,16 @@ class Interactions:
                     "text": f"Something broke mid-way ({type(e).__name__}), so I can't tell whether it applied."}
 
     def _approve(self, p, user, chan, thread) -> str:
-        p, why = self.store.transition(p["id"], {"pending"}, "applying", user)
+        p, why = self.store.transition(p["id"], {"pending", "partial"}, "applying", user)
         if why:
             self._ephemeral(chan, user, why, thread)
             return "noop:" + (p or {}).get("status", "missing")
         self._refresh(p)
         fn = self.apply_fns.get(p["kind"])
         res = self._run(fn, p, user) if fn else {"ok": False, "text": f"no applier for {p['kind']}"}
-        if res.get("unknown"):
+        if res.get("partial"):
+            to = "partial"
+        elif res.get("unknown"):
             to = "unknown"
         elif not res.get("ok"):
             to = "failed"
@@ -136,7 +138,7 @@ class Interactions:
     def _undo(self, p, user, chan, thread) -> str:
         if p.get("kind") != "merge":
             return "ignored:undo-not-merge"
-        p, why = self.store.transition(p["id"], {"applied"}, "undoing", user)
+        p, why = self.store.transition(p["id"], {"applied", "partial"}, "undoing", user)
         if why:
             self._ephemeral(chan, user, why, thread)
             return "noop:" + (p or {}).get("status", "missing")
@@ -165,6 +167,8 @@ class Interactions:
         state = st.get("state")
         if state == "applied":
             to = "applied"
+        elif state == "partial":
+            to = "partial"
         elif state == "undone":
             to = "undone"
         elif state == "none":
@@ -182,17 +186,13 @@ class Interactions:
             return "ignored:details"
         if p.get("ts") and msg_ts and p.get("ts") != msg_ts:
             return "ignored:message-mismatch"
-        if p.get("details_ts"):
+        if not self.store.claim_details(pid):          # under the store lock: two quick clicks post once
             self._ephemeral(chan, user, "The details are in this card's thread.", thread)
             return "details:already"
         text, blocks = cards.render_details(p)
         res = self.slack.post_blocks(p.get("channel") or chan, text, blocks, thread_ts=thread or p.get("ts"))
-        if res.get("ok"):
-            with self.store._lock:
-                self.store._data["proposals"][pid]["details_ts"] = res.get("ts")
-                self.store._save()
-            return "details:posted"
-        return f"details:failed:{res.get('error')}"
+        self.store.finish_details(pid, res.get("ts") if res.get("ok") else None)
+        return "details:posted" if res.get("ok") else f"details:failed:{res.get('error')}"
 
     def _ephemeral(self, chan, user, text, thread):
         if chan:

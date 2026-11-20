@@ -70,7 +70,9 @@ def _btn(action: str, pid: str, text: str, style: str | None = None, confirm: di
 
 
 UNDO_CONFIRM = {"title": {"type": "plain_text", "text": "Undo this merge?"},
-                "text": {"type": "mrkdwn", "text": "Puts both listings back exactly as they were before the merge."},
+                "text": {"type": "mrkdwn", "text": "Moves everything back from the backup taken before the merge. Anything "
+                                                   "someone changed since (a deleted package, an edited field) stays as "
+                                                   "it is and is listed as a conflict."},
                 "confirm": {"type": "plain_text", "text": "Undo"}, "deny": {"type": "plain_text", "text": "Cancel"}}
 
 
@@ -80,7 +82,13 @@ def render(p: dict) -> tuple[str, list[dict]]:
     kind = p.get("kind", "task")
     plain = p.get("plain")
     if plain:
-        blocks: list[dict] = [_section(plain["headline"]), _section(plain["why"]), _section(plain["happens"])]
+        happens = plain["happens"]
+        status0 = p.get("status", "pending")
+        if (status0 == "pending" and not dry_run_for(p)) or status0 in ("applied", "partial"):
+            happens += " You can undo this from the card."            # only when an undo is actually possible
+        blocks: list[dict] = [_section(plain["headline"]), _section(plain["why"]), _section(happens)]
+        if plain.get("check"):
+            blocks.append(_context(":eyes: " + plain["check"]))
     else:
         head = f"*Proposed change* · {KIND_LABEL.get(kind, kind)} · {p.get('title', '')}"
         blocks = [_section(clip(head, 600)), _section(p.get("what") or "")]
@@ -102,7 +110,9 @@ def render(p: dict) -> tuple[str, list[dict]]:
         blocks.append(_context(outcome_line(p)))
         if status == "unknown":
             buttons.append(_btn(ACTION_RECHECK, p["id"], "Re-check"))
-        if status == "applied" and kind == "merge" and p.get("undoable", True):
+        if status == "partial" and kind == "merge":
+            buttons.append(_btn(ACTION_APPROVE, p["id"], "Resume merge", "primary"))
+        if status in ("applied", "partial") and kind == "merge" and p.get("undoable", True):
             buttons.append(_btn(ACTION_UNDO, p["id"], "Undo merge", confirm=UNDO_CONFIRM))
     if kind == "merge" and (p.get("payload") or {}).get("snapshots"):
         buttons.append(_btn(ACTION_DETAILS, p["id"], "Details"))
@@ -145,6 +155,9 @@ def outcome_line(p: dict) -> str:
     if st == "unknown":
         return (f":warning: Approved by {who}, but I couldn't confirm the outcome. {res} Press *Re-check* before "
                 "trying anything else.")
+    if st == "partial":
+        return (f":warning: Approved by {who}; the merge stopped part-way. {res} *Resume merge* finishes it, "
+                "*Undo merge* puts back what moved.")
     if st == "post_failed":
         return "Card could not be posted."
     return st or ""

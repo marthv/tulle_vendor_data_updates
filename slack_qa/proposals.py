@@ -25,7 +25,7 @@ from pathlib import Path
 
 import config
 
-ACTIVE = {"pending", "applying", "applied", "undoing", "unknown"}       # on screen / in flight / done
+ACTIVE = {"pending", "applying", "applied", "undoing", "unknown", "partial"}       # on screen / in flight / done
 NEVER_AGAIN = ACTIVE | {"rejected"}
 
 
@@ -153,6 +153,26 @@ class Store:
             out = dict(p)
         self._log({"event": to, "id": pid, "user": user, **{k: v for k, v in fields.items() if k != "payload"}})
         return out, ""
+
+    def claim_details(self, pid: str) -> bool:
+        """True once per proposal (the caller then posts the Details reply)."""
+        with self._lock:
+            p = self._data["proposals"].get(pid)
+            if not p or p.get("details_ts"):
+                return False
+            p["details_ts"] = "posting"
+            self._save()
+            return True
+
+    def finish_details(self, pid: str, ts: str | None) -> None:
+        with self._lock:
+            p = self._data["proposals"].get(pid)
+            if p:
+                if ts:
+                    p["details_ts"] = ts
+                else:
+                    p.pop("details_ts", None)        # post failed: allow another try
+                self._save()
 
     def sweep_stale(self, minutes: int) -> list[str]:
         """At start-up: anything still applying/undoing after `minutes` was interrupted (restart mid-apply). We can't

@@ -71,7 +71,8 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
                            "was sent.")
     body = {"mode": mode, "survivor_vendor_id": payload.get("survivor"), "loser_vendor_ids": payload.get("losers"),
             "proposal_id": proposal_id, "approved_by": user, "expected_counts": counts,
-            "snapshots": payload.get("snapshots"), "counters": payload.get("counters"),
+            # no snapshots/counters: the endpoint recomputes both from the LIVE rows at apply time; the bot's
+            # scan-time values are display-only (QA round 3)
             "secret": config.merge_secret()}
     res = _post(config.merge_url(), body, timeout=config.merge_timeout())
     if res.get("unknown"):
@@ -79,9 +80,13 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
                     unknown=True)
     if not res.get("ok"):
         return _out(False, f"Xano refused: {esc(res.get('error'))}. Nothing was changed.")
+    if res.get("status") == "partial" and mode != "undo":
+        out = _out(False, f"Xano says the merge stopped part-way ({esc(res.get('repointed_total', '?'))} rows moved, "
+                          "all backed up).", result={k: v for k, v in res.items() if k != "secret"})
+        out["partial"] = True
+        return out
     if res.get("status") in ("partial", "partial_undo"):
-        what = "undo" if mode == "undo" else "merge"
-        return _out(False, f"Xano says the {what} stopped part-way ({esc(res.get('status'))}).", unknown=True,
+        return _out(False, "Xano says the undo stopped part-way.", unknown=True,
                     result={k: v for k, v in res.items() if k != "secret"})
     if res.get("status") == "queued":
         return _out(False, "Xano queued the merge and is still running it.", unknown=True)
@@ -108,8 +113,7 @@ def merge_status(payload: dict, proposal_id: str) -> dict:
         return {"state": "applied", "text": f"Confirmed: the merge ran ({esc(res.get('repointed_total', '?'))} rows, "
                                             f"backup {esc(res.get('merge_id', '?'))})."}
     if st == "partial":
-        return {"state": "applied", "text": "The merge stopped part-way. Everything that moved is backed up: press "
-                                            "Undo merge to put it all back."}
+        return {"state": "partial", "text": "The merge stopped part-way; everything that moved is backed up."}
     if st == "partial_undo":
         return {"state": "applied", "text": "The undo stopped part-way. Press Undo merge again to finish it."}
     if st == "undone":

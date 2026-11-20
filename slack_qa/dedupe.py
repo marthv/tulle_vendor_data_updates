@@ -8,8 +8,8 @@ Never on website domain alone: chains share one (Marriott 255 rows, Hilton 116).
 categories (a venue and its in-house caterer), groups bigger than 4 (needs a human), and anything already
 proposed, applied or rejected (a human said no; we don't ask twice).
 
-Survivor = most PDFs, then visible (Validated_Data "1"), then most clicks, then has a Place_ID, then oldest id.
-The losers are RETIRED (t11.merged_into = survivor), never deleted, and every repointed row is backed up first, so a
+Survivor = visible (Validated_Data "1") first, then most PDFs, most clicks, has a Place_ID, oldest id.
+The losers are RETIRED (t11.merged_into = survivor; visibility is owner-only and is NOT auto-changed), never deleted, and every repointed row is backed up first, so a
 merge can be undone (see XANO_MERGE_PROPOSAL.md). Reference counts below are read-only GETs within a page budget.
 """
 from __future__ import annotations
@@ -115,15 +115,13 @@ NAME_KEYED = [
 # Per-column rules for table 11 when records merge into the survivor (S = survivor, L = losers). Every column the
 # rule changes is backed up first, so undo restores the exact old values.
 COUNTER_RULES = {
-    "Clicks_on_Venue": ("sum", "couples' clicks add up"),
-    "Validated_Data": ("any_visible", "visible if any record was visible (a merge never hides a venue)"),
-    "gold_chip": ("or", "kept if either record had it"),
+    "Clicks_on_Venue": ("sum", "couples' clicks add up; each loser's own count is set to 0 after backup (no "
+                                "double count), restored on undo"),
     "Collection": ("union", "every collection tag, survivor's order first"),
     "Flags": ("union_tokens", "every flag, de-duplicated"),
     "Max_Capacity_Seated": ("max", "largest stated capacity"),
     "Time_of_Submission": ("earliest", "first time this venue was submitted"),
     "google_data_last_fetched": ("with_place_id", "taken from the record whose Place_ID is kept"),
-    "google_data_cache": ("with_place_id", "taken from the record whose Place_ID is kept (rating matches the listing)"),
     "scrape_last_attempted_at": ("most_recent", ""),
     "scrape_cost_usd": ("sum", "money already spent scraping both"),
     "Website": ("fill_if_empty", ""), "Description": ("fill_if_empty", ""), "Contact_Information": ("fill_if_empty", ""),
@@ -133,6 +131,48 @@ COUNTER_RULES = {
     "image_2": ("fill_if_empty", ""), "image_3": ("fill_if_empty", ""),
     "flt_space_count": ("recompute", "re-derived from the merged pricing rows by the nightly denorm"),
 }
+# OWNER-ONLY, never auto-written by a merge: Validated_Data (visibility) and gold_chip (curated). The card and the
+# Details say when the duplicate was visible so a person can check visibility after merging.
+OWNER_ONLY = ("Validated_Data", "gold_chip")
+# Never stored, shown or sent: the submitting couple's email (User_Email holds their gmail) and the raw Google cache.
+PERSONAL_FIELDS = ("User_Email", "google_data_cache")
+EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def redact(v):
+    """Email-looking strings -> [email], recursively. Snapshots are for people and undo; nobody needs an address."""
+    if isinstance(v, str):
+        return EMAIL_RE.sub("[email]", v)
+    if isinstance(v, list):
+        return [redact(x) for x in v]
+    if isinstance(v, dict):
+        return {k: redact(x) for k, x in v.items()}
+    return v
+
+
+def safe_snapshot(row: dict) -> dict:
+    return {k: redact(v) for k, v in row.items() if not str(k).startswith("_") and k not in PERSONAL_FIELDS}
+
+
+def parse_when(v):
+    """Table-11 dates come as ISO ("2025-03-01", "2025-03-01T10:00:00Z") or Airtable-style "3/1/2025, 4:05:06 PM".
+    Returns a sortable datetime, or None."""
+    from datetime import datetime
+    t = str(v or "").strip()
+    if not t:
+        return None
+    for fmt in ("%m/%d/%Y, %I:%M:%S %p", "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y, %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(t, fmt)
+        except ValueError:
+            pass
+    try:
+        d = datetime.fromisoformat(t.replace("Z", "+00:00"))
+        return d.replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
 # Everything else on table 11: Name, Category, State, Country, lat, lng, User_Email, scrape_status, scrape_last_error
 # keep the survivor's value; all other flt_* / mk_* denorm columns are recomputed for the survivor after the merge.
 
@@ -159,10 +199,6 @@ def counter_plan(survivor: dict, losers: list[dict]) -> list[dict]:
         if rule == "sum":
             after = sum(_num(v) for v in vals)
             after = int(after) if all(isinstance(v, int) or v in (None, "") for v in vals) else round(after, 4)
-        elif rule == "any_visible":
-            after = "1" if any(str(v) == "1" for v in vals) else sv
-        elif rule == "or":
-            after = any(bool(v) for v in vals)
         elif rule == "union":
             after = list(dict.fromkeys(x for v in vals for x in (v or []) if x))
         elif rule == "union_tokens":
@@ -172,20 +208,24 @@ def counter_plan(survivor: dict, losers: list[dict]) -> list[dict]:
             after = max((_num(v) for v in vals), default=0)
             after = int(after) if float(after).is_integer() else after
         elif rule in ("earliest", "most_recent"):
-            ds = [v for v in vals if v not in (None, "", 0)]
-            after = (min(ds, key=str) if rule == "earliest" else max(ds, key=str)) if ds else sv
+            ds = [(parse_when(v), v) for v in vals if v not in (None, "", 0) and parse_when(v) is not None]
+            pick = (min(ds, key=lambda t: t[0]) if rule == "earliest" else max(ds, key=lambda t: t[0])) if ds else None
+            after = pick[1] if pick else sv
         elif rule == "with_place_id":
             src = survivor if not _blank(survivor.get("Place_ID")) else                 next((r for r in losers if not _blank(r.get("Place_ID"))), survivor)
             after = src.get(col)
         elif rule == "fill_if_empty":
             after = sv if not _blank(sv) else next((v for v in vals[1:] if not _blank(v)), sv)
         else:                                          # recompute
-            out.append({"column": col, "rule": rule, "before": {r.get("Vendor_ID"): r.get(col) for r in allr},
+            out.append({"column": col, "rule": rule, "before": {r.get("Vendor_ID"): redact(r.get(col)) for r in allr},
                         "after": "recomputed"})
             continue
         if after != sv and not (_blank(after) and _blank(sv)):
-            out.append({"column": col, "rule": rule, "before": {r.get("Vendor_ID"): r.get(col) for r in allr},
-                        "after": after})
+            e = {"column": col, "rule": rule, "before": {r.get("Vendor_ID"): redact(r.get(col)) for r in allr},
+                 "after": redact(after)}
+            if rule == "sum" and col == "Clicks_on_Venue":
+                e["losers_after"] = 0
+            out.append(e)
     return out
 
 
@@ -420,6 +460,33 @@ def choose_survivor(members: list[dict], pdf_counts: dict[str, int]) -> tuple[di
 
 
 # --- reference counts (read-only) -------------------------------------------------------------------------
+# JSON keys that hold a Vendor_ID (exact value match) and keys whose int holds a table-11 row id. Matching is by KEY
+# only, never by searching text: "V12" inside an image URL or "V12 engine" in a note must not match (QA round 3).
+JSON_ID_KEYS = {"vendor_id", "best_vendor_id", "matched_vendor_id", "venue_vendor_id"}
+
+
+def _json_hits(obj, wanted: set[str], rowids: dict) -> set[str]:
+    out, stack = set(), [obj]
+    while stack:
+        o = stack.pop()
+        if isinstance(o, dict):
+            for k, v in o.items():
+                kl = str(k).lower()
+                if kl in JSON_ID_KEYS and isinstance(v, str) and v.strip() in wanted:
+                    out.add(v.strip())
+                elif kl.endswith("vendor_idx") and rowids:
+                    try:
+                        if int(v) in rowids:
+                            out.add(rowids[int(v)])
+                    except (TypeError, ValueError):
+                        pass
+                elif isinstance(v, (dict, list)):
+                    stack.append(v)
+        elif isinstance(o, list):
+            stack.extend(o)
+    return out
+
+
 def _idx_values(obj) -> set[int]:
     """Every int under a key ending in 'vendor_idx' anywhere in a JSON value."""
     out, stack = set(), [obj]
@@ -471,17 +538,13 @@ class RefIndex:
                 return {rowids[int(v)]} if int(v) in rowids else set()
             except (TypeError, ValueError):
                 return set()
-        text = v if isinstance(v, str) else json.dumps(v)
-        found = {w for w in wanted if re.search(r"(?<![A-Za-z0-9])" + re.escape(w) + r"(?![0-9])", text)}
-        if rowids:                       # cards/payload also carry the INT row id as vendor_idx / matched.vendor_idx
-            obj = v
-            if isinstance(v, str):
-                try:
-                    obj = json.loads(v)
-                except ValueError:
-                    obj = None
-            found |= {rowids[i] for i in _idx_values(obj) if i in rowids}
-        return found
+        obj = v
+        if isinstance(v, str):
+            try:
+                obj = json.loads(v)
+            except ValueError:
+                return set()              # not JSON: never matched by searching free text
+        return _json_hits(obj, wanted, rowids)
 
     def build(self, wanted: set[str], rowids: dict[int, str] | None = None) -> None:
         rowids = rowids or {}
@@ -566,7 +629,7 @@ def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIn
     pdfs = sum(refs.counts.get(10, {}).get(v, 0) for v in lv)
     saved = sum(refs.counts.get(1, {}).get(v, 0) for v in lv) if 1 in refs.counts else None
     plans = sum(refs.counts.get(90, {}).get(v, 0) for v in lv) if 90 in refs.counts else 0
-    pricing = sum(refs.counts.get(t, {}).get(v, 0) for t in (36, 37, 62, 92, 93, 84, 85) for v in lv)
+    pricing = sum(refs.counts.get(t, {}).get(v, 0) for t in (36, 37, 92, 93, 84, 85) for v in lv)
     moving = []
     if pdfs:
         moving.append(f"its {_plural(pdfs, 'PDF')}" if len(losers) == 1 else _plural(pdfs, "PDF"))
@@ -582,9 +645,12 @@ def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIn
             "it has the Google Place ID": "the listing linked to Google"}.get(why_s, "the original listing")
     moves = ", ".join(moving[:-1]) + f" and {moving[-1]}" if len(moving) > 1 else moving[0]
     dup = "duplicate is" if len(losers) == 1 else "duplicates are"
-    happens = (f"We'll keep {keep}, move {moves} onto it, and add up its clicks. The {dup} hidden, not deleted, and "
-               "this can be undone.")
-    return {"headline": headline, "why": why, "happens": happens}
+    dup = "duplicate is" if len(losers) == 1 else "duplicates are"
+    happens = f"We'll keep {keep}, move {moves} onto it, and add up its clicks. The {dup} marked merged, not deleted."
+    visible = [m for m in losers if str(m.get("Validated_Data")) == "1"]
+    check = ("The duplicate was visible: after merging, check visibility (merging doesn't change it)."
+             if visible else "")
+    return {"headline": headline, "why": why, "happens": happens, "check": check}
 
 
 def _fmt(v, n: int = 80) -> str:
@@ -633,15 +699,21 @@ def details_text(p: dict) -> list[str]:
                 t["action"], "(left as history)")
             mv.append(f"• {t['label']} (table {t['table']}): {t['count']} {act} · rows {ids}")
     mv.append(f"• Vendor table (11): {', '.join(pl.get('losers') or [])} get merged_into = {pl.get('survivor')} and "
-              "Validated_Data \"0\" (hidden, not deleted)")
+              "nothing else (not deleted; visibility is owner-only and left as it is)")
     chunks.append("\n".join(mv))
     cl = ["*Counters and fields on the survivor (rule · before → after)*"]
     for c in pl.get("counters") or []:
         before = ", ".join(f"{vid}={_fmt(v, 30)}" for vid, v in c["before"].items())
-        cl.append(f"• {c['column']} · {c['rule']} · {before} → {_fmt(c['after'], 40)}")
+        tail = "; each duplicate's own count set to 0 (no double count)" if "losers_after" in c else ""
+        cl.append(f"• {c['column']} · {c['rule']} · {before} → {_fmt(c['after'], 40)}{tail}")
     if len(cl) == 1:
         cl.append("• No counter changes (all equal or empty).")
     chunks.append("\n".join(cl))
+    vis = {vid: (snaps.get(vid) or {}).get("Validated_Data") for vid in order}
+    chunks.append("*Owner-only columns (never auto-written)*: Validated_Data " +
+                  ", ".join(f"{vid}={_fmt(v, 5)}" for vid, v in vis.items()) + "; gold_chip " +
+                  ", ".join(f"{vid}={_fmt((snaps.get(vid) or {}).get('gold_chip'), 5)}" for vid in order) +
+                  ". Check visibility after merging. Couples' emails and the raw Google cache are never stored here.")
     chunks.append("*Stored by name, not id (not rewritten automatically)*\n" +
                   "\n".join(f"• {t} · {f}: {why}" for t, f, why in NAME_KEYED))
     return [c[:2900] for c in chunks]
@@ -667,7 +739,7 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "") 
             counts[f"t{tid}"] = n
     plain = plain_card(survivor, losers, group.get("rules") or [], refs, why_s, reported=reported)
     counters = counter_plan(survivor, losers)
-    snapshots = {m.get("Vendor_ID"): {k: v for k, v in m.items() if not str(k).startswith("_")} for m in members}
+    snapshots = {m.get("Vendor_ID"): safe_snapshot(m) for m in members}
     nxt = "Approve to merge, or Reject if they're different businesses (I won't suggest this pair again)."
     title = f"{_esc(survivor.get('Name'))} listed {len(members)} times"
     return {"title": title[:140], "what": plain["headline"], "why": plain["why"], "touches": "",
@@ -733,19 +805,20 @@ def _scan(xano, store, mode, max_cards, max_pages, page_delay, vendor_rows) -> d
 # --- XANO_MERGE_PROPOSAL.md tables are GENERATED from the structures above (python gen_merge_doc.py) ----------------
 KIND_RULE = {"id": "replace the loser Vendor_ID with the survivor's",
              "ids": "replace in place, de-duplicate, keep order",
-             "json": "replace the exact V-id token AND any int under a *vendor_idx key (loser row id -> survivor row id)",
+             "json": "by KEY only: a string under vendor_id / best_vendor_id / matched_vendor_id / venue_vendor_id equal to a "
+                     "loser id, and an int under any *vendor_idx key equal to a loser row id. Free text is never searched",
              "rowid": "replace the loser's table-11 row id with the survivor's"}
 KIND_TYPE = {"id": "text", "ids": "text[]", "json": "json", "rowid": "int row id"}
 ACTION_TEXT = {"repoint": "repoint", "keep": "**keep** (history / derived)",
                "rebuild": "**not repointed**: regenerated for the survivor by the nightly denorm (unique key embeds the "
                           "Vendor_ID)"}
-RULE_DOC = {"sum": "**sum** S + L", "any_visible": "**\"1\" if any record was \"1\"**", "or": "**OR**",
+RULE_DOC = {"sum": "**sum** S + L; each L set to 0", 
             "union": "**union**, S order first", "union_tokens": "**union of tokens**", "max": "**max**",
             "earliest": "**earliest**", "most_recent": "**most recent**",
             "with_place_id": "**from the record whose Place_ID is kept**",
             "fill_if_empty": "**fill if empty** (S kept; L only where S is blank)",
             "recompute": "**recompute** for S after the merge"}
-KEEP_SURVIVOR = ["Name", "Category", "State", "Country", "lat", "lng", "User_Email", "scrape_status",
+KEEP_SURVIVOR = ["Name", "Category", "State", "Country", "lat", "lng", "scrape_status",
                  "scrape_last_error"]
 
 
@@ -763,6 +836,10 @@ def merge_doc_tables() -> str:
     out += ["", "#### Table 11 column rules on merge (from `dedupe.COUNTER_RULES`)", "",
             "| column | rule | note |", "|---|---|---|"]
     out += [f"| {c} | {RULE_DOC[r]} | {n} |" for c, (r, n) in COUNTER_RULES.items()]
+    out.append(f"| {', '.join(OWNER_ONLY)} | **never auto-written** (owner-only) | card/Details say if a duplicate was "
+               "visible so a person checks visibility after merging; pending an explicit owner exception |")
+    out.append(f"| {', '.join(PERSONAL_FIELDS)} | **never stored, shown or sent** | User_Email is the submitting couple's "
+               "email; the Google cache follows the kept Place_ID server-side |")
     out.append(f"| {', '.join(KEEP_SURVIVOR)} | **keep S** | |")
     out.append("| every other flt_* / mk_* denorm column | **recompute** for S | derived from the moved rows |")
     out.append("| merged_into (L only) | := S Vendor_ID | |")

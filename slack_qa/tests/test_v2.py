@@ -268,7 +268,7 @@ def test_scan_creates_proposals_with_reference_counts_and_skips_rejected():
     t10 = next(t for t in p["payload"]["tables"] if t["table"] == 10)
     assert t10["count"] == 1 and t10["rows"] and t10["rows"][0][1] == "Vendor_ID"
     assert next(t for t in p["payload"]["tables"] if t["table"] == 1)["status"] == "not_counted"
-    assert "hidden, not deleted" in p["plain"]["happens"] and "listed twice" in p["plain"]["headline"]
+    assert "marked merged, not deleted" in p["plain"]["happens"] and "listed twice" in p["plain"]["headline"]
     details = " ".join(dedupe.details_text(p))
     assert "PDF files (table 10): 1 → survivor" in details and "counted and moved by the merge endpoint" in details
     text, blocks = cards.render(p)

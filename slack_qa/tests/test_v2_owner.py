@@ -60,7 +60,10 @@ def test_main_card_is_plain_english():
     assert main.startswith("These look like the same venue: *The Plaza* (New York) listed twice.")
     assert "Same Google listing." in main
     assert "We'll keep the visible listing, move its 3 PDFs" in main and "1 couple' plans" not in main
-    assert "hidden, not deleted, and this can be undone" in main and "add up its clicks" in main
+    assert "marked merged, not deleted." in main and "add up its clicks" in main
+    assert "undo" not in main.lower()                 # dry-run card: there will be nothing to undo
+    ctx = " ".join(b["elements"][0]["text"] for b in blocks if b["type"] == "context")
+    assert "The duplicate was visible" not in ctx     # the duplicate here is hidden
     for bad in (r"\bV\d+", r"\btable\b", "Place ID", "row", "Vendor_ID", "repoint"):
         assert not re.search(bad, main, re.I), bad
     labels = [e["text"]["text"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
@@ -91,7 +94,7 @@ def test_snapshots_rows_and_counters_persisted():
     q = store.get(p["id"])
     snaps = q["payload"]["snapshots"]
     assert set(snaps) == {"V105", "V13433"} and snaps["V13433"]["Description"] == "Iconic hotel"
-    assert snaps["V13433"]["google_data_cache"] == {"rating": 4.6}
+    assert "google_data_cache" not in snaps["V13433"] and "User_Email" not in snaps["V13433"]
     assert all(not k.startswith("_") for s in snaps.values() for k in s)
     t10 = next(t for t in q["payload"]["tables"] if t["table"] == 10)
     assert [r[0] for r in t10["rows"]] == [501, 502, 503]
@@ -131,7 +134,8 @@ def test_merge_endpoint_receives_snapshots(monkeypatch):
             return {"repointed_total": 5, "backup_id": 1}
     monkeypatch.setattr(requests, "post", lambda url, json=None, **k: sent.update(json) or R())
     appliers.merge(p["payload"], OWNER, p["id"], dry_run=False)
-    assert set(sent["snapshots"]) == {"V105", "V13433"} and sent["counters"]
+    assert "snapshots" not in sent and "counters" not in sent          # the endpoint recomputes from live rows
+    assert sent["survivor_vendor_id"] == "V105" and sent["loser_vendor_ids"] == ["V13433"]
 
 
 # 3. counters ---------------------------------------------------------------------------------------------------
@@ -139,21 +143,26 @@ def test_counter_rules():
     s, l = dict(ROWS[0]), dict(ROWS[1])
     plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
     assert plan["Clicks_on_Venue"]["after"] == 340 and plan["Clicks_on_Venue"]["before"] == {"V105": 300, "V13433": 40}
-    assert plan["gold_chip"]["after"] is True
+    assert "gold_chip" not in plan and "Validated_Data" not in plan     # owner-only: never auto-written
+    assert plan["Clicks_on_Venue"]["losers_after"] == 0
     assert plan["Collection"]["after"] == ["Hotel", "Ballroom"]
     assert plan["Max_Capacity_Seated"]["after"] == 650
     assert plan["Time_of_Submission"]["after"] == "2024-06-01"
     assert plan["Description"]["after"] == "Iconic hotel"
     assert plan["Flags"]["after"] == "x, y"
     assert plan["flt_space_count"]["after"] == "recomputed"
-    assert "Validated_Data" not in plan            # survivor already visible: unchanged columns are omitted
     assert "Website" not in plan                    # survivor has one: kept
 
 
-def test_any_visible_rule():
-    s, l = V(1, "V1", "A", vis="0"), V(2, "V2", "A", vis="1")
+def test_visibility_is_never_auto_written_but_flagged():
+    s, l = V(1, "V1", "A", vis="1", pid="P"), V(2, "V2", "A", vis="1", pid="P")
     plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
-    assert plan["Validated_Data"]["after"] == "1"
+    assert "Validated_Data" not in plan
+    refs = dedupe.RefIndex(type("X", (), {"get": lambda self, path, params=None: {"items": [], "nextPage": None}})(),
+                           max_pages=50)
+    refs.build({"V1", "V2"})
+    pr = dedupe.build_proposal({"ids": [1, 2], "rules": ["A"]}, {1: s, 2: l}, refs)
+    assert "The duplicate was visible: after merging, check visibility" in pr["plain"]["check"]
 
 
 def test_every_counter_rule_documented():
@@ -178,7 +187,8 @@ def test_user_side_fields_mapped_and_documented():
 
 def test_json_and_rowid_matching():
     hits = dedupe.RefIndex._hits
-    assert hits({"note": "same as V13433 and V134330"}, "json", {"V13433"}, {}) == {"V13433"}
+    assert hits({"note": "same as V13433 and V134330"}, "json", {"V13433"}, {}) == set()   # free text: never
+    assert hits({"vendor_id": "V13433"}, "json", {"V13433"}, {}) == {"V13433"}
     assert hits('{"vendor_id": "V1343"}', "json", {"V13433"}, {}) == set()
     assert hits(["V2", "V9"], "ids", {"V2"}, {}) == {"V2"}
     assert hits(2, "rowid", {"V13433"}, {2: "V13433"}) == {"V13433"}
@@ -197,7 +207,7 @@ def test_proposal_doc_matches_code_exactly():
     import gen_merge_doc
     doc = (Path(__file__).resolve().parent.parent / "XANO_MERGE_PROPOSAL.md").read_text(encoding="utf-8")
     assert gen_merge_doc.render(doc) == doc, "run: cd slack_qa && python gen_merge_doc.py"
-    assert '$input.mode == "status"' in doc and "`partial`" in doc and "never by subtraction" in doc
+    assert '$input.mode == "status"' in doc and "`partial`" in doc and "live - merged_value + survivor_before" in doc
 
 
 def test_json_vendor_idx_ints_are_matched():
@@ -221,15 +231,14 @@ def test_keyed_tables_are_rebuilt_not_repointed():
 
 def test_google_cache_follows_kept_place_id():
     s = V(1, "V1", "A", pid="")
-    s.update({"google_data_cache": {"rating": 3.0}, "google_data_last_fetched": "2026-11-19"})
+    s.update({"google_data_last_fetched": "2026-11-19"})
     l = V(2, "V2", "A", pid="P2")
-    l.update({"google_data_cache": {"rating": 4.8}, "google_data_last_fetched": "2026-01-01"})
+    l.update({"google_data_last_fetched": "2026-01-01"})
     plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
-    assert plan["Place_ID"]["after"] == "P2" and plan["google_data_cache"]["after"] == {"rating": 4.8}
-    assert plan["google_data_last_fetched"]["after"] == "2026-01-01"
-    s["Place_ID"] = "P1"                              # survivor keeps its own listing -> its own cache stays
+    assert plan["Place_ID"]["after"] == "P2" and plan["google_data_last_fetched"]["after"] == "2026-01-01"
+    s["Place_ID"] = "P1"                              # survivor keeps its own listing -> its own fetch date stays
     plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
-    assert "google_data_cache" not in plan
+    assert "google_data_last_fetched" not in plan
 
 
 def test_partial_merge_rechecks_to_undoable(monkeypatch):
@@ -259,13 +268,124 @@ def test_partial_status_mapping(monkeypatch):
 
         def json(self):
             return self.d
-    for st, want in (("partial", "applied"), ("partial_undo", "applied"), ("undone", "undone"), ("none", "none")):
+    for st, want in (("partial", "partial"), ("partial_undo", "applied"), ("undone", "undone"), ("none", "none")):
         monkeypatch.setattr(requests, "post", lambda *a, _st=st, **k: R({"status": _st}))
         assert appliers.merge_status({"survivor": "V1", "losers": ["V2"]}, "p")["state"] == want, st
     monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
     monkeypatch.setattr(requests, "post", lambda *a, **k: R({"status": "partial", "repointed_total": 4}))
     r = appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p", dry_run=False)
-    assert r["unknown"] and "part-way" in r["text"]
+    assert r.get("partial") and "part-way" in r["text"]
     monkeypatch.setattr(requests, "post", lambda *a, **k: R({"status": "partial_undo"}))
     r = appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p", mode="undo", dry_run=False)
     assert r["unknown"] and "undo stopped" in r["text"]
+
+
+
+# QA round 3 ---------------------------------------------------------------------------------------------------------
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def test_r3_no_email_in_details_or_store():
+    rows = [dict(r) for r in ROWS]
+    rows[0].update({"User_Email": "couple.one@gmail.com", "Contact_Information": "events@theplaza.com"})
+    rows[1].update({"User_Email": "bride2026@gmail.com", "Contact_Information": "",
+                    "Description": "Ask sales@plaza.com", "google_data_cache": {"reviews": [{"author": "x@y.com"}]}})
+    store = Store()
+    p = dedupe.scan(FakeX(), store, mode="weekly", vendor_rows=rows)["proposals"][0]
+    slack = RecSlack()
+    interactions.post_proposal(slack, store, "C", p)
+    q = store.get(p["id"])
+    it = interactions.Interactions(slack=slack, store=store)
+    assert it.handle(click(cards.ACTION_DETAILS, q["id"], ts=q["ts"])) == "details:posted"
+    blob = json.dumps(slack.calls) + store.path.read_text(encoding="utf-8") + store.log_path.read_text(encoding="utf-8")
+    assert not EMAIL.search(blob), EMAIL.search(blob).group(0)
+    assert "User_Email" not in json.dumps(q["payload"]["snapshots"])
+
+
+def test_r3_json_matching_is_by_key_only():
+    hits = dedupe.RefIndex._hits
+    assert hits({"img": "https://vault.example/V12/photo.jpg", "note": "V12 engine"}, "json", {"V12"}, {}) == set()
+    assert hits('{"cards": [{"vendor_id": "V12", "vendor_idx": 5}]}', "json", {"V12"}, {}) == {"V12"}
+    assert hits("V12 is great", "json", {"V12"}, {}) == set()            # not JSON at all
+    assert hits({"matched": {"vendor_idx": 5}}, "json", {"V12"}, {5: "V12"}) == {"V12"}
+
+
+def test_r3_time_of_submission_parses_us_format():
+    s = V(1, "V1", "A", pid="P")
+    s["Time_of_Submission"] = "10/2/2025, 4:05:06 PM"
+    l = V(2, "V2", "A", pid="P")
+    l["Time_of_Submission"] = "9/30/2025, 11:00:00 AM"           # earlier, but "9/30" > "10/2" as text
+    plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
+    assert plan["Time_of_Submission"]["after"] == "9/30/2025, 11:00:00 AM"
+    assert dedupe.parse_when("2024-06-01") < dedupe.parse_when("9/30/2025, 11:00:00 AM")
+
+
+def test_r3_undo_wording_only_when_undo_possible(monkeypatch):
+    store, p = proposal()
+    main = card_text(cards.render(p)[1])
+    assert "undo" not in main.lower()                              # dry run: nothing to undo
+    monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
+    store2 = Store(store.path.with_name("p2.json"))
+    p2 = dedupe.scan(FakeX(), store2, mode="weekly", vendor_rows=[dict(r) for r in ROWS])["proposals"][0]
+    assert "You can undo this from the card." in card_text(cards.render(p2)[1])
+    p2["status"], p2["decided_by"] = "rejected", OWNER
+    assert "undo" not in card_text(cards.render(p2)[1]).lower()
+    assert "listed as a conflict" in json.dumps(cards.UNDO_CONFIRM)
+
+
+def test_r3_partial_shows_resume_and_undo_and_resume_works():
+    slack = RecSlack()
+    store, p = proposal()
+    interactions.post_proposal(slack, store, "C", p)
+    p = store.get(p["id"])
+    calls = []
+
+    def fake(payload, user, pid, mode="apply", dry_run=True):
+        calls.append(mode)
+        if len(calls) == 1:
+            return {"ok": False, "partial": True, "text": "stopped part-way"}
+        return {"ok": True, "dry_run": False, "text": "done"}
+    it = interactions.Interactions(slack=slack, store=store, apply_fns={"merge": fake})
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], ts=p["ts"])) == "approved:partial"
+    labels = [e["text"]["text"] for b in slack.of("chat.update")[-1]["blocks"] if b["type"] == "actions"
+              for e in b["elements"]]
+    assert labels[:2] == ["Resume merge", "Undo merge"]
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], ts=p["ts"])) == "approved:applied"
+    assert calls == ["apply", "apply"]
+
+
+def test_r3_partial_can_be_undone():
+    slack = RecSlack()
+    store, p = proposal()
+    interactions.post_proposal(slack, store, "C", p)
+    store.transition(p["id"], {"pending"}, "partial", OWNER)
+    it = interactions.Interactions(slack=slack, store=store,
+                                   apply_fns={"merge": lambda *a, **k: {"ok": True, "dry_run": False, "text": "back"}})
+    assert it.handle(click(cards.ACTION_UNDO, p["id"], ts=store.get(p["id"])["ts"])) == "undo:ok"
+    assert store.get(p["id"])["status"] == "undone"
+
+
+def test_r3_pricing_phrase_ignores_rebuilt_spaces():
+    class OnlySpaces(FakeX):
+        def __init__(self):
+            super().__init__()
+            self.tables = {62: [{"id": 1, "VENDOR_ID": "V13433"}]}
+    store = Store()
+    p = dedupe.scan(OnlySpaces(), store, mode="weekly", vendor_rows=[dict(r) for r in ROWS])["proposals"][0]
+    assert "pricing" not in p["plain"]["happens"]
+
+
+def test_r3_details_claim_is_locked():
+    store, p = proposal()
+    assert store.claim_details(p["id"]) is True
+    assert store.claim_details(p["id"]) is False
+    store.finish_details(p["id"], None)                      # failed post -> can try again
+    assert store.claim_details(p["id"]) is True
+
+
+def test_r3_doc_states_undo_and_resume_rules():
+    doc = (Path(__file__).resolve().parent.parent / "XANO_MERGE_PROPOSAL.md").read_text(encoding="utf-8")
+    for want in ("live - merged_value + survivor_before", "compares each row's LIVE value",
+                 "computes `snapshots`", "owner-only and are never", "partial_undo` is always finishable",
+                 "by KEY only"):
+        assert want in doc, want

@@ -113,7 +113,7 @@ def test_4_visible_record_survives_even_with_fewer_pdfs():
 
 def test_4_proposal_doc_has_visibility_rule():
     doc = (Path(__file__).resolve().parent.parent / "XANO_MERGE_PROPOSAL.md").read_text(encoding="utf-8")
-    assert "a merge never hides a venue" in doc and "If any loser was visible" in doc and "mode` (preview | apply | undo | status)" in doc
+    assert "Validated_Data and gold_chip are owner-only" in doc and "never auto-written" in doc and "mode` (preview | apply | undo | status)" in doc
 
 
 # (5) timeout / 5xx = unknown + Re-check ---------------------------------------------------------------------------
