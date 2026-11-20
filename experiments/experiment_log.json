@@ -5352,6 +5352,15 @@
       ],
       "source": "weweb",
       "ref": "cacheVersion 1404 (1403 staging)"
+    },
+    {
+      "date": "2026-11-11",
+      "what": "Discovery 'Ask Tulle Planner anything' (Rec Entry) block removed in the WeWeb editor at the same publish as the Ask Tulle bubble (logged retroactively 2026-11-20); confounds Planner question counts after 11-11 (also 11-12 save offer, 11-17 whole-wedding planner, 11-17/18 Price Report)",
+      "affects": [
+        "EXP-2026-11-ask-tulle-bubble"
+      ],
+      "source": "owner (WeWeb editor)",
+      "ref": "memory project_ask_tulle_bubble_2026-11-11; scratchpad q/an.py read 2026-11-20"
     }
   ]
 }
