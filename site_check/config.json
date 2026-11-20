@@ -1,0 +1,63 @@
+{
+  "_comment": "Canonical values for the tulletogether.com site check. Change values here, not in code. Prices = the app's live plans (owner-confirmed ranges as of 2026-11-20); couples count = 60,000+ (owner 2026-11-12, '60k everywhere').",
+  "base_url": "https://tulletogether.com",
+  "sitemaps": ["/sitemap.xml"],
+  "sitemap_skip": ["image-sitemap", "video-sitemap", "news-sitemap"],
+  "key_pages": ["/", "/blog/", "/timed-plans/", "/wedding-budget-tools/", "/tulle-resources/", "/methodology/"],
+  "max_pages": 400,
+  "request_delay_s": 0.75,
+  "timeout_s": 20,
+  "user_agent": "TulleSiteCheck/1.0 (+https://tulletogether.com; daily QA of our own site)",
+
+  "couples": {
+    "canonical": "60,000+",
+    "min_count": 10000,
+    "words": ["couples", "users", "members", "brides", "families"]
+  },
+
+  "pricing": {
+    "page_paths": ["/timed-plans/", "/pricing/", "/plans/"],
+    "plans": [
+      {"name": "1 week",  "label": "1\\s*week(?!s)",  "min": 35,  "max": 39},
+      {"name": "4 weeks", "label": "4\\s*weeks",      "min": 60,  "max": 65},
+      {"name": "Forever", "label": "forever",         "min": 135, "max": 149}
+    ],
+    "retired_labels": ["2\\s*weeks?\\s+access", "\\+2\\s*weeks"],
+    "ignore_amount_over": 1000,
+    "auto_detect_window": 40
+  },
+
+  "placeholders_text": ["Accordion Item", "Lorem ipsum", "Add Your Heading Text Here", "Click edit button to change this text", "Add Your Text Here"],
+  "placeholders_html": ["/vi/ID/"],
+
+  "tags": ["G-7BRVVCRKX1", "GTM-5HRS82NQ"],
+
+  "app_hosts": ["tulletogether.app"],
+  "require_app_link_paths": ["/", "/timed-plans/", "/wedding-budget-tools/"],
+  "utm": {
+    "mode": "auto",
+    "_mode_help": "auto = fail missing UTMs only once at least one site link to the app carries utm_source (i.e. after UTMs are added); fail = always; off = never",
+    "required": ["utm_source", "utm_medium", "utm_campaign"]
+  },
+  "banned_hosts": ["tulle.glide.page", "glide.page"],
+  "warn_link_path_patterns": ["/elementor-\\d+/?$"],
+  "skip_link_prefixes": ["mailto:", "tel:", "javascript:", "sms:", "#"],
+  "skip_link_paths": ["/wp-admin", "/wp-login.php", "/xmlrpc.php", "/wp-json", "/feed", "/comments/feed", "/cart", "/checkout", "/my-account"],
+
+  "ttfb": {
+    "threshold_s": 1.0,
+    "fail_share": 0.25,
+    "_help": "fail site-wide when more than fail_share of pages are over threshold; any key page over threshold is its own failure"
+  },
+
+  "home_mentions": {
+    "AI Planner": "\\bAI\\s+(wedding\\s+)?planner\\b|\\bTulle\\s+Planner\\b|\\bPlan my wedding\\b",
+    "Price Report": "\\bPrice\\s+Reports?\\b"
+  },
+
+  "external_links": {
+    "max_checked": 300,
+    "fail_statuses": [404, 410],
+    "_help": "external (non-tulletogether) links are checked only on the weekly run; 403/429/5xx are ignored because many sites block bots"
+  }
+}

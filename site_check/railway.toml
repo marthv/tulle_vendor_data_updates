@@ -1,0 +1,36 @@
+# tulletogether.com site check (site_check/). Railway CRON service, NOT always-on.
+#
+# IMPORTANT: Railway config-as-code files stop applying to EXISTING services on 2026-12-01, and Railway already
+# rejects a config-file path on NEW services (2026-10-03, see railway.rec.toml at the repo root). So the
+# source of truth is the SERVICE SETTINGS below, set by hand in the Railway UI. This file only documents them;
+# if a future Railway version honours it, the values match.
+#
+# Service settings (Railway UI -> service -> Settings):
+#     Source          : GitHub marthv/tulle_vendor_data_updates, branch main
+#     Root Directory  : /site_check
+#     Builder         : Dockerfile  (Dockerfile Path: Dockerfile, i.e. site_check/Dockerfile)
+#     Watch Paths     : site_check/**       <- ONLY this, so pushes elsewhere never redeploy it
+#                       (watch paths are matched from the repo root even when Root Directory is set)
+#     Cron Schedule   : 0 13 * * *          (13:00 UTC = 8:00 ET daily; Monday run also sends the weekly summary)
+#     Restart Policy  : Never
+#     Volume          : mount at /data      (state.json = last run's findings, for the diff; without it every run
+#                                             looks like a first run and re-posts everything)
+#     Start command   : (none; Dockerfile CMD = python run.py)
+#
+# Variables:
+#     DRY_RUN                  = 1   first week (prints to deploy logs only); set 0 to post
+#     SITE_CHECK_SLACK_TOKEN   = Tulle Bot's xoxb- token (chat:write; bot must be in #growth-strategy)
+#                                e.g. ${{tulle-slack-qa.SLACK_BOT_TOKEN}}
+#     SITE_CHECK_SLACK_CHANNEL = #growth-strategy channel ID (C...)
+#     STATE_DIR                = /data   (already the Dockerfile default)
+#     (optional) SITE_CHECK_NOTIFY = changes (default) | failures ; WEEKLY_WEEKDAY = 0 (Mon) | -1 (off)
+#
+# Exit 2 = the check could not run (home/sitemap unreachable or the Slack post failed); state is not advanced.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+watchPatterns = ["site_check/**"]
+
+[deploy]
+cronSchedule = "0 13 * * *"
+restartPolicyType = "NEVER"
