@@ -6,6 +6,8 @@ service runs one uvicorn worker, and "done for <day>" markers on the volume stop
   dedupe   daily at DEDUPE_HOUR_UTC: weekly full scan on DEDUPE_WEEKLY_DOW, otherwise the nightly pass over vendors
            added since the last scan. Posts up to DEDUPE_MAX_CARDS cards to DEDUPE_CHANNEL (never posts if unset).
   rollup   daily at ROLLUP_HOUR_UTC (ROLLUP_ENABLED=1 + FEEDBACK_CHANNEL).
+  trends   weekly on TREND_DIGEST_DOW at TREND_DIGEST_HOUR_UTC: read-only #feedback trend digest to
+           TREND_DIGEST_CHANNEL (never posts if unset).
 """
 from __future__ import annotations
 
@@ -81,6 +83,15 @@ class Scheduler:
             except Exception:  # noqa: BLE001
                 log.exception("rollup job failed")
                 out.append("rollup:error")
+        if (config.trend_digest_channel() and config.feedback_channel() and now.weekday() == config.trend_digest_dow()
+                and due(store, "trends", config.trend_digest_hour_utc(), now)):
+            mark(store, "trends", now)
+            try:
+                import trends
+                out.append(trends.run_digest(self.bot, now.timestamp()))
+            except Exception:  # noqa: BLE001
+                log.exception("trend digest failed")
+                out.append("trends:error")
         if out:
             log.info("scheduler: %s", out)
         return out

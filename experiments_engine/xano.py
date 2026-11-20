@@ -45,7 +45,9 @@ RETRY_STATUSES = (429, 502, 503, 504)
 MAX_RETRY_AFTER_S = 30.0
 
 # Internal accounts (experiments_brief.py:44-49, CLAUDE memory "Exclude internal accounts").
-INTERNAL_IDS = frozenset({14998, 30614, 32636, 31619, 118, 5622, 34249, 33167, 185, 35757})
+INTERNAL_IDS = frozenset({14998, 30614, 32636, 31619, 118, 5622, 34249, 33167, 185, 35757,
+                          # Des's + Kate's test accounts (owner 2026-11-20). Not excluded: real couples.
+                          21414, 21797, 21800, 21801, 21998, 22002, 22007, 22118, 22548, 22549, 22581, 22694, 24403, 26339, 26647, 26649, 26726, 27701, 29112, 29564, 29747, 31971, 32114, 33154, 33155, 33602, 34096, 35020, 35212, 36553, 35527})
 
 # Which field holds the couple id, per table. Table 1: the row id IS the couple. Table 16: the
 # Stripe client reference (a string; empty for gifts). Everything else: user_id.
@@ -117,9 +119,15 @@ def to_ms(v):
     return int(x * 1000) if x < 1e11 else int(x)
 
 
+def _internal_email_prefixes() -> tuple:
+    """INTERNAL_EMAIL_PREFIXES (comma-separated, set on Railway): extra team/test email prefixes. Kept out of the
+    code because this repo is public."""
+    return tuple(p.strip().lower() for p in os.environ.get("INTERNAL_EMAIL_PREFIXES", "").split(",") if p.strip())
+
+
 def is_internal(uid=None, email=""):
     e = str(email or "").strip().lower()
-    return (to_int(uid) in INTERNAL_IDS) or e.startswith("vivek.marthi") or e.endswith("@tulletogether.com")
+    return (to_int(uid) in INTERNAL_IDS) or e.startswith(("vivek.marthi",) + _internal_email_prefixes()) or e.endswith("@tulletogether.com")
 
 
 def _scrub(v):

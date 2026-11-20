@@ -9,8 +9,8 @@ categories (a venue and its in-house caterer), groups bigger than 4 (needs a hum
 proposed, applied or rejected (a human said no; we don't ask twice).
 
 Survivor = visible (Validated_Data "1") first, then most PDFs, most clicks, has a Place_ID, oldest id.
-The losers are RETIRED (t11.merged_into = survivor; visibility is owner-only and is NOT auto-changed), never deleted, and every repointed row is backed up first, so a
-merge can be undone (see XANO_MERGE_PROPOSAL.md). Reference counts below are read-only GETs within a page budget.
+The losers are RETIRED (t11.merged_into = survivor) and HIDDEN (Validated_Data "0"; owner exception 2026-11-20), never
+deleted, and every repointed row and every changed column is backed up first, so a merge can be undone (see XANO_MERGE_PROPOSAL.md). Reference counts below are read-only GETs within a page budget.
 """
 from __future__ import annotations
 
@@ -132,9 +132,29 @@ COUNTER_RULES = {
     "image_2": ("fill_if_empty", ""), "image_3": ("fill_if_empty", ""),
     "flt_space_count": ("recompute", "re-derived from the merged pricing rows by the nightly denorm"),
 }
-# OWNER-ONLY, never auto-written by a merge: Validated_Data (visibility) and gold_chip (curated). The card and the
-# Details say when the duplicate was visible so a person can check visibility after merging.
-OWNER_ONLY = ("Validated_Data", "gold_chip")
+# OWNER-ONLY, never auto-written by a merge: gold_chip (curated).
+OWNER_ONLY = ("gold_chip",)
+# Visibility on merge (owner exception 2026-11-20 to "Validated_Data is owner-only": "merge hides the duplicate,
+# ideally merge deletes duplicates"). On apply each loser's Validated_Data is backed up then set "0"; if a loser was
+# visible and the survivor hidden, the survivor is backed up then set "1" so the venue stays in search. Undo restores
+# both from the backup. Hard delete is a later, separately approved step (XANO_MERGE_PROPOSAL.md section 5).
+VISIBILITY_COL = "Validated_Data"
+HIDDEN, VISIBLE = "0", "1"
+
+
+def visibility_plan(survivor: dict, losers: list[dict]) -> list[dict]:
+    """The Validated_Data writes a merge makes: [{"vendor_id", "role": survivor|loser, "before", "after"}] for the
+    records whose value actually changes. Every one is backed up first and restored on undo."""
+    out = []
+    any_loser_visible = any(str(m.get(VISIBILITY_COL)) == VISIBLE for m in losers)
+    if any_loser_visible and str(survivor.get(VISIBILITY_COL)) != VISIBLE:
+        out.append({"vendor_id": survivor.get("Vendor_ID"), "role": "survivor",
+                    "before": survivor.get(VISIBILITY_COL), "after": VISIBLE})
+    for m in losers:
+        if str(m.get(VISIBILITY_COL)) != HIDDEN:
+            out.append({"vendor_id": m.get("Vendor_ID"), "role": "loser", "before": m.get(VISIBILITY_COL),
+                        "after": HIDDEN})
+    return out
 # Never stored, shown or sent: the submitting couple's email (User_Email holds their gmail) and the raw Google cache.
 PERSONAL_FIELDS = ("User_Email", "google_data_cache")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
@@ -651,12 +671,10 @@ def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIn
             "it has the Google Place ID": "the listing linked to Google"}.get(why_s, "the original listing")
     moves = ", ".join(moving[:-1]) + f" and {moving[-1]}" if len(moving) > 1 else moving[0]
     dup = "duplicate is" if len(losers) == 1 else "duplicates are"
-    dup = "duplicate is" if len(losers) == 1 else "duplicates are"
-    happens = f"We'll keep {keep}, move {moves} onto it, and add up its clicks. The {dup} marked merged, not deleted."
-    visible = [m for m in losers if str(m.get("Validated_Data")) == "1"]
-    check = ("The duplicate was visible: after merging, check visibility (merging doesn't change it)."
-             if visible else "")
-    return {"headline": headline, "why": why, "happens": happens, "check": check}
+    happens = f"We'll keep {keep}, move {moves} onto it, and add up its clicks."
+    # cards.render ends this sentence with ", and you can undo this from the card." only when an undo is possible
+    hidden = f"The {dup} hidden from search, not deleted"
+    return {"headline": headline, "why": why, "happens": happens, "hidden": hidden}
 
 
 def _fmt(v, n: int = 80) -> str:
@@ -705,7 +723,7 @@ def details_text(p: dict) -> list[str]:
                 t["action"], "(left as history)")
             mv.append(f"• {t['label']} (table {t['table']}): {t['count']} {act} · rows {ids}")
     mv.append(f"• Vendor table (11): {', '.join(pl.get('losers') or [])} get merged_into = {pl.get('survivor')} and "
-              "nothing else (not deleted; visibility is owner-only and left as it is)")
+              "Validated_Data = 0 (hidden from search; backed up, restored on undo). Not deleted.")
     chunks.append("\n".join(mv))
     cl = ["*Counters and fields on the survivor (rule · before → after)*"]
     for c in pl.get("counters") or []:
@@ -715,11 +733,16 @@ def details_text(p: dict) -> list[str]:
     if len(cl) == 1:
         cl.append("• No counter changes (all equal or empty).")
     chunks.append("\n".join(cl))
-    vis = {vid: (snaps.get(vid) or {}).get("Validated_Data") for vid in order}
-    chunks.append("*Owner-only columns (never auto-written)*: Validated_Data " +
-                  ", ".join(f"{vid}={_fmt(v, 5)}" for vid, v in vis.items()) + "; gold_chip " +
+    vp = pl.get("visibility")
+    if vp is None:                                  # a card proposed before 2026-11-20: work it out from the snapshots
+        sn = [snaps.get(vid) or {} for vid in order]
+        vp = visibility_plan(sn[0], sn[1:]) if sn else []
+    vis = "; ".join(f"{e['vendor_id']} ({e['role']}) {_fmt(e['before'], 5)} → {e['after']}" for e in vp) or \
+        "no change (the duplicates are already hidden)"
+    chunks.append("*Visibility (Validated_Data, backed up and restored on undo)*: " + vis +
+                  ". *Owner-only, never auto-written*: gold_chip " +
                   ", ".join(f"{vid}={_fmt((snaps.get(vid) or {}).get('gold_chip'), 5)}" for vid in order) +
-                  ". Check visibility after merging. Couples' emails and the raw Google cache are never stored here.")
+                  ". Couples' emails and the raw Google cache are never stored here.")
     chunks.append("*Stored by name, not id (not rewritten automatically)*\n" +
                   "\n".join(f"• {t} · {f}: {why}" for t, f, why in NAME_KEYED))
     return [c[:2900] for c in chunks]
@@ -752,7 +775,8 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "") 
             "next_steps": nxt, "plain": plain,
             "payload": {"survivor": sv, "losers": lv, "counts": counts, "total": sum(counts.values()),
                         "row_ids": {m.get("Vendor_ID"): m["id"] for m in members}, "rules": group.get("rules") or [],
-                        "why_survivor": why_s, "snapshots": snapshots, "tables": tables, "counters": counters},
+                        "why_survivor": why_s, "snapshots": snapshots, "tables": tables, "counters": counters,
+                        "visibility": visibility_plan(survivor, losers)},
             "key": group_key([sv] + lv)}
 
 
@@ -842,8 +866,11 @@ def merge_doc_tables() -> str:
     out += ["", "#### Table 11 column rules on merge (from `dedupe.COUNTER_RULES`)", "",
             "| column | rule | note |", "|---|---|---|"]
     out += [f"| {c} | {RULE_DOC[r]} | {n} |" for c, (r, n) in COUNTER_RULES.items()]
-    out.append(f"| {', '.join(OWNER_ONLY)} | **never auto-written** (owner-only) | card/Details say if a duplicate was "
-               "visible so a person checks visibility after merging; pending an explicit owner exception |")
+    out.append(f"| {VISIBILITY_COL} (L) | **hide**: back up, then set \"{HIDDEN}\" | owner exception 2026-11-20 (\"merge hides "
+               "the duplicate\"); restored from the backup on undo |")
+    out.append(f"| {VISIBILITY_COL} (S) | **show if a duplicate was visible**: back up, then set \"{VISIBLE}\" | only when a "
+               "loser was visible and the survivor hidden, so the venue stays in search; restored on undo |")
+    out.append(f"| {', '.join(OWNER_ONLY)} | **never auto-written** (owner-only) | curated; untouched by merge and undo |")
     out.append(f"| {', '.join(PERSONAL_FIELDS)} | **never stored, shown or sent** | User_Email is the submitting couple's "
                "email; the Google cache follows the kept Place_ID server-side |")
     out.append(f"| {', '.join(KEEP_SURVIVOR)} | **keep S** | |")

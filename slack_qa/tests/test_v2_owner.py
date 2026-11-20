@@ -60,10 +60,10 @@ def test_main_card_is_plain_english():
     assert main.startswith("These look like the same venue: *The Plaza* (New York) listed twice.")
     assert "Same Google listing." in main
     assert "We'll keep the visible listing, move its 3 PDFs" in main and "1 couple' plans" not in main
-    assert "marked merged, not deleted." in main and "add up its clicks" in main
+    assert "The duplicate is hidden from search, not deleted." in main and "add up its clicks" in main
     assert "undo" not in main.lower()                 # dry-run card: there will be nothing to undo
     ctx = " ".join(b["elements"][0]["text"] for b in blocks if b["type"] == "context")
-    assert "The duplicate was visible" not in ctx     # the duplicate here is hidden
+    assert "check visibility" not in (main + ctx).lower()     # line removed 2026-11-20 (merge hides the duplicate)
     for bad in (r"\bV\d+", r"\btable\b", "Place ID", "row", "Vendor_ID", "repoint"):
         assert not re.search(bad, main, re.I), bad
     labels = [e["text"]["text"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
@@ -156,15 +156,43 @@ def test_counter_rules():
     assert "Website" not in plan                    # survivor has one: kept
 
 
-def test_visibility_is_never_auto_written_but_flagged():
-    s, l = V(1, "V1", "A", vis="1", pid="P"), V(2, "V2", "A", vis="1", pid="P")
-    plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
-    assert "Validated_Data" not in plan
+def _empty_refs(ids):
     refs = dedupe.RefIndex(type("X", (), {"get": lambda self, path, params=None: {"items": [], "nextPage": None}})(),
                            max_pages=50)
-    refs.build({"V1", "V2"})
-    pr = dedupe.build_proposal({"ids": [1, 2], "rules": ["A"]}, {1: s, 2: l}, refs)
-    assert "The duplicate was visible: after merging, check visibility" in pr["plain"]["check"]
+    refs.build(set(ids))
+    return refs
+
+
+def test_merge_hides_the_duplicate_owner_exception_2026_11_20():
+    s, l = V(1, "V1", "A", vis="1", pid="P"), V(2, "V2", "A", vis="1", pid="P")
+    plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
+    assert "Validated_Data" not in plan and "gold_chip" not in plan     # visibility has its own plan; gold_chip never
+    assert dedupe.visibility_plan(s, [l]) == [{"vendor_id": "V2", "role": "loser", "before": "1", "after": "0"}]
+    pr = dedupe.build_proposal({"ids": [1, 2], "rules": ["A"]}, {1: s, 2: l}, _empty_refs({"V1", "V2"}))
+    assert pr["payload"]["visibility"] == [{"vendor_id": "V2", "role": "loser", "before": "1", "after": "0"}]
+    assert "check" not in pr["plain"] and pr["plain"]["hidden"] == "The duplicate is hidden from search, not deleted"
+    assert "gold_chip" not in json.dumps(pr["payload"]["visibility"])
+
+
+def test_visibility_plan_survivor_shown_only_when_a_duplicate_was_visible():
+    hidden_s, vis_l = V(1, "V1", "A", vis="0"), V(2, "V2", "A", vis="1")
+    plan = dedupe.visibility_plan(hidden_s, [vis_l])
+    assert {"vendor_id": "V1", "role": "survivor", "before": "0", "after": "1"} in plan
+    assert {"vendor_id": "V2", "role": "loser", "before": "1", "after": "0"} in plan
+    # both hidden: survivor untouched, loser already "0" -> nothing to write
+    assert dedupe.visibility_plan(V(1, "V1", "A", vis="0"), [V(2, "V2", "A", vis="0")]) == []
+    # a blank loser value is still set "0" (backed up as blank); survivor not shown since no loser was visible
+    assert dedupe.visibility_plan(V(1, "V1", "A", vis="0"), [V(2, "V2", "A", vis="")]) ==         [{"vendor_id": "V2", "role": "loser", "before": "", "after": "0"}]
+
+
+def test_plural_hidden_wording_and_details_show_visibility():
+    rows = [V(1, "V1", "A", vis="1", pid="P"), V(2, "V2", "A", vis="1", pid="P"), V(3, "V3", "A", vis="0", pid="P")]
+    pr = dedupe.build_proposal({"ids": [1, 2, 3], "rules": ["A"]}, {r["id"]: r for r in rows},
+                               _empty_refs({"V1", "V2", "V3"}))
+    assert pr["plain"]["hidden"] == "The duplicates are hidden from search, not deleted"
+    det = " ".join(dedupe.details_text(pr))
+    assert "V2 (loser) 1 → 0" in det and "V3" not in det.split("Visibility")[1].split("Owner-only")[0]
+    assert "gold_chip" in det and "Check visibility after merging" not in det
 
 
 def test_every_counter_rule_documented():
@@ -329,7 +357,9 @@ def test_r3_undo_wording_only_when_undo_possible(monkeypatch):
     monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
     store2 = Store(store.path.with_name("p2.json"))
     p2 = dedupe.scan(FakeX(), store2, mode="weekly", vendor_rows=[dict(r) for r in ROWS])["proposals"][0]
-    assert "You can undo this from the card." in card_text(cards.render(p2)[1])
+    assert "The duplicate is hidden from search, not deleted, and you can undo this from the card." in         card_text(cards.render(p2)[1])
+    p2["status"], p2["decided_by"], p2["undoable"] = "applied", OWNER, False
+    assert "undo" not in card_text(cards.render(p2)[1]).lower()    # undo no longer possible: no undo promise
     p2["status"], p2["decided_by"] = "rejected", OWNER
     assert "undo" not in card_text(cards.render(p2)[1]).lower()
     assert "listed as a conflict" in json.dumps(cards.UNDO_CONFIRM)
@@ -388,6 +418,19 @@ def test_r3_details_claim_is_locked():
 def test_r3_doc_states_undo_and_resume_rules():
     doc = (Path(__file__).resolve().parent.parent / "XANO_MERGE_PROPOSAL.md").read_text(encoding="utf-8")
     for want in ("live - merged_value + survivor_before", "compares each row's LIVE value",
-                 "computes `snapshots`", "owner-only and are never", "partial_undo` is always finishable",
+                 "computes `snapshots`", "gold_chip is owner-only and is never written", "Owner exception, 2026-11-20",
+                 "Visibility on undo", "Later step (documented, NOT built): hard-delete", "partial_undo` is always finishable",
                  "by KEY only"):
         assert want in doc, want
+
+
+def test_undone_or_rejected_merge_card_does_not_claim_hidden(monkeypatch):
+    monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
+    store, p = proposal()
+    assert "hidden from search" in card_text(cards.render(p)[1])
+    for st in ("applied", "partial"):
+        p["status"], p["decided_by"] = st, OWNER
+        assert "hidden from search, not deleted, and you can undo" in card_text(cards.render(p)[1])
+    for st in ("undone", "undoing", "rejected", "post_failed"):
+        p["status"], p["decided_by"] = st, OWNER
+        assert "hidden from search" not in card_text(cards.render(p)[1]), st

@@ -24,7 +24,9 @@ VENUE_LOG = "venue_lookup_log"
 EXPORT_ALLOWLIST = {1: "users", 16: "payment_log", 77: "nps_response", 79: "rec_usage", VENUE_LOG: VENUE_LOG}
 
 # Owner list 2026-11-18 + the ids experiments_brief.py already excludes (34249, 33167, 185).
-DEFAULT_INTERNAL_IDS = {14998, 30614, 32636, 31619, 118, 5622, 35757, 2333, 34429, 36173, 35866, 34249, 33167, 185}
+DEFAULT_INTERNAL_IDS = {14998, 30614, 32636, 31619, 118, 5622, 35757, 2333, 34429, 36173, 35866, 34249, 33167, 185,
+                        # Des's + Kate's test accounts (owner 2026-11-20). Not excluded: real couples.
+                        21414, 21797, 21800, 21801, 21998, 22002, 22007, 22118, 22548, 22549, 22581, 22694, 24403, 26339, 26647, 26649, 26726, 27701, 29112, 29564, 29747, 31971, 32114, 33154, 33155, 33602, 34096, 35020, 35212, 36553, 35527}
 
 DENY_EXACT = {"password", "token_session", "token_session_axpires", "token_session_expires", "magic_link",
               "google_oauth"}
@@ -47,13 +49,19 @@ def internal_ids() -> set[int]:
     return DEFAULT_INTERNAL_IDS | extra
 
 
+def _internal_email_prefixes() -> tuple:
+    """INTERNAL_EMAIL_PREFIXES (comma-separated, set on Railway): extra team/test email prefixes. Kept out of the
+    code because this repo is public."""
+    return tuple(p.strip().lower() for p in os.environ.get("INTERNAL_EMAIL_PREFIXES", "").split(",") if p.strip())
+
+
 def is_internal(uid=None, email=None) -> bool:
     e = str(email or "").strip().lower()
     try:
         i = int(str(uid or 0).strip() or 0)
     except ValueError:
         i = 0
-    return i in internal_ids() or e.startswith("vivek.marthi") or e.endswith("@tulletogether.com")
+    return i in internal_ids() or e.startswith(("vivek.marthi",) + _internal_email_prefixes()) or e.endswith("@tulletogether.com")
 
 
 def denied(col: str) -> bool:
@@ -159,7 +167,7 @@ def _emails(users: list[dict]) -> dict[int, str]:
 def _excl_note(n: int, include_internal: bool) -> str:
     if include_internal:
         return "internal accounts INCLUDED"
-    return f"excluded {n} internal/test row(s) (team + test accounts, @tulletogether.com, vivek.marthi*)"
+    return f"excluded {n} internal/test row(s) (team + test accounts, @tulletogether.com, vivek.marthi*, INTERNAL_EMAIL_PREFIXES)"
 
 
 # --- reports --------------------------------------------------------------------------------------------------

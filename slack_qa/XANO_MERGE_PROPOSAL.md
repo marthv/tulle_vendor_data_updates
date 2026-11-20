@@ -10,19 +10,27 @@ The XanoScript is a draft: validate it against the Xano `documentation` tool (`t
 `createAPI` / `addTable`. XanoScript parses fine and fails at runtime (reference_xanoscript_traps), so the endpoint
 is smoke-tested in `preview` mode on a hand-picked pair before any `apply`.
 
+**Owner exception, 2026-11-20 (visibility):** the standing rule is "Validated_Data and gold_chip are owner-only". For
+merges the owner granted an exception on 2026-11-20: *"merge hides the duplicate, ideally merge deletes duplicates"*.
+So an approved merge hides each duplicate (Validated_Data "0"), and shows the survivor (Validated_Data "1") only
+when a duplicate was visible and the survivor was hidden. Both are backed up first and restored on undo. **gold_chip
+stays owner-only and is never written.** The exception covers merges approved on a Tulle Bot card only; it does not
+let anything else write Validated_Data. Hard delete is NOT covered: it is a later step with its own approval
+(section 5).
+
 ## 1. Schema changes (3)
 
 ### 1a. Table 11 `WPTP Updated Mappings`: one new column
 ```
 // Vendor_ID of the record this one was merged into. Set ONLY by POST /vendor/merge. Null = a live record.
-// A retired record keeps every original field (rollback source). Visibility (Validated_Data) is owner-only: a merge
-// never changes it.
+// A retired record keeps every original field (rollback source) except Validated_Data, which the merge sets "0"
+// (backed up; owner exception 2026-11-20). gold_chip is owner-only: a merge never changes it.
 text merged_into? filters=trim
 ```
 plus a btree index on `merged_into`. Table 11 has no validators, so adding the column via a schema-element add is
 safe (`updateTableSchema` would strip validators on other tables; reference_xano_mcp_quirks). Back up the table
-schema first. A merge does not change visibility: a retired record that was visible stays in search until a
-person hides it (owner-only column; an exception for merges is pending the owner).
+schema first. A merge hides the retired record (Validated_Data "0", backed up, restored on undo; owner exception
+2026-11-20), so it leaves search at once.
 
 ### 1b. New table `vendor_merge_candidate` (one row per merge the bot proposed and a human approved)
 ```
@@ -119,9 +127,10 @@ Preconditions: secret matches; at most 3 losers; every loser is not the survivor
 5. Table 11, per the generated column rules (computed from the live rows): back up every column that changes, then
    write it. Each loser's summed columns (Clicks_on_Venue, scrape_cost_usd) are set to 0 after backup so nothing is
    counted twice. Losers get
-   `merged_into = survivor` (backed up). Never delete. **Validated_Data and gold_chip are owner-only and are never
-   written by a merge**: the card and Details say when a duplicate was visible so a person checks visibility after
-   merging. Hiding the retired record needs an explicit owner exception (asked 2026-11-20; pending).
+   `merged_into = survivor` (backed up). Never delete. **Visibility (owner exception 2026-11-20):** back up each
+   loser's Validated_Data, then set it "0" (hidden from search). If any loser was visible ("1") and the survivor
+   hidden, back up the survivor's Validated_Data, then set it "1". Computed from the LIVE rows, like the counters.
+   **gold_chip is owner-only and is never written by a merge or an undo.**
 6. Candidate row: status `applied`, counts, conflicts. Return `{merge_id, backup_id, counts, repointed_total,
    conflicts, status}`.
 
@@ -138,6 +147,9 @@ unrestored (running undo again finishes it).
   so clicks the survivor received after the merge are kept and nothing is counted twice. Counters and
   scrape_last_attempted_at are exempt from the "current value still equals what we wrote" guard (they legitimately
   move after a merge); every other column keeps the guard.
+- **Visibility on undo:** each Validated_Data written by the merge (losers' "0", the survivor's "1" if it was
+  set) is restored from the backup under the normal guard: if someone changed it since the merge, it is left as they
+  set it and listed in `conflicts`.
 - **`partial_undo` is always finishable:** running undo again continues from the backup rows not yet `restored`,
   with the same rules.
 - Rows deleted between merge and undo (a couple deletes a package, the nightly rebuild drops a t62 row) are skipped
@@ -242,7 +254,9 @@ the element format of `user.favorited_vendors` (Vendor_ID text assumed) on a tes
 | image_2 | **fill if empty** (S kept; L only where S is blank) |  |
 | image_3 | **fill if empty** (S kept; L only where S is blank) |  |
 | flt_space_count | **recompute** for S after the merge | re-derived from the merged pricing rows by the nightly denorm |
-| Validated_Data, gold_chip | **never auto-written** (owner-only) | card/Details say if a duplicate was visible so a person checks visibility after merging; pending an explicit owner exception |
+| Validated_Data (L) | **hide**: back up, then set "0" | owner exception 2026-11-20 ("merge hides the duplicate"); restored from the backup on undo |
+| Validated_Data (S) | **show if a duplicate was visible**: back up, then set "1" | only when a loser was visible and the survivor hidden, so the venue stays in search; restored on undo |
+| gold_chip | **never auto-written** (owner-only) | curated; untouched by merge and undo |
 | User_Email, google_data_cache | **never stored, shown or sent** | User_Email is the submitting couple's email; the Google cache follows the kept Place_ID server-side |
 | Name, Category, State, Country, lat, lng, scrape_status, scrape_last_error | **keep S** | |
 | every other flt_* / mk_* denorm column | **recompute** for S | derived from the moved rows |
@@ -315,3 +329,12 @@ query "vendor/merge" verb=POST {
 The duplicate pairs in the 2026-11-20 sample look like PDF submissions creating a new vendor row instead of matching an
 existing one. Until the submission path matches on Place ID / name+city first, the nightly scan will keep finding new
 pairs. That fix lives in the submission flow (Xano + WeWeb) and needs its own approval.
+
+## 5. Later step (documented, NOT built): hard-delete retired records after 30 days
+The owner's ideal is "merge deletes duplicates". Not built, and needs its own owner approval before it is:
+a daily Xano task deletes a table-11 record only when ALL hold: `merged_into` is set; its `vendor_merge_candidate`
+is `applied` (not `partial`, `partial_undo` or `undone`) and `applied_at` is 30+ days ago; no row anywhere still
+references its Vendor_ID or row id (re-run the `preview` counts: all zero). Before each delete the full row is
+already in `vendor_merge_candidate.snapshots`; the task writes it to a `vendor_deleted_archive` row too, and the
+candidate gets `deleted_at`. After a hard delete the merge can no longer be undone from the card (the card's Undo
+button is removed). Back up per CLAUDE.md 12.5 before creating the task.

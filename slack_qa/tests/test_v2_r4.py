@@ -119,6 +119,7 @@ def test_details_claim_expires():
 
 def test_spec_round4_text():
     doc = (Path(__file__).resolve().parent.parent / "XANO_MERGE_PROPOSAL.md").read_text(encoding="utf-8")
-    assert "exact V-id token" not in doc and 'Validated_Data "0"' not in doc and "hidden from search via" not in doc
+    assert "exact V-id token" not in doc and "hidden from search via" not in doc
+    assert "pending the owner" not in doc and "pending an explicit owner exception" not in doc   # granted 2026-11-20
     assert "live - 0 + backed-up value" in doc and "except User_Email and google_data_cache" in doc
     assert "scrape_cost_usd) are set to 0" in doc

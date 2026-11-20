@@ -10,6 +10,9 @@ Every suggestion is checked against live data (read-only) before it is shown:
                  must differ from the live value; the card shows live -> proposed.
   duplicate   -> both vendors must resolve; becomes a normal merge proposal (dedupe.build_proposal).
   task        -> a GitHub issue (dry run by default).
+"Venue not in Tulle" posts (the Planner's own webhook) skip the model entirely (trends.py, no spend): not a venue
+name -> nothing; already listed under another spelling -> a one-line note in the thread; really missing -> ONE
+add-vendor card per vendor (a task, dry run by default), later requests for it -> "asked again" note with the count.
 """
 from __future__ import annotations
 
@@ -120,12 +123,17 @@ class FeedbackWatcher:
     def handle(self, ev: dict) -> str:
         if not config.feedback_watch():
             return "feedback:watch-off"
+        if config.feedback_venue_requests():
+            import trends
+            vr = trends.parse_venue_request(post_text(ev))
+            if vr is not None:
+                return self._venue_request(vr, ev)
         if self.state.over_budget():
             return "feedback:over-budget"
         today = time.strftime("%Y-%m-%d", time.gmtime())
         if float(self.store.meta(f"fb_usd:{today}", 0) or 0) >= config.feedback_daily_usd():
             return "feedback:own-budget"            # its own slice, so #feedback can't starve Q&A
-        used = self.store.count_source_since("fb:", today) + int(self.store.meta(f"fb_dup_attempts:{today}", 0) or 0)
+        used = self._used_today(today) + int(self.store.meta(f"fb_dup_attempts:{today}", 0) or 0)
         if used >= config.feedback_daily_cap():
             return "feedback:daily-cap"
         key = f"fb:{ev['channel']}:{ev['ts']}"
@@ -159,6 +167,106 @@ class FeedbackWatcher:
             return "feedback:already-proposed"
         res = post_proposal(self.slack, self.store, ev["channel"], p, thread_ts=ev["ts"])
         return f"feedback:proposed:{pr['kind']}" + ("" if res.get("ok") else f":post-failed:{res.get('error')}")
+
+    def _used_today(self, today: str) -> int:
+        """Cards proposed from #feedback today plus the bot's thread notes ("already listed", "asked again"):
+        both count toward FEEDBACK_DAILY_CAP."""
+        return self.store.count_source_since("fb:", today) + int(self.store.meta(f"fb_replies:{today}", 0) or 0)
+
+    def _reply(self, ev: dict, text: str, today: str) -> bool:
+        res = self.slack.post_message(ev["channel"], text, thread_ts=ev["ts"], sanitize=True)
+        if res.get("ok"):
+            self.store.incr_meta(f"fb_replies:{today}")
+        return bool(res.get("ok"))
+
+    # --- "Venue not in Tulle" ---------------------------------------------------------------------------
+    def _venue_request(self, vr: dict, ev: dict) -> str:
+        import hashlib
+
+        import reports
+        import trends
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        seen = f"fb_seen:fb:{ev['channel']}:{ev['ts']}"
+        if self.store.meta(seen):
+            return "feedback:venue-request:seen"
+        self.store.set_meta(seen, today)
+        if reports.is_internal(vr["user_id"], vr["email"]):
+            return "feedback:venue-request:internal"
+        if trends.not_a_venue(vr["name"]):
+            return "feedback:venue-request:not-a-venue"
+        try:
+            rows = self.directory.rows()
+        except Exception:  # noqa: BLE001 - no vendor list = no duplicate check = no card
+            log.exception("venue request: vendor read failed")
+            return "feedback:venue-request:no-directory"
+        key = trends.request_key(vr["name"], vr["loc"])
+        if key == "vreq:":
+            return "feedback:venue-request:no-name"
+        confirmed, possible, closest = trends.listed_match(vr["name"], vr["loc"], rows)
+        if confirmed:
+            if self._used_today(today) >= config.feedback_daily_cap():
+                return "feedback:daily-cap"
+            r = confirmed[0]
+            where = trends.place_label(r)
+            more = f" (and {len(confirmed) - 1} more with that name there)" if len(confirmed) > 1 else ""
+            hidden = "; it's hidden from search right now" if str(r.get("Validated_Data")) != "1" else ""
+            self._reply(ev, (f"We already list *{esc(r.get('Name'))}*{f' ({esc(where)})' if where else ''}{more}"
+                             f"{hidden}. The couple typed it differently, so there's nothing to add."), today)
+            return "feedback:venue-request:listed"
+        if vr["user_id"]:
+            who = str(vr["user_id"])
+        else:                                       # never store the address itself
+            who = "e" + hashlib.sha256(vr["email"].lower().encode()).hexdigest()[:10] if vr["email"] else "anon"
+        stat = dict(self.store.meta(key) or {"n": 0, "couples": []})
+        stat["n"] = int(stat.get("n") or 0) + 1
+        stat["couples"] = list(dict.fromkeys(list(stat.get("couples") or []) + [who]))[-200:]
+        self.store.set_meta(key, stat)
+        n, m = stat["n"], len(stat["couples"])
+        prior = self.store.by_key(key, active_only=True)
+        if prior:
+            p = prior[-1]
+            if p.get("status") == "rejected":
+                return "feedback:venue-request:rejected-before"
+            if self._used_today(today) >= config.feedback_daily_cap():
+                return "feedback:daily-cap"            # still counted above, just not announced
+            link = (f"<https://slack.com/archives/{p['channel']}/p{str(p['ts']).replace('.', '')}|here>"
+                    if p.get("channel") and p.get("ts") else "in an earlier thread")
+            self._reply(ev, (f"Asked again: {n} requests from {m} couple{'s' if m != 1 else ''} so far. The add-vendor "
+                             f"suggestion is {link}."), today)
+            return "feedback:venue-request:repeat"
+        if self._used_today(today) >= config.feedback_daily_cap():
+            return "feedback:daily-cap"
+        name = esc(trends.clean_request(vr["name"]))
+        loc = esc(vr["loc"][:60])
+        near = ", ".join(esc(f"{r.get('Name')}" + (f" ({trends.place_label(r)})" if trends.place_label(r) else ""))
+                         for r in closest) or "none"
+        times = "once" if n == 1 else f"{n} times"
+        maybe = ""
+        if possible:
+            r = possible[0]
+            pl = trends.place_label(r)
+            maybe = (f" Possible match we already list: {esc(r.get('Name'))}{f' ({esc(pl)})' if pl else ''}; the "
+                     "request doesn't say where, or says somewhere else, so check before approving.")
+        p = self.store.create(
+            "task", f"Add vendor: {name}"[:140],
+            f"Add *{name}*{f' ({loc})' if loc else ''} to the requested-vendors list so the PDF team sources it.",
+            f"A couple asked the Planner for it and we don't list it (asked {times} so far). Closest names we have: "
+            f"{near}.{maybe}",
+            "Approve to file the sourcing task (labelled from-feedback). Reject if it isn't a wedding vendor or we "
+            "shouldn't carry it; I won't suggest it again, and later requests are only counted.",
+            {"title": f"Source pricing: {trends.clean_request(vr['name'])}"
+                      + (f" ({vr['loc'][:60]})" if vr["loc"] else ""),
+             "body": "\n".join([
+                 "Couples asked the Tulle Planner for this vendor and it isn't in table 11.",
+                 f"Requested as: {trends.clean_request(vr['name'])}" + (f" / {vr['loc'][:60]}" if vr["loc"] else ""),
+                 f"Requests when proposed: {n} ({m} couple{'s' if m != 1 else ''})",
+                 f"Closest names we have: {', '.join(str(r.get('Name')) for r in closest) or 'none'}",
+                 f"Slack: https://slack.com/archives/{ev['channel']}/p{str(ev['ts']).replace('.', '')}"])},
+            key=key, source=f"fb:{ev['channel']}:{ev['ts']}")
+        if p is None:
+            return "feedback:venue-request:already-proposed"
+        res = post_proposal(self.slack, self.store, ev["channel"], p, thread_ts=ev["ts"])
+        return "feedback:venue-request:proposed" + ("" if res.get("ok") else f":post-failed:{res.get('error')}")
 
     # --- kinds -------------------------------------------------------------------------------------------
     def _vendor_edit(self, fix: dict, evidence: str, post: str, conf: float):

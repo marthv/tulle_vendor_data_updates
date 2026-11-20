@@ -258,3 +258,23 @@ def stale_apply_min() -> int:          # an apply/undo still "in progress" after
 
 def merge_timeout() -> float:
     return _f("XANO_MERGE_TIMEOUT", 120)
+
+
+def feedback_venue_requests() -> bool:  # FEEDBACK_VENUE_REQUESTS=0 turns off the "Venue not in Tulle" triage (needs FEEDBACK_WATCH=1)
+    return _flag("FEEDBACK_VENUE_REQUESTS", True)
+
+
+def trend_digest_channel() -> str:     # TREND_DIGEST_CHANNEL: where the weekly #feedback trend digest goes. Empty = off
+    return _s("TREND_DIGEST_CHANNEL")
+
+
+def trend_digest_dow() -> int:         # 0=Mon .. 6=Sun (UTC)
+    return int(_f("TREND_DIGEST_DOW", 0))
+
+
+def trend_digest_hour_utc() -> int:    # 14 UTC = 9-10am US Eastern
+    return int(_f("TREND_DIGEST_HOUR_UTC", 14))
+
+
+def trend_digest_max_pages() -> int:   # conversations.history pages (200 messages each) read per digest
+    return int(_f("TREND_DIGEST_MAX_PAGES", 10))

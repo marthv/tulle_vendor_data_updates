@@ -41,12 +41,20 @@ OFFER_PREFIX = "TT60-"
 OFFER_HOURS = 12
 OLD_OFFER_NOTE = "old 20% offer: 1 of 33 bought"
 
-INTERNAL_IDS = {14998, 30614, 32636, 31619, 118, 5622, 34249, 33167, 185, 35757}   # 35757 = +offer60test
+INTERNAL_IDS = {14998, 30614, 32636, 31619, 118, 5622, 34249, 33167, 185, 35757,   # 35757 = +offer60test
+                # Des's + Kate's test accounts (owner 2026-11-20). Not excluded: real couples.
+                21414, 21797, 21800, 21801, 21998, 22002, 22007, 22118, 22548, 22549, 22581, 22694, 24403, 26339, 26647, 26649, 26726, 27701, 29112, 29564, 29747, 31971, 32114, 33154, 33155, 33602, 34096, 35020, 35212, 36553, 35527}
+
+
+def _internal_email_prefixes() -> tuple:
+    """INTERNAL_EMAIL_PREFIXES (comma-separated, set on Railway): extra team/test email prefixes. Kept out of the
+    code because this repo is public."""
+    return tuple(p.strip().lower() for p in os.environ.get("INTERNAL_EMAIL_PREFIXES", "").split(",") if p.strip())
 
 
 def internal(uid=None, email=""):
     e = str(email or "").lower()
-    return (int(uid or 0) in INTERNAL_IDS) or e.startswith("vivek.marthi") or e.endswith("@tulletogether.com")
+    return (int(uid or 0) in INTERNAL_IDS) or e.startswith(("vivek.marthi",) + _internal_email_prefixes()) or e.endswith("@tulletogether.com")
 
 
 def _day(ms):

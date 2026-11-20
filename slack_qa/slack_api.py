@@ -163,6 +163,24 @@ class Slack:
             return list(reversed(data.get("messages", []))) if data.get("ok") else []
         return self._hist.get(("h", channel, limit, days), fetch)
 
+    def history_all(self, channel: str, days: int = 28, max_pages: int = 10) -> list[dict]:
+        """Every message of the last `days` days (oldest first), following cursors, at most max_pages x 200.
+        Uncached: the weekly digest calls it once."""
+        oldest = f"{time.time() - days * 86400:.6f}"
+        out, cursor = [], None
+        for _ in range(max(1, max_pages)):
+            params = {"channel": channel, "limit": 200, "oldest": oldest}
+            if cursor:
+                params["cursor"] = cursor
+            data = self._call("conversations.history", **params)
+            if not data.get("ok"):
+                break
+            out += data.get("messages", [])
+            cursor = (data.get("response_metadata") or {}).get("next_cursor")
+            if not cursor:
+                break
+        return sorted(out, key=lambda m: float(m.get("ts") or 0))
+
     def replies(self, channel: str, thread_ts: str, limit: int = 50) -> list[dict]:
         data = self._call("conversations.replies", channel=channel, ts=thread_ts, limit=limit)
         return data.get("messages", []) if data.get("ok") else []

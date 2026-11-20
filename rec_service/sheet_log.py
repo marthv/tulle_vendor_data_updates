@@ -36,7 +36,9 @@ ANSWER_CHARS = 1500
 
 # Internal + test accounts (feedback_exclude_internal_accounts): never in the team's sheet.
 # 31619 (soccerdog333@gmail.com) removed 2026-11-03: owner tests the sheet with it.
-INTERNAL_IDS = {14998, 30614, 32636, 118, 5622}
+INTERNAL_IDS = {14998, 30614, 32636, 118, 5622,
+                # Des's + Kate's test accounts (owner 2026-11-20). Not excluded: real couples.
+                21414, 21797, 21800, 21801, 21998, 22002, 22007, 22118, 22548, 22549, 22581, 22694, 24403, 26339, 26647, 26649, 26726, 27701, 29112, 29564, 29747, 31971, 32114, 33154, 33155, 33602, 34096, 35020, 35212, 36553, 35527}
 
 try:
     from zoneinfo import ZoneInfo

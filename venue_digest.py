@@ -35,7 +35,8 @@ REVIEW_BELOW = 0.8          # a found / best answer under this score is worth a 
 MISSED_AT = 0.6             # a not_found whose nearest candidate scored this high may be a venue we have
 TOP = 10
 # Team / test accounts (memory: exclude internal accounts from real-user numbers).
-DEFAULT_EXCLUDE = "14998,30614,32636,31619,118,5622"
+# Des's + Kate's test accounts (owner 2026-11-20). Not excluded: real couples.
+DEFAULT_EXCLUDE = "14998,30614,32636,31619,118,5622,21414,21797,21800,21801,21998,22002,22007,22118,22548,22549,22581,22694,24403,26339,26647,26649,26726,27701,29112,29564,29747,31971,32114,33154,33155,33602,34096,35020,35212,36553,35527"
 
 
 def _excluded():

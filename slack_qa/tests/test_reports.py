@@ -337,3 +337,13 @@ def test_working_message_when_slow(report_bot):
     b.working_after = 0.1
     b.handle(mention("nps report"))
     assert any("Working on the nps report" in p["text"] for p in b.slack.posts)
+
+
+def test_des_and_kate_test_accounts_are_internal_2026_11_20(monkeypatch):
+    import reports as _r
+    assert _r.is_internal(35527) and _r.is_internal(21414)
+    monkeypatch.delenv("INTERNAL_EMAIL_PREFIXES", raising=False)
+    assert not _r.is_internal(None, "teamtest12@example.com")              # empty default
+    monkeypatch.setenv("INTERNAL_EMAIL_PREFIXES", "teamtest,qa.alias+")
+    assert _r.is_internal(None, "teamtest12@example.com") and _r.is_internal(None, "QA.alias+t3@example.com")
+    assert not _r.is_internal(30959) and not _r.is_internal(34873) and not _r.is_internal(None, "couple@example.com")

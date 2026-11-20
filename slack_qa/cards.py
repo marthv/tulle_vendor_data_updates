@@ -85,11 +85,15 @@ def render(p: dict) -> tuple[str, list[dict]]:
     if plain:
         happens = plain["happens"]
         status0 = p.get("status", "pending")
-        if (status0 == "pending" and not dry_run_for(p)) or status0 in ("applied", "partial"):
+        can_undo = ((status0 == "pending" and not dry_run_for(p)) or
+                    (status0 in ("applied", "partial") and p.get("undoable", True)))
+        if plain.get("hidden") and status0 in ("undone", "undoing", "rejected", "post_failed"):
+            pass                                    # undone / never applied: the duplicate is not hidden
+        elif plain.get("hidden"):                   # merges hide the duplicate (owner exception 2026-11-20)
+            happens += " " + plain["hidden"] + (", and you can undo this from the card." if can_undo else ".")
+        elif can_undo:                              # a card proposed before 2026-11-20
             happens += " You can undo this from the card."            # only when an undo is actually possible
         blocks: list[dict] = [_section(plain["headline"]), _section(plain["why"]), _section(happens)]
-        if plain.get("check"):
-            blocks.append(_context(":eyes: " + plain["check"]))
     else:
         head = f"*Proposed change* · {KIND_LABEL.get(kind, kind)} · {p.get('title', '')}"
         blocks = [_section(clip(head, 600)), _section(p.get("what") or "")]

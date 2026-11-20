@@ -10,7 +10,9 @@ import os
 PLAN_AB_PCT = int(os.environ.get("REC_PLAN_AB_PCT", "100"))
 PLAN_AB_SALT = os.environ.get("REC_PLAN_AB_SALT", "plan-2026-11")  # change to re-randomize a new test
 # Internal accounts always see the plan (so the team can look at it); they are excluded from every read anyway.
-ALWAYS_PLAN = {14998, 30614, 32636, 31619, 118, 5622}
+ALWAYS_PLAN = {14998, 30614, 32636, 31619, 118, 5622,
+               # Des's + Kate's test accounts (owner 2026-11-20). Not excluded: real couples.
+               21414, 21797, 21800, 21801, 21998, 22002, 22007, 22118, 22548, 22549, 22581, 22694, 24403, 26339, 26647, 26649, 26726, 27701, 29112, 29564, 29747, 31971, 32114, 33154, 33155, 33602, 34096, 35020, 35212, 36553, 35527}
 
 # Slots in the order a wedding usually gets booked. key = the vendor category the cards carry.
 SLOTS = [
