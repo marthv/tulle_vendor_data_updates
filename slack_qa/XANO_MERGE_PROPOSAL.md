@@ -36,8 +36,10 @@ table vendor_merge_candidate {
     text[] loser_vendor_ids
     text proposal_id? filters=trim          // Tulle Bot proposal id (Slack card)
     text approved_by? filters=trim          // Slack user id
-    enum status?=applied { values = ["applied", "undone", "partial"] }
+    enum status?=applied { values = ["partial", "applied", "partial_undo", "undone"] }
     json counts?                            // {table_id: rows repointed}
+    json snapshots?                         // both full table-11 rows exactly as they were before the merge
+    json counters?                          // per rule column: {rule, before: {vendor_id: v}, after}
     json conflicts?                         // rows skipped (unique-index clash) or not restored on undo
     text undone_by? filters=trim
     timestamp undone_at?
@@ -79,62 +81,167 @@ table vendor_merge_backup {
 Inputs: `mode` (preview | apply | undo | status), `survivor_vendor_id`, `loser_vendor_ids[]`, `proposal_id`, `approved_by`,
 `expected_counts` (json, from the card), `secret`.
 
-Preconditions (all modes): secret matches; survivor exists in t11 and `merged_into` is null; every loser exists, has
-`merged_into` null (apply) or `== survivor` (undo), is not the survivor, and has the same `Category` as the survivor;
-at most 3 losers.
+Preconditions: secret matches; at most 3 losers; every loser is not the survivor and has the survivor's `Category`.
+- `apply` (new): survivor and every loser have `merged_into` null. **Chained merges:** a survivor that was itself
+  merged away is refused, so A→B then B→C can't happen silently; merge into the final record instead.
+- `apply` (resume): a candidate row with this `proposal_id` and status `partial` exists → continue it (step 3 skips any
+  row that already has a backup row for this merge). Status `applied`/`undone` → refuse (no double apply).
+- `undo`: the candidate row is `applied`, **`partial`** (a half-finished merge is undoable) or `partial_undo`
+  (finishes an interrupted undo). Refused if the
+  survivor has since been merged into something else (undo that later merge first).
+- `status` and `preview`: read-only, no state preconditions beyond the secret.
 
-**preview**: for each table below, count rows whose column equals a loser id. No writes. Returns `{counts}`.
-The bot can call this at card time once it exists, replacing its own paged counts (which skip table 1).
+**preview**: for each repoint column below, count rows matching a loser. No writes. Returns `{counts}`.
 
-**apply** (order matters; backup-first means a mid-run failure is still fully undoable):
-1. Refuse if a `vendor_merge_candidate` row with this `proposal_id` exists (double apply).
-2. Insert `vendor_merge_candidate` (status `partial`).
-3. For each table/column below, for each matching row: insert `vendor_merge_backup` (old, new), then `db.edit` the
-   row's column to the survivor. `text[]` columns (`user.favorited_vendors`) replace the loser id with the survivor
-   and de-duplicate. If a write would clash with a unique index (e.g. `vendor_claim` already has the same account on
-   the survivor), skip it and record it in `conflicts`.
-4. Loser rows in t11: backup `Validated_Data` + `merged_into`, then set `merged_into = survivor`,
-   `Validated_Data = "0"`. Never delete. **Visibility:** if any loser had `Validated_Data == "1"` and the survivor
-   doesn't, back up the survivor's `Validated_Data` and set it to `"1"`, so a merge can never hide a venue couples
-   could see. (The bot already ranks visible records first when it picks the survivor; this is the server-side
-   guarantee.) Undo restores both from the backup.
-5. Update the candidate row: status `applied`, counts, conflicts. Return
-   `{merge_id, backup_id: merge_id, counts, repointed_total, conflicts}`.
-6. Drift check: if any live count is more than 2x `expected_counts` for that table (the data moved a lot since the card
-   was posted), refuse BEFORE step 2 with a message the bot shows verbatim.
+**apply** (backup-first, one row at a time, so any interruption leaves a `partial` merge that can be resumed or undone):
+1. Drift check before anything is written: if a live count is more than 2x `expected_counts` for a table, refuse with
+   a message the bot shows verbatim.
+2. Insert `vendor_merge_candidate` (status `partial`, `snapshots`, `counters`, `approved_by`) or reuse the partial one.
+3. For each **repoint** column in the generated table below, for each matching row: insert a `vendor_merge_backup`
+   row (table, row id, column, old value, new value) **then** write the new value. Arrays: replace + de-duplicate,
+   order kept. JSON: replace the exact V-id token and any int `*vendor_idx` equal to a loser's table-11 row id
+   (t43 cards carry both `vendor_id` and `vendor_idx`; t66 payload carries `venue.vendor_id`, `matched.vendor_idx`).
+   A unique-index clash (t65 / t70 same account on the survivor) is skipped and recorded in `conflicts`.
+4. **rebuild** tables (t62 venue_spaces, t71 venue side) are not touched: their unique keys `space_key`
+   ("V3794|grandhall") and `pv_key` ("V1|lulucakeboutique") embed the venue's Vendor_ID, so repointing would leave keys
+   naming the old record or collide with the survivor's own rows. The nightly denorm regenerates them for the
+   survivor from the moved t36/t37 rows. **UNVERIFIED, check before build:** whether that rebuild deletes the
+   retired record's now-orphaned rows (if it doesn't, the retired rows stay but are never shown, because the record is
+   hidden and search filters on it). Test on one hand-picked pair first.
+5. Table 11, per the generated column rules: back up every column that changes on the survivor, then write it;
+   losers get `merged_into = survivor`, `Validated_Data = "0"` (backed up). Never delete. If any loser was visible
+   the survivor is made visible.
+6. Candidate row: status `applied`, counts, conflicts. Return `{merge_id, backup_id, counts, repointed_total,
+   conflicts, status}`.
 
-**status** (Re-check after a timeout): look up `vendor_merge_candidate` by `proposal_id`; return
-`{status: applied|partial|undone|none, merge_id, repointed_total}`. Read-only. The bot never retries an apply whose
-outcome it doesn't know: it shows "couldn't confirm" with a Re-check button that calls this.
+**status** (Re-check): look up `vendor_merge_candidate` by `proposal_id`; return `{status: applied | partial |
+undone | partial_undo | none, merge_id, repointed_total}`. Read-only. **The mode check must accept `status`.**
 
-The bot waits up to `XANO_MERGE_TIMEOUT` (120 s). A merge touching thousands of rows (a couple's-favourites sweep over
-60k users) may need longer: if smoke tests show that, make `apply` enqueue a background task and return
-`{status: "queued", merge_id}` at once, and let Re-check / status report completion.
-
-**undo**: for the candidate row with `proposal_id` (status `applied`): for each backup row in reverse id order, restore
-`old_value` **only if the current value still equals the `new_value` we wrote** (otherwise someone changed it since;
-record a conflict and leave it). Mark backups `restored`, candidate `undone`, `undone_by`, `undone_at`.
+**undo** (exact, from the backup only): for each backup row of this merge not yet `restored`, newest first, write
+`old_value` back **only if the current value still equals the `new_value` we wrote**; otherwise record a conflict and
+leave it. Mark each restored. Candidate → `undone`, or `partial_undo` if conflicts or an interruption left rows
+unrestored (running undo again finishes it).
+- **Counters are restored from the backed-up values, never by subtraction**: the survivor's Clicks_on_Venue goes back
+  to exactly what it was before the merge, and the loser's to its own. Stated trade-off: clicks the survivor received
+  between the merge and the undo are lost (the alternative, subtraction, double-counts or goes negative).
+- Rows deleted between merge and undo (a couple deletes a package, the nightly rebuild drops a t62 row) are skipped
+  and listed in `conflicts`; nothing is re-created.
+- **Direct links to the retired id** (emails, last_viewed, old chat cards) are repointed where stored; links outside
+  Xano (sent emails) still use the old id. **UNVERIFIED:** whether the vendor page renders a hidden record or empty;
+  if empty, the page should follow `merged_into` (a WeWeb change, separate approval).
 
 `db.edit`'s `data` block won't take a variable (project_slack_staged_vendor_edits), so each table/column is spelled out
-in its own block, the same way ep281 spells out its whitelist. Repoint list:
+in its own block, the same way ep281 spells out its whitelist.
 
-| table | column(s) | notes |
+### Generated from dedupe.py: references, name-keyed fields, column rules
+
+The block below is written by `python gen_merge_doc.py` from `dedupe.REF_TABLES`, `NAME_KEYED` and `COUNTER_RULES`;
+a test fails if it drifts from the code. Table schemas: all 58 tables of workspace 1, read 2026-11-20 (read-only).
+Checked and holding no vendor reference: 7 To Do Items, 35 Feedback, 42 rec_chats, 79 rec_usage (tool names and
+categories only), 81 rec_feedback, 12 Referrals, and the remaining admin / benchmark tables. **Verify before build:**
+the element format of `user.favorited_vendors` (Vendor_ID text assumed) on a test account.
+
+<!-- generated:start (python gen_merge_doc.py) -->
+#### Every vendor reference (from `dedupe.REF_TABLES`)
+
+| table | label | column | type | action | rule | couple-side |
+|---|---|---|---|---|---|---|
+| 10 | PDF files | Vendor_ID | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 36 | Extracted PDF data | VENDOR_ID | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 37 | Venue pricing | Vendor_ID | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 62 | Venue spaces | VENDOR_ID | text | **not repointed**: regenerated for the survivor by the nightly denorm (unique key embeds the Vendor_ID) | - |  |
+| 87 | Venue PDF facts | Vendor_ID | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 92 | Service price quotes | Vendor_ID | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 93 | Service price items | Vendor_ID | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 84 | Floral quotes | Vendor_ID | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 85 | Floral items | Vendor_ID | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 71 | Venue preferred vendors (venue side) | VENDOR_ID | text | **not repointed**: regenerated for the survivor by the nightly denorm (unique key embeds the Vendor_ID) | - |  |
+| 71 | Venue preferred vendors (as a named partner) | matched_vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 71 | Venue preferred vendors (as a named partner) | matched_vendor_idx | int row id | repoint | replace the loser's table-11 row id with the survivor's |  |
+| 86 | Preferred vendors named on PDFs | venue_vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 86 | Preferred vendors named on PDFs | matched_vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 65 | Vendor portal claims | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 66 | Vendor portal submissions | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 66 | Vendor portal submissions | payload | json | repoint | replace the exact V-id token AND any int under a *vendor_idx key (loser row id -> survivor row id) |  |
+| 67 | Vendor portal messages | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 70 | Vendor portal calendars | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 73 | Feedback triage | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 74 | Staged vendor edits | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's |  |
+| 1 | Couples' saved lists, last viewed, pricing-page context (users) | favorited_vendors | text[] | repoint | replace in place, de-duplicate, keep order | **yes** |
+| 1 | Couples' saved lists, last viewed, pricing-page context (users) | last_viewed_vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's | **yes** |
+| 1 | Couples' saved lists, last viewed, pricing-page context (users) | pricing_viewed_ctx | json | repoint | replace the exact V-id token AND any int under a *vendor_idx key (loser row id -> survivor row id) | **yes** |
+| 90 | Couples' Planner plans | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's | **yes** |
+| 33 | Couples' budget packages | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's | **yes** |
+| 31 | Couples' venue calculator entries | vendor_id | text | repoint | replace the loser Vendor_ID with the survivor's | **yes** |
+| 43 | Planner chat cards | cards | json | repoint | replace the exact V-id token AND any int under a *vendor_idx key (loser row id -> survivor row id) | **yes** |
+| 91 | Planner venue lookup log | best_vendor_id | text | **keep** (history / derived) | - |  |
+| 91 | Planner venue lookup log | alternatives | json | **keep** (history / derived) | - |  |
+| 72 | Admin audit log | target_id | text | **keep** (history / derived) | - |  |
+| 57 | Hub stats (top venue) | top_vendor_id | int row id | **keep** (history / derived) | - |  |
+
+#### Fields keyed by vendor NAME (from `dedupe.NAME_KEYED`; not reachable by an id repoint)
+
+| table | column | handling |
 |---|---|---|
-| 10 WPTP PDFs | Vendor_ID | the PDFs themselves |
-| 36 Extracted PDF Data | VENDOR_ID | |
-| 37 venue_pricing | Vendor_ID | |
-| 62 venue_spaces | VENDOR_ID | also rebuilt nightly from 36/37 |
-| 87 venue_pdf_facts | Vendor_ID | |
-| 92 vendor_price_quotes / 93 vendor_price_items | Vendor_ID | |
-| 84 floral_quotes / 85 floral_items | Vendor_ID | |
-| 71 venue_preferred_vendors | VENDOR_ID, matched_vendor_id | `matched_vendor_idx` (int t11 id) too |
-| 86 venue_pdf_preferred_vendors | venue_vendor_id, matched_vendor_id | |
-| 90 rec_wedding_plan | vendor_id | couples' Planner plans |
-| 65 vendor_claim, 66 vendor_submission, 67 vendor_message, 70 vendor_calendar | vendor_id | vendor portal; unique (account, venue) clashes -> conflicts |
-| 73 feedback_triage_state, 74 pending_edit | vendor_id | |
-| 33 Packages, 31 Venue Calculator Entries | vendor_id | |
-| 1 user | favorited_vendors (text[]), last_viewed_vendor_id | couples' saved lists |
-| — left as-is — | 91 venue_lookup_log.best_vendor_id (history), 57 hub_stats.top_vendor_id (recomputed nightly) | |
+| 1 user | last_viewed_vendor_name | updated to the survivor's name when last_viewed_vendor_id is repointed |
+| 90 rec_wedding_plan | vendor_name | updated with vendor_id; free-text items (vendor_id empty) are name-only |
+| 33 Packages | vendor_name | manual packages have no vendor_id: name-only, left as typed |
+| 31 Venue Calculator Entries | venue_name | updated with vendor_id when present |
+| 65 vendor_claim / 74 pending_edit | venue_name / vendor_name | denormalised; updated with vendor_id |
+| 36 Extracted PDF Data / 37 venue_pricing | VENUE_NAME / Venue_Name | the name printed on the PDF; left as-is |
+| 71 venue_preferred_vendors | partner_key / partner_name / matched_vendor_name / venue_name | partner_key is a NAME/domain-derived identity: rows that collide after the repoint are combined |
+| 86 venue_pdf_preferred_vendors | vendor_name_raw / vendor_name_norm | as printed on the PDF; left as-is |
+| 45 WPTP_Upload_Record | Vendor_Name | upload log with NO vendor id at all: unreachable by id |
+| 6 WPTP - Pending Uploads | Name | pre-ingest submissions, name only |
+| 43 rec_messages / 80 rec_memory | content / notes | free text written by the Planner/couple: left as-is |
+| 57 hub_stats | top_vendor_name | recomputed nightly |
+| 11 WPTP Updated Mappings | mk_name_key | recomputed for the survivor after the merge |
+
+#### Table 11 column rules on merge (from `dedupe.COUNTER_RULES`)
+
+| column | rule | note |
+|---|---|---|
+| Clicks_on_Venue | **sum** S + L | couples' clicks add up |
+| Validated_Data | **"1" if any record was "1"** | visible if any record was visible (a merge never hides a venue) |
+| gold_chip | **OR** | kept if either record had it |
+| Collection | **union**, S order first | every collection tag, survivor's order first |
+| Flags | **union of tokens** | every flag, de-duplicated |
+| Max_Capacity_Seated | **max** | largest stated capacity |
+| Time_of_Submission | **earliest** | first time this venue was submitted |
+| google_data_last_fetched | **from the record whose Place_ID is kept** | taken from the record whose Place_ID is kept |
+| google_data_cache | **from the record whose Place_ID is kept** | taken from the record whose Place_ID is kept (rating matches the listing) |
+| scrape_last_attempted_at | **most recent** |  |
+| scrape_cost_usd | **sum** S + L | money already spent scraping both |
+| Website | **fill if empty** (S kept; L only where S is blank) |  |
+| Description | **fill if empty** (S kept; L only where S is blank) |  |
+| Contact_Information | **fill if empty** (S kept; L only where S is blank) |  |
+| Place_ID | **fill if empty** (S kept; L only where S is blank) |  |
+| Address | **fill if empty** (S kept; L only where S is blank) |  |
+| Venue_Type | **fill if empty** (S kept; L only where S is blank) |  |
+| Type_of_Photography | **fill if empty** (S kept; L only where S is blank) |  |
+| Type_of_Entertainment | **fill if empty** (S kept; L only where S is blank) |  |
+| Type_of_Beauty | **fill if empty** (S kept; L only where S is blank) |  |
+| image | **fill if empty** (S kept; L only where S is blank) |  |
+| image_1 | **fill if empty** (S kept; L only where S is blank) |  |
+| image_2 | **fill if empty** (S kept; L only where S is blank) |  |
+| image_3 | **fill if empty** (S kept; L only where S is blank) |  |
+| flt_space_count | **recompute** for S after the merge | re-derived from the merged pricing rows by the nightly denorm |
+| Name, Category, State, Country, lat, lng, User_Email, scrape_status, scrape_last_error | **keep S** | |
+| every other flt_* / mk_* denorm column | **recompute** for S | derived from the moved rows |
+| merged_into (L only) | := S Vendor_ID | |
+<!-- generated:end -->
+
+Counters outside table 11: venue_preferred_vendors.source_row_count and venue_spaces.contract_count are regenerated
+by the rebuild; hub_stats.top_vendor_clicks is recomputed nightly. Per-couple counters on table 1
+(total_vendor_views, total_pdf_views, FreeViewsRemaining) count a couple's actions, not a vendor's, so they don't change.
+
+### Full record kept (exact undo)
+- `vendor_merge_candidate.snapshots`: both table-11 rows, every field, as they were the moment before the merge.
+  `vendor_merge_candidate.counters`: each rule column's rule, value per record before, and the value written.
+- `vendor_merge_backup`: every changed row/column (old and new), user-side fields included. Undo reads only this.
+- The bot's proposal store keeps the same snapshots, the per-table row ids it found, and the counter plan; the card's
+  **Details** button shows them.
+
 
 ### Draft XanoScript (pattern; two tables shown, the rest repeat block 3)
 ```
@@ -151,7 +258,7 @@ query "vendor/merge" verb=POST {
   }
   stack {
     precondition ($input.secret == "<same literal as ep279>") { error_type = "accessdenied" error = "bad secret" }
-    precondition ($input.mode == "preview" || $input.mode == "apply" || $input.mode == "undo") { error = "bad mode" }
+    precondition ($input.mode == "preview" || $input.mode == "apply" || $input.mode == "undo" || $input.mode == "status") { error = "bad mode" }
     db.query WPTP_Updated_Mappings { where = $db.WPTP_Updated_Mappings.Vendor_ID == $input.survivor_vendor_id
       return = {type: "single"} } as $survivor
     precondition ($survivor != null && $survivor.merged_into == null) { error = "survivor missing or already merged" }
@@ -169,7 +276,7 @@ query "vendor/merge" verb=POST {
       }}
       // preview: add ($rows|count) to $counts["10"]
     }}
-    // ... same for 36, 37, 62, 87, 92, 93, 84, 85, 71 (2 columns), 86 (2), 90, 65, 66, 67, 70, 73, 74, 33, 31, 1 ...
+    // ... same for every repoint column in the generated table (NOT t62 / t71 venue side: rebuild) ...
   }
   response = {merge_id: $merge.id, backup_id: $merge.id, counts: $counts, repointed_total: $total,
               conflicts: $conflicts}

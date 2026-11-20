@@ -265,9 +265,12 @@ def test_scan_creates_proposals_with_reference_counts_and_skips_rejected():
     p = res["proposals"][0]
     assert p["payload"]["survivor"] == "V2"          # more PDFs wins (2 vs 1)
     assert p["payload"]["losers"] == ["V1"] and p["payload"]["counts"]["t10"] == 1
-    assert "PDF files (WPTP PDFs) (table 10): 1 row → V2" in p["touches"]
-    assert "Couples' saved vendors (users) (table 1): counted by the merge endpoint" in p["touches"]
-    assert "retired, not deleted" in p["what"]
+    t10 = next(t for t in p["payload"]["tables"] if t["table"] == 10)
+    assert t10["count"] == 1 and t10["rows"] and t10["rows"][0][1] == "Vendor_ID"
+    assert next(t for t in p["payload"]["tables"] if t["table"] == 1)["status"] == "not_counted"
+    assert "hidden, not deleted" in p["plain"]["happens"] and "listed twice" in p["plain"]["headline"]
+    details = " ".join(dedupe.details_text(p))
+    assert "PDF files (table 10): 1 → survivor" in details and "counted and moved by the merge endpoint" in details
     text, blocks = cards.render(p)
     assert cards.validate(blocks) == []
     # pending -> not proposed again; rejected -> never again

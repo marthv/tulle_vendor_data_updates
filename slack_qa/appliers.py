@@ -71,6 +71,7 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
                            "was sent.")
     body = {"mode": mode, "survivor_vendor_id": payload.get("survivor"), "loser_vendor_ids": payload.get("losers"),
             "proposal_id": proposal_id, "approved_by": user, "expected_counts": counts,
+            "snapshots": payload.get("snapshots"), "counters": payload.get("counters"),
             "secret": config.merge_secret()}
     res = _post(config.merge_url(), body, timeout=config.merge_timeout())
     if res.get("unknown"):
@@ -78,6 +79,10 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
                     unknown=True)
     if not res.get("ok"):
         return _out(False, f"Xano refused: {esc(res.get('error'))}. Nothing was changed.")
+    if res.get("status") in ("partial", "partial_undo"):
+        what = "undo" if mode == "undo" else "merge"
+        return _out(False, f"Xano says the {what} stopped part-way ({esc(res.get('status'))}).", unknown=True,
+                    result={k: v for k, v in res.items() if k != "secret"})
     if res.get("status") == "queued":
         return _out(False, "Xano queued the merge and is still running it.", unknown=True)
     moved = res.get("repointed_total", "?")
@@ -99,9 +104,14 @@ def merge_status(payload: dict, proposal_id: str) -> dict:
     if not res.get("ok"):
         return {"state": "unknown", "text": f"The status check didn't answer ({esc(res.get('error'))})."}
     st = str(res.get("status") or "none")
-    if st in ("applied", "partial"):
+    if st == "applied":
         return {"state": "applied", "text": f"Confirmed: the merge ran ({esc(res.get('repointed_total', '?'))} rows, "
                                             f"backup {esc(res.get('merge_id', '?'))})."}
+    if st == "partial":
+        return {"state": "applied", "text": "The merge stopped part-way. Everything that moved is backed up: press "
+                                            "Undo merge to put it all back."}
+    if st == "partial_undo":
+        return {"state": "applied", "text": "The undo stopped part-way. Press Undo merge again to finish it."}
     if st == "undone":
         return {"state": "undone", "text": "Confirmed: the merge ran and was undone."}
     return {"state": "none", "text": "Confirmed: no merge exists for this card, so nothing changed."}

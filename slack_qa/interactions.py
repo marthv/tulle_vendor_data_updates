@@ -19,7 +19,7 @@ import config
 from proposals import Store
 
 log = logging.getLogger("slack_qa.interactions")
-ACTIONS = (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO, cards.ACTION_RECHECK)
+ACTIONS = (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO, cards.ACTION_RECHECK, cards.ACTION_DETAILS)
 
 
 def parse_body(body: bytes) -> dict | None:
@@ -77,6 +77,8 @@ class Interactions:
         chan = (payload.get("channel") or {}).get("id") or (payload.get("container") or {}).get("channel_id")
         msg_ts = (payload.get("message") or {}).get("ts") or (payload.get("container") or {}).get("message_ts")
         thread = (payload.get("message") or {}).get("thread_ts")
+        if aid == cards.ACTION_DETAILS:                 # read-only: anyone in the workspace may open it
+            return self._details(pid, user, chan, msg_ts, thread)
         if user not in config.approvers():
             self._ephemeral(chan, user, f"Only {cards.approver_names()} can approve or reject Tulle Bot changes, so "
                                         "nothing happened.", thread)
@@ -173,6 +175,24 @@ class Interactions:
                                      rechecked_by=user)
         self._refresh(p)
         return f"recheck:{to}"
+
+    def _details(self, pid, user, chan, msg_ts, thread) -> str:
+        p = self.store.get(pid)
+        if not p or p.get("kind") != "merge":
+            return "ignored:details"
+        if p.get("ts") and msg_ts and p.get("ts") != msg_ts:
+            return "ignored:message-mismatch"
+        if p.get("details_ts"):
+            self._ephemeral(chan, user, "The details are in this card's thread.", thread)
+            return "details:already"
+        text, blocks = cards.render_details(p)
+        res = self.slack.post_blocks(p.get("channel") or chan, text, blocks, thread_ts=thread or p.get("ts"))
+        if res.get("ok"):
+            with self.store._lock:
+                self.store._data["proposals"][pid]["details_ts"] = res.get("ts")
+                self.store._save()
+            return "details:posted"
+        return f"details:failed:{res.get('error')}"
 
     def _ephemeral(self, chan, user, text, thread):
         if chan:

@@ -24,6 +24,7 @@ MAX_FALLBACK = 3000
 
 KIND_LABEL = {"merge": "Merge duplicate vendors", "vendor_edit": "Vendor data fix", "task": "New task"}
 ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO, ACTION_RECHECK = "tb_approve", "tb_reject", "tb_undo", "tb_recheck"
+ACTION_DETAILS = "tb_details"
 
 
 def esc(text) -> str:
@@ -59,46 +60,69 @@ def dry_run_for(p: dict) -> bool:
     return bool(p.get("dry_run", True)) or default_dry_run(p.get("kind", ""))
 
 
+def _btn(action: str, pid: str, text: str, style: str | None = None, confirm: dict | None = None) -> dict:
+    b = {"type": "button", "action_id": action, "value": pid, "text": {"type": "plain_text", "text": text}}
+    if style:
+        b["style"] = style
+    if confirm:
+        b["confirm"] = confirm
+    return b
+
+
+UNDO_CONFIRM = {"title": {"type": "plain_text", "text": "Undo this merge?"},
+                "text": {"type": "mrkdwn", "text": "Puts both listings back exactly as they were before the merge."},
+                "confirm": {"type": "plain_text", "text": "Undo"}, "deny": {"type": "plain_text", "text": "Cancel"}}
+
+
 def render(p: dict) -> tuple[str, list[dict]]:
-    """(fallback text, blocks) for a proposal dict from proposals.Store."""
+    """(fallback text, blocks) for a proposal dict from proposals.Store. A merge with `plain` text gets the short card
+    (3 lines + buttons, no ids or table names); the full record is behind the Details button."""
     kind = p.get("kind", "task")
-    head = f"*Proposed change* · {KIND_LABEL.get(kind, kind)} · {p.get('title', '')}"
-    blocks: list[dict] = [_section(clip(head, 600)), _section(p.get("what") or "")]
-    if p.get("why"):
-        blocks.append(_section("*Why:* " + p["why"]))
-    if p.get("touches"):
-        blocks.append(_section("*What it touches:*\n" + p["touches"]))
-    if p.get("next_steps"):
-        blocks.append(_section("*Next steps:* " + p["next_steps"]))
+    plain = p.get("plain")
+    if plain:
+        blocks: list[dict] = [_section(plain["headline"]), _section(plain["why"]), _section(plain["happens"])]
+    else:
+        head = f"*Proposed change* · {KIND_LABEL.get(kind, kind)} · {p.get('title', '')}"
+        blocks = [_section(clip(head, 600)), _section(p.get("what") or "")]
+        if p.get("why"):
+            blocks.append(_section("*Why:* " + p["why"]))
+        if p.get("touches"):
+            blocks.append(_section("*What it touches:*" + chr(10) + p["touches"]))
+        if p.get("next_steps"):
+            blocks.append(_section("*Next steps:* " + p["next_steps"]))
     status = p.get("status", "pending")
+    buttons = []
     if status == "pending":
         if dry_run_for(p):
             blocks.append(_context(":test_tube: Dry run is on: approving records the decision and shows what would "
                                    "happen. Nothing is written until dry run is switched off."))
-        blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": [
-            {"type": "button", "action_id": ACTION_APPROVE, "value": p["id"], "style": "primary",
-             "text": {"type": "plain_text", "text": "Approve and apply"}},
-            {"type": "button", "action_id": ACTION_REJECT, "value": p["id"], "style": "danger",
-             "text": {"type": "plain_text", "text": "Reject"}},
-        ]})
+        buttons = [_btn(ACTION_APPROVE, p["id"], "Approve and apply", "primary"),
+                   _btn(ACTION_REJECT, p["id"], "Reject", "danger")]
     else:
         blocks.append(_context(outcome_line(p)))
         if status == "unknown":
-            blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": [
-                {"type": "button", "action_id": ACTION_RECHECK, "value": p["id"],
-                 "text": {"type": "plain_text", "text": "Re-check"}}]})
+            buttons.append(_btn(ACTION_RECHECK, p["id"], "Re-check"))
         if status == "applied" and kind == "merge" and p.get("undoable", True):
-            blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": [
-                {"type": "button", "action_id": ACTION_UNDO, "value": p["id"],
-                 "text": {"type": "plain_text", "text": "Undo merge"},
-                 "confirm": {"title": {"type": "plain_text", "text": "Undo this merge?"},
-                             "text": {"type": "mrkdwn", "text": "Restores every repointed row from the backup "
-                                                                 "taken before the merge."},
-                             "confirm": {"type": "plain_text", "text": "Undo"},
-                             "deny": {"type": "plain_text", "text": "Cancel"}}}]})
+            buttons.append(_btn(ACTION_UNDO, p["id"], "Undo merge", confirm=UNDO_CONFIRM))
+    if kind == "merge" and (p.get("payload") or {}).get("snapshots"):
+        buttons.append(_btn(ACTION_DETAILS, p["id"], "Details"))
+    if buttons:
+        blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": buttons})
     blocks.append(_context(f"Proposed by Tulle Bot. Only {approver_names()} can approve."))
-    fallback = clip(f"Proposed change: {KIND_LABEL.get(kind, kind)} - {p.get('title', '')}", MAX_FALLBACK)
+    label = plain["headline"].replace("*", "") if plain else f"{KIND_LABEL.get(kind, kind)} - {p.get('title', '')}"
+    fallback = clip(f"Proposed change: {label}", MAX_FALLBACK)
     return fallback, blocks
+
+
+def render_details(p: dict) -> tuple[str, list[dict]]:
+    """The Details thread reply: the full technical record (both rows field by field, every row move, counter
+    rules before -> after, name-keyed fields)."""
+    import dedupe
+    chunks = dedupe.details_text(p)
+    blocks = [_section(c) for c in chunks][: MAX_BLOCKS - 1]
+    blocks.append(_context("Full record, including every row id and both complete snapshots, is kept in the "
+                           "proposal store and in the merge backup table, so undo is exact."))
+    return clip(f"Technical details: {p.get('title', '')}", MAX_FALLBACK), blocks
 
 
 def outcome_line(p: dict) -> str:

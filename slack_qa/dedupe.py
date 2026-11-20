@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import collections
+import json
 import logging
 import math
 import re
@@ -52,33 +53,140 @@ CHAIN_DOMAIN_MIN = 6        # a domain on this many vendors is a chain / platfor
 BRAND_NAME_MIN = 3          # a normalised name on this many vendors is a brand ("hilton garden inn", "first baptist church")
 MAX_GROUP = 4
 
-# Every table that points at a vendor (workspace 1, checked 2026-11-20). action: repoint = the merge endpoint moves
-# rows to the survivor; keep = history/derived (rebuilt nightly or a log), left as-is and noted on the card.
+# Every place a vendor is referenced (workspace 1, all 58 tables' schemas read 2026-11-20, read-only).
+# Column kinds: id = text Vendor_ID ("V123"); ids = text[] of Vendor_IDs; json = JSON/JSON-string that embeds Vendor_IDs
+# (exact-token replace); rowid = int table-11 row id. action: repoint = the merge endpoint moves it to the survivor;
+# keep = history/derived (a log, or rebuilt nightly), left as-is and listed on the details view.
+# rebuild = NOT repointed: the rows carry a unique key that embeds the venue's Vendor_ID (t62 space_key "V3794|grandhall",
+# t71 pv_key "V1|lulucakeboutique"), so a repoint would leave keys naming the old record or collide with the survivor's
+# rows. The nightly denorm regenerates them for the survivor from the moved 36/37 rows (risk review 2026-11-20).
+# user = the couple's own data (saved lists, plans, packages, chats), shown separately on the card.
 REF_TABLES = [
-    (10, "PDF files (WPTP PDFs)", ["Vendor_ID"], "repoint"),
-    (36, "Extracted PDF data", ["VENDOR_ID"], "repoint"),
-    (37, "Venue pricing", ["Vendor_ID"], "repoint"),
-    (62, "Venue spaces", ["VENDOR_ID"], "repoint"),
-    (87, "Venue PDF facts", ["Vendor_ID"], "repoint"),
-    (92, "Service price quotes", ["Vendor_ID"], "repoint"),
-    (93, "Service price items", ["Vendor_ID"], "repoint"),
-    (84, "Floral quotes", ["Vendor_ID"], "repoint"),
-    (85, "Floral items", ["Vendor_ID"], "repoint"),
-    (71, "Venue preferred vendors", ["VENDOR_ID", "matched_vendor_id"], "repoint"),
-    (86, "Preferred vendors named on PDFs", ["venue_vendor_id", "matched_vendor_id"], "repoint"),
-    (90, "Couples' Planner plans", ["vendor_id"], "repoint"),
-    (65, "Vendor portal claims", ["vendor_id"], "repoint"),
-    (66, "Vendor portal submissions", ["vendor_id"], "repoint"),
-    (67, "Vendor portal messages", ["vendor_id"], "repoint"),
-    (70, "Vendor portal calendars", ["vendor_id"], "repoint"),
-    (73, "Feedback triage", ["vendor_id"], "repoint"),
-    (74, "Staged vendor edits", ["vendor_id"], "repoint"),
-    (33, "Packages", ["vendor_id"], "repoint"),
-    (31, "Venue calculator entries", ["vendor_id"], "repoint"),
-    (1, "Couples' saved vendors (users)", ["favorited_vendors", "last_viewed_vendor_id"], "repoint"),
-    (91, "Planner venue lookup log", ["best_vendor_id"], "keep"),
+    (10, "PDF files", [("Vendor_ID", "id")], "repoint", False),
+    (36, "Extracted PDF data", [("VENDOR_ID", "id")], "repoint", False),
+    (37, "Venue pricing", [("Vendor_ID", "id")], "repoint", False),
+    (62, "Venue spaces", [("VENDOR_ID", "id")], "rebuild", False),
+    (87, "Venue PDF facts", [("Vendor_ID", "id")], "repoint", False),
+    (92, "Service price quotes", [("Vendor_ID", "id")], "repoint", False),
+    (93, "Service price items", [("Vendor_ID", "id")], "repoint", False),
+    (84, "Floral quotes", [("Vendor_ID", "id")], "repoint", False),
+    (85, "Floral items", [("Vendor_ID", "id")], "repoint", False),
+    (71, "Venue preferred vendors (venue side)", [("VENDOR_ID", "id")], "rebuild", False),
+    (71, "Venue preferred vendors (as a named partner)", [("matched_vendor_id", "id"), ("matched_vendor_idx", "rowid")],
+     "repoint", False),
+    (86, "Preferred vendors named on PDFs", [("venue_vendor_id", "id"), ("matched_vendor_id", "id")], "repoint", False),
+    (65, "Vendor portal claims", [("vendor_id", "id")], "repoint", False),
+    (66, "Vendor portal submissions", [("vendor_id", "id"), ("payload", "json")], "repoint", False),
+    (67, "Vendor portal messages", [("vendor_id", "id")], "repoint", False),
+    (70, "Vendor portal calendars", [("vendor_id", "id")], "repoint", False),
+    (73, "Feedback triage", [("vendor_id", "id")], "repoint", False),
+    (74, "Staged vendor edits", [("vendor_id", "id")], "repoint", False),
+    (1, "Couples' saved lists, last viewed, pricing-page context (users)",
+     [("favorited_vendors", "ids"), ("last_viewed_vendor_id", "id"), ("pricing_viewed_ctx", "json")], "repoint", True),
+    (90, "Couples' Planner plans", [("vendor_id", "id")], "repoint", True),
+    (33, "Couples' budget packages", [("vendor_id", "id")], "repoint", True),
+    (31, "Couples' venue calculator entries", [("vendor_id", "id")], "repoint", True),
+    (43, "Planner chat cards", [("cards", "json")], "repoint", True),
+    (91, "Planner venue lookup log", [("best_vendor_id", "id"), ("alternatives", "json")], "keep", False),
+    (72, "Admin audit log", [("target_id", "id")], "keep", False),
+    (57, "Hub stats (top venue)", [("top_vendor_id", "rowid")], "keep", False),
 ]
-SKIP_BY_DEFAULT = {1}       # 60k+ user rows: counted by the merge endpoint at preview/apply time, not by paging
+SKIP_BY_DEFAULT = {1, 43, 72}   # users (60k+), every Planner message, the audit log: counted by the merge endpoint
+
+# Fields that hold a vendor NAME as the key (no Vendor_ID), so an id repoint can't reach them. Listed on every
+# details view and in XANO_MERGE_PROPOSAL.md; none is rewritten automatically.
+NAME_KEYED = [
+    ("1 user", "last_viewed_vendor_name", "updated to the survivor's name when last_viewed_vendor_id is repointed"),
+    ("90 rec_wedding_plan", "vendor_name", "updated with vendor_id; free-text items (vendor_id empty) are name-only"),
+    ("33 Packages", "vendor_name", "manual packages have no vendor_id: name-only, left as typed"),
+    ("31 Venue Calculator Entries", "venue_name", "updated with vendor_id when present"),
+    ("65 vendor_claim / 74 pending_edit", "venue_name / vendor_name", "denormalised; updated with vendor_id"),
+    ("36 Extracted PDF Data / 37 venue_pricing", "VENUE_NAME / Venue_Name", "the name printed on the PDF; left as-is"),
+    ("71 venue_preferred_vendors", "partner_key / partner_name / matched_vendor_name / venue_name",
+     "partner_key is a NAME/domain-derived identity: rows that collide after the repoint are combined"),
+    ("86 venue_pdf_preferred_vendors", "vendor_name_raw / vendor_name_norm", "as printed on the PDF; left as-is"),
+    ("45 WPTP_Upload_Record", "Vendor_Name", "upload log with NO vendor id at all: unreachable by id"),
+    ("6 WPTP - Pending Uploads", "Name", "pre-ingest submissions, name only"),
+    ("43 rec_messages / 80 rec_memory", "content / notes", "free text written by the Planner/couple: left as-is"),
+    ("57 hub_stats", "top_vendor_name", "recomputed nightly"),
+    ("11 WPTP Updated Mappings", "mk_name_key", "recomputed for the survivor after the merge"),
+]
+
+# Per-column rules for table 11 when records merge into the survivor (S = survivor, L = losers). Every column the
+# rule changes is backed up first, so undo restores the exact old values.
+COUNTER_RULES = {
+    "Clicks_on_Venue": ("sum", "couples' clicks add up"),
+    "Validated_Data": ("any_visible", "visible if any record was visible (a merge never hides a venue)"),
+    "gold_chip": ("or", "kept if either record had it"),
+    "Collection": ("union", "every collection tag, survivor's order first"),
+    "Flags": ("union_tokens", "every flag, de-duplicated"),
+    "Max_Capacity_Seated": ("max", "largest stated capacity"),
+    "Time_of_Submission": ("earliest", "first time this venue was submitted"),
+    "google_data_last_fetched": ("with_place_id", "taken from the record whose Place_ID is kept"),
+    "google_data_cache": ("with_place_id", "taken from the record whose Place_ID is kept (rating matches the listing)"),
+    "scrape_last_attempted_at": ("most_recent", ""),
+    "scrape_cost_usd": ("sum", "money already spent scraping both"),
+    "Website": ("fill_if_empty", ""), "Description": ("fill_if_empty", ""), "Contact_Information": ("fill_if_empty", ""),
+    "Place_ID": ("fill_if_empty", ""), "Address": ("fill_if_empty", ""), "Venue_Type": ("fill_if_empty", ""),
+    "Type_of_Photography": ("fill_if_empty", ""), "Type_of_Entertainment": ("fill_if_empty", ""),
+    "Type_of_Beauty": ("fill_if_empty", ""), "image": ("fill_if_empty", ""), "image_1": ("fill_if_empty", ""),
+    "image_2": ("fill_if_empty", ""), "image_3": ("fill_if_empty", ""),
+    "flt_space_count": ("recompute", "re-derived from the merged pricing rows by the nightly denorm"),
+}
+# Everything else on table 11: Name, Category, State, Country, lat, lng, User_Email, scrape_status, scrape_last_error
+# keep the survivor's value; all other flt_* / mk_* denorm columns are recomputed for the survivor after the merge.
+
+
+def _blank(v) -> bool:
+    return v is None or (isinstance(v, str) and not v.strip()) or v == [] or v == {}
+
+
+def _num(v) -> float:
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def counter_plan(survivor: dict, losers: list[dict]) -> list[dict]:
+    """What each rule column becomes on the survivor: [{"column", "rule", "before": {vid: v}, "after"}] for the columns
+    whose value actually changes (or is recomputed)."""
+    out = []
+    allr = [survivor] + losers
+    for col, (rule, _note) in COUNTER_RULES.items():
+        vals = [r.get(col) for r in allr]
+        sv = survivor.get(col)
+        if rule == "sum":
+            after = sum(_num(v) for v in vals)
+            after = int(after) if all(isinstance(v, int) or v in (None, "") for v in vals) else round(after, 4)
+        elif rule == "any_visible":
+            after = "1" if any(str(v) == "1" for v in vals) else sv
+        elif rule == "or":
+            after = any(bool(v) for v in vals)
+        elif rule == "union":
+            after = list(dict.fromkeys(x for v in vals for x in (v or []) if x))
+        elif rule == "union_tokens":
+            toks = [t.strip() for v in vals for t in re.split(r"[;,]", str(v or "")) if t.strip()]
+            after = ", ".join(dict.fromkeys(toks))
+        elif rule == "max":
+            after = max((_num(v) for v in vals), default=0)
+            after = int(after) if float(after).is_integer() else after
+        elif rule in ("earliest", "most_recent"):
+            ds = [v for v in vals if v not in (None, "", 0)]
+            after = (min(ds, key=str) if rule == "earliest" else max(ds, key=str)) if ds else sv
+        elif rule == "with_place_id":
+            src = survivor if not _blank(survivor.get("Place_ID")) else                 next((r for r in losers if not _blank(r.get("Place_ID"))), survivor)
+            after = src.get(col)
+        elif rule == "fill_if_empty":
+            after = sv if not _blank(sv) else next((v for v in vals[1:] if not _blank(v)), sv)
+        else:                                          # recompute
+            out.append({"column": col, "rule": rule, "before": {r.get("Vendor_ID"): r.get(col) for r in allr},
+                        "after": "recomputed"})
+            continue
+        if after != sv and not (_blank(after) and _blank(sv)):
+            out.append({"column": col, "rule": rule, "before": {r.get("Vendor_ID"): r.get(col) for r in allr},
+                        "after": after})
+    return out
 
 
 def _states(s) -> frozenset:
@@ -312,8 +420,31 @@ def choose_survivor(members: list[dict], pdf_counts: dict[str, int]) -> tuple[di
 
 
 # --- reference counts (read-only) -------------------------------------------------------------------------
+def _idx_values(obj) -> set[int]:
+    """Every int under a key ending in 'vendor_idx' anywhere in a JSON value."""
+    out, stack = set(), [obj]
+    while stack:
+        o = stack.pop()
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if str(k).lower().endswith("vendor_idx"):
+                    try:
+                        out.add(int(v))
+                    except (TypeError, ValueError):
+                        pass
+                elif isinstance(v, (dict, list)):
+                    stack.append(v)
+        elif isinstance(o, list):
+            stack.extend(o)
+    return out
+
+
 class RefIndex:
-    """{table_id: {vendor_id: count}} built from read-only pages, within a page budget."""
+    """Read-only reference index for the vendors in play: counts[table][vendor_id] and rows[table][vendor_id] =
+    [(row id, column)], built from 500-row pages within a page budget. JSON columns match the exact Vendor_ID token;
+    rowid columns match the vendors' table-11 row ids."""
+
+    MAX_ROW_IDS = 200        # per table per vendor kept in the proposal (the endpoint backs up every row anyway)
 
     def __init__(self, xano, max_pages: int, page_delay: float = 0.0, skip: set[int] | None = None,
                  only: set[int] | None = None):
@@ -322,15 +453,43 @@ class RefIndex:
         if only is not None:                 # e.g. {10, 36} for a cheap count; the rest -> "counted at merge time"
             self.skip = self.skip | {t for t, *_ in REF_TABLES if t not in only}
         self.counts: dict[int, collections.Counter] = {}
+        self.rows: dict[int, dict[str, list]] = {}
         self.not_counted: set[int] = set()
         self.pages_used = 0
 
-    def build(self, wanted: set[str]) -> None:
-        for tid, _label, cols, _action in REF_TABLES:
+    @staticmethod
+    def _hits(v, kind: str, wanted: set[str], rowids: dict) -> set[str]:
+        if v is None or v == "":
+            return set()
+        if kind == "id":
+            x = str(v).strip()
+            return {x} if x in wanted else set()
+        if kind == "ids":
+            return {str(x).strip() for x in (v if isinstance(v, list) else [v]) if str(x).strip() in wanted}
+        if kind == "rowid":
+            try:
+                return {rowids[int(v)]} if int(v) in rowids else set()
+            except (TypeError, ValueError):
+                return set()
+        text = v if isinstance(v, str) else json.dumps(v)
+        found = {w for w in wanted if re.search(r"(?<![A-Za-z0-9])" + re.escape(w) + r"(?![0-9])", text)}
+        if rowids:                       # cards/payload also carry the INT row id as vendor_idx / matched.vendor_idx
+            obj = v
+            if isinstance(v, str):
+                try:
+                    obj = json.loads(v)
+                except ValueError:
+                    obj = None
+            found |= {rowids[i] for i in _idx_values(obj) if i in rowids}
+        return found
+
+    def build(self, wanted: set[str], rowids: dict[int, str] | None = None) -> None:
+        rowids = rowids or {}
+        for tid, _label, cols, _action, _user in REF_TABLES:
             if tid in self.skip:
                 self.not_counted.add(tid)
                 continue
-            c = collections.Counter()
+            c, rws = collections.Counter(), collections.defaultdict(list)
             page, ok = 1, True
             while True:
                 if self.pages_used >= self.max_pages:
@@ -340,13 +499,11 @@ class RefIndex:
                 self.pages_used += 1
                 items = d.get("items", []) if isinstance(d, dict) else (d or [])
                 for row in items:
-                    for col in cols:
-                        v = row.get(col)
-                        vals = v if isinstance(v, list) else [v]
-                        for x in vals:
-                            x = str(x or "").strip()
-                            if x in wanted:
-                                c[x] += 1
+                    for col, kind in cols:
+                        for vid in self._hits(row.get(col), kind, wanted, rowids):
+                            c[vid] += 1
+                            if len(rws[vid]) < self.MAX_ROW_IDS:
+                                rws[vid].append([row.get("id"), col])
                 nxt = d.get("nextPage") if isinstance(d, dict) else None
                 if not items or len(items) < 500 or (isinstance(d, dict) and "nextPage" in d and not nxt):
                     break
@@ -354,7 +511,7 @@ class RefIndex:
                 if self.page_delay:
                     time.sleep(self.page_delay)
             if ok:
-                self.counts[tid] = c
+                self.counts[tid], self.rows[tid] = c, dict(rws)
             else:
                 self.not_counted.add(tid)
 
@@ -370,59 +527,154 @@ def _loc(r: dict) -> str:
     return ", ".join(x for x in (c, st) if x) or "location unknown"
 
 
+def _place(r: dict) -> str:
+    c = city(r.get("Address")).title()
+    st = ", ".join(sorted(_states(r.get("State")))).title()
+    return c or st or ""
+
+
 RULE_TEXT = {"A": "same Google Place ID and near-identical names",
-             "B": "same name in the same city and state",
+             "B": "same name at the same place (same address, Google listing or within 1 km)",
              "C": "near-identical names within 1 km with the same website or Place ID"}
+WHY_PLAIN = {"A": "Same Google listing.", "B": "Same name at the same address.",
+             "C": "Near-identical name in the same spot, same website."}
 
 
-def build_proposal(group: dict, byid: dict, refs: RefIndex) -> dict:
+def _plural(n: int, one: str, many: str | None = None) -> str:
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def _thing(r: dict) -> str:
+    cat = str(r.get("Category") or "").strip().lower()
+    return "venue" if cat in ("", "venue") else cat
+
+
+def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIndex, why_s: str,
+               reported: str = "") -> dict:
+    """The 3-4 short lines Des and Kate see. No ids, table names, Place IDs or row counts beyond what a person cares
+    about (PDFs, couples who saved it)."""
+    lv = [m.get("Vendor_ID") for m in losers]
+    n_times = {2: "twice", 3: "three times", 4: "four times"}.get(len(losers) + 1, f"{len(losers) + 1} times")
+    where = _place(survivor)
+    headline = (f"These look like the same {_thing(survivor)}: *{_esc(survivor.get('Name'))}*"
+                f"{f' ({_esc(where)})' if where else ''} listed {n_times}.")
+    if reported:
+        why = f"Reported in #feedback: “{reported}”"
+    else:
+        best = next((r for r in ("A", "B", "C") if r in rules), None)
+        why = WHY_PLAIN.get(best, "Same name and place.")
+    pdfs = sum(refs.counts.get(10, {}).get(v, 0) for v in lv)
+    saved = sum(refs.counts.get(1, {}).get(v, 0) for v in lv) if 1 in refs.counts else None
+    plans = sum(refs.counts.get(90, {}).get(v, 0) for v in lv) if 90 in refs.counts else 0
+    pricing = sum(refs.counts.get(t, {}).get(v, 0) for t in (36, 37, 62, 92, 93, 84, 85) for v in lv)
+    moving = []
+    if pdfs:
+        moving.append(f"its {_plural(pdfs, 'PDF')}" if len(losers) == 1 else _plural(pdfs, "PDF"))
+    elif 10 not in refs.counts:
+        moving.append("its PDFs")
+    moving.append(_plural(saved, "saved-by couple") if saved else "everyone who saved it")
+    if plans:
+        moving.append("1 couple's plan" if plans == 1 else f"{plans} couples' plans")
+    if pricing or 36 not in refs.counts:
+        moving.append("its pricing")
+    keep = {"it's the one couples can see": "the visible listing", "it has more PDFs": "the listing with more PDFs",
+            "couples click it more": "the listing couples click most",
+            "it has the Google Place ID": "the listing linked to Google"}.get(why_s, "the original listing")
+    moves = ", ".join(moving[:-1]) + f" and {moving[-1]}" if len(moving) > 1 else moving[0]
+    dup = "duplicate is" if len(losers) == 1 else "duplicates are"
+    happens = (f"We'll keep {keep}, move {moves} onto it, and add up its clicks. The {dup} hidden, not deleted, and "
+               "this can be undone.")
+    return {"headline": headline, "why": why, "happens": happens}
+
+
+def _fmt(v, n: int = 80) -> str:
+    if v is None or v == "" or v == []:
+        return "—"
+    t = v if isinstance(v, str) else json.dumps(v, default=str)
+    t = " ".join(t.split())
+    return _esc(t if len(t) <= n else t[: n - 1] + "…")
+
+
+def details_text(p: dict) -> list[str]:
+    """The full technical record for the Details reply: every field side by side, per-table row moves, counter rules,
+    name-keyed fields. Returned as chunks (each well under Slack's 3,000-char section limit)."""
+    pl = p.get("payload") or {}
+    snaps = pl.get("snapshots") or {}
+    order = [pl.get("survivor")] + list(pl.get("losers") or [])
+    chunks = [f"*Technical details* · survivor *{pl.get('survivor')}* ← {', '.join(pl.get('losers') or [])}\n"
+              f"Rules matched: {'; '.join(RULE_TEXT.get(r, r) for r in pl.get('rules') or []) or 'reported in #feedback'}."
+              f" Survivor chosen because {pl.get('why_survivor', '?')}."]
+    cols = []
+    for vid in order:
+        for k in (snaps.get(vid) or {}):
+            if k not in cols:
+                cols.append(k)
+    lines, cur = [], "*Both records, field by field* (" + " | ".join(order) + ")\n```"
+    for k in cols:
+        vals = [(snaps.get(vid) or {}).get(k) for vid in order]
+        if all(v in (None, "", []) for v in vals):
+            continue
+        same = all(json.dumps(v, sort_keys=True, default=str) == json.dumps(vals[0], sort_keys=True, default=str)
+                   for v in vals)
+        row = f"{k}: " + (f"{_fmt(vals[0])} (same)" if same else " | ".join(_fmt(v, 50) for v in vals))
+        if len(cur) + len(row) > 2600:
+            lines.append(cur + "```")
+            cur = "```"
+        cur += "\n" + row
+    lines.append(cur + "```")
+    chunks += lines
+    mv = ["*Rows that move to the survivor (table · column · row ids)*"]
+    for t in pl.get("tables") or []:
+        if t["status"] == "not_counted":
+            mv.append(f"• {t['label']} (table {t['table']}): counted and moved by the merge endpoint at apply time")
+        elif t["count"]:
+            ids = ", ".join(f"{rid}" for rid, _c in t["rows"][:40]) + (" …" if len(t["rows"]) > 40 else "")
+            act = {"repoint": "→ survivor", "rebuild": "(regenerated for the survivor by the nightly rebuild)"}.get(
+                t["action"], "(left as history)")
+            mv.append(f"• {t['label']} (table {t['table']}): {t['count']} {act} · rows {ids}")
+    mv.append(f"• Vendor table (11): {', '.join(pl.get('losers') or [])} get merged_into = {pl.get('survivor')} and "
+              "Validated_Data \"0\" (hidden, not deleted)")
+    chunks.append("\n".join(mv))
+    cl = ["*Counters and fields on the survivor (rule · before → after)*"]
+    for c in pl.get("counters") or []:
+        before = ", ".join(f"{vid}={_fmt(v, 30)}" for vid, v in c["before"].items())
+        cl.append(f"• {c['column']} · {c['rule']} · {before} → {_fmt(c['after'], 40)}")
+    if len(cl) == 1:
+        cl.append("• No counter changes (all equal or empty).")
+    chunks.append("\n".join(cl))
+    chunks.append("*Stored by name, not id (not rewritten automatically)*\n" +
+                  "\n".join(f"• {t} · {f}: {why}" for t, f, why in NAME_KEYED))
+    return [c[:2900] for c in chunks]
+
+
+def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "") -> dict:
     members = [byid[i] for i in group["ids"]]
     pdfs = refs.pdfs()
     survivor, why_s = choose_survivor(members, pdfs)
     losers = [m for m in members if m is not survivor]
     sv, lv = survivor.get("Vendor_ID"), [m.get("Vendor_ID") for m in losers]
-
-    def line(r):
-        pid = place_id(r)
-        return (f"• *{r.get('Vendor_ID')}* {_esc(r.get('Name'))} · {_esc(_loc(r))} · {_esc(r.get('Category') or '?')} · "
-                f"{pdfs.get(r.get('Vendor_ID'), 0) if 10 in refs.counts else '?'} PDFs · "
-                f"{int(r.get('Clicks_on_Venue') or 0)} clicks · "
-                f"{'visible' if str(r.get('Validated_Data')) == '1' else 'hidden'} · "
-                f"Place ID {('…' + pid[-6:]) if pid else 'none'}")
-
-    counts, touch_lines, kept = {}, [], []
-    for tid, label, cols, action in REF_TABLES:
+    counts, tables = {}, []
+    for tid, label, cols, action, user in REF_TABLES:
         if tid in refs.not_counted:
-            if action == "repoint":
-                touch_lines.append(f"• {label} (table {tid}): counted by the merge endpoint when it runs")
+            tables.append({"table": tid, "label": label, "action": action, "user": user, "status": "not_counted",
+                           "count": None, "rows": []})
             continue
         n = sum(refs.counts.get(tid, {}).get(v, 0) for v in lv)
-        if action == "keep":
-            if n:
-                kept.append(f"{label} ({n} rows, history)")
-            continue
-        counts[f"t{tid}"] = n
-        if n:
-            touch_lines.append(f"• {label} (table {tid}): {n} row{'s' if n != 1 else ''} → {sv}")
-    total = sum(counts.values())
-    if total == 0:
-        touch_lines.insert(0, "• No linked rows found on the retired record(s) in the tables I counted.")
-    touch_lines.append(f"• Vendor table (11): {', '.join(lv)} marked merged into {sv} (hidden from search, not deleted)")
-    if kept:
-        touch_lines.append("• Left as-is: " + "; ".join(kept))
-
-    what = (f"Merge {', '.join(lv)} into *{sv}* ({_esc(survivor.get('Name'))}). Every PDF, price and saved link on "
-            f"{'them' if len(lv) > 1 else 'it'} moves to {sv}; {', '.join(lv)} "
-            f"{'are' if len(lv) > 1 else 'is'} retired, not deleted.")
-    why = (f"These look like the same business: {'; '.join(RULE_TEXT[r] for r in group['rules'])}.\n"
-           + "\n".join(line(m) for m in [survivor] + losers)
-           + f"\n{sv} stays because {why_s}.")
-    nxt = ("Approve to merge. Every row is backed up before it moves and the card gets an *Undo merge* button. "
-           "Reject if they're different businesses (e.g. two venues on one estate) and I won't suggest this pair again.")
-    title = f"{_esc(survivor.get('Name'))} ({sv} ← {', '.join(lv)})"
-    return {"title": title[:140], "what": what, "why": why, "touches": "\n".join(touch_lines), "next_steps": nxt,
-            "payload": {"survivor": sv, "losers": lv, "counts": counts, "total": total,
-                        "row_ids": {m.get("Vendor_ID"): m["id"] for m in members}},
+        rows = [r for v in lv for r in refs.rows.get(tid, {}).get(v, [])]
+        tables.append({"table": tid, "label": label, "action": action, "user": user, "status": "counted",
+                       "count": n, "rows": rows})
+        if action == "repoint":
+            counts[f"t{tid}"] = n
+    plain = plain_card(survivor, losers, group.get("rules") or [], refs, why_s, reported=reported)
+    counters = counter_plan(survivor, losers)
+    snapshots = {m.get("Vendor_ID"): {k: v for k, v in m.items() if not str(k).startswith("_")} for m in members}
+    nxt = "Approve to merge, or Reject if they're different businesses (I won't suggest this pair again)."
+    title = f"{_esc(survivor.get('Name'))} listed {len(members)} times"
+    return {"title": title[:140], "what": plain["headline"], "why": plain["why"], "touches": "",
+            "next_steps": nxt, "plain": plain,
+            "payload": {"survivor": sv, "losers": lv, "counts": counts, "total": sum(counts.values()),
+                        "row_ids": {m.get("Vendor_ID"): m["id"] for m in members}, "rules": group.get("rules") or [],
+                        "why_survivor": why_s, "snapshots": snapshots, "tables": tables, "counters": counters},
             "key": group_key([sv] + lv)}
 
 
@@ -461,11 +713,12 @@ def _scan(xano, store, mode, max_cards, max_pages, page_delay, vendor_rows) -> d
     if fresh:
         wanted = {str(byid[i].get("Vendor_ID")) for g in fresh for i in g["ids"]}
         refs = RefIndex(xano, max_pages=max_pages, page_delay=page_delay)
-        refs.build(wanted)
+        refs.build(wanted, rowids={int(i): str(byid[i].get("Vendor_ID")) for g in fresh for i in g["ids"]})
         for g in fresh:
             pr = build_proposal(g, byid, refs)
             p = store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
-                                        touches=pr["touches"], key=pr["key"], source=f"dedupe:{mode}")
+                                        touches=pr["touches"], key=pr["key"], source=f"dedupe:{mode}",
+                             plain=pr["plain"])
             if p is not None:                      # None = another scan/feedback already proposed this group
                 created.append(p)
         pages = refs.pages_used
@@ -475,3 +728,42 @@ def _scan(xano, store, mode, max_cards, max_pages, page_delay, vendor_rows) -> d
     store.set_meta(f"dedupe_last_{mode}", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     return {"proposals": created, "groups": len(groups), "pages": pages,
             "note": f"{len(groups)} candidate groups ({mode}); {len(created)} new suggestions"}
+
+
+# --- XANO_MERGE_PROPOSAL.md tables are GENERATED from the structures above (python gen_merge_doc.py) ----------------
+KIND_RULE = {"id": "replace the loser Vendor_ID with the survivor's",
+             "ids": "replace in place, de-duplicate, keep order",
+             "json": "replace the exact V-id token AND any int under a *vendor_idx key (loser row id -> survivor row id)",
+             "rowid": "replace the loser's table-11 row id with the survivor's"}
+KIND_TYPE = {"id": "text", "ids": "text[]", "json": "json", "rowid": "int row id"}
+ACTION_TEXT = {"repoint": "repoint", "keep": "**keep** (history / derived)",
+               "rebuild": "**not repointed**: regenerated for the survivor by the nightly denorm (unique key embeds the "
+                          "Vendor_ID)"}
+RULE_DOC = {"sum": "**sum** S + L", "any_visible": "**\"1\" if any record was \"1\"**", "or": "**OR**",
+            "union": "**union**, S order first", "union_tokens": "**union of tokens**", "max": "**max**",
+            "earliest": "**earliest**", "most_recent": "**most recent**",
+            "with_place_id": "**from the record whose Place_ID is kept**",
+            "fill_if_empty": "**fill if empty** (S kept; L only where S is blank)",
+            "recompute": "**recompute** for S after the merge"}
+KEEP_SURVIVOR = ["Name", "Category", "State", "Country", "lat", "lng", "User_Email", "scrape_status",
+                 "scrape_last_error"]
+
+
+def merge_doc_tables() -> str:
+    out = ["#### Every vendor reference (from `dedupe.REF_TABLES`)", "",
+           "| table | label | column | type | action | rule | couple-side |", "|---|---|---|---|---|---|---|"]
+    for tid, label, cols, action, user in REF_TABLES:
+        for col, kind in cols:
+            rule = KIND_RULE[kind] if action == "repoint" else "-"
+            out.append(f"| {tid} | {label} | {col} | {KIND_TYPE[kind]} | {ACTION_TEXT[action]} | {rule} | "
+                       f"{'**yes**' if user else ''} |")
+    out += ["", "#### Fields keyed by vendor NAME (from `dedupe.NAME_KEYED`; not reachable by an id repoint)", "",
+            "| table | column | handling |", "|---|---|---|"]
+    out += [f"| {t} | {f} | {w} |" for t, f, w in NAME_KEYED]
+    out += ["", "#### Table 11 column rules on merge (from `dedupe.COUNTER_RULES`)", "",
+            "| column | rule | note |", "|---|---|---|"]
+    out += [f"| {c} | {RULE_DOC[r]} | {n} |" for c, (r, n) in COUNTER_RULES.items()]
+    out.append(f"| {', '.join(KEEP_SURVIVOR)} | **keep S** | |")
+    out.append("| every other flt_* / mk_* denorm column | **recompute** for S | derived from the moved rows |")
+    out.append("| merged_into (L only) | := S Vendor_ID | |")
+    return "\n".join(out)

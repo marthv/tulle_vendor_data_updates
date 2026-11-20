@@ -154,7 +154,7 @@ class FeedbackWatcher:
             return pr
         p = self.store.create(pr["kind"], pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
                               touches=pr.get("touches", ""), key=key if pr["kind"] != "merge" else pr["key"],
-                              source=key)
+                              source=key, plain=pr.get("plain"))
         if p is None:
             return "feedback:already-proposed"
         res = post_proposal(self.slack, self.store, ev["channel"], p, thread_ts=ev["ts"])
@@ -211,9 +211,9 @@ class FeedbackWatcher:
         byid = {a[0]["id"]: a[0], b[0]["id"]: b[0]}
         refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
                                page_delay=config.dedupe_page_delay(), only={10, 36})
-        refs.build({va, vb})
-        pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs)
-        pr["why"] = f"An anonymous feedback form post says: “{evidence}”\n" + pr["why"].split("\n", 1)[-1]
+        refs.build({va, vb}, rowids={int(a[0]["id"]): va, int(b[0]["id"]): vb})
+        pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
+                                   reported=f"{evidence} (anonymous feedback form post)")
         pr["kind"] = "merge"
         return pr
 

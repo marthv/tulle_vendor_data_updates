@@ -62,7 +62,8 @@ class Store:
 
     # --- create / read ------------------------------------------------------------------------------
     def create(self, kind: str, title: str, what: str, why: str, next_steps: str, payload: dict,
-               touches: str = "", key: str = "", source: str = "", dry_run: bool | None = None) -> dict | None:
+               touches: str = "", key: str = "", source: str = "", dry_run: bool | None = None,
+               plain: dict | None = None) -> dict | None:
         """New proposal, or None if an active/rejected proposal with the same key exists (checked under the lock,
         so two scans racing can't both create it)."""
         pid = f"{kind[:2]}{int(time.time())}{secrets.token_hex(3)}"
@@ -70,6 +71,8 @@ class Store:
              "next_steps": next_steps, "payload": payload, "key": key, "source": source,
              "dry_run": default_dry_run(kind) if dry_run is None else bool(dry_run),
              "status": "pending", "created_at": _now(), "status_at": _now()}
+        if plain:
+            p["plain"] = plain
         with self._lock:
             if key and any(q.get("key") == key and q.get("status") in NEVER_AGAIN
                            for q in self._data["proposals"].values()):
