@@ -170,6 +170,7 @@ def test_template_wide_issue_collapses_to_one_line():
 def test_connection_error_retried_once(monkeypatch):
     import requests
     f = run.Fetcher(dict(run.load_config(), request_delay_s=0))
+    f.retry_waits = (0,)
     calls = []
 
     class R:
@@ -187,7 +188,9 @@ def test_connection_error_retried_once(monkeypatch):
     assert r.status == 200 and len(calls) == 2
     calls.clear()
     monkeypatch.setattr(f.s, "get", lambda url, **kw: (_ for _ in ()).throw(requests.ConnectionError("getaddrinfo failed")))
-    assert f.get("https://x/").error == "DNS lookup failed"
+    r = f.get("https://x/")
+    assert r.error == "DNS lookup failed" and r.status == 0
+    assert run.unreachable("https://x/", r)["severity"] == "warn"
 
 
 def test_home_down_exits_2(tmp_path, monkeypatch):

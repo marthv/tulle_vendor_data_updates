@@ -65,6 +65,7 @@ class Fetcher:
         self.s.headers["User-Agent"] = cfg["user_agent"]
         self.last = {}
         self.count = 0
+        self.retry_waits = (3, 15)
 
     def _wait(self, url):
         h = urlparse(url).hostname or ""
@@ -75,8 +76,11 @@ class Fetcher:
 
     def get(self, url, head=False):
         r = self._get_once(url, head)
-        if r.status == 0:                                  # one retry: DNS blips happen (seen in the first live run)
-            time.sleep(3)
+        for wait in self.retry_waits:                      # DNS blips happen (seen twice in local live runs)
+            if r.status != 0:
+                break
+            print("  retry in %ds: %s (%s)" % (wait, url, r.error), file=sys.stderr)
+            time.sleep(wait)
             r = self._get_once(url, head)
         return r
 
@@ -96,6 +100,7 @@ class Fetcher:
             ctype = r.headers.get("Content-Type", "")
             return Resp(r.status_code, r.url, r.text if ("html" in ctype or "xml" in ctype) else "", dict(r.headers), first)
         except requests.RequestException as e:
+            print("  network error on %s: %s" % (url, str(e)[:200]), file=sys.stderr)
             return Resp(0, url, error=short_error(e))
 
 
@@ -140,6 +145,12 @@ def sitemap_urls(fetch, cfg):
     return list(dict.fromkeys(pages))
 
 
+def unreachable(url, r, where=""):
+    """No HTTP response at all (DNS/connection/timeout after retries). Usually the runner's network, not the site,
+    so it is a warning under check_error; a real outage of the home page stops the run instead (exit 2)."""
+    return checks.finding("check_error", "warn", url, "no response after retries (%s)%s" % (r.error, (" - " + where) if where else ""))
+
+
 def norm(u):
     p = urlparse(u)
     host = (p.hostname or "").lower()
@@ -175,7 +186,7 @@ def run_checks(cfg, fetch, weekly=False, max_pages=None, log=print):
         if r.status == 0 or r.status >= 400:
             if u == home:
                 raise RuntimeError("home page unreachable: %s %s" % (r.status, r.error))
-            findings.append(checks.finding("page_status", "fail", u, "returns %s%s" % (r.status or "no response", (" " + r.error) if r.error else "")))
+            findings.append(unreachable(u, r) if r.status == 0 else checks.finding("page_status", "fail", u, "returns %s" % r.status))
             continue
         if r.url and norm(r.url) != norm(u):
             fetched[norm(r.url)] = r.status
@@ -216,13 +227,15 @@ def run_checks(cfg, fetch, weekly=False, max_pages=None, log=print):
     for link in internal:
         r = fetch.get(link, head=True)
         fetched[norm(link)] = r.status
-        if r.status == 0 or r.status >= 400:
-            findings.append(checks.finding("broken_link", "fail", link, "%s - %s" % (r.status or r.error or "no response", srcs(link))))
+        if r.status == 0:
+            findings.append(unreachable(link, r, srcs(link)))
+        elif r.status >= 400:
+            findings.append(checks.finding("broken_link", "fail", link, "%s - %s" % (r.status, srcs(link))))
     # internal pages that were fetched as pages AND linked: report broken links to them too (e.g. /blog/ 404 linked from nav)
     for link in link_sources:
         st = fetched.get(norm(link))
-        if checks.host_of(link) == base_host and link not in internal and st is not None and (st == 0 or st >= 400):
-            findings.append(checks.finding("broken_link", "fail", link, "%s - %s" % (st or "no response", srcs(link))))
+        if checks.host_of(link) == base_host and link not in internal and st is not None and st >= 400:
+            findings.append(checks.finding("broken_link", "fail", link, "%s - %s" % (st, srcs(link))))
 
     utm_mode = cfg["utm"]["mode"]
     utm_live = utm_mode == "fail" or (utm_mode == "auto" and any(checks.has_any_utm(l) for l in app))
@@ -232,8 +245,10 @@ def run_checks(cfg, fetch, weekly=False, max_pages=None, log=print):
         if target not in checked_app:
             checked_app[target] = fetch.get(link)
         r = checked_app[target]
-        if r.status == 0 or r.status >= 400:
-            findings.append(checks.finding("app_link_broken", "fail", link, "%s - %s" % (r.status or r.error, srcs(link))))
+        if r.status == 0:
+            findings.append(unreachable(link, r, srcs(link)))
+        elif r.status >= 400:
+            findings.append(checks.finding("app_link_broken", "fail", link, "%s - %s" % (r.status, srcs(link))))
         elif checks.path_of(link).rstrip("/") and not checks.path_of(r.url).rstrip("/"):
             findings.append(checks.finding("app_link_broken", "fail", link,
                                            "redirects to %s and loses the %s path - %s" % (r.url, checks.path_of(link), srcs(link))))

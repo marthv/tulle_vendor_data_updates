@@ -27,7 +27,7 @@ TITLES = {
     "elementor_slug": "Leftover elementor-#### page slugs in links",
     "ttfb": "Slow time-to-first-byte",
     "home_mention": "Homepage does not mention a product",
-    "check_error": "The check itself could not run part of the crawl",
+    "check_error": "Could not reach (no response after retries - usually the runner's network)",
 }
 
 
