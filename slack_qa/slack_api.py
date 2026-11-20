@@ -95,23 +95,31 @@ class Slack:
         return data
 
     # --- write ------------------------------------------------------------------------------------
-    def post_message(self, channel: str, text: str, thread_ts: str | None = None) -> dict:
+    def post_message(self, channel: str, text: str, thread_ts: str | None = None, sanitize: bool = False) -> dict:
+        if sanitize:                       # v2 features (roll-up, dedupe header): emails never leave the bot
+            from sanitize import scrub
+            text = scrub(text)
         params = {"channel": channel, "text": text, "unfurl_links": False, "unfurl_media": False}
         if thread_ts:
             params["thread_ts"] = thread_ts
         return self._call("chat.postMessage", http="POST", **params)
 
     def post_blocks(self, channel: str, text: str, blocks: list[dict], thread_ts: str | None = None) -> dict:
+        from sanitize import scrub
+        text, blocks = scrub(text), scrub(blocks)           # the Slack-send boundary for cards and Details
         params = {"channel": channel, "text": text, "blocks": blocks, "unfurl_links": False, "unfurl_media": False}
         if thread_ts:
             params["thread_ts"] = thread_ts
         return self._call("chat.postMessage", http="POST", **params)
 
     def update_message(self, channel: str, ts: str, text: str, blocks: list[dict]) -> dict:
+        from sanitize import scrub
+        text, blocks = scrub(text), scrub(blocks)
         return self._call("chat.update", http="POST", channel=channel, ts=ts, text=text, blocks=blocks)
 
     def post_ephemeral(self, channel: str, user: str, text: str, thread_ts: str | None = None) -> dict:
-        params = {"channel": channel, "user": user, "text": text}
+        from sanitize import scrub
+        params = {"channel": channel, "user": user, "text": scrub(text)}
         if thread_ts:
             params["thread_ts"] = thread_ts
         return self._call("chat.postEphemeral", http="POST", **params)

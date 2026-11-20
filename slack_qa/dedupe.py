@@ -123,7 +123,8 @@ COUNTER_RULES = {
     "Time_of_Submission": ("earliest", "first time this venue was submitted"),
     "google_data_last_fetched": ("with_place_id", "taken from the record whose Place_ID is kept"),
     "scrape_last_attempted_at": ("most_recent", ""),
-    "scrape_cost_usd": ("sum", "money already spent scraping both"),
+    "scrape_cost_usd": ("sum", "money already spent scraping both; each loser's own value set to 0 after backup, "
+                                "restored on undo"),
     "Website": ("fill_if_empty", ""), "Description": ("fill_if_empty", ""), "Contact_Information": ("fill_if_empty", ""),
     "Place_ID": ("fill_if_empty", ""), "Address": ("fill_if_empty", ""), "Venue_Type": ("fill_if_empty", ""),
     "Type_of_Photography": ("fill_if_empty", ""), "Type_of_Entertainment": ("fill_if_empty", ""),
@@ -168,9 +169,12 @@ def parse_when(v):
             pass
     try:
         d = datetime.fromisoformat(t.replace("Z", "+00:00"))
-        return d.replace(tzinfo=None)
     except ValueError:
         return None
+    if d.tzinfo is not None:                   # compare in UTC: "10:00-05:00" is later than "14:00Z"
+        from datetime import timezone as _tz
+        d = d.astimezone(_tz.utc)
+    return d.replace(tzinfo=None)
 
 
 # Everything else on table 11: Name, Category, State, Country, lat, lng, User_Email, scrape_status, scrape_last_error
@@ -196,6 +200,8 @@ def counter_plan(survivor: dict, losers: list[dict]) -> list[dict]:
     for col, (rule, _note) in COUNTER_RULES.items():
         vals = [r.get(col) for r in allr]
         sv = survivor.get(col)
+        if all(_blank(v) for v in vals):           # nothing on any record: never plan a write (e.g. a 0)
+            continue
         if rule == "sum":
             after = sum(_num(v) for v in vals)
             after = int(after) if all(isinstance(v, int) or v in (None, "") for v in vals) else round(after, 4)
@@ -223,7 +229,7 @@ def counter_plan(survivor: dict, losers: list[dict]) -> list[dict]:
         if after != sv and not (_blank(after) and _blank(sv)):
             e = {"column": col, "rule": rule, "before": {r.get("Vendor_ID"): redact(r.get(col)) for r in allr},
                  "after": redact(after)}
-            if rule == "sum" and col == "Clicks_on_Venue":
+            if rule == "sum":
                 e["losers_after"] = 0
             out.append(e)
     return out
@@ -704,7 +710,7 @@ def details_text(p: dict) -> list[str]:
     cl = ["*Counters and fields on the survivor (rule · before → after)*"]
     for c in pl.get("counters") or []:
         before = ", ".join(f"{vid}={_fmt(v, 30)}" for vid, v in c["before"].items())
-        tail = "; each duplicate's own count set to 0 (no double count)" if "losers_after" in c else ""
+        tail = "; each duplicate's own value set to 0 (no double count)" if "losers_after" in c else ""
         cl.append(f"• {c['column']} · {c['rule']} · {before} → {_fmt(c['after'], 40)}{tail}")
     if len(cl) == 1:
         cl.append("• No counter changes (all equal or empty).")

@@ -69,5 +69,5 @@ def run(slack, claude, state) -> str:
     draft = target == config.owner_user_id()
     msg = ("_Draft for review (only you see this): the daily #feedback roll-up. Set ROLLUP_CHANNEL to post it to the "
            "team._\n" if draft else "") + text + "\n_Tulle Bot (automated, read-only)._"
-    res = slack.post_message(target, msg)
+    res = slack.post_message(target, msg, sanitize=True)
     return f"rollup:{n}:{'ok' if res.get('ok') else res.get('error')}"

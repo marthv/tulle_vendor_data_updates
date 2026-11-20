@@ -172,6 +172,9 @@ class FeedbackWatcher:
             return "feedback:vendor_edit:value-not-in-post"
         if len(new) > 1000:                        # the card must show the whole value the approver is approving
             return "feedback:vendor_edit:value-too-long"
+        from sanitize import has_email
+        if has_email(new):                         # emails never leave the bot or reach its store (QA round 4)
+            return f"feedback:vendor_edit:{field}-email-not-supported"
         if field in STRICT_FIELDS:                 # where a wrong value sends couples somewhere else
             if conf < STRICT_CONF or not STRICT_FIELDS[field].fullmatch(new):
                 return f"feedback:vendor_edit:{field}-not-convincing"

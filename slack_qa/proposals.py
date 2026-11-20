@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import config
+from sanitize import scrub
 
 ACTIVE = {"pending", "applying", "applied", "undoing", "unknown", "partial"}       # on screen / in flight / done
 NEVER_AGAIN = ACTIVE | {"rejected"}
@@ -52,13 +53,15 @@ class Store:
             return {"proposals": {}, "meta": {}}
 
     def _save(self) -> None:
+        """The store-write boundary: every email-looking string (values and keys) is redacted before it hits disk."""
+        self._data = scrub(self._data)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self._data, indent=1, sort_keys=True), encoding="utf-8")
         os.replace(tmp, self.path)
 
     def _log(self, rec: dict) -> None:
         with open(self.log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": _now(), **rec}) + "\n")
+            f.write(json.dumps(scrub({"ts": _now(), **rec})) + "\n")
 
     # --- create / read ------------------------------------------------------------------------------
     def create(self, kind: str, title: str, what: str, why: str, next_steps: str, payload: dict,
@@ -158,9 +161,19 @@ class Store:
         """True once per proposal (the caller then posts the Details reply)."""
         with self._lock:
             p = self._data["proposals"].get(pid)
-            if not p or p.get("details_ts"):
+            if not p:
                 return False
-            p["details_ts"] = "posting"
+            if p.get("details_ts") == "posting":           # a claim that never finished expires after 5 minutes
+                try:
+                    stale = datetime.now(timezone.utc) - datetime.fromisoformat(p.get("details_claimed_at")) \
+                        > timedelta(minutes=5)
+                except (TypeError, ValueError):
+                    stale = True
+                if not stale:
+                    return False
+            elif p.get("details_ts"):
+                return False
+            p["details_ts"], p["details_claimed_at"] = "posting", _now()
             self._save()
             return True
 

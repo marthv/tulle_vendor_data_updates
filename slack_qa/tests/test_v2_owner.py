@@ -150,7 +150,9 @@ def test_counter_rules():
     assert plan["Time_of_Submission"]["after"] == "2024-06-01"
     assert plan["Description"]["after"] == "Iconic hotel"
     assert plan["Flags"]["after"] == "x, y"
-    assert plan["flt_space_count"]["after"] == "recomputed"
+    assert "flt_space_count" not in plan             # empty on both records: nothing to plan
+    s["flt_space_count"] = 2
+    assert {c["column"]: c for c in dedupe.counter_plan(s, [l])}["flt_space_count"]["after"] == "recomputed"
     assert "Website" not in plan                    # survivor has one: kept
 
 

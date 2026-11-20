@@ -15,13 +15,14 @@ is smoke-tested in `preview` mode on a hand-picked pair before any `apply`.
 ### 1a. Table 11 `WPTP Updated Mappings`: one new column
 ```
 // Vendor_ID of the record this one was merged into. Set ONLY by POST /vendor/merge. Null = a live record.
-// A retired record keeps every original field (rollback source) and is hidden from search via Validated_Data "0".
+// A retired record keeps every original field (rollback source). Visibility (Validated_Data) is owner-only: a merge
+// never changes it.
 text merged_into? filters=trim
 ```
 plus a btree index on `merged_into`. Table 11 has no validators, so adding the column via a schema-element add is
 safe (`updateTableSchema` would strip validators on other tables; reference_xano_mcp_quirks). Back up the table
-schema first. Search (ep119) already filters `Validated_Data == 1`, so retired rows vanish from search without
-touching ep119.
+schema first. A merge does not change visibility: a retired record that was visible stays in search until a
+person hides it (owner-only column; an exception for merges is pending the owner).
 
 ### 1b. New table `vendor_merge_candidate` (one row per merge the bot proposed and a human approved)
 ```
@@ -104,17 +105,20 @@ Preconditions: secret matches; at most 3 losers; every loser is not the survivor
    sent.
 3. For each **repoint** column in the generated table below, for each matching row: insert a `vendor_merge_backup`
    row (table, row id, column, old value, new value) **then** write the new value. Arrays: replace + de-duplicate,
-   order kept. JSON: replace the exact V-id token and any int `*vendor_idx` equal to a loser's table-11 row id
-   (t43 cards carry both `vendor_id` and `vendor_idx`; t66 payload carries `venue.vendor_id`, `matched.vendor_idx`).
+   order kept. JSON: by KEY only, never by searching text: a string under `vendor_id` / `best_vendor_id` /
+   `matched_vendor_id` / `venue_vendor_id` equal to a loser id, and an int under any `*vendor_idx` key equal to a
+   loser's table-11 row id (t43 cards carry `vendor_id` and `vendor_idx`; t66 payload `venue.vendor_id`,
+   `matched.vendor_idx`).
    A unique-index clash (t65 / t70 same account on the survivor) is skipped and recorded in `conflicts`.
 4. **rebuild** tables (t62 venue_spaces, t71 venue side) are not touched: their unique keys `space_key`
    ("V3794|grandhall") and `pv_key` ("V1|lulucakeboutique") embed the venue's Vendor_ID, so repointing would leave keys
    naming the old record or collide with the survivor's own rows. The nightly denorm regenerates them for the
    survivor from the moved t36/t37 rows. **UNVERIFIED, check before build:** whether that rebuild deletes the
-   retired record's now-orphaned rows (if it doesn't, the retired rows stay but are never shown, because the record is
-   hidden and search filters on it). Test on one hand-picked pair first.
+   retired record's now-orphaned rows (if it doesn't, they stay attached to the retired record and show wherever that
+   record is still visible). Test on one hand-picked pair first.
 5. Table 11, per the generated column rules (computed from the live rows): back up every column that changes, then
-   write it. Each loser's Clicks_on_Venue is set to 0 after backup so clicks are never counted twice. Losers get
+   write it. Each loser's summed columns (Clicks_on_Venue, scrape_cost_usd) are set to 0 after backup so nothing is
+   counted twice. Losers get
    `merged_into = survivor` (backed up). Never delete. **Validated_Data and gold_chip are owner-only and are never
    written by a merge**: the card and Details say when a duplicate was visible so a person checks visibility after
    merging. Hiding the retired record needs an explicit owner exception (asked 2026-11-20; pending).
@@ -128,7 +132,8 @@ undone | partial_undo | none, merge_id, repointed_total}`. Read-only. **The mode
 `old_value` back **only if the current value still equals the `new_value` we wrote**; otherwise record a conflict and
 leave it. Mark each restored. Candidate → `undone`, or `partial_undo` if conflicts or an interruption left rows
 unrestored (running undo again finishes it).
-- **Counters on undo:** each loser's counter is set back to its backed-up value. The survivor's becomes
+- **Counters on undo:** each loser's becomes `live - 0 + backed-up value` (its own pre-merge value plus anything it
+  received after the merge, e.g. clicks on an old link). The survivor's becomes
   `live - merged_value + survivor_before` (merged_value = what the merge wrote, survivor_before = its backed-up value),
   so clicks the survivor received after the merge are kept and nothing is counted twice. Counters and
   scrape_last_attempted_at are exempt from the "current value still equals what we wrote" guard (they legitimately
@@ -222,7 +227,7 @@ the element format of `user.favorited_vendors` (Vendor_ID text assumed) on a tes
 | Time_of_Submission | **earliest** | first time this venue was submitted |
 | google_data_last_fetched | **from the record whose Place_ID is kept** | taken from the record whose Place_ID is kept |
 | scrape_last_attempted_at | **most recent** |  |
-| scrape_cost_usd | **sum** S + L; each L set to 0 | money already spent scraping both |
+| scrape_cost_usd | **sum** S + L; each L set to 0 | money already spent scraping both; each loser's own value set to 0 after backup, restored on undo |
 | Website | **fill if empty** (S kept; L only where S is blank) |  |
 | Description | **fill if empty** (S kept; L only where S is blank) |  |
 | Contact_Information | **fill if empty** (S kept; L only where S is blank) |  |
@@ -249,7 +254,8 @@ by the rebuild; hub_stats.top_vendor_clicks is recomputed nightly. Per-couple co
 (total_vendor_views, total_pdf_views, FreeViewsRemaining) count a couple's actions, not a vendor's, so they don't change.
 
 ### Full record kept (exact undo)
-- `vendor_merge_candidate.snapshots`: both table-11 rows, every field, as they were the moment before the merge.
+- `vendor_merge_candidate.snapshots`: both table-11 rows as they were the moment before the merge, every field
+  **except User_Email and google_data_cache** (dropped), with email-looking text redacted.
   `vendor_merge_candidate.counters`: each rule column's rule, value per record before, and the value written.
 - `vendor_merge_backup`: every changed row/column (old and new), user-side fields included. Undo reads only this.
 - The bot's proposal store keeps the same snapshots, the per-table row ids it found, and the counter plan; the card's

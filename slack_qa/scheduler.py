@@ -50,7 +50,7 @@ def run_dedupe(bot, now: datetime | None = None, mode: str | None = None) -> str
     head = bot.slack.post_message(channel, (
         f"*Duplicate vendors: {len(props)} suggestion{'s' if len(props) != 1 else ''}* ({mode} scan, "
         f"{res['groups']} possible groups in total). Each card says what would move and why; nothing changes until "
-        f"someone approves it.\n_Tulle Bot (automated)._"))
+        f"someone approves it.\n_Tulle Bot (automated)._"), sanitize=True)
     thread = head.get("ts") if head.get("ok") else None
     ok = sum(1 for p in props if post_proposal(bot.slack, bot.store, channel, p, thread_ts=thread).get("ok"))
     return f"dedupe:{mode}:{ok}/{len(props)}"

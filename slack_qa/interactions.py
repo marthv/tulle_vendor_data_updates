@@ -115,6 +115,7 @@ class Interactions:
                     "text": f"Something broke mid-way ({type(e).__name__}), so I can't tell whether it applied."}
 
     def _approve(self, p, user, chan, thread) -> str:
+        was = p.get("status")
         p, why = self.store.transition(p["id"], {"pending", "partial"}, "applying", user)
         if why:
             self._ephemeral(chan, user, why, thread)
@@ -130,6 +131,8 @@ class Interactions:
             to = "failed"
         else:
             to = "dry_run" if res.get("dry_run") else "applied"
+        if was == "partial" and to in ("failed", "dry_run"):
+            to = "partial"                 # a failed / dry-run Resume leaves the half-done merge resumable + undoable
         p, _ = self.store.transition(p["id"], {"applying"}, to, user, result_text=res.get("text", ""),
                                      result=res.get("result") or {}, unknown_from="applying" if to == "unknown" else None)
         self._refresh(p)
@@ -138,6 +141,7 @@ class Interactions:
     def _undo(self, p, user, chan, thread) -> str:
         if p.get("kind") != "merge":
             return "ignored:undo-not-merge"
+        was = p.get("status")
         p, why = self.store.transition(p["id"], {"applied", "partial"}, "undoing", user)
         if why:
             self._ephemeral(chan, user, why, thread)
@@ -148,9 +152,9 @@ class Interactions:
                                          unknown_from="undoing")
         elif res.get("ok") and not res.get("dry_run"):
             p, _ = self.store.transition(p["id"], {"undoing"}, "undone", user, result_text=res["text"])
-        else:
-            p, _ = self.store.transition(p["id"], {"undoing"}, "applied", user,
-                                         result_text=(p.get("result_text") or "") + f" (Undo: {res['text']})")
+        else:                              # refused / dry run: back to where it was (applied or partial)
+            p, _ = self.store.transition(p["id"], {"undoing"}, was if was in ("applied", "partial") else "applied",
+                                         user, result_text=(p.get("result_text") or "") + f" (Undo: {res['text']})")
         self._refresh(p)
         return "undo:" + ("unknown" if res.get("unknown") else "ok" if res.get("ok") else "failed")
 
