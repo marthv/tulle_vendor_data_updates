@@ -1,0 +1,300 @@
+{
+ "vendor_id": "V462",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "New York",
+ "scope_label": "New York",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [
+  {
+   "key": "lulucakeboutique",
+   "name": "Lulu Cake Boutique",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "unionsquareevents",
+   "name": "Union Square Events",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  }
+ ],
+ "partner_vendors_headline": "2 vendors this venue works with",
+ "partner_vendors_more_label": "",
+ "partner_vendors_linked_count": 0,
+ "spaces": [
+  {
+   "space_key": "V462|palmhouse",
+   "label": "The Palm House",
+   "chip_label": "The Palm House 230",
+   "capacity_seated": 230,
+   "field_count": 3,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "3 of 3 fields for this space"
+  },
+  {
+   "space_key": "V462|lillianandamygoldmanatrium",
+   "label": "The Lillian and Amy Goldman Atrium",
+   "chip_label": "The Lillian and Amy Goldman Atrium 125",
+   "capacity_seated": 125,
+   "field_count": 3,
+   "fields_total": 3,
+   "sort_rank": 1,
+   "has_pricing": true,
+   "status_line": "3 of 3 fields for this space"
+  }
+ ],
+ "spaces_headline": "2 spaces at this venue",
+ "selected_space_key": "V462|palmhouse",
+ "space": {
+  "space_key": "V462|palmhouse",
+  "label": "The Palm House",
+  "capacity_seated": 230,
+  "is_whole_venue": false,
+  "shared_pricing": false,
+  "contract_count": 5,
+  "field_count": 3,
+  "fields_total": 3,
+  "status_line": "3 of 3 fields for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the The Palm House, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 175,
+  "guest_floor": 175,
+  "guest_floor_note": "Books a minimum of 175 guests.",
+  "fee_basis": "",
+  "fee_band_min": 0,
+  "fee_band_max": 0,
+  "guest_sensitivity": {
+   "responds": true,
+   "food_pinned": false,
+   "reason": "below_fb_min_breakeven",
+   "fb_min_breakeven_guests": 212,
+   "breakeven_above_capacity": false,
+   "note": "Your guest count starts moving the food cost at about 212 guests. Below that, the minimum is what you pay."
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 115,
+     "p25": 175,
+     "median": 230,
+     "p75": 300,
+     "p90": 405,
+     "n_spaces": 172,
+     "n_vendors": 106
+    },
+    "sentence": "This space has a $38,425 food and drink minimum - you will not spend less, however small your guest list. Their menu is $182 a head, but below about 212 guests the minimum is what you actually pay.",
+    "pp_fb": 182,
+    "fb_min": 38425,
+    "fb_min_is_per_person": false,
+    "fb_min_breakeven_guests": 212,
+    "fb_min_binds_at_default": true,
+    "badge_code": "typical",
+    "badge_label": "Typical in New York",
+    "badge_scale": "Ranked against 172 comparable New York venues."
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 750,
+     "p25": 1200,
+     "median": 1500,
+     "p75": 2000,
+     "p90": 4000,
+     "n_spaces": 81,
+     "n_vendors": 58
+    },
+    "sentence": "A one-off fee to hold the ceremony here rather than at a church or elsewhere.",
+    "amount": 4000,
+    "fee_type": "flat",
+    "badge_code": "high",
+    "badge_label": "Above average in New York",
+    "badge_scale": "Ranked against 81 comparable New York venues."
+   },
+   {
+    "key": "venue_fee",
+    "title": "Rental fee",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 2500,
+     "p25": 6500,
+     "median": 11500,
+     "p75": 18500,
+     "p90": 27500,
+     "n_spaces": 215,
+     "n_vendors": 138
+    },
+    "sentence": "A flat charge to book the The Palm House for the day, before any food or service is added.",
+    "amount": 12000,
+    "badge_code": "typical",
+    "badge_label": "Typical in New York",
+    "badge_scale": "Ranked against 215 comparable New York venues."
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 7,
+     "p25": 20,
+     "median": 21,
+     "p75": 23,
+     "p90": 24,
+     "n_spaces": 173,
+     "n_vendors": 103
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "25% added to everything above. It is not a tip, and most couples miss it when they budget.",
+    "pct": 25,
+    "badge_code": "well_above",
+    "badge_label": "Well above average in New York",
+    "badge_scale": "Ranked against 173 comparable New York venues."
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "venue",
+    "sentence": "8.875% on top of everything above, added at the end.",
+    "pct": 8.875
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Every figure above is this venue's own. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [
+    "food_and_drink",
+    "ceremony",
+    "service_charge"
+   ],
+   "at_default": {
+    "guests": 175,
+    "total": 68031,
+    "per_guest": 389
+   },
+   "estimates": {
+    "pp_fb": 230,
+    "ceremony": 1500,
+    "service_pct": 21,
+    "venue_fee": 11500
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": true
+    },
+    {
+     "component": "ceremony",
+     "from_venue": true
+    },
+    {
+     "component": "service_charge",
+     "from_venue": true
+    }
+   ],
+   "from_venue_count": 3,
+   "total": 3,
+   "style": "solid",
+   "headline": "Every figure here came from this venue"
+  },
+  "band": {
+   "metric": "all_in_pg_200",
+   "reference_guests": 200,
+   "scope": "state",
+   "scope_label": "New York",
+   "basis": "all_in",
+   "basis_component": "",
+   "p10": 141.45,
+   "p25": 215.25,
+   "median": 315,
+   "p75": 416.45,
+   "p90": 661.41,
+   "n_spaces": 166,
+   "n_vendors": 104,
+   "position": "average",
+   "sentence": "This sits in the middle for New York. Plenty of venues cost more, plenty cost less.",
+   "venue_per_guest": 340
+  },
+  "footer": "From 5 pricing PDFs couples uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}

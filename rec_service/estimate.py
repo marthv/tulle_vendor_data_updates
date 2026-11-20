@@ -37,6 +37,13 @@ def inputs_from_panel(d):
         "pp_fb": _num(food.get("pp_fb")) if food.get("source") == "venue" else None,
         "fb_min": _num(food.get("fb_min")) if food.get("source") == "venue" else None,
         "fb_min_per_person": bool(food.get("fb_min_is_per_person")),
+        # fn56 v26: the rental is a package price that already covers food and drink for
+        # `included_guests`; pp_fb is then the extra-guest rate. Costs the package does not
+        # state come back with source 'package' and must add nothing (no market stand-in).
+        "fee_includes_fb": bool(food.get("fee_includes_fb")),
+        "included_guests": int(food.get("included_guests") or 0),
+        "ceremony_in_package": (comps.get("ceremony") or {}).get("source") == "package",
+        "service_in_package": (comps.get("service_charge") or {}).get("source") == "package",
         "service_pct": _num((comps.get("service_charge") or {}).get("pct")),
         "tax_pct": _num((comps.get("tax") or {}).get("pct")),
         "estimates": all_in.get("estimates") or {},
@@ -67,8 +74,28 @@ def compute(inp, guests, override=None):
 
     rental, rs = pick(inp.get("rental"), "venue_fee")
     lines.append({"item": "Rental", "amount": rental, "source": rs})
-    ceremony, cs = pick(inp.get("ceremony"), "ceremony")
+    if inp.get("ceremony_in_package") and not inp.get("ceremony"):
+        ceremony, cs = 0, "not stated - package"
+    else:
+        ceremony, cs = pick(inp.get("ceremony"), "ceremony")
     lines.append({"item": "Ceremony on site", "amount": ceremony, "source": cs})
+
+    if inp.get("fee_includes_fb"):
+        # Inclusive package: food is inside the rental. Never add a per-head estimate on top.
+        pp = inp.get("pp_fb") or 0
+        n = inp.get("included_guests") or 0
+        if pp and n:
+            food = pp * max(0, g - n)
+            math_s = "in the package for %d guests; %d extra x %s = %s" % (n, max(0, g - n), _money(pp), _money(food))
+        elif pp:
+            food = max(0, pp * g - rental)
+            math_s = "package covers up to %s; %s x %d guests above that = %s" % (_money(rental), _money(pp), g, _money(food))
+        else:
+            food = 0
+            math_s = "included in the package price"
+        lines.append({"item": "Food and drink", "amount": food, "source": "this venue's PDF",
+                      "included_in_rental": True, "math": math_s})
+        return _finish(inp, lines, rental, ceremony, food, g, asked)
 
     pp, ps = pick(inp.get("pp_fb"), "pp_fb")
     fb_min = inp.get("fb_min") or 0
@@ -83,11 +110,17 @@ def compute(inp, guests, override=None):
             food_line.update(amount=floor, minimum_applies=True,
                              math="%s minimum (above %s x %d guests)" % (_money(floor), _money(pp), g))
     lines.append(food_line)
+    return _finish(inp, lines, rental, ceremony, food, g, asked)
 
+
+def _finish(inp, lines, rental, ceremony, food, g, asked):
+    est = inp.get("estimates") or {}
     subtotal = rental + ceremony + food
     pct = inp.get("service_pct")
     psrc = "this venue's PDF"
-    if not pct:
+    if not pct and inp.get("service_in_package"):
+        pct, psrc = 0, "not stated - package"
+    elif not pct:
         pct = _num(est.get("service_pct")) or DEFAULT_SERVICE_PCT
         psrc = "estimate"
     service = subtotal * pct / 100.0

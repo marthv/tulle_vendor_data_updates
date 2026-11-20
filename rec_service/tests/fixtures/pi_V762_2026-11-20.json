@@ -1,0 +1,418 @@
+{
+ "vendor_id": "V762",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "New Jersey",
+ "scope_label": "New Jersey",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [
+  {
+   "key": "crossedkeysdesigns",
+   "name": "Crossed Keys Designs",
+   "is_url": false,
+   "is_link": true,
+   "href": "/vendors/V13637",
+   "vendor_id": "V13637",
+   "vendor_idx": 13637,
+   "vendor_name": "Crossed Keys Designs",
+   "gold_chip": false
+  },
+  {
+   "key": "haleyrichter",
+   "name": "Haley Richter",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "hrmarsan",
+   "name": "HRMarsan",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "jenellekappe",
+   "name": "Jenelle Kappe",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "jillsahner",
+   "name": "Jill Sahner",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "leemeek",
+   "name": "Lee Meek",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "longbrook",
+   "name": "Longbrook",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "nadinemarie",
+   "name": "Nadine Marie",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "offbeatproductions",
+   "name": "Off Beat Productions",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "sjdelpriore",
+   "name": "SJ Del Priore",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "vinceha",
+   "name": "Vince Ha",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "wildcotton",
+   "name": "Wild Cotton",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  }
+ ],
+ "partner_vendors_headline": "12 vendors this venue works with",
+ "partner_vendors_more_label": "Show all 12",
+ "partner_vendors_linked_count": 1,
+ "spaces": [
+  {
+   "space_key": "V762|crossedkeysestate",
+   "label": "Crossed Keys Estate",
+   "chip_label": "Crossed Keys Estate 275",
+   "capacity_seated": 275,
+   "field_count": 0,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "Rental fee only for this space"
+  },
+  {
+   "space_key": "V762|farmhousereception",
+   "label": "Farmhouse Reception",
+   "chip_label": "Farmhouse Reception 275",
+   "capacity_seated": 275,
+   "field_count": 0,
+   "fields_total": 3,
+   "sort_rank": 1,
+   "has_pricing": true,
+   "status_line": "Rental fee only for this space"
+  },
+  {
+   "space_key": "V762|gardenceremony",
+   "label": "Garden Ceremony",
+   "chip_label": "Garden Ceremony 275",
+   "capacity_seated": 275,
+   "field_count": 0,
+   "fields_total": 3,
+   "sort_rank": 2,
+   "has_pricing": true,
+   "status_line": "Rental fee only for this space"
+  },
+  {
+   "space_key": "V762|glassconservatorycocktailhour",
+   "label": "Glass Conservatory (Cocktail Hour)",
+   "chip_label": "Glass Conservatory (Cocktail Hour) 275",
+   "capacity_seated": 275,
+   "field_count": 0,
+   "fields_total": 3,
+   "sort_rank": 3,
+   "has_pricing": true,
+   "status_line": "Rental fee only for this space"
+  }
+ ],
+ "spaces_headline": "4 spaces at this venue",
+ "selected_space_key": "V762|crossedkeysestate",
+ "space": {
+  "space_key": "V762|crossedkeysestate",
+  "label": "Crossed Keys Estate",
+  "capacity_seated": 275,
+  "is_whole_venue": false,
+  "shared_pricing": false,
+  "contract_count": 2,
+  "field_count": 0,
+  "fields_total": 3,
+  "status_line": "Rental fee only for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the Crossed Keys Estate, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 175,
+  "guest_floor": 175,
+  "guest_floor_note": "Books a minimum of 175 guests.",
+  "fee_basis": "",
+  "fee_band_min": 0,
+  "fee_band_max": 0,
+  "guest_sensitivity": {
+   "responds": true,
+   "food_pinned": false,
+   "reason": "",
+   "fb_min_breakeven_guests": null,
+   "breakeven_above_capacity": false,
+   "note": ""
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": true,
+    "source": "market",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "New Jersey",
+     "dimension": "capacity_band",
+     "bucket": "cap_251_400",
+     "p10": 145,
+     "p25": 175,
+     "median": 210,
+     "p75": 240,
+     "p90": 305,
+     "n_spaces": 37,
+     "n_vendors": 29
+    },
+    "sentence": "Not disclosed. Comparable New Jersey venues charge about $210 a head.",
+    "badge_code": "",
+    "badge_label": "",
+    "est_pp_fb": 210
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": true,
+    "source": "market",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "New Jersey",
+     "dimension": "capacity_band",
+     "bucket": "cap_251_400",
+     "p10": 1250,
+     "p25": 1500,
+     "median": 1995,
+     "p75": 2500,
+     "p90": 3500,
+     "n_spaces": 25,
+     "n_vendors": 21
+    },
+    "sentence": "Not disclosed. Most New Jersey venues charge around $1,995 if you marry on site.",
+    "badge_code": "",
+    "badge_label": "",
+    "est_amount": 1995
+   },
+   {
+    "key": "venue_fee",
+    "title": "Rental fee",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "New Jersey",
+     "dimension": "capacity_band",
+     "bucket": "cap_251_400",
+     "p10": 120,
+     "p25": 5000,
+     "median": 7500,
+     "p75": 19500,
+     "p90": 76000,
+     "n_spaces": 17,
+     "n_vendors": 15
+    },
+    "sentence": "A flat charge to book the Crossed Keys Estate for the day, before any food or service is added.",
+    "amount": 76000,
+    "badge_code": "high",
+    "badge_label": "Above average in New Jersey",
+    "badge_scale": "Ranked against 17 comparable New Jersey venues."
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": true,
+    "source": "market",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "New Jersey",
+     "dimension": "capacity_band",
+     "bucket": "cap_251_400",
+     "p10": 20,
+     "p25": 21,
+     "median": 22,
+     "p75": 23,
+     "p90": 24,
+     "n_spaces": 33,
+     "n_vendors": 27
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "Not disclosed. Assume around 22% on top - almost every venue charges one.",
+    "badge_code": "",
+    "badge_label": "",
+    "est_pct": 22
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "unknown",
+    "sentence": "Sales tax is added on top of everything above. This venue did not state its rate."
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Where this venue has not disclosed a figure, the New Jersey average stands in. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [],
+   "at_default": {
+    "guests": 175,
+    "total": 139989,
+    "per_guest": 800
+   },
+   "estimates": {
+    "pp_fb": 210,
+    "ceremony": 1995,
+    "service_pct": 22,
+    "venue_fee": 7500
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": false
+    },
+    {
+     "component": "ceremony",
+     "from_venue": false
+    },
+    {
+     "component": "service_charge",
+     "from_venue": false
+    }
+   ],
+   "from_venue_count": 0,
+   "total": 3,
+   "style": "dashed",
+   "headline": "Only the rental fee came from this venue - the rest is the market"
+  },
+  "band": {
+   "metric": "venue_fee",
+   "reference_guests": 0,
+   "scope": "state",
+   "scope_label": "New Jersey",
+   "basis": "component",
+   "basis_component": "venue_fee",
+   "p10": 120,
+   "p25": 5000,
+   "median": 7500,
+   "p75": 19500,
+   "p90": 76000,
+   "n_spaces": 17,
+   "n_vendors": 15,
+   "position": "luxury",
+   "sentence": "Based on its rental fee alone, this sits at the expensive end for New Jersey."
+  },
+  "footer": "From 2 pricing PDFs couples uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}
