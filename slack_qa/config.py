@@ -18,6 +18,12 @@ def _flag(name: str, default: bool) -> bool:
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _dry(name: str) -> bool:
+    """Dry-run flags FAIL CLOSED: only an explicit 0/false/no/off turns dry run off. A typo ("O", "flase") stays dry."""
+    v = os.environ.get(name)
+    return not (v is not None and v.strip().lower() in ("0", "false", "no", "off"))
+
+
 def _f(name: str, default: float) -> float:
     try:
         return float(_s(name, str(default)))
@@ -139,7 +145,7 @@ def approvers() -> list[str]:          # QA_APPROVERS="U05UJMCHUV6,U0...": who m
 
 
 def merge_dry_run() -> bool:           # DEDUPE_DRY_RUN=0 -> Approve calls the Xano merge endpoint for real
-    return _flag("DEDUPE_DRY_RUN", True)
+    return _dry("DEDUPE_DRY_RUN")
 
 
 def merge_url() -> str:                # XANO_MERGE_URL: the (not yet built) vendor merge endpoint
@@ -187,7 +193,7 @@ def feedback_daily_cap() -> int:       # FEEDBACK_DAILY_CAP: max proposed-fix ca
 
 
 def vendor_edit_dry_run() -> bool:     # VENDOR_EDIT_DRY_RUN=0 -> Approve stages + applies via Xano ep280/ep281
-    return _flag("VENDOR_EDIT_DRY_RUN", True)
+    return _dry("VENDOR_EDIT_DRY_RUN")
 
 
 def vendor_edit_base() -> str:         # Xano api group 3 (the Tulle Ops bot's staged-edit endpoints)
@@ -199,7 +205,7 @@ def vendor_edit_secret() -> str:       # VENDOR_EDIT_SECRET: same `secret` the T
 
 
 def task_dry_run() -> bool:            # TASK_DRY_RUN=0 -> Approve files a GitHub issue
-    return _flag("TASK_DRY_RUN", True)
+    return _dry("TASK_DRY_RUN")
 
 
 def task_repo() -> str:
@@ -232,3 +238,23 @@ def engine_url() -> str:               # EXP_ENGINE_URL: http://experiments-engi
 
 def engine_key() -> str:               # EXP_API_KEY (reference the engine service's variable)
     return _s("EXP_API_KEY")
+
+
+def feedback_daily_usd() -> float:     # FEEDBACK_DAILY_USD: #feedback fix calls' own budget, inside QA_DAILY_USD
+    return _f("FEEDBACK_DAILY_USD", 0.5)
+
+
+def feedback_page_budget() -> int:     # pages read to count references on a duplicate reported in #feedback
+    return int(_f("FEEDBACK_PAGE_BUDGET", 60))
+
+
+def ondemand_scan_cooldown_min() -> int:
+    return int(_f("DEDUPE_ONDEMAND_COOLDOWN_MIN", 30))
+
+
+def stale_apply_min() -> int:          # an apply/undo still "in progress" after this long is marked unknown at start-up
+    return int(_f("QA_STALE_APPLY_MIN", 15))
+
+
+def merge_timeout() -> float:
+    return _f("XANO_MERGE_TIMEOUT", 120)

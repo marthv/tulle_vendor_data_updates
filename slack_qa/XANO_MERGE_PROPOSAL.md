@@ -76,7 +76,7 @@ table vendor_merge_backup {
 
 ## 2. Endpoint `POST /vendor/merge` (API group 3 `slack`, `api:aow91bcd`, same `secret` body gate as ep279-283)
 
-Inputs: `mode` (preview | apply | undo), `survivor_vendor_id`, `loser_vendor_ids[]`, `proposal_id`, `approved_by`,
+Inputs: `mode` (preview | apply | undo | status), `survivor_vendor_id`, `loser_vendor_ids[]`, `proposal_id`, `approved_by`,
 `expected_counts` (json, from the card), `secret`.
 
 Preconditions (all modes): secret matches; survivor exists in t11 and `merged_into` is null; every loser exists, has
@@ -94,11 +94,22 @@ The bot can call this at card time once it exists, replacing its own paged count
    and de-duplicate. If a write would clash with a unique index (e.g. `vendor_claim` already has the same account on
    the survivor), skip it and record it in `conflicts`.
 4. Loser rows in t11: backup `Validated_Data` + `merged_into`, then set `merged_into = survivor`,
-   `Validated_Data = "0"`. Never delete.
+   `Validated_Data = "0"`. Never delete. **Visibility:** if any loser had `Validated_Data == "1"` and the survivor
+   doesn't, back up the survivor's `Validated_Data` and set it to `"1"`, so a merge can never hide a venue couples
+   could see. (The bot already ranks visible records first when it picks the survivor; this is the server-side
+   guarantee.) Undo restores both from the backup.
 5. Update the candidate row: status `applied`, counts, conflicts. Return
    `{merge_id, backup_id: merge_id, counts, repointed_total, conflicts}`.
 6. Drift check: if any live count is more than 2x `expected_counts` for that table (the data moved a lot since the card
    was posted), refuse BEFORE step 2 with a message the bot shows verbatim.
+
+**status** (Re-check after a timeout): look up `vendor_merge_candidate` by `proposal_id`; return
+`{status: applied|partial|undone|none, merge_id, repointed_total}`. Read-only. The bot never retries an apply whose
+outcome it doesn't know: it shows "couldn't confirm" with a Re-check button that calls this.
+
+The bot waits up to `XANO_MERGE_TIMEOUT` (120 s). A merge touching thousands of rows (a couple's-favourites sweep over
+60k users) may need longer: if smoke tests show that, make `apply` enqueue a background task and return
+`{status: "queued", merge_id}` at once, and let Re-check / status report completion.
 
 **undo**: for the candidate row with `proposal_id` (status `applied`): for each backup row in reverse id order, restore
 `old_value` **only if the current value still equals the `new_value` we wrote** (otherwise someone changed it since;

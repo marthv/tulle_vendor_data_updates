@@ -132,6 +132,14 @@ def is_interpersonal(text: str | None) -> bool:
 _SLACK_MENTION = re.compile(r"<@[UW][A-Z0-9]+(?:\|[^>]*)?>")
 
 
+_SLACK_BROADCAST = re.compile(r"<!(?:channel|here|everyone)(?:\|[^>]*)?>|<!subteam\^[^>]*>")
+_SLACK_LABELLED_LINK = re.compile(r"<((?:https?|mailto):[^|>\s]+)\|([^>]*)>")
+
+
 def scrub_output(text: str | None) -> str:
-    """Reply-side scrub: secrets (scrub) + Slack @-mentions (so an answer never pings anyone)."""
-    return _SLACK_MENTION.sub("someone", scrub(text))
+    """Reply-side scrub: secrets (scrub), Slack @-mentions, broadcast pings (<!channel>, <!here>, <!everyone>, user
+    groups) and disguised links (<url|label> is shown as "label (url)") - so nothing we post pings anyone or hides
+    where a link goes."""
+    out = _SLACK_MENTION.sub("someone", scrub(text))
+    out = _SLACK_BROADCAST.sub("(broadcast removed)", out)
+    return _SLACK_LABELLED_LINK.sub(lambda m: f"{m.group(2)} ({m.group(1)})", out)

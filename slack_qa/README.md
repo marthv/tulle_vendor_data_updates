@@ -127,6 +127,9 @@ OAuth Token** (OAuth & Permissions page). If not, adding the scopes below and re
 ## v2 (2026-11-20): approve/reject cards, duplicate vendors, #feedback fixes, engine answers
 
 Everything below is OFF until its variable is set, and every "apply" is a DRY RUN until its `*_DRY_RUN` is `0`.
+Dry-run flags fail closed (only `0`/`false`/`no`/`off` turn them off), and a card posted under dry run stays a dry
+run even if the flag changes later. A timeout or 5xx on apply is shown as "couldn't confirm" with a **Re-check**
+button (never "nothing changed"); applies interrupted by a restart become the same at start-up.
 
 | Capability | Turn on with | What it does |
 |---|---|---|
@@ -142,7 +145,9 @@ New variables: `QA_APPROVERS` (default owner), `QA_SCHEDULER`, `DEDUPE_CHANNEL`,
 `DEDUPE_WEEKLY_DOW` (0), `XANO_MERGE_URL`, `XANO_MERGE_SECRET`, `FEEDBACK_CHANNEL`, `FEEDBACK_WATCH`,
 `FEEDBACK_DAILY_CAP`, `VENDOR_EDIT_DRY_RUN` (1), `VENDOR_EDIT_SECRET`, `VENDOR_EDIT_BASE`, `TASK_DRY_RUN` (1),
 `TASK_REPO`, `TASK_GITHUB_TOKEN` (issues:write only, separate from the read-only `GITHUB_TOKEN`), `ROLLUP_ENABLED`,
-`ROLLUP_CHANNEL`, `ROLLUP_HOUR_UTC`, `EXP_ENGINE_URL`, `EXP_API_KEY`.
+`ROLLUP_CHANNEL`, `ROLLUP_HOUR_UTC`, `EXP_ENGINE_URL`, `EXP_API_KEY`, `FEEDBACK_DAILY_USD` (0.5, the
+#feedback fixes' own slice of `QA_DAILY_USD`), `FEEDBACK_PAGE_BUDGET` (60), `DEDUPE_ONDEMAND_COOLDOWN_MIN` (30),
+`QA_STALE_APPLY_MIN` (15), `XANO_MERGE_TIMEOUT` (120).
 
 Slack app changes (owner, by hand):
 1. **Interactivity & Shortcuts** -> ON, Request URL `https://<railway domain>/slack/interactions`. Save.

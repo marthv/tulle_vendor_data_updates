@@ -1,10 +1,11 @@
 """Slack interactivity (button clicks on proposal cards).
 
 app.py verifies the Slack signature and acks within 3 s; handle() runs in the background:
-  1. only tb_approve / tb_reject / tb_undo from this workspace are considered,
+  1. only tb_approve / tb_reject / tb_undo / tb_recheck from this workspace are considered,
   2. the clicker must be in QA_APPROVERS (else an ephemeral "only X can approve", nothing changes),
   3. a compare-and-set on the stored status makes double clicks and Slack retries no-ops,
-  4. the card is updated to "Applying…", the applier runs, the card shows the outcome + who approved.
+  4. the card is updated to "Applying…", the applier runs (dry run if the proposal was created under dry run), the
+     card shows the outcome + who approved. A timeout / 5xx is "unknown": the card says so and offers Re-check.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import config
 from proposals import Store
 
 log = logging.getLogger("slack_qa.interactions")
+ACTIONS = (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO, cards.ACTION_RECHECK)
 
 
 def parse_body(body: bytes) -> dict | None:
@@ -29,14 +31,25 @@ def parse_body(body: bytes) -> dict | None:
         return None
 
 
+def _status_fns():
+    return {"merge": lambda p: appliers.merge_status(p["payload"], p["id"]),
+            "vendor_edit": lambda p: appliers.vendor_edit_status(p["payload"]),
+            "task": lambda p: appliers.task_status(p["payload"], p["id"])}
+
+
 class Interactions:
-    def __init__(self, slack=None, store: Store | None = None, apply_fns: dict | None = None):
+    def __init__(self, slack=None, store: Store | None = None, apply_fns: dict | None = None,
+                 status_fns: dict | None = None, sweep: bool = True):
         if slack is None:
             from slack_api import Slack
             slack = Slack()
         self.slack = slack
         self.store = store or Store()
         self.apply_fns = apply_fns or appliers.APPLIERS
+        self.status_fns = status_fns or _status_fns()
+        if sweep:
+            for pid in self.store.sweep_stale(config.stale_apply_min()):
+                self._refresh(self.store.get(pid))
 
     def handle_safe(self, payload: dict) -> str:
         try:
@@ -58,68 +71,108 @@ class Interactions:
             return "ignored:no-action"
         act = acts[0]
         aid, pid = act.get("action_id"), act.get("value") or ""
-        if aid not in (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO):
+        if aid not in ACTIONS:
             return f"ignored:action:{aid}"
         user = (payload.get("user") or {}).get("id") or ""
         chan = (payload.get("channel") or {}).get("id") or (payload.get("container") or {}).get("channel_id")
         msg_ts = (payload.get("message") or {}).get("ts") or (payload.get("container") or {}).get("message_ts")
         thread = (payload.get("message") or {}).get("thread_ts")
         if user not in config.approvers():
-            if chan:
-                self.slack.post_ephemeral(chan, user, f"Only {cards.approver_names()} can approve or reject Tulle "
-                                                      "Bot changes, so nothing happened.", thread_ts=thread)
+            self._ephemeral(chan, user, f"Only {cards.approver_names()} can approve or reject Tulle Bot changes, so "
+                                        "nothing happened.", thread)
             return "denied:not-approver"
         p = self.store.get(pid)
         if not p:
-            if chan:
-                self.slack.post_ephemeral(chan, user, "I can't find that proposal any more.", thread_ts=thread)
+            self._ephemeral(chan, user, "I can't find that proposal any more.", thread)
             return "missing"
-        # The card the click came from must be the card we posted for this proposal (no replaying an id elsewhere).
-        if p.get("ts") and msg_ts and p.get("ts") != msg_ts:
+        if p.get("ts") and msg_ts and p.get("ts") != msg_ts:     # a card's id can't be replayed from another message
             return "ignored:message-mismatch"
-
         if aid == cards.ACTION_REJECT:
-            p, why = self.store.transition(pid, {"pending"}, "rejected", user)
-            if why:
-                self._ephemeral(chan, user, why, thread)
-                return "noop:" + (p or {}).get("status", "missing")
-            self._refresh(p)
-            return "rejected"
-
+            return self._reject(p, user, chan, thread)
         if aid == cards.ACTION_UNDO:
-            p, why = self.store.transition(pid, {"applied"}, "undoing", user)
-            if why:
-                self._ephemeral(chan, user, why, thread)
-                return "noop:" + (p or {}).get("status", "missing")
-            res = self.apply_fns["merge"](p["payload"], user, pid, mode="undo")
-            if res.get("ok") and not res.get("dry_run"):
-                p, _ = self.store.transition(pid, {"undoing"}, "undone", user, result_text=res["text"])
-            else:
-                p, _ = self.store.transition(pid, {"undoing"}, "applied", user,
-                                             result_text=(p.get("result_text") or "") + f" (Undo: {res['text']})")
-            self._refresh(p)
-            return "undo:" + ("ok" if res.get("ok") else "failed")
+            return self._undo(p, user, chan, thread)
+        if aid == cards.ACTION_RECHECK:
+            return self._recheck(p, user, chan, thread)
+        return self._approve(p, user, chan, thread)
 
-        # approve
-        p, why = self.store.transition(pid, {"pending"}, "applying", user)
+    # --- actions -------------------------------------------------------------------------------------------
+    def _reject(self, p, user, chan, thread) -> str:
+        p, why = self.store.transition(p["id"], {"pending"}, "rejected", user)
+        if why:
+            self._ephemeral(chan, user, why, thread)
+            return "noop:" + (p or {}).get("status", "missing")
+        self._refresh(p)
+        return "rejected"
+
+    def _run(self, fn, p, user, **kw) -> dict:
+        try:
+            return fn(p["payload"], user, p["id"], dry_run=p.get("dry_run", True), **kw)
+        except Exception as e:  # noqa: BLE001 - an exception mid-call: we can't know whether it landed
+            log.exception("applier %s failed", p["kind"])
+            return {"ok": False, "dry_run": False, "unknown": True,
+                    "text": f"Something broke mid-way ({type(e).__name__}), so I can't tell whether it applied."}
+
+    def _approve(self, p, user, chan, thread) -> str:
+        p, why = self.store.transition(p["id"], {"pending"}, "applying", user)
         if why:
             self._ephemeral(chan, user, why, thread)
             return "noop:" + (p or {}).get("status", "missing")
         self._refresh(p)
         fn = self.apply_fns.get(p["kind"])
-        if fn is None:
-            res = {"ok": False, "dry_run": False, "text": f"no applier for {p['kind']}"}
+        res = self._run(fn, p, user) if fn else {"ok": False, "text": f"no applier for {p['kind']}"}
+        if res.get("unknown"):
+            to = "unknown"
+        elif not res.get("ok"):
+            to = "failed"
         else:
-            try:
-                res = fn(p["payload"], user, pid)
-            except Exception as e:  # noqa: BLE001
-                log.exception("applier %s failed", p["kind"])
-                res = {"ok": False, "dry_run": False, "text": f"error ({type(e).__name__})"}
-        to = "failed" if not res.get("ok") else ("dry_run" if res.get("dry_run") else "applied")
-        p, _ = self.store.transition(pid, {"applying"}, to, user, result_text=res.get("text", ""),
-                                     result=res.get("result") or {})
+            to = "dry_run" if res.get("dry_run") else "applied"
+        p, _ = self.store.transition(p["id"], {"applying"}, to, user, result_text=res.get("text", ""),
+                                     result=res.get("result") or {}, unknown_from="applying" if to == "unknown" else None)
         self._refresh(p)
         return f"approved:{to}"
+
+    def _undo(self, p, user, chan, thread) -> str:
+        if p.get("kind") != "merge":
+            return "ignored:undo-not-merge"
+        p, why = self.store.transition(p["id"], {"applied"}, "undoing", user)
+        if why:
+            self._ephemeral(chan, user, why, thread)
+            return "noop:" + (p or {}).get("status", "missing")
+        res = self._run(self.apply_fns["merge"], p, user, mode="undo")
+        if res.get("unknown"):
+            p, _ = self.store.transition(p["id"], {"undoing"}, "unknown", user, result_text=res["text"],
+                                         unknown_from="undoing")
+        elif res.get("ok") and not res.get("dry_run"):
+            p, _ = self.store.transition(p["id"], {"undoing"}, "undone", user, result_text=res["text"])
+        else:
+            p, _ = self.store.transition(p["id"], {"undoing"}, "applied", user,
+                                         result_text=(p.get("result_text") or "") + f" (Undo: {res['text']})")
+        self._refresh(p)
+        return "undo:" + ("unknown" if res.get("unknown") else "ok" if res.get("ok") else "failed")
+
+    def _recheck(self, p, user, chan, thread) -> str:
+        if p.get("status") != "unknown":
+            self._ephemeral(chan, user, f"That one is {p.get('status')}, nothing to re-check.", thread)
+            return "noop:" + str(p.get("status"))
+        fn = self.status_fns.get(p["kind"])
+        try:
+            st = fn(p) if fn else {"state": "unknown", "text": "no status check for this kind"}
+        except Exception as e:  # noqa: BLE001
+            st = {"state": "unknown", "text": f"The check failed ({type(e).__name__})."}
+        was_undo = p.get("unknown_from") == "undoing"
+        state = st.get("state")
+        if state == "applied":
+            to = "applied"
+        elif state == "undone":
+            to = "undone"
+        elif state == "none":
+            to = "applied" if was_undo else "pending"     # a confirmed no-op undo leaves it applied; else re-approvable
+        else:
+            to = "unknown"
+        p, _ = self.store.transition(p["id"], {"unknown"}, to, user, result_text=st.get("text", ""),
+                                     rechecked_by=user)
+        self._refresh(p)
+        return f"recheck:{to}"
 
     def _ephemeral(self, chan, user, text, thread):
         if chan:
@@ -133,13 +186,18 @@ class Interactions:
 
 
 def post_proposal(slack, store: Store, channel: str, p: dict, thread_ts: str | None = None) -> dict:
-    """Post a freshly created proposal's card and remember where it lives."""
+    """Post a freshly created proposal's card and remember where it lives. A card that fails to post becomes
+    post_failed: never shown, so it neither blocks a later re-proposal nor counts against a daily cap."""
+    if p is None:
+        return {"ok": False, "error": "duplicate"}
     text, blocks = cards.render(p)
     problems = cards.validate(blocks)
+    res = {"ok": False, "error": "invalid_blocks"} if problems else \
+        slack.post_blocks(channel, text, blocks, thread_ts=thread_ts)
     if problems:
         log.error("card %s invalid: %s", p["id"], problems)
-        return {"ok": False, "error": "invalid_blocks"}
-    res = slack.post_blocks(channel, text, blocks, thread_ts=thread_ts)
     if res.get("ok"):
         store.set_message(p["id"], res.get("channel") or channel, res.get("ts"))
+    else:
+        store.transition(p["id"], {"pending"}, "post_failed", "bot", result_text=str(res.get("error")))
     return res

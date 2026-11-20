@@ -122,7 +122,7 @@ def test_approve_is_idempotent_and_shows_who(monkeypatch):
     p = posted(slack, store, merge_proposal(store))
     calls = []
 
-    def fake_merge(payload, user, pid, mode="apply"):
+    def fake_merge(payload, user, pid, mode="apply", dry_run=True):
         calls.append((user, mode))
         return {"ok": True, "dry_run": False, "text": "Repointed 5 rows.", "result": {}}
     it = interactions.Interactions(slack=slack, store=store, apply_fns={"merge": fake_merge})
@@ -173,8 +173,10 @@ def test_applier_exception_marks_failed_not_applied():
     def bad(*a, **k):
         raise ValueError("x")
     it = interactions.Interactions(slack=slack, store=store, apply_fns={"merge": bad})
-    assert it.handle(click(cards.ACTION_APPROVE, p["id"], ts=p["ts"])) == "approved:failed"
-    assert store.get(p["id"])["status"] == "failed"
+    # an exception mid-call means we can't know whether it landed: unknown + Re-check, never "failed"
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], ts=p["ts"])) == "approved:unknown"
+    assert store.get(p["id"])["status"] == "unknown"
+    assert "tb_recheck" in json.dumps(slack.of("chat.update")[-1]["blocks"])
 
 
 # --- dry runs: no network --------------------------------------------------------------------------------------
@@ -189,7 +191,7 @@ def test_dry_run_is_default_and_never_calls_network():
 
 def test_live_merge_refuses_without_url(monkeypatch):
     monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
-    r = appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p1")
+    r = appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p1", dry_run=False)
     assert not r["ok"] and "isn't configured" in r["text"]
 
 
@@ -341,8 +343,10 @@ def fb_event(text="Their website is now roseHall.com, the old one is dead", **kw
 
 
 def watcher(fix, rows=None):
+    import tempfile
+    from pathlib import Path
     from state import State
-    slack, store = RecSlack(), Store()
+    slack, store = RecSlack(), Store(Path(tempfile.mkdtemp()) / "proposals.json")
     w = feedback_watch.FeedbackWatcher(slack, FixClaude(fix), State(), store, xano=None,
                                        directory=FakeDir(rows or [V(5, "V5", "Rose Hall", web="old.com")]))
     return w, slack, store
@@ -372,8 +376,9 @@ def test_feedback_guards(monkeypatch):
     monkeypatch.setenv("FEEDBACK_WATCH", "1")
     assert watcher(dict(FIX, field="Category"))[0].handle(fb_event()).endswith("field-not-editable")
     assert watcher(dict(FIX, confidence=0.4))[0].handle(fb_event()).startswith("feedback:no-fix")
-    assert watcher(dict(FIX, new_value="old.com"), [V(5, "V5", "Rose Hall", web="old.com")])[0] \
-        .handle(fb_event()).endswith("already-correct")
+    assert watcher(dict(FIX, new_value="old.com", evidence="site is old.com"),
+                   [V(5, "V5", "Rose Hall", web="old.com")])[0].handle(fb_event(text="site is old.com")) \
+        .endswith("already-correct")
     two = [V(5, "V5", "Rose Hall"), V(6, "V6", "Rose Hall", addr="x, Waco, TX")]
     assert watcher(FIX, two)[0].handle(fb_event()).endswith("resolve-2")
 
@@ -395,7 +400,7 @@ def test_feedback_task_scrubs_email(monkeypatch):
     fix = dict(FIX, kind="task", title="Planner quoted the wrong price for maria@x.com",
                body="Couple maria@x.com says the Planner said $5k", evidence="maria@x.com said")
     w, slack, store = watcher(fix)
-    assert w.handle(fb_event()) == "feedback:proposed:task"
+    assert w.handle(fb_event(text="maria@x.com said the Planner said $5k")) == "feedback:proposed:task"
     assert "maria@x.com" not in json.dumps(slack.of("chat.postMessage")[0]) + json.dumps(store._data)
 
 
@@ -484,9 +489,11 @@ def test_scheduler_runs_once_per_day_and_never_without_channel(monkeypatch):
 def test_injected_slack_markup_is_neutralised(monkeypatch):
     monkeypatch.setenv("FEEDBACK_CHANNEL", "CFEED")
     monkeypatch.setenv("FEEDBACK_WATCH", "1")
-    fix = dict(FIX, new_value="<!channel> <https://evil.example|rosehall.com>", evidence="<!here> new site")
+    fix = dict(FIX, field="Description", new_value="<!channel> <https://evil.example|rosehall.com>",
+               evidence="<!here> new site")
     w, slack, store = watcher(fix)
-    assert w.handle(fb_event()) == "feedback:proposed:vendor_edit"
+    post = "<!here> new site: <!channel> <https://evil.example|rosehall.com>"
+    assert w.handle(fb_event(text=post)) == "feedback:proposed:vendor_edit"
     body = json.dumps(slack.of("chat.postMessage")[0]["blocks"])
     assert "<!channel>" not in body and "<!here>" not in body and "<https://evil" not in body
     assert store.get(next(iter(store._data["proposals"])))["payload"]["new_value"].startswith("<!channel>")  # raw kept

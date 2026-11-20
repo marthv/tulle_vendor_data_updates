@@ -33,9 +33,15 @@ def verify_signature(secret: str, timestamp: str | None, signature: str | None, 
         return False
     if abs((now if now is not None else time.time()) - ts) > MAX_SKEW:
         return False
-    base = b"v0:" + timestamp.encode() + b":" + body
+    try:
+        base = b"v0:" + timestamp.encode() + b":" + body
+    except (AttributeError, UnicodeEncodeError):
+        return False
     expected = "v0=" + hmac.new(secret.encode(), base, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    try:
+        return hmac.compare_digest(expected, signature)
+    except TypeError:          # non-ASCII signature header: compare_digest refuses str with non-ASCII -> reject
+        return False
 
 
 class TTLCache:

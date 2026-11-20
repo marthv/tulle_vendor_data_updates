@@ -10,6 +10,7 @@ import time
 
 import config
 from feedback_watch import post_text
+from cards import esc
 from scrub import scrub_output
 
 log = logging.getLogger("slack_qa.rollup")
@@ -41,7 +42,7 @@ def build(slack, claude, state, hours: int = 24) -> tuple[str, int]:
     state.add_spend(usd)
     groups = collections.defaultdict(list)
     for it in res.get("items") or []:
-        venue = (it.get("venue") or "").strip() or "No specific venue"
+        venue = esc((it.get("venue") or "").strip()[:80]) or "No specific venue"
         groups[venue].append(it)
     order = sorted(groups.items(), key=lambda kv: (kv[0] == "No specific venue", -len(kv[1]), kv[0].lower()))
     lines = [f"*#feedback, last 24 hours: {len(posts)} posts, {len([g for g in groups if g != 'No specific venue'])} "
@@ -50,7 +51,7 @@ def build(slack, claude, state, hours: int = 24) -> tuple[str, int]:
         kinds = collections.Counter(KIND_LABEL.get(i.get("kind"), "other") for i in items)
         lines.append(f"\n*{venue}* ({', '.join(f'{n} {k}' for k, n in kinds.most_common())})")
         for i in items[:4]:
-            lines.append(f"• {EMAIL.sub('[email]', i.get('summary') or '')[:200]}")
+            lines.append(f"• {esc(EMAIL.sub('[email]', i.get('summary') or '')[:200])}")
         if len(items) > 4:
             lines.append(f"• …and {len(items) - 4} more")
     if len(order) > 25:

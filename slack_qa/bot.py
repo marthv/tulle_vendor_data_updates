@@ -292,7 +292,7 @@ class Bot:
         import engine as eng
         channel = ev["channel"]
         reply_ts = ev.get("thread_ts") or ev.get("ts")
-        if re.search(r"(scan|check|find).*duplicates?|dedupe", question, re.I):
+        if re.search(r"\b(scan|check|find)\b.*\bduplicates?\b|\bdedupe\b", question, re.I):
             if ev.get("user") not in config.approvers():
                 self.post(channel, "Only approvers can start a duplicate scan.", reply_ts, footer=False)
                 return "dedupe:denied"
@@ -300,12 +300,20 @@ class Bot:
                 self.post(channel, "The duplicate scan isn't switched on yet (DEDUPE_CHANNEL isn't set).", reply_ts,
                           footer=False)
                 return "dedupe:no-channel"
+            import time as _t
+            last = float(self.store.meta("dedupe_ondemand_at", 0) or 0)
+            wait = config.ondemand_scan_cooldown_min() * 60 - (_t.time() - last)
+            if wait > 0:
+                self.post(channel, f"A scan ran a few minutes ago; try again in {int(wait // 60) + 1} min.", reply_ts,
+                          footer=False)
+                return "dedupe:cooldown"
+            self.store.set_meta("dedupe_ondemand_at", _t.time())
             self.post(channel, f"Starting a duplicate scan; suggestions will land in <#{config.dedupe_channel()}>.",
                       reply_ts, footer=False)
             from scheduler import run_dedupe
-            mode = "weekly" if re.search(r"(full|all|weekly)", question, re.I) else "nightly"
+            mode = "weekly" if re.search(r"\b(full|all|weekly)\b", question, re.I) else "nightly"
             return run_dedupe(self, mode=mode)
-        if eng.PUBLISH_Q.search(question) and re.search(r"(what|which|changed?|last|latest|recent)", question, re.I):
+        if eng.PUBLISH_Q.search(question) and re.search(r"\b(what|which|changed?|last|latest|recent)\b", question, re.I):
             deploy = self.slack.history(config.deploy_channel(), limit=100, days=14)
             text = eng.answer_publishes(self.engine, deploy)
             if text:

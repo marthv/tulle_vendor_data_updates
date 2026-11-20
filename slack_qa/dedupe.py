@@ -19,6 +19,7 @@ import collections
 import logging
 import math
 import re
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -48,6 +49,7 @@ GENERIC = {"facebook.com", "instagram.com", "google.com", "weddingwire.com", "th
            "tripadvisor.com", "opentable.com", "resy.com", "tock.com", "eventbrite.com", "apple.com", "wordpress.com",
            "blogspot.com"}
 CHAIN_DOMAIN_MIN = 6        # a domain on this many vendors is a chain / platform: never evidence on its own
+BRAND_NAME_MIN = 3          # a normalised name on this many vendors is a brand ("hilton garden inn", "first baptist church")
 MAX_GROUP = 4
 
 # Every table that points at a vendor (workspace 1, checked 2026-11-20). action: repoint = the merge endpoint moves
@@ -97,15 +99,41 @@ def norm(n: str) -> str:
     return " ".join(t for t in n.split() if t not in {"the", "llc", "inc", "co"})
 
 
+STREET_WORD = re.compile(r"\b(st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|hwy|highway|pkwy|parkway|"
+                         r"ct|court|way|suite|ste|pl|place|cir|circle|trl|trail|route|rte|sq|square|fm|unit|floor|"
+                         r"n|s|e|w|ne|nw|se|sw)\b\.?", re.I)
+STREET_ABBR = {"street": "st", "avenue": "ave", "road": "rd", "boulevard": "blvd", "drive": "dr", "lane": "ln",
+               "highway": "hwy", "parkway": "pkwy", "court": "ct", "place": "pl", "circle": "cir", "trail": "trl",
+               "north": "n", "south": "s", "east": "e", "west": "w", "suite": "ste", "route": "rte"}
+
+
+def _street_like(v: str) -> bool:
+    return bool(re.search(r"\d", v)) or bool(STREET_WORD.search(v))
+
+
 def city(addr: str) -> str:
+    """City from a Google-style address. Returns "" rather than guess: "123 Main St Houston TX 77002" (no comma before
+    the state) used to yield the street as the "city", which merged two Houston hotels 35 km apart (QA 2026-11-20)."""
     p = [x.strip() for x in (addr or "").split(",") if x.strip()]
     if p and p[-1].upper() in ("USA", "US", "UNITED STATES"):
         p = p[:-1]
     if len(p) >= 2 and re.match(r"^[A-Za-z]{2}(\s+\d{5}(-\d{4})?)?$", p[-1]):
-        return p[-2].lower()
-    if len(p) >= 2:
-        return re.sub(r"\d", "", p[-2]).strip().lower()
-    return ""
+        cand = p[-2]
+    elif len(p) >= 2:
+        cand = re.sub(r"\s*\d{5}(-\d{4})?$", "", p[-2])
+    else:
+        return ""
+    cand = cand.strip().lower()
+    return "" if not cand or _street_like(cand) else cand
+
+
+def street(addr: str) -> str:
+    """Normalised street line ("60 furman st"), only when it starts with a house number; else ""."""
+    first = (addr or "").split(",")[0].strip().lower()
+    if not re.match(r"^\d+[a-z]?\s+\S", first):
+        return ""
+    words = re.sub(r"[^a-z0-9 ]+", " ", first).split()
+    return " ".join(STREET_ABBR.get(w, w) for w in words)
 
 
 def domain(u: str) -> str:
@@ -161,6 +189,7 @@ def prepare(rows: list[dict]) -> list[dict]:
         r = dict(r)
         r["_st"], r["_n"], r["_c"], r["_d"] = _states(r.get("State")), norm(r.get("Name")), city(r.get("Address")), \
             domain(r.get("Website"))
+        r["_s"] = street(r.get("Address"))
         try:
             r["_lat"], r["_lng"] = float(r.get("lat")), float(r.get("lng"))
             if not r["_lat"] or not r["_lng"]:
@@ -192,7 +221,10 @@ def find_groups(rows: list[dict]) -> list[dict]:
             for b in g[i + 1:]:
                 if a["_n"] and b["_n"] and ratio(a["_n"], b["_n"]) >= 80:
                     add(a["id"], b["id"], "A")
-    # B: name + city + state
+    # B: name + city + state, AND physically the same place: within 1 km, same Place_ID or same street address.
+    # Brands (a name on 3+ vendors, or a chain website) need the same Place_ID or street address: two Hiltons
+    # 800 m apart downtown are different hotels.
+    name_count = collections.Counter(r["_n"] for r in V if r["_n"])
     by_ncs = collections.defaultdict(list)
     for r in V:
         if r["_n"] and r["_c"]:
@@ -200,7 +232,12 @@ def find_groups(rows: list[dict]) -> list[dict]:
     for g in by_ncs.values():
         for i, a in enumerate(g):
             for b in g[i + 1:]:
-                add(a["id"], b["id"], "B")
+                same_pid = bool(place_id(a)) and place_id(a) == place_id(b)
+                same_street = bool(a["_s"]) and a["_s"] == b["_s"]
+                near = a["_lat"] is not None and b["_lat"] is not None and _km(a, b) <= 1.0
+                brand = name_count[a["_n"]] >= BRAND_NAME_MIN or (a["_d"] and dom_count[a["_d"]] >= CHAIN_DOMAIN_MIN)
+                if same_pid or same_street or (near and not brand):
+                    add(a["id"], b["id"], "B")
     # C: fuzzy >= 90 within 1 km AND (same non-generic, non-chain domain OR same place id)
     grid = collections.defaultdict(list)
     for r in V:
@@ -234,6 +271,9 @@ def find_groups(rows: list[dict]) -> list[dict]:
         cats = {str(byid[i].get("Category") or "").strip().lower() for i in ids}
         if len(cats) > 1:
             continue
+        vids = [str(byid[i].get("Vendor_ID") or "").strip() for i in ids]
+        if not all(vids) or len(set(vids)) != len(vids):      # a merge needs distinct, real Vendor_IDs
+            continue
         rules = set()
         for i, a in enumerate(ids):
             for b in ids[i + 1:]:
@@ -245,21 +285,23 @@ def find_groups(rows: list[dict]) -> list[dict]:
     return out
 
 
-def group_key(vendor_ids: list[str]) -> str:
-    return "merge:" + "|".join(sorted(vendor_ids))
+def group_key(vendor_ids: list) -> str:
+    return "merge:" + "|".join(sorted(str(v or "").strip() for v in vendor_ids))
 
 
 def choose_survivor(members: list[dict], pdf_counts: dict[str, int]) -> tuple[dict, str]:
+    """Visible first (couples' search only shows Validated_Data "1"; keeping a hidden record would hide the venue),
+    then most PDFs, most clicks, has a Place ID, oldest."""
     def score(r):
-        return (pdf_counts.get(r.get("Vendor_ID"), 0), str(r.get("Validated_Data")) == "1",
+        return (str(r.get("Validated_Data")) == "1", pdf_counts.get(r.get("Vendor_ID"), 0),
                 int(r.get("Clicks_on_Venue") or 0), bool(place_id(r)), -int(r["id"]))
     ranked = sorted(members, key=score, reverse=True)
     s, runner = ranked[0], ranked[1]
     reasons = []
-    if pdf_counts.get(s.get("Vendor_ID"), 0) > pdf_counts.get(runner.get("Vendor_ID"), 0):
-        reasons.append("it has more PDFs")
-    elif str(s.get("Validated_Data")) == "1" and str(runner.get("Validated_Data")) != "1":
+    if str(s.get("Validated_Data")) == "1" and str(runner.get("Validated_Data")) != "1":
         reasons.append("it's the one couples can see")
+    elif pdf_counts.get(s.get("Vendor_ID"), 0) > pdf_counts.get(runner.get("Vendor_ID"), 0):
+        reasons.append("it has more PDFs")
     elif int(s.get("Clicks_on_Venue") or 0) > int(runner.get("Clicks_on_Venue") or 0):
         reasons.append("couples click it more")
     elif place_id(s) and not place_id(runner):
@@ -273,9 +315,12 @@ def choose_survivor(members: list[dict], pdf_counts: dict[str, int]) -> tuple[di
 class RefIndex:
     """{table_id: {vendor_id: count}} built from read-only pages, within a page budget."""
 
-    def __init__(self, xano, max_pages: int, page_delay: float = 0.0, skip: set[int] | None = None):
+    def __init__(self, xano, max_pages: int, page_delay: float = 0.0, skip: set[int] | None = None,
+                 only: set[int] | None = None):
         self.xano, self.max_pages, self.page_delay = xano, max_pages, page_delay
         self.skip = SKIP_BY_DEFAULT if skip is None else skip
+        if only is not None:                 # e.g. {10, 36} for a cheap count; the rest -> "counted at merge time"
+            self.skip = self.skip | {t for t, *_ in REF_TABLES if t not in only}
         self.counts: dict[int, collections.Counter] = {}
         self.not_counted: set[int] = set()
         self.pages_used = 0
@@ -382,11 +427,23 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex) -> dict:
 
 
 # --- the scan -----------------------------------------------------------------------------------------------
+_SCAN_LOCK = threading.Lock()
+
+
 def scan(xano, store, mode: str = "nightly", max_cards: int = 10, max_pages: int = 300, page_delay: float = 0.0,
          vendor_rows: list[dict] | None = None) -> dict:
     """mode weekly = every group; nightly = groups touching a vendor created since the last scan.
     Returns {"proposals": [...created...], "groups": n, "pages": n, "note": str}. Creates proposals in `store`;
-    posting is the caller's job."""
+    posting is the caller's job. One scan at a time per process (a second caller gets note "busy")."""
+    if not _SCAN_LOCK.acquire(blocking=False):
+        return {"proposals": [], "groups": 0, "pages": 0, "note": "a scan is already running", "busy": True}
+    try:
+        return _scan(xano, store, mode, max_cards, max_pages, page_delay, vendor_rows)
+    finally:
+        _SCAN_LOCK.release()
+
+
+def _scan(xano, store, mode, max_cards, max_pages, page_delay, vendor_rows) -> dict:
     rows = vendor_rows
     if rows is None:
         rows, truncated = xano.rows(11)
@@ -407,8 +464,10 @@ def scan(xano, store, mode: str = "nightly", max_cards: int = 10, max_pages: int
         refs.build(wanted)
         for g in fresh:
             pr = build_proposal(g, byid, refs)
-            created.append(store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
-                                        touches=pr["touches"], key=pr["key"], source=f"dedupe:{mode}"))
+            p = store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
+                                        touches=pr["touches"], key=pr["key"], source=f"dedupe:{mode}")
+            if p is not None:                      # None = another scan/feedback already proposed this group
+                created.append(p)
         pages = refs.pages_used
     else:
         pages = 0

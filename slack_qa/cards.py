@@ -23,7 +23,7 @@ MAX_BUTTON = 75
 MAX_FALLBACK = 3000
 
 KIND_LABEL = {"merge": "Merge duplicate vendors", "vendor_edit": "Vendor data fix", "task": "New task"}
-ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO = "tb_approve", "tb_reject", "tb_undo"
+ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO, ACTION_RECHECK = "tb_approve", "tb_reject", "tb_undo", "tb_recheck"
 
 
 def esc(text) -> str:
@@ -53,9 +53,10 @@ def _context(text: str) -> dict:
     return {"type": "context", "elements": [{"type": "mrkdwn", "text": clip(text, MAX_SECTION)}]}
 
 
-def dry_run_for(kind: str) -> bool:
-    return {"merge": config.merge_dry_run, "vendor_edit": config.vendor_edit_dry_run,
-            "task": config.task_dry_run}.get(kind, lambda: True)()
+def dry_run_for(p: dict) -> bool:
+    """A card is dry-run if it was created under dry run (fixed at creation) or the flag is on now."""
+    from proposals import default_dry_run
+    return bool(p.get("dry_run", True)) or default_dry_run(p.get("kind", ""))
 
 
 def render(p: dict) -> tuple[str, list[dict]]:
@@ -71,7 +72,7 @@ def render(p: dict) -> tuple[str, list[dict]]:
         blocks.append(_section("*Next steps:* " + p["next_steps"]))
     status = p.get("status", "pending")
     if status == "pending":
-        if dry_run_for(kind):
+        if dry_run_for(p):
             blocks.append(_context(":test_tube: Dry run is on: approving records the decision and shows what would "
                                    "happen. Nothing is written until dry run is switched off."))
         blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": [
@@ -82,6 +83,10 @@ def render(p: dict) -> tuple[str, list[dict]]:
         ]})
     else:
         blocks.append(_context(outcome_line(p)))
+        if status == "unknown":
+            blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": [
+                {"type": "button", "action_id": ACTION_RECHECK, "value": p["id"],
+                 "text": {"type": "plain_text", "text": "Re-check"}}]})
         if status == "applied" and kind == "merge" and p.get("undoable", True):
             blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": [
                 {"type": "button", "action_id": ACTION_UNDO, "value": p["id"],
@@ -112,7 +117,12 @@ def outcome_line(p: dict) -> str:
         undo = f"<@{p['undo_by']}>" if p.get("undo_by") else who
         return f":leftwards_arrow_with_hook: Merge undone by {undo} (first approved by {who}). {res}"
     if st == "failed":
-        return f":warning: Approved by {who} but it didn't apply: {res} Nothing was changed."
+        return f":warning: Approved by {who} but it didn't apply. {res}"
+    if st == "unknown":
+        return (f":warning: Approved by {who}, but I couldn't confirm the outcome. {res} Press *Re-check* before "
+                "trying anything else.")
+    if st == "post_failed":
+        return "Card could not be posted."
     return st or ""
 
 

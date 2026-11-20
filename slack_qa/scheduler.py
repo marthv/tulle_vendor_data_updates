@@ -42,6 +42,8 @@ def run_dedupe(bot, now: datetime | None = None, mode: str | None = None) -> str
     res = dedupe.scan(bot.xano, bot.store, mode=mode, max_cards=config.dedupe_max_cards(),
                       max_pages=config.dedupe_max_pages(), page_delay=config.dedupe_page_delay())
     props = res["proposals"]
+    if res.get("busy"):
+        return f"dedupe:{mode}:busy"
     if not props:
         log.info("dedupe %s: %s", mode, res["note"])
         return f"dedupe:{mode}:0"
