@@ -156,6 +156,8 @@ def answer_publishes(engine: Engine, deploy_history: list[dict], n: int = 3) -> 
             near = min(cand)[1] if cand else None
         when = datetime.fromtimestamp(t, tz=timezone.utc).strftime("%b %d %H:%M UTC") if t else p.get("ts", "?")
         line = f"• *{when}* · {p.get('title', 'WeWeb publish')}"
+        if near:      # quoted Slack text: no <!here>/<!channel> pings or disguised links
+            near = near.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         line += f"\n   What changed (from the nearest #deployment note): {near[:400]}" if near else \
             "\n   No #deployment note near this publish, so I can't say what changed."
         out.append(line)
