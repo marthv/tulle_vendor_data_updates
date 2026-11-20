@@ -7,7 +7,7 @@ Layout:  Proposed change · <kind> <title>
          NEXT STEPS
          [dry-run note]
          [Approve and apply] [Reject]          (pending)  |  ✅ Applied ... Approved by @x   (decided)
-         Proposed by Tulle Bot. Only Vivek, Des can approve.
+         Proposed by Tulle Bot. Only approvers can apply this.
 
 Buttons carry ONLY the proposal id. What an approval does is read from the server-side proposal store, so a
 forged button value can never change the action (interactions.py re-checks the approver list too).
@@ -22,6 +22,7 @@ MAX_HEADER = 150
 MAX_BUTTON = 75
 MAX_FALLBACK = 3000
 
+FOOTER = "Proposed by Tulle Bot. Only approvers can apply this."
 KIND_LABEL = {"merge": "Merge duplicate vendors", "vendor_edit": "Vendor data fix", "task": "New task"}
 ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO, ACTION_RECHECK = "tb_approve", "tb_reject", "tb_undo", "tb_recheck"
 ACTION_DETAILS = "tb_details"
@@ -118,7 +119,7 @@ def render(p: dict) -> tuple[str, list[dict]]:
         buttons.append(_btn(ACTION_DETAILS, p["id"], "Details"))
     if buttons:
         blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": buttons})
-    blocks.append(_context(f"Proposed by Tulle Bot. Only {approver_names()} can approve."))
+    blocks.append(_context(FOOTER))             # owner 2026-11-20: never name people on the card
     label = plain["headline"].replace("*", "") if plain else f"{KIND_LABEL.get(kind, kind)} - {p.get('title', '')}"
     fallback = clip(f"Proposed change: {label}", MAX_FALLBACK)
     return fallback, blocks

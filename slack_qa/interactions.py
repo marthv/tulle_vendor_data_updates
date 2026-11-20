@@ -2,7 +2,7 @@
 
 app.py verifies the Slack signature and acks within 3 s; handle() runs in the background:
   1. only tb_approve / tb_reject / tb_undo / tb_recheck from this workspace are considered,
-  2. the clicker must be in QA_APPROVERS (else an ephemeral "only X can approve", nothing changes),
+  2. the clicker must be in QA_APPROVERS (else an ephemeral "only approvers can apply this", nothing changes),
   3. a compare-and-set on the stored status makes double clicks and Slack retries no-ops,
   4. the card is updated to "Applying…", the applier runs (dry run if the proposal was created under dry run), the
      card shows the outcome + who approved. A timeout / 5xx is "unknown": the card says so and offers Re-check.
@@ -80,8 +80,8 @@ class Interactions:
         if aid == cards.ACTION_DETAILS:                 # read-only: anyone in the workspace may open it
             return self._details(pid, user, chan, msg_ts, thread)
         if user not in config.approvers():
-            self._ephemeral(chan, user, f"Only {cards.approver_names()} can approve or reject Tulle Bot changes, so "
-                                        "nothing happened.", thread)
+            self._ephemeral(chan, user, "Only approvers can apply or reject Tulle Bot changes, so nothing happened.",
+                            thread)
             return "denied:not-approver"
         p = self.store.get(pid)
         if not p:

@@ -2,7 +2,7 @@
 
 Read calls fail soft (return [] / None) so a missing scope or a rate limit degrades the answer's context
 instead of killing it. Writes: chat.postMessage (text or Block Kit), chat.update (only the bot's own
-approval cards), chat.postEphemeral ("only X can approve") and the CSV upload."""
+approval cards), chat.postEphemeral ("only approvers can apply this") and the CSV upload."""
 from __future__ import annotations
 
 import hashlib

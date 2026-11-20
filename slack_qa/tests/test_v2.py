@@ -114,7 +114,8 @@ def test_non_approver_gets_ephemeral_and_nothing_changes():
     assert it.handle(click(cards.ACTION_APPROVE, p["id"], user=OTHER, ts=p["ts"])) == "denied:not-approver"
     assert calls == [] and store.get(p["id"])["status"] == "pending"
     eph = slack.of("chat.postEphemeral")
-    assert eph and eph[0]["user"] == OTHER and "can approve" in eph[0]["text"]
+    assert eph and eph[0]["user"] == OTHER and "Only approvers can apply" in eph[0]["text"]
+    assert "Vivek" not in eph[0]["text"]
 
 
 def test_approve_is_idempotent_and_shows_who(monkeypatch):
@@ -163,7 +164,8 @@ def test_approvers_from_env(monkeypatch):
     p = posted(slack, store, merge_proposal(store))
     it = interactions.Interactions(slack=slack, store=store)
     assert it.handle(click(cards.ACTION_APPROVE, p["id"], user=OTHER, ts=p["ts"])) == "approved:dry_run"
-    assert "Vivek and Des can approve" in json.dumps(slack.of("chat.update")[-1]["blocks"])
+    card = json.dumps(slack.of("chat.update")[-1]["blocks"])
+    assert "Only approvers can apply this." in card and "Des" not in card and "Vivek" not in card
 
 
 def test_applier_exception_marks_failed_not_applied():
