@@ -95,7 +95,7 @@ def cap_words(text: str, n: int = MAX_WORDS) -> str:
 class Bot:
     def __init__(self, slack: Slack | None = None, claude: Claude | None = None, state: State | None = None,
                  limiter: RateLimiter | None = None, github=None, know=knowledge, xano=None,
-                 working_after: float = 5.0):
+                 working_after: float = 5.0, store=None, engine=None):
         self.slack = slack or Slack()
         self.claude = claude or Claude()
         self.state = state or State()
@@ -110,6 +110,22 @@ class Bot:
             xano = ReadOnlyXano()
         self.xano = xano
         self.working_after = working_after
+        if store is None:
+            from proposals import Store
+            store = Store()
+        self.store = store
+        if engine is None:
+            from engine import Engine
+            engine = Engine()
+        self.engine = engine
+        self._feedback = None
+
+    @property
+    def feedback(self):
+        if self._feedback is None:
+            from feedback_watch import FeedbackWatcher
+            self._feedback = FeedbackWatcher(self.slack, self.claude, self.state, self.store, self.xano)
+        return self._feedback
 
     # --- entry point -------------------------------------------------------------------------------------
     def handle_safe(self, payload: dict) -> str:
@@ -126,6 +142,12 @@ class Bot:
             return "disabled"
         ev = payload.get("event") or {}
         bot_uid = bot_user_id(payload, self.slack)
+        if config.feedback_channel() and ev.get("channel") == config.feedback_channel():
+            import feedback_watch
+            if feedback_watch.is_watchable(ev, bot_uid):
+                return self.feedback.handle(ev)
+            if ev.get("type") == "message":
+                return "ignored:feedback-channel"
         why = should_ignore(ev, bot_uid)
         if why:
             return f"ignored:{why}"
@@ -165,6 +187,9 @@ class Bot:
             out = self.learn(question, ev)
             if out is not None:
                 return out
+        out = self.capabilities(question, ev)
+        if out is not None:
+            return out
         if REPORT_HINT.search(question) and getattr(self.xano, "enabled", False):
             out = self.report(question, ev)
             if out is not None:
@@ -261,6 +286,38 @@ class Bot:
                                     "need the files:write scope.)", thread_ts=reply_ts)
             return f"report:{name}:upload-failed"
         return f"report:{name}"
+
+    # --- v2 capabilities: experiments engine, WeWeb publishes, on-demand duplicate scan --------------------------
+    def capabilities(self, question: str, ev: dict) -> str | None:
+        import engine as eng
+        channel = ev["channel"]
+        reply_ts = ev.get("thread_ts") or ev.get("ts")
+        if re.search(r"(scan|check|find).*duplicates?|dedupe", question, re.I):
+            if ev.get("user") not in config.approvers():
+                self.post(channel, "Only approvers can start a duplicate scan.", reply_ts, footer=False)
+                return "dedupe:denied"
+            if not config.dedupe_channel():
+                self.post(channel, "The duplicate scan isn't switched on yet (DEDUPE_CHANNEL isn't set).", reply_ts,
+                          footer=False)
+                return "dedupe:no-channel"
+            self.post(channel, f"Starting a duplicate scan; suggestions will land in <#{config.dedupe_channel()}>.",
+                      reply_ts, footer=False)
+            from scheduler import run_dedupe
+            mode = "weekly" if re.search(r"(full|all|weekly)", question, re.I) else "nightly"
+            return run_dedupe(self, mode=mode)
+        if eng.PUBLISH_Q.search(question) and re.search(r"(what|which|changed?|last|latest|recent)", question, re.I):
+            deploy = self.slack.history(config.deploy_channel(), limit=100, days=14)
+            text = eng.answer_publishes(self.engine, deploy)
+            if text:
+                self.post(channel, text, reply_ts, footer=False)
+                return "engine:publishes"
+            return None
+        if eng.EXPERIMENT_Q.search(question):
+            text = eng.answer_experiment(question, self.engine, lambda q: None)
+            if text:
+                self.post(channel, text, reply_ts, footer=False)
+                return "engine:experiment"
+        return None
 
     def command(self, cmd: str, channel: str, user: str, reply_ts: str | None) -> str:
         if cmd == "mute":

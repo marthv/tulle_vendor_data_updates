@@ -305,3 +305,83 @@ def route_report(claude: "Claude", text: str, today: str) -> tuple[dict, float]:
     if getattr(resp, "stop_reason", None) == "refusal":
         return {"report": "none"}, usd
     return _json_text(resp) or {"report": "none"}, usd
+
+
+# --- #feedback -> proposed fix (2026-11-20) ---------------------------------------------------------------------
+EDITABLE_FIELDS = ["Name", "Website", "Description", "Contact_Information", "Max_Capacity_Seated", "Venue_Type",
+                   "Type_of_Photography", "Type_of_Entertainment", "Type_of_Beauty"]   # = Xano fn62 whitelist
+
+FIX_SYSTEM = f"""You read one post from Tulle Together's #feedback Slack channel (couples' feedback on the wedding \
+pricing app and its AI Planner, venue requests, thumbs-down comments) and decide whether it maps to ONE concrete fix.
+
+kind:
+- "vendor_edit": the post says a vendor's listed info is wrong AND states the correct value (e.g. "their website is \
+now x.com", "capacity is 180 not 300"). Only these fields can be edited: {", ".join(EDITABLE_FIELDS)}. Prices, \
+category, state and visibility CANNOT be edited this way (use "task").
+- "duplicate": the post says two listings are the same business. Give both names (and Vendor_IDs like V123 if shown).
+- "task": a real, specific product or data problem someone should fix, but not one of the above (a bug, a wrong \
+price, a missing venue to add, a confusing screen). Write a short imperative title and a body with the evidence.
+- "none": praise, ratings with no actionable detail, chit-chat, or too vague to act on.
+
+Rules: never invent values; new_value must be stated in the post. evidence = the exact words from the post that \
+justify the fix (quote, max 300 chars). confidence 0-1. Use "" for fields that don't apply. Never include a couple's \
+email address in title/body/evidence."""
+
+FIX_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kind": {"type": "string", "enum": ["vendor_edit", "duplicate", "task", "none"]},
+        "vendor_id": {"type": "string"}, "vendor_name": {"type": "string"}, "vendor_location": {"type": "string"},
+        "field": {"type": "string"}, "new_value": {"type": "string"},
+        "other_vendor_id": {"type": "string"}, "other_vendor_name": {"type": "string"},
+        "title": {"type": "string"}, "body": {"type": "string"},
+        "evidence": {"type": "string"}, "confidence": {"type": "number"},
+    },
+    "required": ["kind", "vendor_id", "vendor_name", "vendor_location", "field", "new_value", "other_vendor_id",
+                 "other_vendor_name", "title", "body", "evidence", "confidence"],
+    "additionalProperties": False,
+}
+
+ROLLUP_SYSTEM = """You group a day of Tulle Together #feedback posts by venue for the data team. For each post give \
+the venue or vendor it is about ("" if none), a kind (missing_venue | wrong_info | planner_answer | bug | praise | \
+other) and a one-line summary in plain English without any email addresses."""
+
+ROLLUP_SCHEMA = {
+    "type": "object",
+    "properties": {"items": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"n": {"type": "integer"}, "venue": {"type": "string"}, "kind": {"type": "string"},
+                       "summary": {"type": "string"}},
+        "required": ["n", "venue", "kind", "summary"], "additionalProperties": False}}},
+    "required": ["items"], "additionalProperties": False,
+}
+
+
+def _structured(claude: "Claude", system: str, user: str, schema: dict, max_tokens: int = 1500,
+                model: str | None = None) -> tuple[dict, float]:
+    model = model or config.triage_model()
+    resp = claude.client.messages.create(
+        model=model, max_tokens=max_tokens, system=system,
+        messages=[{"role": "user", "content": user}],
+        output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}},
+    )
+    usd = cost_usd(model, resp.usage)
+    if getattr(resp, "stop_reason", None) == "refusal":
+        return {}, usd
+    return _json_text(resp), usd
+
+
+def propose_fix(claude: "Claude", post: str) -> tuple[dict, float]:
+    out, usd = _structured(claude, FIX_SYSTEM, f"<post>\n{post[:4000]}\n</post>", FIX_SCHEMA,
+                           model=config.answer_model())
+    return out or {"kind": "none", "confidence": 0}, usd
+
+
+def rollup_items(claude: "Claude", posts: list[str]) -> tuple[dict, float]:
+    body = "\n".join(f"<post n=\"{i}\">\n{p[:1200]}\n</post>" for i, p in enumerate(posts))
+    out, usd = _structured(claude, ROLLUP_SYSTEM, body[:60000], ROLLUP_SCHEMA, max_tokens=4000)
+    return out or {"items": []}, usd
+
+
+Claude.propose_fix = propose_fix
+Claude.rollup_items = rollup_items

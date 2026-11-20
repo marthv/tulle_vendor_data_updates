@@ -1,7 +1,8 @@
 """Slack: request-signature check and a small read/post Web API client (requests, no SDK).
 
 Read calls fail soft (return [] / None) so a missing scope or a rate limit degrades the answer's context
-instead of killing it. The only write is chat.postMessage."""
+instead of killing it. Writes: chat.postMessage (text or Block Kit), chat.update (only the bot's own
+approval cards), chat.postEphemeral ("only X can approve") and the CSV upload."""
 from __future__ import annotations
 
 import hashlib
@@ -93,6 +94,21 @@ class Slack:
         if thread_ts:
             params["thread_ts"] = thread_ts
         return self._call("chat.postMessage", http="POST", **params)
+
+    def post_blocks(self, channel: str, text: str, blocks: list[dict], thread_ts: str | None = None) -> dict:
+        params = {"channel": channel, "text": text, "blocks": blocks, "unfurl_links": False, "unfurl_media": False}
+        if thread_ts:
+            params["thread_ts"] = thread_ts
+        return self._call("chat.postMessage", http="POST", **params)
+
+    def update_message(self, channel: str, ts: str, text: str, blocks: list[dict]) -> dict:
+        return self._call("chat.update", http="POST", channel=channel, ts=ts, text=text, blocks=blocks)
+
+    def post_ephemeral(self, channel: str, user: str, text: str, thread_ts: str | None = None) -> dict:
+        params = {"channel": channel, "user": user, "text": text}
+        if thread_ts:
+            params["thread_ts"] = thread_ts
+        return self._call("chat.postEphemeral", http="POST", **params)
 
     def upload_file(self, channel: str, thread_ts: str | None, filename: str, content: bytes,
                     title: str = "", comment: str = "") -> dict:

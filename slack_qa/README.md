@@ -124,6 +124,32 @@ OAuth Token** (OAuth & Permissions page). If not, adding the scopes below and re
    For reports: Railway `XANO_METADATA_TOKEN = ${{Tulle Admin Dash.XANO_METADATA_TOKEN}}`.
 7. Test: `@Tulle Bot status`, then `@Tulle Bot what shipped yesterday?`. `@Tulle Bot unmute` to start scanning.
 
+## v2 (2026-11-20): approve/reject cards, duplicate vendors, #feedback fixes, engine answers
+
+Everything below is OFF until its variable is set, and every "apply" is a DRY RUN until its `*_DRY_RUN` is `0`.
+
+| Capability | Turn on with | What it does |
+|---|---|---|
+| Approve / Reject cards | Slack Interactivity URL (below) + `QA_APPROVERS` | "Proposed change" cards (what / why / what it touches / next steps), green **Approve and apply**, red **Reject**; only approvers can press them (others get an ephemeral note); double clicks are no-ops; the card then shows who approved and the outcome. State: `proposals.json` + `decisions.jsonl` on the volume. |
+| Duplicate vendors | `DEDUPE_CHANNEL`, `QA_SCHEDULER=1` | Daily at `DEDUPE_HOUR_UTC` (08): full scan on `DEDUPE_WEEKLY_DOW` (Mon), else only vendors added since the last scan. Up to 10 merge cards per run, threaded under one header. `@Tulle Bot scan duplicates` (approvers) runs it now; `full` for the weekly scan. Approve -> `XANO_MERGE_URL` (not built: see `XANO_MERGE_PROPOSAL.md`). |
+| #feedback fixes | `FEEDBACK_CHANNEL`, `FEEDBACK_WATCH=1` | Each new #feedback post: if it maps to one concrete fix (vendor field correction via the existing staged-edit eps 280/281, a duplicate -> merge card, or a GitHub task) a card is posted in its thread. Max `FEEDBACK_DAILY_CAP` (15) a day. |
+| Daily #feedback roll-up | `ROLLUP_ENABLED=1`, `FEEDBACK_CHANNEL`, `QA_SCHEDULER=1` | Grouped by venue, at `ROLLUP_HOUR_UTC` (13). Goes to the owner's DM as a draft unless `ROLLUP_CHANNEL` is set. |
+| "How's experiment X doing?" | `EXP_ENGINE_URL`, `EXP_API_KEY` | Quotes the engine's live verdict (TL;DR, recommended call, how we'll call it). Falls back to the registry answer. |
+| "What changed in the last WeWeb publish?" | same | Engine-detected publishes joined with the nearest #deployment note. |
+
+New variables: `QA_APPROVERS` (default owner), `QA_SCHEDULER`, `DEDUPE_CHANNEL`, `DEDUPE_DRY_RUN` (1),
+`DEDUPE_MAX_CARDS` (10), `DEDUPE_MAX_PAGES` (300), `DEDUPE_PAGE_DELAY` (0.3), `DEDUPE_HOUR_UTC` (8),
+`DEDUPE_WEEKLY_DOW` (0), `XANO_MERGE_URL`, `XANO_MERGE_SECRET`, `FEEDBACK_CHANNEL`, `FEEDBACK_WATCH`,
+`FEEDBACK_DAILY_CAP`, `VENDOR_EDIT_DRY_RUN` (1), `VENDOR_EDIT_SECRET`, `VENDOR_EDIT_BASE`, `TASK_DRY_RUN` (1),
+`TASK_REPO`, `TASK_GITHUB_TOKEN` (issues:write only, separate from the read-only `GITHUB_TOKEN`), `ROLLUP_ENABLED`,
+`ROLLUP_CHANNEL`, `ROLLUP_HOUR_UTC`, `EXP_ENGINE_URL`, `EXP_API_KEY`.
+
+Slack app changes (owner, by hand):
+1. **Interactivity & Shortcuts** -> ON, Request URL `https://<railway domain>/slack/interactions`. Save.
+   No new scopes: `chat:write` covers `chat.update` and `chat.postEphemeral`; `message.groups` is already subscribed.
+2. `/invite @Tulle Bot` in **#feedback** (the incoming webhook posts there without making the bot a member).
+3. **App Home** -> Messages Tab ON (so the roll-up draft can land in the owner's DM with the bot).
+
 ## Tests
 
 ```

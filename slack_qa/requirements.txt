@@ -4,3 +4,4 @@ anthropic>=1.11   # output_config + server-side fallbacks params verified on 1.1
 requests>=2.31
 pydantic>=2.6
 # tests only: pytest, httpx (fastapi TestClient)
+rapidfuzz>=3.0

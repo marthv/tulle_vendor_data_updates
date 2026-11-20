@@ -127,3 +127,108 @@ def state_dir() -> Path:
     p = Path(__file__).resolve().parent / ".state"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+# --- v2 (2026-11-20): approvals, dedupe, #feedback watch, roll-up, engine ----------------------------------
+# Every capability that can post or write is OFF until its variable is set. Every apply path is a DRY RUN until
+# its *_DRY_RUN variable is explicitly 0 (dry run = log + say what would happen; no network write).
+
+def approvers() -> list[str]:          # QA_APPROVERS="U05UJMCHUV6,U0...": who may press Approve / Reject / Undo
+    raw = _s("QA_APPROVERS", owner_user_id())
+    return [u.strip() for u in raw.split(",") if u.strip()]
+
+
+def merge_dry_run() -> bool:           # DEDUPE_DRY_RUN=0 -> Approve calls the Xano merge endpoint for real
+    return _flag("DEDUPE_DRY_RUN", True)
+
+
+def merge_url() -> str:                # XANO_MERGE_URL: the (not yet built) vendor merge endpoint
+    return _s("XANO_MERGE_URL")
+
+
+def merge_secret() -> str:             # XANO_MERGE_SECRET: that endpoint's `secret` body gate
+    return _s("XANO_MERGE_SECRET")
+
+
+def dedupe_channel() -> str:           # DEDUPE_CHANNEL: where merge suggestions are posted. Empty = scan never posts
+    return _s("DEDUPE_CHANNEL")
+
+
+def dedupe_max_cards() -> int:         # DEDUPE_MAX_CARDS: suggestions per post (hard max 10)
+    return max(1, min(10, int(_f("DEDUPE_MAX_CARDS", 10))))
+
+
+def dedupe_max_pages() -> int:         # DEDUPE_MAX_PAGES: Xano read budget (500-row pages) per scan for reference counts
+    return int(_f("DEDUPE_MAX_PAGES", 300))
+
+
+def dedupe_page_delay() -> float:      # seconds between Xano pages during a scan (keeps load off the live app)
+    return _f("DEDUPE_PAGE_DELAY", 0.3)
+
+
+def dedupe_weekly_dow() -> int:        # 0=Mon .. 6=Sun, full scan day (UTC)
+    return int(_f("DEDUPE_WEEKLY_DOW", 0))
+
+
+def dedupe_hour_utc() -> int:          # hour (UTC) the nightly / weekly scan runs; 08 UTC = 3-4am US Eastern
+    return int(_f("DEDUPE_HOUR_UTC", 8))
+
+
+def feedback_channel() -> str:         # FEEDBACK_CHANNEL: #feedback id. Empty = no watching, no roll-up
+    return _s("FEEDBACK_CHANNEL")
+
+
+def feedback_watch() -> bool:          # FEEDBACK_WATCH=1 -> propose fixes in #feedback threads
+    return _flag("FEEDBACK_WATCH", False)
+
+
+def feedback_daily_cap() -> int:       # FEEDBACK_DAILY_CAP: max proposed-fix cards per UTC day
+    return int(_f("FEEDBACK_DAILY_CAP", 15))
+
+
+def vendor_edit_dry_run() -> bool:     # VENDOR_EDIT_DRY_RUN=0 -> Approve stages + applies via Xano ep280/ep281
+    return _flag("VENDOR_EDIT_DRY_RUN", True)
+
+
+def vendor_edit_base() -> str:         # Xano api group 3 (the Tulle Ops bot's staged-edit endpoints)
+    return _s("VENDOR_EDIT_BASE", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:aow91bcd")
+
+
+def vendor_edit_secret() -> str:       # VENDOR_EDIT_SECRET: same `secret` the Tulle Ops bot sends (XANO_API_KEY there)
+    return _s("VENDOR_EDIT_SECRET")
+
+
+def task_dry_run() -> bool:            # TASK_DRY_RUN=0 -> Approve files a GitHub issue
+    return _flag("TASK_DRY_RUN", True)
+
+
+def task_repo() -> str:
+    return _s("TASK_REPO", "marthv/tulle_vendor_data_updates")
+
+
+def task_github_token() -> str:        # TASK_GITHUB_TOKEN: issues:write only. Kept apart from the read-only GITHUB_TOKEN
+    return _s("TASK_GITHUB_TOKEN")
+
+
+def rollup_enabled() -> bool:          # ROLLUP_ENABLED=1 -> daily #feedback roll-up by venue
+    return _flag("ROLLUP_ENABLED", False)
+
+
+def rollup_target() -> str:            # ROLLUP_CHANNEL: default = the owner's DM with the bot (a draft for review)
+    return _s("ROLLUP_CHANNEL", owner_user_id())
+
+
+def rollup_hour_utc() -> int:
+    return int(_f("ROLLUP_HOUR_UTC", 13))
+
+
+def scheduler_enabled() -> bool:       # QA_SCHEDULER=1 -> run the in-process scheduler (dedupe + roll-up)
+    return _flag("QA_SCHEDULER", False)
+
+
+def engine_url() -> str:               # EXP_ENGINE_URL: http://experiments-engine.railway.internal:8080
+    return _s("EXP_ENGINE_URL")
+
+
+def engine_key() -> str:               # EXP_API_KEY (reference the engine service's variable)
+    return _s("EXP_API_KEY")
