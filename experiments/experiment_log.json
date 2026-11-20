@@ -1881,7 +1881,7 @@
       "guardrail": "Planner thumbs-down / drop-off after the card",
       "start_date": "2026-10-26",
       "end_date": null,
-      "review_date": "2026-11-09",
+      "review_date": "2026-11-23",
       "dates_note": "Backend price-question card 23:18 UTC (c4ec678); PDF-first + no-views card 23:33 (ac172c7). WeWeb card + Request button published 23:43 UTC. Baseline: 1 Planner paywall shown in the 7 d to 10-26; 8 free price questions refused in 14 d.",
       "design": "pre/post",
       "results": [],
@@ -1927,14 +1927,13 @@
         "post_start": "2026-10-26T23:18Z"
       },
       "planned_days": 14,
-      "max_days": null,
+      "max_days": 35,
       "reporting": "manual",
       "rollback": null,
       "spec_gaps": [
         "metric.baseline: no pre-launch rate recorded",
         "metric.mde_rel: no smallest-lift-worth-having stated",
         "audience.est_daily_exposed: daily exposure not recorded",
-        "max_days: no hard stop stated",
         "rollback: no rollback recorded in the entry",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)",
         "guardrails[0]: no threshold stated at launch; engine default (25% move, 90% sure) applies"
@@ -1943,7 +1942,8 @@
       "audit_2026_11_19": {
         "recommended_status": "needs_call",
         "evidence": "No evidence it was switched off; but free-couple gating changed three times (open week 11-01..11-07, 1/day 11-08, 3 + 1/day 11-09) and openings stopped mentioning Forever 11-07 (d076d45). Review date 11-09 passed with no read. Recommend owner call; any read must be split by the gating periods."
-      }
+      },
+      "review_note": "2026-11-20 (owner-approved registry batch): review 11-09 passed with no read. Not callable: manual metric, no results[] read-out, and free-couple gating changed three times inside the run (open week 11-01..11-07, 1/day 11-08, 3 + 1/day 11-09) plus openings stopped mentioning Forever 11-07. Moved to the 11-23 Monday call: read card shown -> clicked -> paid within 7 d split by those gating periods; hard stop 11-30 (max_days 35) - no read by then means shelve."
     },
     {
       "id": "EXP-2026-10-planner-profile-questions",
@@ -2384,7 +2384,7 @@
       "guardrail": "Texas+other (NY/CA/Intl or any other state), Rest, NY, CA/Intl prices unchanged; page price must equal charged price (WeWeb bindings + fn63 all gated on table 17 Product_ID 13)",
       "start_date": "2026-11-03",
       "end_date": null,
-      "review_date": null,
+      "review_date": "2026-11-24",
       "dates_note": "Built 2026-10-31 with the switch OFF (table 17 row 16 parked as Product_ID 113; fn63 Texas block live but inert). Starts when the owner (1) creates the $89 Stripe price + payment link under prod_Ri5UAnkrymjxZ9 and puts it in row 16, (2) publishes the two Membership-page bindings, (3) sets row 16 Product_ID 113 -> 13. Read 2-3 weeks after that date.",
       "design": "pre/post (no holdout). Treatment = Texas-only cohort; untreated comparison arms = Texas+other and Rest.",
       "baseline": {
@@ -2497,22 +2497,21 @@
         "note": "untreated comparison arms: Texas+other and Rest; start per memory index_overflow '11-03 TEXAS-ONLY FOREVER $89 LIVE (~06:00 UTC, row 16 PID 13)' and Xano table 17 row 16 Product_ID 13 read 2026-11-19 - registry start_date still null"
       },
       "planned_days": 21,
-      "max_days": null,
+      "max_days": 42,
       "reporting": "auto",
       "rollback": "Set table 17 row 16 Product_ID 13 -> 113 (one write, no publish); revert_geo_pricing.py --off also parks it and restores flat fn63 (risks field)",
       "spec_gaps": [
         "metric.mde_rel: no lift size stated; at ~0.06 Forever buys/day a verdict inside 6 weeks is very unlikely",
-        "max_days: no hard stop stated",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)",
         "guardrails[0]: no threshold stated at launch; engine default (25% move, 90% sure) applies",
-        "guardrails[1]: no threshold stated at launch; engine default (25% move, 90% sure) applies",
-        "review_date: no review date set at launch"
+        "guardrails[1]: no threshold stated at launch; engine default (25% move, 90% sure) applies"
       ],
       "framework_version": 2,
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "LIVE since 2026-11-03 ~06:00 UTC but registry still 'planned' with no start_date: memory index_overflow '11-03 TEXAS-ONLY FOREVER $89 LIVE (~06:00 UTC, row 16 PID 13; rollback --tx-off)' and project_texas_only_forever_89_2026-10-31 (owner published Membership bindings, Stripe $89 price created); Xano table 17 row 16 has Product_ID 13 (read-only check 2026-11-19). Recommend: set start_date 2026-11-03, review ~2026-11-24; read was due '2-3 weeks after'."
-      }
+      },
+      "review_note": "2026-11-20: review = start 11-03 + planned 21 days (the '2-3 weeks after' read in dates_note). Call rule: money tier (95%); hard stop 12-15. At this base rate (spec_gaps) expect no verdict - the likely call at max_days is inconclusive or an owner price decision."
     },
     {
       "id": "EXP-2026-11-planner-my-wedding-plan",
@@ -3969,7 +3968,7 @@
       "guardrail": "",
       "start_date": "2026-11-07",
       "end_date": null,
-      "review_date": null,
+      "review_date": "2026-11-23",
       "dates_note": "rec-engine e80a904 on origin/main (REC_OPEN_ENDED, default '1' in config.py; not set on Railway rec-engine per the 2026-11-19 variable list). Memory index_overflow 11-07: 'OPEN-ENDED server LIVE main e80a904 (verified live: no closing ?, chips [], 3 cards)'. Turns off EXP-2026-10-next-step-chips and EXP-2026-10-planner-profile-questions.",
       "design": "pre/post, everyone",
       "results": [],
@@ -4004,8 +4003,8 @@
         "pre": null,
         "post_start": "2026-11-07"
       },
-      "planned_days": null,
-      "max_days": null,
+      "planned_days": 14,
+      "max_days": 28,
       "reporting": "auto",
       "rollback": "Set REC_OPEN_ENDED=0 on rec-engine (config.py)",
       "spec_gaps": [
@@ -4013,14 +4012,13 @@
         "metric.baseline: no pre-launch rate recorded",
         "metric.mde_rel: no smallest-lift-worth-having stated",
         "audience.est_daily_exposed: daily exposure not recorded",
-        "planned_days: no review date / run length stated",
-        "max_days: no hard stop stated",
         "guardrails: none stated",
         "primary metric: none stated at launch; planner_second_question is a placeholder",
         "start time: day only (commit e80a904 dated 2026-11-07)",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Auto metric is a placeholder (spec_gaps); a split of open-ended vs chips needs owner approval before it can be judged fairly."
     },
     {
       "id": "EXP-2026-11-planner-five-fixes",
@@ -4034,7 +4032,7 @@
       "guardrail": "",
       "start_date": "2026-11-07",
       "end_date": null,
-      "review_date": null,
+      "review_date": "2026-11-23",
       "dates_note": "Server d076d45 pushed ~17:20 UTC 2026-11-07 (flags REC_OPENING_NO_FOREVER, REC_LIGHT_PRICE_BANDS, REC_FLORIST_PRICING, REC_RETURNING_OPENING, REC_DATE_FLEX all default ON; none set on Railway). Component a892363 needed owner activate + publish (not verified). Source: memory project_planner_subscription_readout_2026-11-07.",
       "design": "pre/post, everyone",
       "results": [],
@@ -4071,8 +4069,8 @@
         "pre": null,
         "post_start": "2026-11-07T17:20Z"
       },
-      "planned_days": null,
-      "max_days": null,
+      "planned_days": 14,
+      "max_days": 28,
       "reporting": "auto",
       "rollback": "Set the five REC_* flags to 0, or roll rec-engine back to e303ca7 (memory)",
       "spec_gaps": [
@@ -4080,14 +4078,13 @@
         "metric.baseline: no pre-launch rate recorded",
         "metric.mde_rel: no smallest-lift-worth-having stated",
         "audience.est_daily_exposed: daily exposure not recorded",
-        "planned_days: no review date / run length stated",
-        "max_days: no hard stop stated",
         "guardrails: none stated",
         "five changes in one launch - effects cannot be separated",
         "same day: re-gating, open-ended replies, My wedding plan on/off",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Five changes in one launch: a ship/revert applies to the bundle; D7 return needs 7 days of follow-up per couple."
     },
     {
       "id": "EXP-2026-11-ca-forever-135",
@@ -4101,7 +4098,7 @@
       "guardrail": "",
       "start_date": "2026-11-08",
       "end_date": null,
-      "review_date": null,
+      "review_date": "2026-11-29",
       "dates_note": "fn63 LIVE 2026-11-08 03:01 UTC (CA joins $is_ny_cohort; verified CA 135, Intl 149, TX-only 89); WeWeb Membership Lifetime Price af5d09b0 + Forever button wf 8605fcc5 edited in editor - publish not separately verified. Backup .claude/xano_backups/fn63_pre_ca135_2026-11-07.xs. Source: memory index_overflow (moved 2026-11-08).",
       "design": "pre/post",
       "results": [
@@ -4144,8 +4141,8 @@
         "pre": null,
         "post_start": "2026-11-08T03:01Z"
       },
-      "planned_days": null,
-      "max_days": null,
+      "planned_days": 21,
+      "max_days": 42,
       "reporting": "auto",
       "rollback": "Push .claude/xano_backups/fn63_pre_ca135_2026-11-07.xs and revert the two WeWeb bindings",
       "spec_gaps": [
@@ -4153,14 +4150,13 @@
         "metric.baseline: no pre-launch rate recorded",
         "metric.mde_rel: no smallest-lift-worth-having stated",
         "audience.est_daily_exposed: daily exposure not recorded",
-        "planned_days: no review date / run length stated",
-        "max_days: no hard stop stated",
         "guardrails: none stated",
         "owner price decision, not framed as an experiment - consider recording as decided: shipped",
         "Membership-page publish of the CA price binding not verified",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "review_note": "2026-11-20: review = start 11-08 + 21 days (same run as Texas-only); hard stop 12-20. Money tier, before/after on a geo cohort. Still no hypothesis or baseline (spec_gaps); if it stays an owner price decision, record it as decided: shipped at the review."
     },
     {
       "id": "EXP-2026-11-limit-cards-plans-copy",
@@ -4736,7 +4732,7 @@
       "guardrail": "",
       "start_date": "2026-11-07",
       "end_date": null,
-      "review_date": null,
+      "review_date": "2026-11-23",
       "dates_note": "Component home-screen (28df614 / c3831ff) pushed 11-07; registry EXP-2026-11-planner-my-wedding-plan confounds says 'home screen ... shipped 11-07'; later component commits build on it (504f3ba 'Planner home waits for the plan + past chats', fbce08d home button). Exact publish time not recorded. Baseline 39/122 couples (32%) opened a PDF 11-03..11-06 (memory project_planner_subscription_readout_2026-11-07).",
       "design": "pre/post",
       "results": [],
@@ -4773,36 +4769,40 @@
         "post_start": "2026-11-07",
         "note": "publish time not recorded"
       },
-      "planned_days": null,
-      "max_days": null,
+      "planned_days": 14,
+      "max_days": 28,
       "reporting": "manual",
       "rollback": "Set component prop homeScreen OFF and publish (memory)",
       "spec_gaps": [
         "metric.mde_rel: no smallest-lift-worth-having stated",
         "audience.est_daily_exposed: daily exposure not recorded",
-        "planned_days: no review date / run length stated",
-        "max_days: no hard stop stated",
         "guardrails: none stated",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Manual metric: needs a read-out (share of Planner couples opening a PDF vs 39 of 122, 11-03..11-06) before the call; none by 11-23 means shelve as unmeasured."
     },
     {
       "id": "EXP-2026-11-pdf-limit-soft-redirect",
       "name": "PDF limit -> soft redirect to /pricing?src=pdf_limit with 'Keep browsing'",
-      "status": "planned",
+      "status": "live",
       "themes": [
         "paywall"
       ],
       "goal": "Built OFF 11-18; launch = owner says go after the Price Report read.",
       "primary_metric": "PDF-limit hitters paying within 7 d",
       "guardrail": "7-day return",
-      "start_date": null,
+      "start_date": "2026-11-19",
       "end_date": null,
-      "review_date": null,
-      "dates_note": "Editor switch var pdfLimitRedirect d304d5ca (default false); 6 limit triggers branch to /pricing?src=pdf_limit; record .claude/xano_backups/weweb_pdf_limit_redirect_build_2026-11-18.json. Source: memory project_payment_dip_2026-11-18.",
+      "review_date": "2026-12-03",
+      "dates_note": "Editor switch var pdfLimitRedirect d304d5ca (default false); 6 limit triggers branch to /pricing?src=pdf_limit; record .claude/xano_backups/weweb_pdf_limit_redirect_build_2026-11-18.json. Source: memory project_payment_dip_2026-11-18. 2026-11-20 check: LIVE - production cacheVersion 1404 (asset Last-Modified 2026-11-19 05:04:29 UTC) has variable pdfLimitRedirect d304d5ca defaultValue true on both vendor pages (e49b4e74, d1d9bbf6) with the 'Redirect experiment on?' branches, and the plans-page bar a29f0974 / Keep browsing 33b41289; #deployment staging build 1404 (05:05 UTC) announced the bar. The owner's 'go' is not in memory.",
       "design": "pre/post",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-20",
+          "note": "Status planned -> live 2026-11-20: found live in production build 1404 (2026-11-19 ~05:04 UTC), unlogged. Same publish as EXP-2026-11-price-report-locked-compact (also payment funnel, same free vendor-page couples), so the two cannot be read apart."
+        }
+      ],
       "decision": "",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
@@ -4845,26 +4845,24 @@
       "assignment": {
         "type": "pre_post",
         "pre": null,
-        "post_start": null
+        "post_start": "2026-11-19T05:04Z"
       },
       "planned_days": 14,
-      "max_days": null,
+      "max_days": 28,
       "reporting": "auto",
       "rollback": "Set pdfLimitRedirect default back to false and publish",
       "spec_gaps": [
         "audience.est_daily_exposed: daily exposure not recorded",
-        "max_days: no hard stop stated",
-        "assignment.post_start: exact live timestamp not recorded; engine uses start_date",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)",
         "guardrails[0]: no threshold stated at launch; engine default (25% move, 90% sure) applies",
-        "review_date: no review date set at launch"
+        "confounded at launch: shipped in the same publish (1404) as EXP-2026-11-price-report-locked-compact; owner launch approval not recorded"
       ],
       "framework_version": 2
     },
     {
       "id": "EXP-2026-11-price-report-locked-compact",
       "name": "Price Report locked view: compact member layout with blurred numbers + one 'See the Exact Number' CTA",
-      "status": "planned",
+      "status": "live",
       "themes": [
         "paywall",
         "pricing-intelligence"
@@ -4872,12 +4870,17 @@
       "goal": "Owner 11-18 PM: 'I want people upgrading on the price report'; the fully locked card is 'not a good experience'.",
       "primary_metric": "venue-card upgrade clicks per 100 vendor views back to 3-5; click -> pay ~12%",
       "guardrail": "",
-      "start_date": null,
+      "start_date": "2026-11-19",
       "end_date": null,
-      "review_date": null,
-      "dates_note": "ww-price-report 98f613c (teaser) -> f52e04a (one CTA) -> 8a2c36d (compact default, no fake reading) pushed 2026-11-18; owner must activate + publish; locked-shown Mixpanel workflows not verified. Source: memory project_payment_dip_2026-11-18.",
+      "review_date": "2026-12-01",
+      "dates_note": "ww-price-report 98f613c (teaser) -> f52e04a (one CTA) -> 8a2c36d (compact default, no fake reading) pushed 2026-11-18; owner must activate + publish; locked-shown Mixpanel workflows not verified. Source: memory project_payment_dip_2026-11-18. 2026-11-20 check: LIVE - production build 1404 (asset Last-Modified 2026-11-19 05:04:29 UTC) wwElement chunk carries ww-price-report 8a2c36d markers (tpr__ring-lock, is-compact, locked-shown); both instances (9568da51 venue, bcbabf98 other) leave lockedView unset, so the default 'compact' applies. Staging build 1403 (04:25 UTC) first listed the Price Report change; post_start = the 1404 build time, the earliest production time proven. Rendering and the locked-shown Mixpanel workflows not verified.",
       "design": "pre/post (would be period 3 of EXP-2026-11-price-report-vs-pi-card)",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-20",
+          "note": "Status planned -> live 2026-11-20: ww-price-report 8a2c36d found in production build 1404 (2026-11-19 ~05:04 UTC). Period 3 of EXP-2026-11-price-report-vs-pi-card; same publish as EXP-2026-11-pdf-limit-soft-redirect."
+        }
+      ],
       "decision": "",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
@@ -4913,24 +4916,22 @@
       "assignment": {
         "type": "pre_post",
         "pre": null,
-        "post_start": null
+        "post_start": "2026-11-19T05:04Z"
       },
-      "planned_days": null,
-      "max_days": null,
+      "planned_days": 12,
+      "max_days": 28,
       "reporting": "manual",
       "rollback": "Activate the previous ww-price-report version (2201271) and publish",
       "spec_gaps": [
         "metric.baseline: no pre-launch rate recorded",
         "metric.mde_rel: no smallest-lift-worth-having stated",
         "audience.est_daily_exposed: daily exposure not recorded",
-        "planned_days: no review date / run length stated",
-        "max_days: no hard stop stated",
         "changes the treatment of live EXP-2026-11-price-report-vs-pi-card - log as a period, not a separate test",
-        "assignment.post_start: exact live timestamp not recorded; engine uses start_date",
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)",
         "guardrails[0]: no threshold stated at launch; engine default (25% move, 90% sure) applies"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "review_note": "2026-11-20: review aligned with EXP-2026-11-price-report-vs-pi-card (12-01) - read it there as period 3, not as its own call."
     }
   ],
   "changes": [
@@ -5337,6 +5338,20 @@
       "source": "brevo",
       "ref": "xano fn72 / ep2 (memory project_welcome_email_2026-11-12)",
       "backfilled": true
+    },
+    {
+      "date": "2026-11-19",
+      "what": "WeWeb production build 1404 (assets 05:04 UTC; staging 1403 04:25, 1404 05:05): PDF-limit soft redirect ON (pdfLimitRedirect default true -> /pricing?src=pdf_limit + Keep browsing bar); Price Report compact locked view (ww-price-report 8a2c36d); plans page Vendor Context Card removed, Tier 4 'Tulle wedding planner'; vendor pages 'Hide floating Ask Tulle beacon'. Found 2026-11-20, unlogged at the time.",
+      "affects": [
+        "EXP-2026-11-pdf-limit-soft-redirect",
+        "EXP-2026-11-price-report-locked-compact",
+        "EXP-2026-11-price-report-vs-pi-card",
+        "EXP-2026-11-save-offer-60-forever",
+        "EXP-2026-11-pricing-page-copy",
+        "EXP-2026-11-ask-tulle-bubble"
+      ],
+      "source": "weweb",
+      "ref": "cacheVersion 1404 (1403 staging)"
     }
   ]
 }
