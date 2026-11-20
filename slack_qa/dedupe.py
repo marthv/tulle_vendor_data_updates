@@ -35,6 +35,10 @@ except ImportError:                                  # pragma: no cover - rapidf
 
 log = logging.getLogger("slack_qa.dedupe")
 
+
+def _esc(t) -> str:
+    return str(t if t is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 GENERIC = {"facebook.com", "instagram.com", "google.com", "weddingwire.com", "theknot.com", "linktr.ee",
            "sites.google.com", "yelp.com", "business.site", "squarespace.com", "wixsite.com", "wix.com", "tiktok.com",
            "youtube.com", "gigsalad.com", "thebash.com", "zola.com", "peerspace.com", "eventective.com",
@@ -335,7 +339,7 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex) -> dict:
 
     def line(r):
         pid = place_id(r)
-        return (f"• *{r.get('Vendor_ID')}* {r.get('Name')} · {_loc(r)} · {r.get('Category') or '?'} · "
+        return (f"• *{r.get('Vendor_ID')}* {_esc(r.get('Name'))} · {_esc(_loc(r))} · {_esc(r.get('Category') or '?')} · "
                 f"{pdfs.get(r.get('Vendor_ID'), 0) if 10 in refs.counts else '?'} PDFs · "
                 f"{int(r.get('Clicks_on_Venue') or 0)} clicks · "
                 f"{'visible' if str(r.get('Validated_Data')) == '1' else 'hidden'} · "
@@ -362,7 +366,7 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex) -> dict:
     if kept:
         touch_lines.append("• Left as-is: " + "; ".join(kept))
 
-    what = (f"Merge {', '.join(lv)} into *{sv}* ({survivor.get('Name')}). Every PDF, price and saved link on "
+    what = (f"Merge {', '.join(lv)} into *{sv}* ({_esc(survivor.get('Name'))}). Every PDF, price and saved link on "
             f"{'them' if len(lv) > 1 else 'it'} moves to {sv}; {', '.join(lv)} "
             f"{'are' if len(lv) > 1 else 'is'} retired, not deleted.")
     why = (f"These look like the same business: {'; '.join(RULE_TEXT[r] for r in group['rules'])}.\n"
@@ -370,7 +374,7 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex) -> dict:
            + f"\n{sv} stays because {why_s}.")
     nxt = ("Approve to merge. Every row is backed up before it moves and the card gets an *Undo merge* button. "
            "Reject if they're different businesses (e.g. two venues on one estate) and I won't suggest this pair again.")
-    title = f"{survivor.get('Name')} ({sv} ← {', '.join(lv)})"
+    title = f"{_esc(survivor.get('Name'))} ({sv} ← {', '.join(lv)})"
     return {"title": title[:140], "what": what, "why": why, "touches": "\n".join(touch_lines), "next_steps": nxt,
             "payload": {"survivor": sv, "losers": lv, "counts": counts, "total": total,
                         "row_ids": {m.get("Vendor_ID"): m["id"] for m in members}},

@@ -20,6 +20,7 @@ import time
 
 import config
 import dedupe
+from cards import esc
 from interactions import post_proposal
 from llm import EDITABLE_FIELDS
 from scrub import scrub_output
@@ -70,7 +71,7 @@ def is_watchable(ev: dict, bot_uid: str | None = None) -> bool:
         return False
     if ev.get("type") != "message":
         return False
-    if bot_uid and ev.get("user") == bot_uid:
+    if bot_uid and (ev.get("user") == bot_uid or f"<@{bot_uid}" in (ev.get("text") or "")):
         return False
     if ev.get("bot_id") and ev.get("subtype") != "bot_message":
         return False
@@ -119,7 +120,7 @@ class FeedbackWatcher:
         kind, conf = fix.get("kind", "none"), float(fix.get("confidence") or 0)
         if kind == "none" or conf < MIN_CONF:
             return f"feedback:no-fix:{kind}:{conf:.2f}"
-        evidence = EMAIL.sub("[email]", (fix.get("evidence") or "").strip())[:300]
+        evidence = esc(EMAIL.sub("[email]", (fix.get("evidence") or "").strip())[:300])
         if kind == "vendor_edit":
             pr = self._vendor_edit(fix, evidence)
         elif kind == "duplicate":
@@ -142,6 +143,8 @@ class FeedbackWatcher:
         new = (fix.get("new_value") or "").strip()
         if not new or not evidence:
             return "feedback:vendor_edit:no-value-or-evidence"
+        if len(new) > 1000:                        # the card must show the whole value the approver is approving
+            return "feedback:vendor_edit:value-too-long"
         hits = self.directory.resolve(fix.get("vendor_id", ""), fix.get("vendor_name", ""),
                                       fix.get("vendor_location", ""))
         if len(hits) != 1:
@@ -151,8 +154,9 @@ class FeedbackWatcher:
         if old.strip() == new:
             return "feedback:vendor_edit:already-correct"
         vid = v.get("Vendor_ID")
-        return {"kind": "vendor_edit", "title": f"{v.get('Name')} ({vid}): {field}",
-                "what": f"Change *{field}* on *{v.get('Name')}* ({vid}) from “{old or '(empty)'}” to “{new}”.",
+        name, old_s, new_s = esc(v.get("Name")), esc(old[:1000]), esc(new)
+        return {"kind": "vendor_edit", "title": f"{name} ({vid}): {field}",
+                "what": f"Change *{field}* on *{name}* ({vid}) from “{old_s or '(empty)'}” to “{new_s}”.",
                 "why": f"The feedback says: “{evidence}”",
                 "next_steps": ("Approve to update the listing (it goes through the staged-edit flow, which refuses if "
                                "the value changed in the meantime and keeps the old value for rollback). Reject if "
@@ -179,8 +183,8 @@ class FeedbackWatcher:
         return pr
 
     def _task(self, fix: dict, evidence: str, ev: dict):
-        title = scrub_output(EMAIL.sub("[email]", (fix.get("title") or "").strip()))[:120]
-        body = scrub_output(EMAIL.sub("[email]", (fix.get("body") or "").strip()))[:3000]
+        title = esc(scrub_output(EMAIL.sub("[email]", (fix.get("title") or "").strip())))[:120]
+        body = esc(scrub_output(EMAIL.sub("[email]", (fix.get("body") or "").strip())))[:3000]
         if not title:
             return "feedback:task:no-title"
         link = f"https://slack.com/archives/{ev['channel']}/p{str(ev['ts']).replace('.', '')}"

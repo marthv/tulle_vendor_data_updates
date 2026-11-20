@@ -26,6 +26,12 @@ KIND_LABEL = {"merge": "Merge duplicate vendors", "vendor_edit": "Vendor data fi
 ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO = "tb_approve", "tb_reject", "tb_undo"
 
 
+def esc(text) -> str:
+    """Neutralise Slack control sequences in text that came from data or a couple's post (names, PDF text, LLM
+    output): no <!channel>/<!here> pings, no <@U...> mentions, no disguised <url|label> links."""
+    return str(text if text is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def clip(text: str, n: int) -> str:
     text = text or ""
     return text if len(text) <= n else text[: n - 2].rstrip() + " …"

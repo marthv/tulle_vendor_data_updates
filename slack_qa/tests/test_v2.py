@@ -479,3 +479,16 @@ def test_scheduler_runs_once_per_day_and_never_without_channel(monkeypatch):
     monkeypatch.setattr(scheduler, "run_dedupe", lambda bot, now=None, mode=None: ran.append(now) or "dedupe:x")
     assert s.tick() == ["dedupe:x"] and s.tick() == []
     assert len(ran) == 1
+
+
+def test_injected_slack_markup_is_neutralised(monkeypatch):
+    monkeypatch.setenv("FEEDBACK_CHANNEL", "CFEED")
+    monkeypatch.setenv("FEEDBACK_WATCH", "1")
+    fix = dict(FIX, new_value="<!channel> <https://evil.example|rosehall.com>", evidence="<!here> new site")
+    w, slack, store = watcher(fix)
+    assert w.handle(fb_event()) == "feedback:proposed:vendor_edit"
+    body = json.dumps(slack.of("chat.postMessage")[0]["blocks"])
+    assert "<!channel>" not in body and "<!here>" not in body and "<https://evil" not in body
+    assert store.get(next(iter(store._data["proposals"])))["payload"]["new_value"].startswith("<!channel>")  # raw kept
+    assert not feedback_watch.is_watchable(fb_event(subtype=None, bot_id=None, user="UKATE",
+                                                    text="<@UBOT> what is this?"), "UBOT")
