@@ -214,13 +214,21 @@ class Bot:
         lookup. Never posts customer data to the channel, never stores or logs it."""
         import customer_lookup as cl
         target = cl.parse(question)
-        if target is None:
-            return None
         channel, user = ev["channel"], ev.get("user", "")
-        thread = ev.get("thread_ts") or ev.get("ts")
+        # private replies go into the thread only when the mention was in one; a top-level mention's thread has no
+        # replies to open, so the answer could go unseen (QA 11-21)
+        thread = ev.get("thread_ts") if ev.get("thread_ts") and ev.get("thread_ts") != ev.get("ts") else None
 
         def tell(text):
             self.slack.post_ephemeral(channel, user, text, thread_ts=thread)
+        if target is None:
+            if cl.near_miss(question):          # never pass a customer's email on to the model or a public reply
+                tell(cl.USAGE)
+                return "lookup:usage"
+            return None
+        if target.get("invalid"):
+            tell("That user ID isn't valid. " + cl.USAGE)
+            return "lookup:invalid"
         if not cl.allowed(user):
             tell("You're not on the customer-lookup list. That list is separate from vendor fixes, on purpose. "
                  "Vivek can add you.")
@@ -230,6 +238,7 @@ class Bot:
             tell("Customer lookup isn't switched on yet (its Xano key isn't set).")
             return "lookup:not-configured"
         if not self.limiter.allow(channel):
+            tell("Too many requests in this channel just now. Try again in a minute.")
             return "lookup:rate-limited"
         res = cl.fetch(target, user)
         if not res.get("ok"):

@@ -108,6 +108,42 @@ def test_not_configured_and_failure_messages(monkeypatch):
     assert "No user found" in slack.of("chat.postEphemeral")[-1]["text"]
 
 
+@pytest.mark.parametrize("q", ["look up user 0", "look up customer 00"])
+def test_zero_id_is_never_sent(monkeypatch, q):
+    monkeypatch.setenv("CUSTOMER_LOOKUP_SECRET", "k")
+    monkeypatch.setenv("LOOKUP_USER_IDS", OWNER)
+    b, slack, store = make_bot()
+    assert b.handle(mention(q, user=OWNER)) == "lookup:invalid"       # requests.post would raise if called
+
+
+@pytest.mark.parametrize("q", ["look up jane@x.com.", "look up jane@x.com please",
+                               "can you look up user 34819 for me", "check user 34819's payments"])
+def test_near_miss_gets_private_hint_and_never_reaches_the_model(monkeypatch, q):
+    b, slack, store = make_bot()
+
+    def no_model(*a, **k):
+        raise AssertionError("near-miss lookup reached the model")
+    monkeypatch.setattr(b, "answer", no_model)
+    assert b.handle(mention(q, user=KATE)) == "lookup:usage"
+    assert slack.of("chat.postMessage") == [] and "look up user 34819" in slack.of("chat.postEphemeral")[-1]["text"]
+
+
+def test_private_reply_threads_only_when_asked_in_a_thread(monkeypatch):
+    monkeypatch.setenv("LOOKUP_USER_IDS", OWNER)
+    b, slack, store = make_bot()
+    b.handle(mention("look up user 1", user=OWNER))
+    assert "thread_ts" not in slack.of("chat.postEphemeral")[-1] or not slack.of("chat.postEphemeral")[-1]["thread_ts"]
+    b.handle(mention("look up user 1", user=OWNER, thread_ts="1600.000001"))
+    assert slack.of("chat.postEphemeral")[-1]["thread_ts"] == "1600.000001"
+
+
+def test_email_is_masked_and_odd_types_dont_crash():
+    t = cl.render(SNAP)
+    assert "j***@example.com" in t and "jane@example.com" not in t
+    odd = dict(SNAP, user=dict(SNAP["user"], pdf_views_left="lots", tier="timed", days_left="x"))
+    assert cl.render(odd)                                          # an answer either way, never an exception
+
+
 def test_render_free_and_forever():
     free = dict(SNAP, user=dict(SNAP["user"], tier=None, pdf_views_left=2), upgrade={"eligible": False})
     t = cl.render(free)
