@@ -3069,7 +3069,7 @@
         }
       ],
       "stat_sig": "",
-      "decision": "Closed inconclusive by the owner 2026-11-21 (brought forward from the 11-25 review); the bubble stays. Owner 11-12 judges on purchases, a site-wide count a before/after cannot credit to one change: purchases/day 5.86 (11-09..11-15, payment log) vs ~4.0 baseline (Mixpanel 10-21..11-10); Planner askers/day 34.3 -> 11.3, confounded by removal of the Discovery entry in the same publish. Logging bug (59 of 81 bubble rows 'bubble:/vendors/undefined', fix 2958c5a) approved for activation 11-21.",
+      "decision": "Closed inconclusive by the owner 2026-11-21 (brought forward from the 11-25 review); the bubble stays. Owner 11-12 judges on purchases, a site-wide count a before/after cannot credit to one change: purchases/day 5.86 (11-09..11-15, payment log) vs ~4.0 baseline (Mixpanel 10-21..11-10); Planner askers/day 34.3 -> 11.3, confounded by removal of the Discovery entry in the same publish. Logging bug (59 of 81 bubble rows 'bubble:/vendors/undefined') already FIXED: 2958c5a live in the wwElement chunk; table 79 shows the '?v=<vendor>' tag from 2026-11-18 19:15 UTC (13 of 13 vendor-page bubble rows since, 0 untagged).",
       "confounds_noted": [
         "60% Forever save offer 11-11",
         "NPS comment change (same publish likely)"
