@@ -16,10 +16,10 @@ from scrub import scrub_output
 log = logging.getLogger("slack_qa.rollup")
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 KIND_LABEL = {"missing_venue": "missing venue", "wrong_info": "wrong info", "planner_answer": "Planner answer",
-              "bug": "bug", "praise": "praise", "other": "other"}
+              "bug": "bug", "complaint": "complaint", "praise": "praise", "other": "other"}
 # 2026-11-21 (owner: fewer Slacks, only the ones that are needed). Default: the roll-up lists only what someone can
 # act on, and a day with nothing to act on posts nothing. ROLLUP_ACTIONABLE_ONLY=0 restores the full roll-up.
-ACTIONABLE = {"missing_venue", "wrong_info", "bug", "planner_answer"}
+ACTIONABLE = {"missing_venue", "wrong_info", "bug", "planner_answer", "complaint"}
 
 
 def actionable_only() -> bool:
@@ -77,7 +77,8 @@ def build(slack, claude, state, hours: int = 24) -> tuple[str, int]:
     if len(order) > 25:
         lines.append(f"\n…and {len(order) - 25} more venues.")
     if skipped:
-        lines.append(f"\n_{skipped} other post{'s' if skipped != 1 else ''} (ratings, praise, chat) not listed._")
+        lines.append(f"\n_{skipped} more item{'s' if skipped != 1 else ''} judged as needing no action, not listed "
+                     f"(see #feedback)._")
     return scrub_output("\n".join(lines))[:3900], len(posts)
 
 

@@ -445,10 +445,11 @@ def test_12_rollup_lists_only_actionable_by_default(monkeypatch):
     rollup, slack, c, st = _rollup_env(monkeypatch, [
         {"n": 0, "venue": "Celestine", "kind": "wrong_info", "summary": "F&B minimum double counted"},
         {"n": 1, "venue": "", "kind": "praise", "summary": "5/5 rating"},
-        {"n": 2, "venue": "", "kind": "other", "summary": "team chat"}])
+        {"n": 2, "venue": "", "kind": "other", "summary": "team chat"},
+        {"n": 3, "venue": "Casa do Adro", "kind": "complaint", "summary": "venue unhappy with listing"}])
     text, n = rollup.build(slack, c, st)
-    assert "Celestine" in text and "5/5" not in text and "team chat" not in text
-    assert "1 to act on" in text and "2 other posts" in text and n == 3
+    assert "Celestine" in text and "Casa do Adro" in text and "5/5" not in text and "team chat" not in text
+    assert "2 to act on" in text and "2 more items judged as needing no action" in text and n == 4
 
 
 def test_12_rollup_quiet_day_posts_nothing(monkeypatch):

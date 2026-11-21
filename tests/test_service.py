@@ -391,6 +391,42 @@ def test_calls_mode_sends_each_call_once_and_ignores_stale(env, monkeypatch):
     assert len(sender.sent) == 2 and "EXP-2026-11-c" in sender.sent[1] and "EXP-2026-11-a" not in sender.sent[1]
 
 
+def test_calls_mode_failed_send_not_marked_and_state_change_resent(env, monkeypatch):
+    tmp, reg = env
+    monkeypatch.setenv("DRY_RUN", "0")
+    monkeypatch.delenv("EXP_DIGEST_MODE", raising=False)
+    clock = Clock(dt.datetime(2026, 11, 20, 14, 5, tzinfo=UTC))      # Friday
+    state = {"health": "needs_call"}
+
+    class Flaky(Sender):
+        fail = True
+
+        def __call__(self, text):
+            if Flaky.fail:
+                return {"ok": False, "error": "channel_not_found"}
+            return super().__call__(text)
+    sender = Flaky()
+    rows = lambda d: [exp_row(health=state["health"], action="Owner call due", reason="past review")]
+    eng = engine_with(tmp, reg, clock, rows_by_call=rows, monkeypatch=monkeypatch, sender=sender)
+    eng.tick()
+    store = history.HistoryStore(str(tmp / "data"))
+    assert sender.sent == [] and not store.was_sent("call:EXP-2026-11-a:needs_call")   # failed: not marked
+    Flaky.fail = False
+    clock.advance(minutes=31)                     # past the 30-minute retry backoff
+    eng.tick()
+    assert len(sender.sent) == 1 and store.was_sent("call:EXP-2026-11-a:needs_call")
+    clock.advance(days=1)                         # Saturday: same call, same state -> no repeat
+    eng.tick()
+    assert len(sender.sent) == 1
+    state["health"] = "callable_loss"             # Sunday: the call changes state -> sent again
+    clock.advance(days=1)
+    eng.tick()
+    assert len(sender.sent) == 2 and "new call" in sender.sent[1]
+    clock.advance(days=1)                         # Monday: only the weekly agenda, no extra call DM
+    eng.tick()
+    assert len(sender.sent) == 3 and sender.sent[2].startswith("*Weekly call")
+
+
 def test_digest_suppressed_when_nothing_actionable(env, monkeypatch):
     tmp, reg = env
     monkeypatch.setenv("DRY_RUN", "0")

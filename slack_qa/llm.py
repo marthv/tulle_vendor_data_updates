@@ -348,8 +348,10 @@ FIX_SCHEMA = {
 }
 
 ROLLUP_SYSTEM = """You group a day of Tulle Together #feedback posts by venue for the data team. For each post give \
-the venue or vendor it is about ("" if none), a kind (missing_venue | wrong_info | planner_answer | bug | praise | \
-other) and a one-line summary in plain English without any email addresses."""
+the venue or vendor it is about ("" if none), a kind (missing_venue | wrong_info | planner_answer | bug | complaint | \
+praise | other) and a one-line summary in plain English without any email addresses. Use complaint for anything a \
+couple, vendor or teammate is unhappy about or asks the team to fix that fits no other kind; use other only for \
+posts that need no action (a rating with no comment, a neutral reason, chat)."""
 
 ROLLUP_SCHEMA = {
     "type": "object",

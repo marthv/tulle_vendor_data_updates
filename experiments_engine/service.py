@@ -518,8 +518,14 @@ class Engine:
         if self.store.was_sent(key):
             return "already"
         if alerts.digest_mode() == "calls":
-            # 2026-11-21: only calls not already sent on an earlier day; each call is DM'd once.
-            new = [i for i in alerts.call_ids(self.snapshot) if not self.store.was_sent(self._key(f"call:{i}"))]
+            # 2026-11-21: only calls not already sent. A call is DM'd once per state (needs_call / callable_win /
+            # callable_loss), so a change of state is sent again (QA 11-21). The reminder for an ignored call is the
+            # Monday "Weekly call" agenda, which lists every live undecided experiment - a separate weekly reminder
+            # here only duplicated it.
+            health = {str(r.get("id") or r.get("name")): r.get("health")
+                      for r in (self.snapshot or {}).get("experiments") or [] if isinstance(r, dict)}
+            call_key = lambda i: self._key(f"call:{i}:{health.get(i)}")
+            new = [i for i in alerts.call_ids(self.snapshot) if not self.store.was_sent(call_key(i))]
             text = alerts.format_calls(self.snapshot, new)
             if text is None:
                 self.store.mark_sent(key + ":quiet")
@@ -529,7 +535,7 @@ class Engine:
             res = self._deliver(key, text, now)
             if res == "sent":
                 for i in new:
-                    self.store.mark_sent(self._key(f"call:{i}"))
+                    self.store.mark_sent(call_key(i))
             return res
         text = alerts.format_digest(self.snapshot, self._recent_unlogged(now))
         if text is None:
