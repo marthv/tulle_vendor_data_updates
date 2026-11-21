@@ -1871,7 +1871,7 @@
     {
       "id": "EXP-2026-10-planner-price-upsell",
       "name": "Planner: free users' price questions -> answer + PDF first + upgrade card (no refusal); no-views users get the card on the first answer",
-      "status": "live",
+      "status": "inconclusive",
       "themes": [
         "assistant",
         "paywall"
@@ -1880,13 +1880,13 @@
       "primary_metric": "rec_paywall_shown surface=planner_upsell_card -> rec_upsell_card_clicked -> purchase within 7 d; PDF opens after a Planner answer",
       "guardrail": "Planner thumbs-down / drop-off after the card",
       "start_date": "2026-10-26",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-23",
       "dates_note": "Backend price-question card 23:18 UTC (c4ec678); PDF-first + no-views card 23:33 (ac172c7). WeWeb card + Request button published 23:43 UTC. Baseline: 1 Planner paywall shown in the 7 d to 10-26; 8 free price questions refused in 14 d.",
       "design": "pre/post",
       "results": [],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Closed inconclusive by the owner 2026-11-21 (brought forward from the 11-23 call): no read-out in 26 days live; manual metric with no baseline, and free-couple gating changed three times inside the run (open week 11-01..11-07, 1/day 11-08, 3 + 1/day 11-09) plus openings stopped mentioning Forever 11-07. The card stays as shipped product.",
       "confounds_noted": [
         "Same night (2026-10-26 22:00-23:45 UTC): Railway search 50% + breaker, Planner v3 (name lookup, price-question upsell card, thin-profile questions, listings vendors, pricing cache), free-user PDF-first + no-views upgrade card, WeWeb Planner publish 23:43"
       ],
@@ -1929,7 +1929,7 @@
       "planned_days": 14,
       "max_days": 35,
       "reporting": "manual",
-      "rollback": null,
+      "rollback": "Revert rec-engine c4ec678 / ac172c7 and the 10-26 23:43 WeWeb card (not planned)",
       "spec_gaps": [
         "metric.baseline: no pre-launch rate recorded",
         "metric.mde_rel: no smallest-lift-worth-having stated",
@@ -1943,7 +1943,9 @@
         "recommended_status": "needs_call",
         "evidence": "No evidence it was switched off; but free-couple gating changed three times (open week 11-01..11-07, 1/day 11-08, 3 + 1/day 11-09) and openings stopped mentioning Forever 11-07 (d076d45). Review date 11-09 passed with no read. Recommend owner call; any read must be split by the gating periods."
       },
-      "review_note": "2026-11-20 (owner-approved registry batch): review 11-09 passed with no read. Not callable: manual metric, no results[] read-out, and free-couple gating changed three times inside the run (open week 11-01..11-07, 1/day 11-08, 3 + 1/day 11-09) plus openings stopped mentioning Forever 11-07. Moved to the 11-23 Monday call: read card shown -> clicked -> paid within 7 d split by those gating periods; hard stop 11-30 (max_days 35) - no read by then means shelve."
+      "review_note": "2026-11-20 (owner-approved registry batch): review 11-09 passed with no read. Not callable: manual metric, no results[] read-out, and free-couple gating changed three times inside the run (open week 11-01..11-07, 1/day 11-08, 3 + 1/day 11-09) plus openings stopped mentioning Forever 11-07. Moved to the 11-23 Monday call: read card shown -> clicked -> paid within 7 d split by those gating periods; hard stop 11-30 (max_days 35) - no read by then means shelve.",
+      "outcome": "inconclusive",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-10-planner-profile-questions",
@@ -2722,7 +2724,7 @@
     {
       "id": "EXP-2026-11-free-daily-question",
       "name": "Planner: free couples get 3 questions for life, then 1 free question a day (no accumulation)",
-      "status": "live",
+      "status": "shelved",
       "themes": [
         "planner",
         "retention"
@@ -2731,7 +2733,7 @@
       "primary_metric": "share of NEW free Planner couples who come back on a later day within 3 days (post cohort vs first-used Oct 31 - Nov 5)",
       "guardrail": "free daily $ pool; purchases",
       "start_date": "2026-11-09",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-23",
       "dates_note": "rec e29f61a committed 2026-11-08 20:11 ET (2026-11-09 01:11 UTC), auto-deployed with rec-engine. Daily read in the brief (experiments_brief.py) from 2026-11-11.",
       "design": "pre/post",
@@ -2746,7 +2748,7 @@
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Shelved by the owner 2026-11-21: cannot reach a verdict. 11-15 read (table 79, internal excluded): 2 of 83 new free couples came back within 3 days after launch (11-09..11-11) vs 9 of 216 before (10-21..11-05) = 2.4% vs 4.2%; Planner questions fell ~80% from 11-11 when the Ask Tulle bubble replaced the Discovery entry. The 3 + 1/day rule stays on as product policy. Frees a rotation slot.",
       "confounds_noted": [
         "PDF gate fix 11-09 04:34 UTC",
         "PI first vendor free 11-09 14:12 UTC",
@@ -2816,12 +2818,14 @@
         "recommended_status": "live",
         "evidence": "Rule still in place (REC_FREE_DAILY_MODE / REC_FREE_DAILY_REFINES set on rec-engine; values not readable; no later change found in git or memory). Starved: 2 of 83 post-launch couples returned (11-15 read); Planner questions fell ~80% from 11-11 (bubble replaced the Discovery entry). Review 11-23. Recommend keep to 11-23 then likely shelve (can't reach a verdict)."
       },
-      "in_rotation": true
+      "in_rotation": false,
+      "outcome": "shelved",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-save-offer-60-forever",
       "name": "'Too expensive' save offer: 60% off Forever, 12 h, server-enforced code + email (replaces 20% / 30 min)",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "paywall",
         "pricing"
@@ -2830,7 +2834,7 @@
       "primary_metric": "buyers among TT60 code holders (table 1 paywall_offer_code + payment log)",
       "guardrail": "'too expensive' share of what_stopped_you stays < 55% (~47% before); full-price Forever purchases/week don't drop",
       "start_date": "2026-11-11",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-12-02",
       "dates_note": "ep313 v3 live 2026-11-11 05:14:44 UTC; WeWeb card copy/countdown edited in editor 11-11, live after owner publish. Rollback: tulletogether/.claude/xano_backups/api313_ep313_save_offer_LIVE_pre_60forever_2026-11-11.xs | v4 two-plan from 2026-11-12 06:40 UTC.",
       "design": "pre/post",
@@ -2849,7 +2853,7 @@
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner 2026-11-21: call it a win and keep it. 2 of 10 TT60 code holders bought Forever by 11-15 vs 1 of 33 on the old 20% / 30-min offer (3%); chance it beats the old offer ~90-96% on 2/16..2/10 (agent calc, Beta(1,1)) - below the 95% money bar, so this is the owner's call on a strong lean, not a statistical verdict. The offer itself may be changed later (new entry if so). Learning: a deep, short, emailed Forever discount converts 'too expensive' couples far better than the 30-minute 20% offer.",
       "confounds_noted": [
         "PDF gate fix 11-09 restored the paywall (more wall hits)"
       ],
@@ -2887,15 +2891,17 @@
         {
           "key": "manual",
           "label": "'too expensive' share of what_stopped_you",
-          "max_abs": 0.55
+          "max_abs": 0.55,
+          "max_rise_rel": 0.17
         },
         {
           "key": "purchases_per_day",
-          "label": "full-price Forever purchases/week",
+          "label": "Forever purchases/day (all prices)",
           "params": {
-            "plan": "forever",
-            "full_price": true
-          }
+            "plan": "forever"
+          },
+          "max_drop_rel": 0.25,
+          "note": "2026-11-21: full_price param removed - the engine rejected it ('unsupported param(s) for purchases_per_day: full_price')"
         }
       ],
       "assignment": {
@@ -2906,7 +2912,7 @@
         }
       },
       "planned_days": 21,
-      "max_days": null,
+      "max_days": 28,
       "reporting": "auto",
       "rollback": "Push tulletogether/.claude/xano_backups/api313_ep313_save_offer_LIVE_pre_60forever_2026-11-11.xs (dates_note)",
       "spec_gaps": [
@@ -2920,7 +2926,9 @@
         "recommended_status": "live",
         "evidence": "ep313 v4 live since 11-12 06:40 UTC (registry); reads 2/10 (11-15) and 2/16 (memory project_session_2026-11-18). Review 12-02. On track; read v3 and v4 periods separately."
       },
-      "in_rotation": true
+      "in_rotation": false,
+      "outcome": "shipped",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-nps-optional-comment-high-stars",
@@ -3681,7 +3689,7 @@
     {
       "id": "EXP-2026-11-price-report-vs-pi-card",
       "what": "Tulle Price Report (ww-price-report) replaces the Pricing Intelligence card on both vendor pages, no holdout",
-      "status": "live",
+      "status": "reverted",
       "themes": [
         "paywall",
         "pricing-intelligence",
@@ -3691,7 +3699,7 @@
       "primary_metric": "Unique clicked_membership_for_pricing_venue_price_report / unique viewed_vendor_page per day (Mixpanel 3963130), vs the old card's clicked_membership_for_pricing_venue_pricing_intelligence / viewed_vendor_page.",
       "guardrail": "Purchases/day (payment log table 16; Mixpanel membership_purchase_confirmed) not below the 14 days before; signed_up -> viewed_vendor_pdf share not down; no paid figure visible to free couples in the report's locked view.",
       "start_date": "2026-11-17",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-12-01",
       "dates_note": "Live with WeWeb publish cacheVersion 1398, 2026-11-17 16:47 UTC (ww-price-report 888aaf3; old card hidden, not deleted, restore steps in tulletogether .claude/xano_backups/weweb_pi_card_pre_replace_by_price_report_2026-11-17.json). review_date = start + 14 days. Registered retroactively 2026-11-18 (the launch was only logged as a confound in changes[] 2026-11-17).",
       "design": "pre/post, everyone (no A/B). Read rates per day, not counts; exclude internal accounts at read time.",
@@ -3711,7 +3719,7 @@
         }
       ],
       "stat_sig": "not computed",
-      "decision": "",
+      "decision": "Owner 2026-11-21 ~23:20 UTC: 'revert back to the very original pricing intelligence'. Original PI card restored and the Price Report hidden on both vendor pages (WeWeb editor 11-21; goes live with the next publish). Not read as a test: three treatments in 5 days (11-17 16:47, 11-18 06:47, locked-compact 11-19 05:04) and two confounds (no free first vendor 11-18 05:39; PDF-limit redirect 11-19 05:04). Mixpanel unique users, internal NOT excluded: unlock clicks / vendor-page visitors 14.9% (254/1,700, 11-04..11-16, old card) vs 9.6% (11/115, 11-18) and 9.8% (24/246, 11-19..11-20) on the report - below the bar but confounded. Learning: Des/Kate found the report harder to read than the old card.",
       "confounds_noted": [
         "Same publish (1398): Plan my wedding for every couple, Meta pixel, landing pages, Back to Planner, Ask Tulle off the phone sticky bar",
         "Overlaps EXP-2026-11-pi-first-vendor-free (call 11-23): the report is what free couples now see on their first and later vendors",
@@ -3783,7 +3791,9 @@
         "recommended_status": "live",
         "evidence": "Live since 11-17 16:47 UTC; period 2 from 11-18 06:47 (publish 1401). Further locked-view builds pushed 11-18 (98f613c teaser, f52e04a one CTA, 8a2c36d compact = default) are pending owner activation + publish (memory project_payment_dip_2026-11-18) - a third treatment if published. Venue-card upgrade clicks fell ~60% after the 11-18 overnight changes (same memory; small sample). Owner: no split test. Review 12-01."
       },
-      "in_rotation": true
+      "in_rotation": false,
+      "outcome": "reverted",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-planner-venue-fixes",
@@ -3959,7 +3969,7 @@
     {
       "id": "EXP-2026-11-planner-open-ended-replies",
       "name": "Planner open-ended replies: no closing question, no suggested-reply chips, no profile questions",
-      "status": "live",
+      "status": "inconclusive",
       "themes": [
         "planner"
       ],
@@ -3967,12 +3977,12 @@
       "primary_metric": "not stated",
       "guardrail": "",
       "start_date": "2026-11-07",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-23",
       "dates_note": "rec-engine e80a904 on origin/main (REC_OPEN_ENDED, default '1' in config.py; not set on Railway rec-engine per the 2026-11-19 variable list). Memory index_overflow 11-07: 'OPEN-ENDED server LIVE main e80a904 (verified live: no closing ?, chips [], 3 cards)'. Turns off EXP-2026-10-next-step-chips and EXP-2026-10-planner-profile-questions.",
       "design": "pre/post, everyone",
       "results": [],
-      "decision": "",
+      "decision": "Closed inconclusive by the owner 2026-11-21; open-ended replies stay on. 2nd-question rate 50.9% -> 47.7% (engine read noted 11-19, windows not recorded), confounded with the 11-09 free daily limit and five-fixes the same day. A fair answer needs an open-ended vs chips 50/50 split (separate approval).",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4018,12 +4028,14 @@
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
       "framework_version": 2,
-      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Auto metric is a placeholder (spec_gaps); a split of open-ended vs chips needs owner approval before it can be judged fairly."
+      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Auto metric is a placeholder (spec_gaps); a split of open-ended vs chips needs owner approval before it can be judged fairly.",
+      "outcome": "inconclusive",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-planner-five-fixes",
       "name": "Planner subscription-readiness fixes: dead ends, no Forever in openings, light price bands, florist pricing, returning-couple shortlist + date flex",
-      "status": "live",
+      "status": "inconclusive",
       "themes": [
         "planner"
       ],
@@ -4031,12 +4043,12 @@
       "primary_metric": "not stated (readout baseline: 32% of couples opened a PDF, next-day return 4-9%)",
       "guardrail": "",
       "start_date": "2026-11-07",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-23",
       "dates_note": "Server d076d45 pushed ~17:20 UTC 2026-11-07 (flags REC_OPENING_NO_FOREVER, REC_LIGHT_PRICE_BANDS, REC_FLORIST_PRICING, REC_RETURNING_OPENING, REC_DATE_FLEX all default ON; none set on Railway). Component a892363 needed owner activate + publish (not verified). Source: memory project_planner_subscription_readout_2026-11-07.",
       "design": "pre/post, everyone",
       "results": [],
-      "decision": "",
+      "decision": "Closed inconclusive by the owner 2026-11-21; the five fixes stay (they remove dead ends). 7-day return 10.5% -> 7.2% (engine read noted 11-19, windows not recorded) - leaning worse, but confounded with the 11-09 daily limit, open-ended replies and home screen the same day.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4084,7 +4096,9 @@
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
       "framework_version": 2,
-      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Five changes in one launch: a ship/revert applies to the bundle; D7 return needs 7 days of follow-up per couple."
+      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Five changes in one launch: a ship/revert applies to the bundle; D7 return needs 7 days of follow-up per couple.",
+      "outcome": "inconclusive",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-ca-forever-135",
@@ -4723,7 +4737,7 @@
     {
       "id": "EXP-2026-11-planner-home-screen",
       "name": "Planner home screen: no automatic opening, blank start with starter questions",
-      "status": "live",
+      "status": "shelved",
       "themes": [
         "planner"
       ],
@@ -4731,12 +4745,12 @@
       "primary_metric": "rec_home_shown -> rec_starter_clicked; PDF opens",
       "guardrail": "",
       "start_date": "2026-11-07",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-23",
       "dates_note": "Component home-screen (28df614 / c3831ff) pushed 11-07; registry EXP-2026-11-planner-my-wedding-plan confounds says 'home screen ... shipped 11-07'; later component commits build on it (504f3ba 'Planner home waits for the plan + past chats', fbce08d home button). Exact publish time not recorded. Baseline 39/122 couples (32%) opened a PDF 11-03..11-06 (memory project_planner_subscription_readout_2026-11-07).",
       "design": "pre/post",
       "results": [],
-      "decision": "",
+      "decision": "Shelved as unmeasured by the owner 2026-11-21: manual metric, no read-out against the 39 of 122 (32%, 11-03..11-06) baseline. The home screen stays.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4780,7 +4794,9 @@
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
       "framework_version": 2,
-      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Manual metric: needs a read-out (share of Planner couples opening a PDF vs 39 of 122, 11-03..11-06) before the call; none by 11-23 means shelve as unmeasured."
+      "review_note": "2026-11-20: started 11-07; 14-day run ended 11-21, so it comes up at the 11-23 Monday call as backlog (not in rotation); hard stop 12-05. Manual metric: needs a read-out (share of Planner couples opening a PDF vs 39 of 122, 11-03..11-06) before the call; none by 11-23 means shelve as unmeasured.",
+      "outcome": "shelved",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-pdf-limit-soft-redirect",
@@ -4862,7 +4878,7 @@
     {
       "id": "EXP-2026-11-price-report-locked-compact",
       "name": "Price Report locked view: compact member layout with blurred numbers + one 'See the Exact Number' CTA",
-      "status": "live",
+      "status": "reverted",
       "themes": [
         "paywall",
         "pricing-intelligence"
@@ -4871,7 +4887,7 @@
       "primary_metric": "venue-card upgrade clicks per 100 vendor views back to 3-5; click -> pay ~12%",
       "guardrail": "",
       "start_date": "2026-11-19",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-12-01",
       "dates_note": "ww-price-report 98f613c (teaser) -> f52e04a (one CTA) -> 8a2c36d (compact default, no fake reading) pushed 2026-11-18; owner must activate + publish; locked-shown Mixpanel workflows not verified. Source: memory project_payment_dip_2026-11-18. 2026-11-20 check: LIVE - production build 1404 (asset Last-Modified 2026-11-19 05:04:29 UTC) wwElement chunk carries ww-price-report 8a2c36d markers (tpr__ring-lock, is-compact, locked-shown); both instances (9568da51 venue, bcbabf98 other) leave lockedView unset, so the default 'compact' applies. Staging build 1403 (04:25 UTC) first listed the Price Report change; post_start = the 1404 build time, the earliest production time proven. Rendering and the locked-shown Mixpanel workflows not verified.",
       "design": "pre/post (would be period 3 of EXP-2026-11-price-report-vs-pi-card)",
@@ -4881,7 +4897,7 @@
           "note": "Status planned -> live 2026-11-20: ww-price-report 8a2c36d found in production build 1404 (2026-11-19 ~05:04 UTC). Period 3 of EXP-2026-11-price-report-vs-pi-card; same publish as EXP-2026-11-pdf-limit-soft-redirect."
         }
       ],
-      "decision": "",
+      "decision": "Ended with EXP-2026-11-price-report-vs-pi-card (period 3 of it, never a separate call): owner restored the original PI card 2026-11-21 (live at the next publish). No separate read-out.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4931,7 +4947,9 @@
         "guardrails[0]: no threshold stated at launch; engine default (25% move, 90% sure) applies"
       ],
       "framework_version": 2,
-      "review_note": "2026-11-20: review aligned with EXP-2026-11-price-report-vs-pi-card (12-01) - read it there as period 3, not as its own call."
+      "review_note": "2026-11-20: review aligned with EXP-2026-11-price-report-vs-pi-card (12-01) - read it there as period 3, not as its own call.",
+      "outcome": "reverted",
+      "decided_on": "2026-11-21"
     }
   ],
   "changes": [
