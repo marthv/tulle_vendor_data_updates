@@ -2377,7 +2377,7 @@
     {
       "id": "EXP-2026-11-texas-only-forever-89",
       "name": "Texas-only Forever $89",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "pricing"
       ],
@@ -2385,7 +2385,7 @@
       "primary_metric": "Texas-only Forever buys/day and $/sign-up (table 16 x table 1; cohort = normalised Wedding_Location_Updated == {Texas} after splitting comma-packed entries, trimming, lower-casing, dropping empties)",
       "guardrail": "Texas+other (NY/CA/Intl or any other state), Rest, NY, CA/Intl prices unchanged; page price must equal charged price (WeWeb bindings + fn63 all gated on table 17 Product_ID 13)",
       "start_date": "2026-11-03",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-24",
       "dates_note": "Built 2026-10-31 with the switch OFF (table 17 row 16 parked as Product_ID 113; fn63 Texas block live but inert). Starts when the owner (1) creates the $89 Stripe price + payment link under prod_Ri5UAnkrymjxZ9 and puts it in row 16, (2) publishes the two Membership-page bindings, (3) sets row 16 Product_ID 113 -> 13. Read 2-3 weeks after that date.",
       "design": "pre/post (no holdout). Treatment = Texas-only cohort; untreated comparison arms = Texas+other and Rest.",
@@ -2438,7 +2438,7 @@
         }
       ],
       "stat_sig": "not computed",
-      "decision": "",
+      "decision": "Owner price decision 2026-11-21: keep Texas-only Forever at $89. Not a statistical verdict - at ~0.06 Texas-only Forever buys/day before (1 in 17 days at $135) a doubling could not be detected before the 12-15 hard stop. Learning: geo price tests at this traffic are price decisions, not experiments.",
       "confounds_noted": [
         "Nov-4 re-read of the Oct-14 Rest+TX $35/$60/$135 move: once switched on, Texas-only leaves the Rest+TX arm - compute Rest+TX excluding Texas-only for that readout (Texas-only was 1 of 11 Rest+TX Forever buys 10-14..10-30).",
         "Only the Forever card changes; 1-week/4-week stay $35/$60, so plan mix shifts are expected, not noise.",
@@ -2474,14 +2474,15 @@
         },
         "direction": "increase",
         "baseline": 0.06,
-        "baseline_note": "2026-10-14..10-30 at $135 (17 d): 1 Forever buy = 0.06/day; earlier windows 0.05 and 0.31/day (baseline field)",
-        "mde_rel": null,
+        "baseline_note": "2026-10-14..10-30 at $135 (17 d): 1 Forever buy = 0.06/day",
+        "mde_rel": 1.0,
         "label": "Texas-only Forever buys/day"
       },
       "guardrails": [
         {
           "key": "manual",
-          "label": "other cohorts' prices unchanged; page price == charged price"
+          "label": "other cohorts' prices unchanged; page price == charged price",
+          "max_rise_rel": 0
         },
         {
           "key": "revenue_per_day",
@@ -2489,14 +2490,16 @@
           "params": {
             "cohort": "texas_only"
           },
-          "note": "2026-11-19: was $/sign-up (params.per, unsupported by the engine); revenue/day from the same Texas-only couples guards the same risk (the $89 price losing money)."
+          "max_drop_rel": 0.25
         }
       ],
       "assignment": {
         "type": "pre_post",
-        "pre": null,
-        "post_start": "2026-11-03T06:00Z",
-        "note": "untreated comparison arms: Texas+other and Rest; start per memory index_overflow '11-03 TEXAS-ONLY FOREVER $89 LIVE (~06:00 UTC, row 16 PID 13)' and Xano table 17 row 16 Product_ID 13 read 2026-11-19 - registry start_date still null"
+        "pre": [
+          "2026-10-14",
+          "2026-10-30"
+        ],
+        "post_start": "2026-11-03T06:00Z"
       },
       "planned_days": 21,
       "max_days": 42,
@@ -2513,7 +2516,10 @@
         "recommended_status": "live",
         "evidence": "LIVE since 2026-11-03 ~06:00 UTC but registry still 'planned' with no start_date: memory index_overflow '11-03 TEXAS-ONLY FOREVER $89 LIVE (~06:00 UTC, row 16 PID 13; rollback --tx-off)' and project_texas_only_forever_89_2026-10-31 (owner published Membership bindings, Stripe $89 price created); Xano table 17 row 16 has Product_ID 13 (read-only check 2026-11-19). Recommend: set start_date 2026-11-03, review ~2026-11-24; read was due '2-3 weeks after'."
       },
-      "review_note": "2026-11-20: review = start 11-03 + planned 21 days (the '2-3 weeks after' read in dates_note). Call rule: money tier (95%); hard stop 12-15. At this base rate (spec_gaps) expect no verdict - the likely call at max_days is inconclusive or an owner price decision."
+      "review_note": "2026-11-20: review = start 11-03 + planned 21 days (the '2-3 weeks after' read in dates_note). Call rule: money tier (95%); hard stop 12-15. At this base rate (spec_gaps) expect no verdict - the likely call at max_days is inconclusive or an owner price decision.",
+      "outcome": "shipped",
+      "decided_on": "2026-11-21",
+      "in_rotation": false
     },
     {
       "id": "EXP-2026-11-planner-my-wedding-plan",
