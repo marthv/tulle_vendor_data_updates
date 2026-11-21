@@ -4371,7 +4371,7 @@
       "dates_note": "Built in the editor 2026-11-12 (venue card 614fcf8f, OV card 0942ec05; backup .claude/weweb_pdf_limit_pre_contextual_2026-11-12.json; phone fit fix same day). The 11-12 ~06:40 UTC publish note does not name it; live status NOT verified. Source: memory project_pdf_warning_view3 / project_gates_to_pay_2026-11-12.",
       "design": "pre/post",
       "results": [],
-      "decision": "Shelved by the owner 2026-11-21 ('it's shelved'): superseded by EXP-2026-11-pdf-limit-soft-redirect - since build 1404 (2026-11-19 05:04 UTC) hitting the PDF limit redirects to /pricing instead of showing the limit card. Never launched.",
+      "decision": "Shelved by the owner 2026-11-21 ('it's shelved'): superseded by EXP-2026-11-pdf-limit-soft-redirect - since build 1404 (2026-11-19 05:04 UTC) hitting the PDF limit redirects to /pricing instead of showing the limit card. Never launched. NOT deleted yet (2026-11-21): the card lives inside the 'Pdf Limit Overlay' sections (614fcf8f venue page, 0942ec05 other vendors page), which are the OFF branch of the 'Redirect experiment on?' switch in the PDF Limit Trigger workflows - i.e. the rollback for EXP-2026-11-pdf-limit-soft-redirect. Delete overlay + switch together once that test is called a keep (review 12-03).",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4422,7 +4422,7 @@
     {
       "id": "EXP-2026-11-discovery-filters-unblurred",
       "name": "Discovery advanced filters unblurred (still locked; click -> upsell)",
-      "status": "draft",
+      "status": "shipped",
       "themes": [
         "paywall",
         "discovery"
@@ -4431,12 +4431,12 @@
       "primary_metric": "not stated",
       "guardrail": "",
       "start_date": null,
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": null,
       "dates_note": "32 sections set filter:none in the editor 2026-11-03 (backup .claude/xano_backups/weweb_discovery_filter_blur_pre_unblur_2026-11-03.json); publish not verified. Source: memory project_discovery_filters_unblurred_2026-11-03.",
       "design": "pre/post",
       "results": [],
-      "decision": "",
+      "decision": "Feature launch, no read-out. Owner confirmed 2026-11-21 that the Discovery advanced filters are unblurred (still locked, tap opens the upsell) and to close it. Editor change 11-03; exact first-live publish not recorded.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4477,7 +4477,9 @@
         "assignment: not derivable",
         "live status unverified"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "outcome": "shipped",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-welcome-email-server",
