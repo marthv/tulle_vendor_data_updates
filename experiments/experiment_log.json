@@ -2204,7 +2204,7 @@
     {
       "id": "EXP-2026-10-vendor-pdf-order",
       "name": "Vendor pages list PDFs Primary first, then newest year (was oldest upload first)",
-      "status": "planned",
+      "status": "shipped",
       "themes": [
         "paywall",
         "data"
@@ -2213,13 +2213,13 @@
       "primary_metric": "share of PDF opens that are the vendor's Primary / newest PDF",
       "guardrail": "",
       "start_date": null,
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": null,
       "dates_note": "WeWeb editor change 2026-10-26 (venue 0107d032 + other vendors 959d3645), awaiting owner publish. Audit of stale Primary + off-peak-as-peak headline rates running.",
       "design": "pre/post",
       "results": [],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Feature launch, no read-out (owner 2026-11-21). Verified live 2026-11-21 in published build 1404 on both vendor pages (venue e49b4e74 + other d1d9bbf6): PDF repeat sorted 'Primary first, then newest pricing year, then newest upload'. Editor change 10-26; exact first-live publish not known.",
       "confounds_noted": [],
       "risks": [
         "collection limit 5: a Primary older than the last 5 uploads is not listed"
@@ -2274,7 +2274,9 @@
       "audit_2026_11_19": {
         "recommended_status": "planned_unverified",
         "evidence": "Editor change 2026-10-26; nothing in memory or git confirms it was published or reverted. Every full publish since (10-26 23:43 ... 11-18 1401) would carry it unless undone. Recommend: verify in live vendor-page data (tulle-verify-publish skill) and then mark live with the first publish date, or delete."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-10-planner-speed-2a",
