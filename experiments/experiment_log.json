@@ -3145,7 +3145,7 @@
     {
       "id": "EXP-2026-11-pricing-page-copy",
       "name": "Pricing page copy: headline 'See what wedding vendors really charge.', outcome subtitles per plan, plain feature lines ('AI wedding planner', 'Unlimited real pricing PDFs', 'No Pricing Intelligence', 'No advanced filters')",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "pricing",
         "conversion"
@@ -3154,7 +3154,7 @@
       "primary_metric": "Mixpanel pricing_page_viewed (distinct users) -> purchases in the payment log (table 16), by plan; 2026-11-15..11-28 vs 2026-11-01..11-14",
       "guardrail": "purchases/day and revenue/day not down",
       "start_date": "2026-11-15",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-29",
       "dates_note": "Owner edited and published 2026-11-15 ~04:40 UTC (evening of 11-14 ET). Old lines backed up in tulletogether/.claude/xano_backups/weweb_pricing_cards_pre_copy_2026-11-14.json. Plan contents unchanged.",
       "design": "pre/post",
@@ -3165,7 +3165,7 @@
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Owner 2026-11-21: close it and keep the wording (brought forward from 11-29). Not a verdict: ~11 plans-page viewers/day at ~8% paying needs ~199 days to detect a 25% lift, and publishes 1398/1401/1404 (11-17..11-19) changed who reaches the page. Learning: page-copy changes at this traffic are judgement calls, not experiments.",
       "confounds_noted": [
         "Went live in the same WeWeb publish (2026-11-15 ~04:40 UTC) as: pricing page copy, Planner PDF-count link, free-question note, quote check for everyone, stage starters on the home card",
         "Not a split test; two-plan save offer (11-12) and Ask Tulle bubble (11-11) are still inside the 'before' window"
@@ -3190,19 +3190,21 @@
         "key": "manual",
         "params": {},
         "direction": "increase",
-        "baseline": null,
-        "baseline_note": "not pulled at launch; memory project_payment_dip_2026-11-18: Oct 21-Nov 17 1-day pay rate 8% (26/312) - that window straddles the launch",
-        "mde_rel": null,
+        "baseline": 0.083,
+        "baseline_note": "26/312 pricing-page viewers paid within 1 day, Oct 21-Nov 17 (memory project_payment_dip_2026-11-18) - window straddles the launch",
+        "mde_rel": 0.25,
         "label": "pricing_page_viewed (distinct) -> purchase (table 16), by plan"
       },
       "guardrails": [
         {
           "key": "purchases_per_day",
-          "label": "purchases/day"
+          "label": "purchases/day",
+          "max_drop_rel": 0.25
         },
         {
           "key": "revenue_per_day",
-          "label": "revenue/day"
+          "label": "revenue/day",
+          "max_drop_rel": 0.25
         }
       ],
       "assignment": {
@@ -3214,7 +3216,7 @@
         "post_start": "2026-11-15T04:40Z"
       },
       "planned_days": 14,
-      "max_days": null,
+      "max_days": 28,
       "reporting": "manual",
       "rollback": "Restore old lines from tulletogether/.claude/xano_backups/weweb_pricing_cards_pre_copy_2026-11-14.json and publish",
       "spec_gaps": [
@@ -3228,7 +3230,10 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "Live since 11-15 04:40 UTC (verified, cacheVersion 1397). Confounded after: Price Report 11-17, no free first vendor + locked report 11-18, plans-page estimate box removed in the editor 11-18. 'Before' window contains the 11-12 contextual pricing page (Vendor Context Card). Review 11-29."
-      }
+      },
+      "outcome": "shipped",
+      "decided_on": "2026-11-21",
+      "in_rotation": false
     },
     {
       "id": "EXP-2026-11-planner-pdf-count-link",
