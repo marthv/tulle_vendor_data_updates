@@ -4555,7 +4555,7 @@
     {
       "id": "EXP-2026-11-meta-landing-pages",
       "name": "Meta ads landing pages (/lp/real-prices, /lp/new-york, /lp/ask-tulle) + pixel",
-      "status": "planned",
+      "status": "shipped",
       "themes": [
         "acquisition",
         "ads"
@@ -4564,12 +4564,12 @@
       "primary_metric": "not stated (owner 11-17: optimise ads on PdfLimitReached)",
       "guardrail": "",
       "start_date": null,
-      "end_date": null,
+      "end_date": "2026-11-17",
       "review_date": null,
       "dates_note": "Pages + pixel 4020134954967495 live with publish 1398 (2026-11-17 16:47 UTC); NY LP rebuilt in publish 1401 (2026-11-18 06:47 UTC). Ads not running: signups referrer mix ~94% tulletogether.com, no ad traffic (memory project_payment_dip_2026-11-18). Source: memory project_meta_ads_setup_2026-11-14.",
       "design": "pre/post",
       "results": [],
-      "decision": "",
+      "decision": "Launch, not an experiment (owner 2026-11-21): landing pages + Meta pixel 4020134954967495 live with publish 1398 (2026-11-17 16:47 UTC), NY LP rebuilt in 1401; pixel events arriving since 11-17. Ads are Des/Kate's (project 1 closed 11-21); open a new entry with a goal (e.g. cost per sign-up) when the first campaign goes live (target 11-30).",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4611,7 +4611,9 @@
         "assignment: not derivable",
         "starts when ads go live (target 2026-11-30)"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "outcome": "shipped",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-estimate-card-whatif",
