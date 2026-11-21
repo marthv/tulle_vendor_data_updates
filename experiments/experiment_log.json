@@ -4117,7 +4117,7 @@
     {
       "id": "EXP-2026-11-ca-forever-135",
       "name": "California Forever $149 -> $135 (1 week $39 / 4 weeks $69 kept; International stays $149)",
-      "status": "live",
+      "status": "shipped",
       "themes": [
         "pricing"
       ],
@@ -4125,7 +4125,7 @@
       "primary_metric": "not stated",
       "guardrail": "",
       "start_date": "2026-11-08",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-29",
       "dates_note": "fn63 LIVE 2026-11-08 03:01 UTC (CA joins $is_ny_cohort; verified CA 135, Intl 149, TX-only 89); WeWeb Membership Lifetime Price af5d09b0 + Forever button wf 8605fcc5 edited in editor - publish not separately verified. Backup .claude/xano_backups/fn63_pre_ca135_2026-11-07.xs. Source: memory index_overflow (moved 2026-11-08).",
       "design": "pre/post",
@@ -4135,7 +4135,7 @@
           "note": "Engine now filters payments by wedding location: CA revenue/day before vs after 11-08 is computed every 6 h (was blocked: 'geo cohorts need a wedding-location join')."
         }
       ],
-      "decision": "",
+      "decision": "Recorded as an owner price decision (set 11-08, confirmed 2026-11-21: 'keep this as is'), not a test: no hypothesis, baseline or lift was ever set. California Forever stays $135. Live price on the plans page for CA couples not re-verified 11-21.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4184,7 +4184,10 @@
         "assignment.pre: comparison window not stated at launch; engine uses the 14 days before start (caveat shown)"
       ],
       "framework_version": 2,
-      "review_note": "2026-11-20: review = start 11-08 + 21 days (same run as Texas-only); hard stop 12-20. Money tier, before/after on a geo cohort. Still no hypothesis or baseline (spec_gaps); if it stays an owner price decision, record it as decided: shipped at the review."
+      "review_note": "2026-11-20: review = start 11-08 + 21 days (same run as Texas-only); hard stop 12-20. Money tier, before/after on a geo cohort. Still no hypothesis or baseline (spec_gaps); if it stays an owner price decision, record it as decided: shipped at the review.",
+      "outcome": "shipped",
+      "decided_on": "2026-11-21",
+      "in_rotation": false
     },
     {
       "id": "EXP-2026-11-limit-cards-plans-copy",
