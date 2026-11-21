@@ -70,9 +70,61 @@ def test_parse(q, kind, extra):
 
 
 @pytest.mark.parametrize("q", ["show V5699 pricing", "hide the pricing card for free users",
-                               "what's the payment rate today?", "why is V5699 so expensive?"])
+                               "what's the payment rate today?", "why is V5699 so expensive?",
+                               # QA 11-21: questions and partial hides are not "hide the listing"
+                               "hide V12?", "hide V12's pricing from free users", "hide V12 from search? not sure",
+                               "Hide V12 and V13", "restore V12 pricing PDF",
+                               "is there an open question about V12 changes"])
 def test_parse_leaves_questions_alone(q):
     assert va.parse(q) is None
+
+
+@pytest.mark.parametrize("q,kind,extra", [
+    ("can you hide V12?", "visibility", {"action": "hide", "reason": ""}),
+    ("could you please hide V12 - asked by the venue", "visibility", {"reason": "asked by the venue"}),
+    ("fix V12 website to be <https://a.com|https://a.com>", "vendor_edit", {"new_value": "https://a.com"}),
+    ("change V12 name to Smith &amp; Co", "vendor_edit", {"new_value": "Smith & Co"}),
+])
+def test_parse_natural_phrasing(q, kind, extra):
+    r = va.parse(q)
+    assert r and r["kind"] == kind
+    for k, v in extra.items():
+        assert r[k] == v
+
+
+def test_slack_markup_never_reaches_a_listing():
+    b, slack, store = make_bot()
+    assert b.handle(mention("change V5 description to hi <!channel>")) == "vendor:vendor_edit:declined"
+    assert store.all() == [] and "Slack formatting" in slack.of("chat.postMessage")[-1]["text"]
+
+
+def test_duplicate_open_card_is_refused_but_rejected_one_is_not():
+    b, slack, store = make_bot()
+    assert b.handle(mention("hide V5 asked by venue")) == "vendor:visibility:proposed"
+    assert b.handle(mention("unhide V5")) == "vendor:visibility:duplicate"      # opposite card can't also wait
+    assert len(store.all()) == 1 and "already a card waiting" in slack.of("chat.postMessage")[-1]["text"]
+    p = store.all()[0]
+    store.transition(p["id"], {"pending"}, "rejected", OWNER)
+    assert b.handle(mention("hide V5 asked again")) == "vendor:visibility:proposed"
+
+
+def test_card_creation_is_rate_limited():
+    b, slack, store = make_bot(rows=[dict(ROSE, Vendor_ID=f"V{i}") for i in range(1, 60)])
+    outs = [b.handle(mention(f"hide V{i} spam")) for i in range(1, 60)]
+    assert "vendor:rate-limited" in outs
+    assert len(store.all()) < 59
+
+
+@pytest.mark.parametrize("flag", [None, "O", "flase", "1"])
+def test_visibility_stays_dry_unless_flag_explicitly_off(monkeypatch, flag):
+    """Even a card created live (dry_run=False) writes nothing unless VISIBILITY_DRY_RUN is explicitly 0/false/no/off."""
+    if flag is None:
+        monkeypatch.delenv("VISIBILITY_DRY_RUN", raising=False)
+    else:
+        monkeypatch.setenv("VISIBILITY_DRY_RUN", flag)
+    monkeypatch.setenv("VENDOR_EDIT_SECRET", "s3")
+    r = appliers.visibility({"vendor_id": "V5", "action": "hide"}, OWNER, "p", dry_run=False)
+    assert r["dry_run"] and "Nothing was written" in r["text"]           # requests.post would raise if called
 
 
 @pytest.mark.parametrize("q,needle", [

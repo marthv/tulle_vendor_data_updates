@@ -19,12 +19,14 @@ from cards import esc
 from llm import EDITABLE_FIELDS
 from sanitize import has_email
 
-HIDE = re.compile(r"^\s*(?:please\s+)?(hide|unhide|restore|show)\s+(?:the\s+)?(?:vendor\s+|listing\s+|venue\s+)?"
-                  r"(V\d{1,6})\b[\s,.:;-]*(.*)$", re.I | re.S)
-EDIT = re.compile(r"^\s*(?:please\s+)?(?:change|set|update|fix|correct)\s+(?:the\s+)?(V\d{1,6})(?:'s|’s)?\s+"
-                  r"(.+?)\s+(?:to|=|as)\s+(.+?)\s*$", re.I | re.S)
-PENDING_Q = re.compile(r"\b(pending|waiting|awaiting|open)\b.{0,40}\b(approvals?|cards?|changes?|fixes|edits|hides?)\b"
-                       r"|\bwhat('?s| is)\s+(pending|waiting)\b", re.I)
+POLITE = r"^\s*(?P<polite>(?:(?:can|could|would)\s+you\s+)?(?:please\s+|pls\s+)?)"
+HIDE = re.compile(POLITE + r"(hide|unhide|restore|show)\s+(?:the\s+)?(?:vendor\s+|listing\s+|venue\s+)?"
+                  r"(V\d{1,6})\b(.*)$", re.I | re.S)
+EDIT = re.compile(POLITE + r"(?:change|set|update|fix|correct)\s+(?:the\s+)?(V\d{1,6})(?:'s|’s)?\s+"
+                  r"(.+?)\s+(?:to|=|as)\s+(?:be\s+)?(.+?)\s*$", re.I | re.S)
+PENDING_Q = re.compile(r"\b(waiting|pending|awaiting)\s+(for\s+)?approvals?\b|\b(open|pending)\s+(cards|approvals)\b"
+                       r"|^\s*what('?s| is)\s+(pending|waiting)\s*\??\s*$", re.I)
+VID_ANY = re.compile(r"\bV\d{1,6}\b", re.I)
 APPLIED_Q = re.compile(r"\b(applied|approved)\b.{0,40}\b(changes?|cards?|fixes|edits|hides?)\b"
                        r"|\bwhat (was|got|has been|have been) (applied|approved)\b", re.I)
 SLACK_LINK = re.compile(r"<((?:https?://|mailto:)[^|>]+)(?:\|([^>]+))?>")
@@ -49,8 +51,11 @@ CACHE_NOTE = "Search can keep showing the old result for up to about 2 hours (se
 
 
 def unslack(text: str) -> str:
-    """Slack turns typed URLs into <https://x|x>; take what the person typed."""
-    return SLACK_LINK.sub(lambda m: m.group(2) or m.group(1), text or "").strip()
+    """Slack turns typed URLs into <https://x|x> and escapes & < > as entities; give back what the person typed.
+    Other Slack markup (<!channel>, <@U..>, <tel:..>) is left as-is and refused by build_edit (QA 11-21)."""
+    t = SLACK_LINK.sub(lambda m: m.group(2) or m.group(1), text or "")
+    t = re.sub(r"<tel:[^|>]+\|([^>]+)>", r"\1", t)
+    return t.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").strip()
 
 
 def resolve_field(words: str) -> str | None:
@@ -66,15 +71,23 @@ def parse(question: str) -> dict | None:
     q = unslack(question)
     m = HIDE.match(q)
     if m:
-        verb, vid, rest = m.group(1).lower(), m.group(2).upper(), m.group(3).strip()
-        if verb == "show" and rest:          # "show V123 pricing" is a question, not "unhide"
+        verb, vid, rest = m.group(2).lower(), m.group(3).upper(), m.group(4).strip()
+        if m.group("polite"):                # "can you hide V12?" is a request, not a question
+            rest = rest.rstrip("?").strip()
+        # QA 11-21: questions and partial hides are not requests to hide the whole listing.
+        if "?" in rest or re.match(r"^('|’)s\b", rest) or VID_ANY.search(rest):
+            return None
+        if verb != "hide" and rest:          # "show V123 pricing", "restore V12 pricing PDF": not "unhide"
             return None
         return {"kind": "visibility", "action": "hide" if verb == "hide" else "unhide", "vendor_id": vid,
-                "reason": rest[:300]}
+                "reason": rest.lstrip(",.:;- ").strip()[:300]}
     m = EDIT.match(q)
     if m:
-        return {"kind": "vendor_edit", "vendor_id": m.group(1).upper(), "field_words": m.group(2).strip(),
-                "field": resolve_field(m.group(2)), "new_value": m.group(3).strip().strip("\"'“”").strip()}
+        new = m.group(4).strip()
+        if m.group("polite"):
+            new = new.rstrip("?").strip()
+        return {"kind": "vendor_edit", "vendor_id": m.group(2).upper(), "field_words": m.group(3).strip(),
+                "field": resolve_field(m.group(3)), "new_value": new.strip("\"'“”").strip()}
     if PENDING_Q.search(q):
         return {"kind": "list_pending"}
     if APPLIED_Q.search(q):
@@ -84,8 +97,23 @@ def parse(question: str) -> dict | None:
 
 def _link(p: dict) -> str:
     if p.get("channel") and p.get("ts"):
-        return f"<https://slack.com/archives/{p['channel']}/p{str(p['ts']).replace('.', '')}|{esc(p.get('title', ''))}>"
-    return esc(p.get("title", ""))
+        # the title is already escaped when the card is built; escaping again shows &amp;amp; (QA 11-21)
+        return f"<https://slack.com/archives/{p['channel']}/p{str(p['ts']).replace('.', '')}|{p.get('title', '')}>"
+    return p.get("title", "")
+
+
+OPEN = ("pending", "applying", "unknown", "partial", "undoing")
+
+
+def open_card(store, kind: str, vendor_id: str, field: str | None = None) -> dict | None:
+    """An open card for the same vendor (and field, for edits). For hide/unhide either direction counts, so opposite
+    cards can't both be waiting. Rejected cards don't block a new request (QA 11-21)."""
+    for p in store.all():
+        pay = p.get("payload") or {}
+        if p.get("kind") == kind and p.get("status") in OPEN and pay.get("vendor_id") == vendor_id \
+                and (field is None or pay.get("field") == field):
+            return p
+    return None
 
 
 def list_pending(store) -> str:
@@ -149,6 +177,8 @@ def build_edit(req: dict, vendor: dict) -> dict | str:
         return "What should it be changed to? For example: `@Tulle Bot change V123 website to example.com`."
     if len(new) > 1000:
         return "That value is too long for a card (1,000 characters max)."
+    if "<" in new or ">" in new:                 # Slack markup (<!channel>, <@U..>) never goes into a listing
+        return "That value has Slack formatting in it (a mention or link). Type it as plain text."
     if has_email(new):
         return "I can't put email addresses into listings from Slack. Change that one in Xano directly."
     if field == "Max_Capacity_Seated" and not re.fullmatch(r"\d{1,5}", new.replace(",", "")):

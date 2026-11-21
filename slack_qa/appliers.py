@@ -246,7 +246,7 @@ def visibility_status(payload: dict, xano=None) -> dict:
 
 
 # --- task -----------------------------------------------------------------------------------------------
-MENTION =re.compile(r"(?<![\w`])@([A-Za-z0-9][\w-]*)")
+MENTION = re.compile(r"(?<![\w`])@([A-Za-z0-9][\w-]*)")
 
 
 def defang(text: str) -> str:

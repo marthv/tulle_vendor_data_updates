@@ -219,6 +219,14 @@ class Bot:
         if req["kind"] == "list_applied":
             self.post(channel, va.list_applied(self.store), reply_ts, footer=False)
             return "vendor:list-applied"
+        dup = None if (req["kind"] == "vendor_edit" and not req.get("field")) else va.open_card(
+            self.store, req["kind"], req["vendor_id"], req.get("field") if req["kind"] == "vendor_edit" else None)
+        if dup:
+            self.post(channel, f"There's already a card waiting for this: {va._link(dup)}. Approve or reject that one "
+                               "first.", reply_ts, footer=False)
+            return f"vendor:{req['kind']}:duplicate"
+        if not self.limiter.allow(channel):        # same per-channel cap as questions (QA 11-21)
+            return "vendor:rate-limited"
         if not getattr(self.xano, "enabled", False):
             self.post(channel, "I can't read the vendor list from here right now, so I can't propose that.", reply_ts,
                       footer=False)
