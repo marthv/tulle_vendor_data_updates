@@ -4358,7 +4358,7 @@
     {
       "id": "EXP-2026-11-venue-specific-pdf-limit-card",
       "name": "Venue-specific PDF limit card ('Unlock {Venue}'s real pricing.') with plan row",
-      "status": "draft",
+      "status": "shelved",
       "themes": [
         "paywall"
       ],
@@ -4366,12 +4366,12 @@
       "primary_metric": "clicked_membership_for_pricing_pdf_limit_popup -> purchase (vendor_id, plan, button)",
       "guardrail": "",
       "start_date": null,
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": null,
       "dates_note": "Built in the editor 2026-11-12 (venue card 614fcf8f, OV card 0942ec05; backup .claude/weweb_pdf_limit_pre_contextual_2026-11-12.json; phone fit fix same day). The 11-12 ~06:40 UTC publish note does not name it; live status NOT verified. Source: memory project_pdf_warning_view3 / project_gates_to_pay_2026-11-12.",
       "design": "pre/post",
       "results": [],
-      "decision": "",
+      "decision": "Shelved by the owner 2026-11-21 ('it's shelved'): superseded by EXP-2026-11-pdf-limit-soft-redirect - since build 1404 (2026-11-19 05:04 UTC) hitting the PDF limit redirects to /pricing instead of showing the limit card. Never launched.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4415,7 +4415,9 @@
         "assignment: not derivable",
         "live status unverified - check live vendor-page data before reading"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "outcome": "shelved",
+      "decided_on": "2026-11-21"
     },
     {
       "id": "EXP-2026-11-discovery-filters-unblurred",
