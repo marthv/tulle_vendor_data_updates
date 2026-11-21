@@ -196,7 +196,11 @@ def vendor_edit_dry_run() -> bool:     # VENDOR_EDIT_DRY_RUN=0 -> Approve stages
     return _dry("VENDOR_EDIT_DRY_RUN")
 
 
-def vendor_edit_base() -> str:         # Xano api group 3 (the Tulle Ops bot's staged-edit endpoints)
+def visibility_dry_run() -> bool:     # VISIBILITY_DRY_RUN=0 -> Approve on a hide/unhide card calls Xano ep279
+    return _dry("VISIBILITY_DRY_RUN")
+
+
+def vendor_edit_base() -> str:        # Xano api group 3 (the Tulle Ops bot's staged-edit endpoints)
     return _s("VENDOR_EDIT_BASE", "https://xqtb-2ma7-ijfy.n7e.xano.io/api:aow91bcd")
 
 

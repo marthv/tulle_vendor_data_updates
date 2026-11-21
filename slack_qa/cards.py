@@ -23,7 +23,8 @@ MAX_BUTTON = 75
 MAX_FALLBACK = 3000
 
 FOOTER = "Proposed by Tulle Bot. Only approvers can apply this."
-KIND_LABEL = {"merge": "Merge duplicate vendors", "vendor_edit": "Vendor data fix", "task": "New task"}
+KIND_LABEL = {"merge": "Merge duplicate vendors", "vendor_edit": "Vendor data fix", "task": "New task",
+              "visibility": "Hide or show a vendor"}
 ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO, ACTION_RECHECK = "tb_approve", "tb_reject", "tb_undo", "tb_recheck"
 ACTION_DETAILS = "tb_details"
 

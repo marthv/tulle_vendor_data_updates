@@ -36,7 +36,7 @@ def _now() -> str:
 
 def default_dry_run(kind: str) -> bool:
     return {"merge": config.merge_dry_run, "vendor_edit": config.vendor_edit_dry_run,
-            "task": config.task_dry_run}.get(kind, lambda: True)()
+            "task": config.task_dry_run, "visibility": config.visibility_dry_run}.get(kind, lambda: True)()
 
 
 class Store:
@@ -84,6 +84,11 @@ class Store:
             self._save()
         self._log({"event": "proposed", "id": pid, "kind": kind, "key": key, "title": title, "dry_run": p["dry_run"]})
         return dict(p)
+
+    def all(self) -> list[dict]:
+        """Copies of every proposal (for the read-only 'what's waiting / what was applied' lists)."""
+        with self._lock:
+            return [dict(p) for p in self._data["proposals"].values()]
 
     def get(self, pid: str) -> dict | None:
         with self._lock:

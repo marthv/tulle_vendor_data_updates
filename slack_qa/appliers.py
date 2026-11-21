@@ -196,8 +196,57 @@ def vendor_edit_status(payload: dict, xano=None) -> dict:
     return {"state": "unknown", "text": f"{payload.get('field')} is now “{esc(live)}”, which is neither value on the card."}
 
 
+# --- hide / unhide a vendor (Xano ep279, the endpoint the retired Tulle Ops 🫣 reaction used) --------------------
+def visibility(payload: dict, user: str, proposal_id: str, dry_run: bool = True) -> dict:
+    """payload = {"vendor_id", "action": "hide"|"unhide", "name", "reason"}. One call; ep279 flips table 11
+    Validated_Data and returns before/after + changed. Same secret as the staged-edit endpoints (api group 3)."""
+    vid, action = payload.get("vendor_id"), payload.get("action")
+    if action not in ("hide", "unhide") or not vid:
+        return _out(False, "This card is missing the vendor or the action, so nothing was sent.")
+    verb = "hidden from search" if action == "hide" else "visible in search again"
+    if dry_run or config.visibility_dry_run():
+        log.info("DRY RUN visibility %s %s by %s (%s)", action, vid, user, proposal_id)
+        return _out(True, f"Dry run: {vid} would be {verb}. Nothing was written.", dry=True)
+    if not config.vendor_edit_secret():
+        return _out(False, "VENDOR_EDIT_SECRET isn't set, so nothing was sent.")
+    r = _post(config.vendor_edit_base().rstrip("/") + "/vendor/visibility",
+              {"vendor_id": vid, "action": action, "secret": config.vendor_edit_secret(),
+               "actor_slack_id": user, "source": "tulle-bot"})
+    if r.get("unknown"):
+        return _out(False, f"Xano gave {esc(r['error'])}, so I can't tell whether {vid} changed.", unknown=True)
+    if not r.get("ok"):
+        return _out(False, f"Xano refused: {esc(r.get('error'))}. Nothing was changed.")
+    if r.get("changed") is False:
+        return _out(True, f"{vid} was already {'hidden' if action == 'hide' else 'visible'}, so nothing changed.")
+    # ep279 replies {vendor_id, vendor_name, previous_visibility, new_visibility, changed}
+    return _out(True, f"{vid} is now {verb}. Search can keep showing the old result for up to about 2 hours.",
+                result={"previous_visibility": r.get("previous_visibility"),
+                        "new_visibility": r.get("new_visibility")})
+
+
+def visibility_status(payload: dict, xano=None) -> dict:
+    """Re-check by reading the live table-11 row (fresh read)."""
+    if xano is None:
+        from xano_ro import ReadOnlyXano
+        xano = ReadOnlyXano(cache_ttl=0)
+    if not getattr(xano, "enabled", True):
+        return {"state": "unknown", "text": "I can't read Xano from here, so I can't check."}
+    try:
+        rows, _ = xano.rows(11)
+    except Exception as e:  # noqa: BLE001
+        return {"state": "unknown", "text": f"Reading the listing failed ({type(e).__name__})."}
+    row = next((r for r in rows if str(r.get("Vendor_ID")) == str(payload.get("vendor_id"))), None)
+    if row is None:
+        return {"state": "unknown", "text": "I can't find that vendor any more."}
+    hidden = str(row.get("Validated_Data") or "").strip() == "0"
+    want_hidden = payload.get("action") == "hide"
+    if hidden == want_hidden:
+        return {"state": "applied", "text": f"Confirmed: it is {'hidden' if hidden else 'visible'}."}
+    return {"state": "none", "text": f"Confirmed: it is still {'hidden' if hidden else 'visible'}, so nothing changed."}
+
+
 # --- task -----------------------------------------------------------------------------------------------
-MENTION = re.compile(r"(?<![\w`])@([A-Za-z0-9][\w-]*)")
+MENTION =re.compile(r"(?<![\w`])@([A-Za-z0-9][\w-]*)")
 
 
 def defang(text: str) -> str:
@@ -231,4 +280,4 @@ def task_status(payload: dict, proposal_id: str) -> dict:
                                         f"“proposal {proposal_id}”."}
 
 
-APPLIERS = {"merge": merge, "vendor_edit": vendor_edit, "task": task}
+APPLIERS = {"merge": merge, "vendor_edit": vendor_edit, "task": task, "visibility": visibility}

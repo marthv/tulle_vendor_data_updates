@@ -25,7 +25,11 @@ HELP = ("I'm Tulle Bot (automated, read-only). I answer questions about recent c
         "`@Tulle Bot unmute` - also watch this channel's questions and answer the ones I can.\n"
         "`@Tulle Bot status` - show this channel's setting.\n"
         "Tell me how you'd like things written (e.g. `@Tulle Bot the staging notes are too long`) and I'll keep to it "
-        "from then on. `@Tulle Bot rules` lists what I've learned; `@Tulle Bot forget 2` removes one.")
+        "from then on. `@Tulle Bot rules` lists what I've learned; `@Tulle Bot forget 2` removes one.\n"
+        "*Vendor fixes* (I post a card; nothing changes until an approver presses Approve):\n"
+        "`@Tulle Bot hide V1234 venue asked to be removed` / `@Tulle Bot unhide V1234`\n"
+        "`@Tulle Bot change V1234 website to example.com` (also name, description, contact, seated capacity, type)\n"
+        "`@Tulle Bot what's waiting for approval?` / `@Tulle Bot what was applied this week?`")
 IGNORED_SUBTYPES_OK = {None, "thread_broadcast", "file_share"}
 QUESTION_START = re.compile(
     r"^\s*(why|what|whats|what's|when|how|is|are|was|were|did|does|do|can|could|who|where|which|has|have|should|"
@@ -174,6 +178,9 @@ class Bot:
             self.post(channel, f'Removed rule {gone["id"]}: "{gone["text"]}"' if gone else
                       f"There's no rule {fm.group(1)}. `@Tulle Bot rules` lists them.", reply_ts, footer=False)
             return "command:forget"
+        out = self.vendor_action(question, ev)
+        if out is not None:
+            return out
         if is_interpersonal(question):
             self.post(channel, OUT_OF_SCOPE, reply_ts)
             return "mention:out-of-scope-rule"
@@ -195,6 +202,48 @@ class Bot:
             if out is not None:
                 return out
         return self.answer(question, ev, mode="mention")
+
+    # --- vendor actions in plain words (took over from the retired Tulle Ops app, 2026-11-21) -------------------
+    def vendor_action(self, question: str, ev: dict) -> str | None:
+        """hide / unhide / change a field -> a proposal card (nothing changes until an approver presses Approve);
+        'what's waiting' / 'what was applied' -> read-only lists. None = not a vendor action. No model call."""
+        import vendor_actions as va
+        req = va.parse(question)
+        if req is None:
+            return None
+        channel = ev["channel"]
+        reply_ts = ev.get("thread_ts") or ev.get("ts")
+        if req["kind"] == "list_pending":
+            self.post(channel, va.list_pending(self.store), reply_ts, footer=False)
+            return "vendor:list-pending"
+        if req["kind"] == "list_applied":
+            self.post(channel, va.list_applied(self.store), reply_ts, footer=False)
+            return "vendor:list-applied"
+        if not getattr(self.xano, "enabled", False):
+            self.post(channel, "I can't read the vendor list from here right now, so I can't propose that.", reply_ts,
+                      footer=False)
+            return "vendor:no-xano"
+        try:
+            hits = self.feedback.directory.resolve(req["vendor_id"])
+        except Exception:  # noqa: BLE001
+            log.exception("vendor lookup failed")
+            self.post(channel, "I couldn't read the vendor list just now. Try again in a few minutes.", reply_ts,
+                      footer=False)
+            return "vendor:lookup-error"
+        if len(hits) != 1:
+            self.post(channel, f"I can't find vendor {req['vendor_id']}. Check the ID (it looks like V1234).",
+                      reply_ts, footer=False)
+            return "vendor:not-found"
+        pr = va.build_visibility(req, hits[0]) if req["kind"] == "visibility" else va.build_edit(req, hits[0])
+        if isinstance(pr, str):
+            self.post(channel, pr, reply_ts, footer=False)
+            return f"vendor:{req['kind']}:declined"
+        from interactions import post_proposal
+        p = self.store.create(pr["kind"], pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
+                              source=f"mention:{channel}:{ev.get('ts')}")
+        res = post_proposal(self.slack, self.store, channel, p, thread_ts=reply_ts)
+        log.info("vendor action %s proposed by %s: %s", pr["kind"], ev.get("user"), pr["title"])
+        return f"vendor:{pr['kind']}:proposed" + ("" if res.get("ok") else f":post-failed:{res.get('error')}")
 
     # --- feedback -> standing rule -------------------------------------------------------------------------
     def learn(self, question: str, ev: dict) -> str | None:

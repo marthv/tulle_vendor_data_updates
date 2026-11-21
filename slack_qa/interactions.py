@@ -34,7 +34,8 @@ def parse_body(body: bytes) -> dict | None:
 def _status_fns():
     return {"merge": lambda p: appliers.merge_status(p["payload"], p["id"]),
             "vendor_edit": lambda p: appliers.vendor_edit_status(p["payload"]),
-            "task": lambda p: appliers.task_status(p["payload"], p["id"])}
+            "task": lambda p: appliers.task_status(p["payload"], p["id"]),
+            "visibility": lambda p: appliers.visibility_status(p["payload"])}
 
 
 class Interactions:
