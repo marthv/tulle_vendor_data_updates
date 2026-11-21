@@ -29,7 +29,9 @@ HELP = ("I'm Tulle Bot (automated, read-only). I answer questions about recent c
         "*Vendor fixes* (I post a card; nothing changes until an approver presses Approve):\n"
         "`@Tulle Bot hide V1234 venue asked to be removed` / `@Tulle Bot unhide V1234`\n"
         "`@Tulle Bot change V1234 website to example.com` (also name, description, contact, seated capacity, type)\n"
-        "`@Tulle Bot what's waiting for approval?` / `@Tulle Bot what was applied this week?`")
+        "`@Tulle Bot what's waiting for approval?` / `@Tulle Bot what was applied this week?`\n"
+        "*Customer lookup* (lookup list only; only you see the answer): `@Tulle Bot look up user 34819` or "
+        "`@Tulle Bot what does user 34819 see?`")
 IGNORED_SUBTYPES_OK = {None, "thread_broadcast", "file_share"}
 QUESTION_START = re.compile(
     r"^\s*(why|what|whats|what's|when|how|is|are|was|were|did|does|do|can|could|who|where|which|has|have|should|"
@@ -178,6 +180,9 @@ class Bot:
             self.post(channel, f'Removed rule {gone["id"]}: "{gone["text"]}"' if gone else
                       f"There's no rule {fm.group(1)}. `@Tulle Bot rules` lists them.", reply_ts, footer=False)
             return "command:forget"
+        out = self.customer_lookup(question, ev)
+        if out is not None:
+            return out
         out = self.vendor_action(question, ev)
         if out is not None:
             return out
@@ -202,6 +207,39 @@ class Bot:
             if out is not None:
                 return out
         return self.answer(question, ev, mode="mention")
+
+    # --- customer lookup (took over Tulle Ops' /tulle view-as, 2026-11-21) -----------------------------------
+    def customer_lookup(self, question: str, ev: dict) -> str | None:
+        """'look up jane@x.com' / 'what does user 123 see' -> an EPHEMERAL snapshot for the asker only. None = not a
+        lookup. Never posts customer data to the channel, never stores or logs it."""
+        import customer_lookup as cl
+        target = cl.parse(question)
+        if target is None:
+            return None
+        channel, user = ev["channel"], ev.get("user", "")
+        thread = ev.get("thread_ts") or ev.get("ts")
+
+        def tell(text):
+            self.slack.post_ephemeral(channel, user, text, thread_ts=thread)
+        if not cl.allowed(user):
+            tell("You're not on the customer-lookup list. That list is separate from vendor fixes, on purpose. "
+                 "Vivek can add you.")
+            log.info("lookup denied for %s", user)
+            return "lookup:denied"
+        if not cl.secret():
+            tell("Customer lookup isn't switched on yet (its Xano key isn't set).")
+            return "lookup:not-configured"
+        if not self.limiter.allow(channel):
+            return "lookup:rate-limited"
+        res = cl.fetch(target, user)
+        if not res.get("ok"):
+            tell("Couldn't look that up: " + ("Xano didn't answer, try again in a minute." if res.get("unknown")
+                                              else str(res.get("error"))[:200]))
+            log.info("lookup by %s failed (%s)", user, "unknown" if res.get("unknown") else "refused")
+            return "lookup:failed"
+        tell(cl.render(res))
+        log.info("lookup by %s ok", user)          # never the email or the answer
+        return "lookup:ok"
 
     # --- vendor actions in plain words (took over from the retired Tulle Ops app, 2026-11-21) -------------------
     def vendor_action(self, question: str, ev: dict) -> str | None:
