@@ -4817,6 +4817,10 @@
         {
           "date": "2026-11-20",
           "note": "Status planned -> live 2026-11-20: found live in production build 1404 (2026-11-19 ~05:04 UTC), unlogged. Same publish as EXP-2026-11-price-report-locked-compact (also payment funnel, same free vendor-page couples), so the two cannot be read apart."
+        },
+        {
+          "date": "2026-11-21",
+          "note": "Early read (owner asked), NOT callable: paid within 1 day of sign-up, new accounts with 3+ PDF views: before 21 of 356 = 5.9% (11-05..11-19 05:04) vs after 4 of 35 = 11.4% (11-19 05:04..11-20 23:14); within 2 days 23/356 = 6.5% vs 3/18 = 16.7%. ~92% chance after beats before on the 1-day rate (Beta, uniform prior). Tiny sample, after cohort still filling, and confounded with the Price Report locked card (same publish) and its revert. 7-day read not possible before 11-26."
         }
       ],
       "decision": "",
@@ -4831,10 +4835,11 @@
         "weweb:membership"
       ],
       "audience": {
-        "segment": "free couples hitting the PDF limit",
-        "est_daily_exposed": null
+        "segment": "free couples hitting the PDF limit (new accounts with 3+ PDF views)",
+        "est_daily_exposed": 25,
+        "est_note": "2026-11-21 read (tables 1+16, internal excluded): 356 new accounts with 3+ PDF views among 1,431 sign-ups 11-05..11-19 05:04 = ~25/day"
       },
-      "hypothesis": "If PDF-limit hitters land on the plans page, the share paying within 7 days rises from 9% to 12%+.",
+      "hypothesis": "If we send PDF-limit hitters to the plans page with a 'Keep browsing' way back, then the share paying within 7 days moves from ~7% to 9%+, because they see the plans at the moment they want more pricing.",
       "hypothesis_reconstructed": true,
       "tests": "Does a soft redirect to /pricing convert PDF-limit hitters better than the popup?",
       "metric": {
@@ -4844,8 +4849,8 @@
           "days": 7
         },
         "direction": "increase",
-        "baseline": 0.09,
-        "baseline_note": "memory project_payment_dip_2026-11-18 (bar 9% -> 12%+)",
+        "baseline": 0.068,
+        "baseline_note": "CORRECTED 2026-11-21 from 0.09 (memory) to 0.068 measured: 16 of 236 new accounts with 3+ PDF views (signed up 11-05..11-14, full 7 days) paid within 7 days of sign-up; tables 1+16, internal excluded.",
         "mde_rel": 0.33,
         "label": "PDF-limit hitters paying within 7 days"
       },
@@ -4855,12 +4860,16 @@
           "label": "7-day return",
           "params": {
             "days": 7
-          }
+          },
+          "max_drop_rel": 0.25
         }
       ],
       "assignment": {
         "type": "pre_post",
-        "pre": null,
+        "pre": [
+          "2026-11-05",
+          "2026-11-18"
+        ],
         "post_start": "2026-11-19T05:04Z"
       },
       "planned_days": 14,
@@ -5379,6 +5388,15 @@
       ],
       "source": "owner (WeWeb editor)",
       "ref": "memory project_ask_tulle_bubble_2026-11-11; scratchpad q/an.py read 2026-11-20"
+    },
+    {
+      "date": "2026-11-21",
+      "what": "Package price double count fixed for 25 hand-reviewed all-inclusive spaces (fn56 v27 PACKAGES list in Xano, live ~22:57-23:10 UTC; card food-line formula change in WeWeb editor, live at next publish). E.g. Celestine V586 $72,610 -> $45,580 at 100 guests, Pioneer Farm V2355 ~$208k -> $85k. Every other space unchanged (37,632-space offline regression).",
+      "affects": [
+        "EXP-2026-11-pdf-limit-soft-redirect"
+      ],
+      "source": "xano fn56",
+      "ref": "tulletogether .claude/inclusive_pkg_2026-11-20/fn56_v27_batch1.xs"
     }
   ]
 }
