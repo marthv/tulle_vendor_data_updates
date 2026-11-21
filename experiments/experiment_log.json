@@ -3029,7 +3029,7 @@
     {
       "id": "EXP-2026-11-ask-tulle-bubble",
       "name": "'Ask Tulle' floating Planner chat on Discovery (Map | Ask Tulle phone dock), Membership and My wedding; empty-results banner",
-      "status": "live",
+      "status": "inconclusive",
       "themes": [
         "planner",
         "activation"
@@ -3038,7 +3038,7 @@
       "primary_metric": "table 79 'surface' (added 2026-11-11): couples with bubble:* rows per day; questions/day (all surfaces) since the first bubble row vs the 7 days before; Planner sheet Flag 'via Ask Tulle (<page>)'. Daily in the brief (experiments_brief.bubble_line).",
       "guardrail": "purchases/day; free daily $ pool",
       "start_date": "2026-11-11",
-      "end_date": null,
+      "end_date": "2026-11-21",
       "review_date": "2026-11-25",
       "dates_note": "Component marthv/ww-planner-chat 9116a38 (bubble) + e76b855 (rainbow beacon, 80% phone sheet). Live after owner activates, places the instance in the Navigation Bar Section and publishes; then hide Rec Entry on Discovery, set start_date and review_date = start + 14 days.",
       "design": "pre/post",
@@ -3069,7 +3069,7 @@
         }
       ],
       "stat_sig": "",
-      "decision": "",
+      "decision": "Closed inconclusive by the owner 2026-11-21 (brought forward from the 11-25 review); the bubble stays. Owner 11-12 judges on purchases, a site-wide count a before/after cannot credit to one change: purchases/day 5.86 (11-09..11-15, payment log) vs ~4.0 baseline (Mixpanel 10-21..11-10); Planner askers/day 34.3 -> 11.3, confounded by removal of the Discovery entry in the same publish. Logging bug (59 of 81 bubble rows 'bubble:/vendors/undefined', fix 2958c5a) approved for activation 11-21.",
       "confounds_noted": [
         "60% Forever save offer 11-11",
         "NPS comment change (same publish likely)"
@@ -3123,7 +3123,7 @@
       "planned_days": 14,
       "max_days": null,
       "reporting": "auto",
-      "rollback": null,
+      "rollback": "Hide the Ask Tulle bubble instance and restore the Discovery Rec Entry block, then publish",
       "spec_gaps": [
         "metric.mde_rel: no smallest-lift-worth-having stated",
         "audience.est_daily_exposed: daily exposure not recorded",
@@ -3137,7 +3137,10 @@
       "audit_2026_11_19": {
         "recommended_status": "live",
         "evidence": "Live since 11-11 ~07:25 UTC; vendor-page beacon hidden in the editor 11-18 (not confirmed published) and Ask Tulle removed from the vendor-page sticky bar in publish 1398 (11-17). Questions/day 34.3 -> 11.3 (confounded by the Discovery entry removal, registry 11-18). Surface bug: 59 of 81 bubble rows log 'bubble:/vendors/undefined' (fix 2958c5a needs activation). Review 11-25."
-      }
+      },
+      "outcome": "inconclusive",
+      "decided_on": "2026-11-21",
+      "in_rotation": false
     },
     {
       "id": "EXP-2026-11-pricing-page-copy",
