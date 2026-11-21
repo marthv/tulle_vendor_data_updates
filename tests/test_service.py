@@ -335,6 +335,7 @@ def test_registry_change_on_restart_rebuilds_from_cache(env, monkeypatch):
 def test_digest_once_per_day_across_restarts(env, monkeypatch):
     tmp, reg = env
     monkeypatch.setenv("DRY_RUN", "0")
+    monkeypatch.setenv("EXP_DIGEST_MODE", "all")   # the old every-day digest (calls mode is tested below)
     clock = Clock(dt.datetime(2026, 11, 20, 13, 0, tzinfo=UTC))
     sender = Sender()
     rows = lambda d: [exp_row(health="needs_call", action="Owner call due", reason="3 days past review"),
@@ -356,6 +357,38 @@ def test_digest_once_per_day_across_restarts(env, monkeypatch):
     eng2.tick()
     assert len(sender.sent) == 2                    # next day
     assert history.HistoryStore(str(tmp / "data")).was_sent("digest:2026-11-21")
+
+
+def test_calls_mode_sends_each_call_once_and_ignores_stale(env, monkeypatch):
+    """Default mode (owner 2026-11-21, fewer Slacks): a call is DM'd once, not every day; stale-only days are quiet."""
+    tmp, reg = env
+    monkeypatch.setenv("DRY_RUN", "0")
+    monkeypatch.delenv("EXP_DIGEST_MODE", raising=False)
+    clock = Clock(dt.datetime(2026, 11, 20, 14, 5, tzinfo=UTC))
+    sender = Sender()
+    day = {"n": 0}
+
+    def rows(d):
+        out = [exp_row(health="needs_call", action="Owner call due", reason="3 days past review"),
+               exp_row("EXP-2026-11-b", stale=True)]
+        if day["n"] >= 2:
+            out.append(exp_row("EXP-2026-11-c", health="callable_loss", action="Revert it"))
+        return out
+
+    eng = engine_with(tmp, reg, clock, rows_by_call=rows, monkeypatch=monkeypatch, sender=sender)
+    eng.tick()
+    assert len(sender.sent) == 1 and "1 new call" in sender.sent[0] and "EXP-2026-11-a" in sender.sent[0]
+    assert "stale" not in sender.sent[0].lower() and "registry" not in sender.sent[0]
+    day["n"] = 1
+    clock.advance(days=1)
+    eng.tick()
+    assert len(sender.sent) == 1                   # same call next day: not repeated
+    store = history.HistoryStore(str(tmp / "data"))
+    assert store.was_sent("digest:2026-11-21:quiet")
+    day["n"] = 2
+    clock.advance(days=1)
+    eng.tick()
+    assert len(sender.sent) == 2 and "EXP-2026-11-c" in sender.sent[1] and "EXP-2026-11-a" not in sender.sent[1]
 
 
 def test_digest_suppressed_when_nothing_actionable(env, monkeypatch):

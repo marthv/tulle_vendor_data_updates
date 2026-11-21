@@ -105,8 +105,39 @@ def actionable(snapshot, unlogged=None):
     return bool(s.get("needs_call") or s.get("stale") or s.get("guardrail") or unlogged)
 
 
+def digest_mode():
+    """EXP_DIGEST_MODE. "calls" (default since 2026-11-21, owner: fewer Slacks): the daily DM goes out only when a
+    NEW call is due, and each call is sent once. Stale tests sit in the Monday agenda; unlogged changes and stale
+    tests stay on the dash; guardrail breaches keep their own urgent DM. "all" restores the old every-day digest."""
+    m = str(os.environ.get("EXP_DIGEST_MODE", "calls")).strip().lower()
+    return m if m in ("calls", "all") else "calls"
+
+
+def _call_rows(snapshot):
+    exps = [r for r in (snapshot or {}).get("experiments") or []
+            if isinstance(r, dict) and r.get("health") and not r.get("decision_pending")]
+    return [r for r in exps if r["health"] in ("callable_win", "callable_loss", "needs_call")]
+
+
+def call_ids(snapshot):
+    """Ids of experiments that need a call now (same rule as the digest's "Calls due")."""
+    return sorted(str(r.get("id") or r.get("name")) for r in _call_rows(snapshot))
+
+
+def format_calls(snapshot, only_ids):
+    """Short daily DM for "calls" mode: just the calls in ``only_ids``. None when there are none."""
+    want = {str(i) for i in only_ids or []}
+    rows = [r for r in _call_rows(snapshot) if str(r.get("id") or r.get("name")) in want]
+    if not rows:
+        return None
+    n = len(rows)
+    out = [f"*Experiments: {n} new call{'s' if n != 1 else ''} to make*"] + _bullets(rows, _exp_line)
+    out += ["", f"<{dash_url()}|Open the Experiments tab>"]
+    return _cap("\n".join(out))
+
+
 def format_digest(snapshot, unlogged=None):
-    """Daily digest text, or None when nothing needs action (section 9)."""
+    """Daily digest text, or None when nothing needs action (section 9). Used in EXP_DIGEST_MODE=all."""
     snap = snapshot or {}
     unlogged = list(unlogged or [])
     if not actionable(snap, unlogged):

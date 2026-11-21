@@ -422,6 +422,55 @@ def test_12_rollup_escapes_model_output(monkeypatch):
     assert "<!channel>" not in text and "<https://x.y" not in text and n == 1
 
 
+def _rollup_env(monkeypatch, items, quiet=None):
+    import rollup
+    import time as _t
+    from state import State
+    monkeypatch.setenv("FEEDBACK_CHANNEL", "CFEED")
+    monkeypatch.setenv("ROLLUP_ENABLED", "1")
+    monkeypatch.setenv("ROLLUP_CHANNEL", "CPROD")
+    if quiet is None:
+        monkeypatch.delenv("ROLLUP_ACTIONABLE_ONLY", raising=False)
+    else:
+        monkeypatch.setenv("ROLLUP_ACTIONABLE_ONLY", quiet)
+
+    class C:
+        def rollup_items(self, posts):
+            return {"items": items}, 0
+    slack = RecSlack(history={"CFEED": [{"ts": str(_t.time()), "text": f"post {i}"} for i in range(len(items))]})
+    return rollup, slack, C(), State()
+
+
+def test_12_rollup_lists_only_actionable_by_default(monkeypatch):
+    rollup, slack, c, st = _rollup_env(monkeypatch, [
+        {"n": 0, "venue": "Celestine", "kind": "wrong_info", "summary": "F&B minimum double counted"},
+        {"n": 1, "venue": "", "kind": "praise", "summary": "5/5 rating"},
+        {"n": 2, "venue": "", "kind": "other", "summary": "team chat"}])
+    text, n = rollup.build(slack, c, st)
+    assert "Celestine" in text and "5/5" not in text and "team chat" not in text
+    assert "1 to act on" in text and "2 other posts" in text and n == 3
+
+
+def test_12_rollup_quiet_day_posts_nothing(monkeypatch):
+    rollup, slack, c, st = _rollup_env(monkeypatch, [{"n": 0, "venue": "", "kind": "praise", "summary": "5/5"}])
+    assert rollup.run(slack, c, st) == "rollup:1:quiet"
+    assert [m for m, _ in slack.calls if m == "chat.postMessage"] == []
+
+
+def test_12_rollup_actionable_day_posts_to_channel(monkeypatch):
+    rollup, slack, c, st = _rollup_env(monkeypatch, [{"n": 0, "venue": "V1", "kind": "bug", "summary": "PDF cropped"}])
+    assert rollup.run(slack, c, st) == "rollup:1:ok"
+    posts = [p for m, p in slack.calls if m == "chat.postMessage"]
+    assert len(posts) == 1 and posts[0]["channel"] == "CPROD" and "Draft for review" not in posts[0]["text"]
+
+
+def test_12_rollup_full_mode_still_available(monkeypatch):
+    rollup, slack, c, st = _rollup_env(monkeypatch, [{"n": 0, "venue": "", "kind": "praise", "summary": "5/5 rating"}],
+                                       quiet="0")
+    text, _ = rollup.build(slack, c, st)
+    assert "5/5 rating" in text and "1 posts" in text
+
+
 def test_12_applier_messages_escaped(monkeypatch):
     live_merge_env(monkeypatch)
     monkeypatch.setattr(requests, "post", lambda *a, **k: Resp(400, {"message": "<!here> nope"}))

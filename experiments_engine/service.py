@@ -517,6 +517,20 @@ class Engine:
         key = self._key(f"digest:{now.date().isoformat()}")
         if self.store.was_sent(key):
             return "already"
+        if alerts.digest_mode() == "calls":
+            # 2026-11-21: only calls not already sent on an earlier day; each call is DM'd once.
+            new = [i for i in alerts.call_ids(self.snapshot) if not self.store.was_sent(self._key(f"call:{i}"))]
+            text = alerts.format_calls(self.snapshot, new)
+            if text is None:
+                self.store.mark_sent(key + ":quiet")
+                self.store.mark_sent(key)
+                log.info("digest %s: no new calls, not sent", key)
+                return "quiet"
+            res = self._deliver(key, text, now)
+            if res == "sent":
+                for i in new:
+                    self.store.mark_sent(self._key(f"call:{i}"))
+            return res
         text = alerts.format_digest(self.snapshot, self._recent_unlogged(now))
         if text is None:
             self.store.mark_sent(key + ":quiet")
