@@ -3515,7 +3515,7 @@
     {
       "id": "EXP-2026-11-planner-context-first",
       "name": "Planner context-first 50/50 test: starter chips + preference questions first, 'Does X fit our N guests?' chip after venue lookups",
-      "status": "planned",
+      "status": "live",
       "themes": [
         "planner",
         "activation"
@@ -3523,10 +3523,10 @@
       "goal": "Context arm couples ask a 2nd question and open a PDF more often than control. No size of lift was predicted.",
       "primary_metric": "Mixpanel events carry ctxArm ('context' = even user id, 'control' = odd): 2nd-question rate, rec_pdf_opened per couple, purchases",
       "guardrail": "purchases/day; thumbs-down rate",
-      "start_date": null,
+      "start_date": "2026-11-17",
       "end_date": null,
-      "review_date": null,
-      "dates_note": "Built: server 53d9a72 + component 23d878c (both live). The test is OFF until the owner switches 'Context-first test (50/50)' ON on the Ask Tulle bar and the Planner page and publishes - set start_date and review_date = start + 14 days then.",
+      "review_date": "2026-12-01",
+      "dates_note": "FOUND LIVE 2026-11-21: Planner page instance 77034263 has contextTest=true in published build 1404; Mixpanel ctx_arm events start 2026-11-17 (publish 1398, 16:47 UTC) - unlogged until now. 11-17..11-21: 44 control / 43 context unique users. Owner 2026-11-21: keep it on; Ask Tulle bubble instance 3c0b81b1 switched ON in the WeWeb editor 11-21 (live at the next publish) - a changes[] entry marks it.",
       "design": "pre/post",
       "results": [],
       "stat_sig": "",
@@ -3543,8 +3543,9 @@
         "weweb:ask-tulle-bar"
       ],
       "audience": {
-        "segment": "Planner couples (split by user id parity)",
-        "est_daily_exposed": null
+        "segment": "signed-in Planner couples (split by user id parity)",
+        "est_daily_exposed": 18,
+        "est_note": "Mixpanel ctx_arm 11-17..11-21: 87 unique users in ~4.3 days, both arms"
       },
       "hypothesis": "If Planner couples are asked for context first, they ask a 2nd question and open a PDF more often than control.",
       "hypothesis_reconstructed": true,
@@ -3553,19 +3554,21 @@
         "key": "planner_second_question",
         "params": {},
         "direction": "increase",
-        "baseline": null,
-        "baseline_note": null,
-        "mde_rel": null,
+        "baseline": 0.48,
+        "baseline_note": "2nd-question rate ~48-51% (engine read noted 11-19 for open-ended replies) - approximate; the control arm is the real comparison",
+        "mde_rel": 0.2,
         "label": "asked a 2nd question"
       },
       "guardrails": [
         {
           "key": "purchases_per_day",
-          "label": "purchases/day"
+          "label": "purchases/day",
+          "max_drop_rel": 0.25
         },
         {
           "key": "planner_thumbs_down_rate",
-          "label": "thumbs-down rate"
+          "label": "thumbs-down rate",
+          "max_rise_rel": 0.25
         }
       ],
       "assignment": {
@@ -3575,7 +3578,7 @@
         "note": "ctxArm 'context' = even user id"
       },
       "planned_days": 14,
-      "max_days": null,
+      "max_days": 28,
       "reporting": "auto",
       "rollback": "Switch 'Context-first test (50/50)' OFF on the Ask Tulle bar and Planner page instances and publish (dates_note)",
       "spec_gaps": [
@@ -3591,7 +3594,9 @@
       "audit_2026_11_19": {
         "recommended_status": "planned_unverified",
         "evidence": "Code live (server 53d9a72, component 23d878c) with contextTest default OFF; no evidence in memory that the owner switched it on. Verify the instance prop in live page data before treating as running."
-      }
+      },
+      "in_rotation": true,
+      "bucket": "planner_engagement"
     },
     {
       "id": "EXP-2026-11-whole-wedding-planner",
@@ -5418,6 +5423,15 @@
       ],
       "source": "xano fn56",
       "ref": "tulletogether .claude/inclusive_pkg_2026-11-20/fn56_v27_batch1.xs"
+    },
+    {
+      "date": "2026-11-21",
+      "what": "Context-first test (50/50) switched ON for the Ask Tulle bubble (WeWeb editor, instance 3c0b81b1; live at the next publish). It has been ON on the Planner page since publish 1398 (2026-11-17).",
+      "affects": [
+        "EXP-2026-11-planner-context-first"
+      ],
+      "source": "weweb editor",
+      "ref": "3c0b81b1 contextTest"
     }
   ]
 }
