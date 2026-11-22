@@ -5218,6 +5218,10 @@
         {
           "date": "2026-11-22",
           "note": "Planned. Offline on 12 real questions (table 43, 11-17..22): with the old code 7 of 24 (question x plan-state) suggestions repeated the category just asked; with this branch 0 of 24."
+        },
+        {
+          "date": "2026-11-22",
+          "note": "REC_PLAN_NEXT_STEP=1 set 2026-11-22T21:25Z, but REC_PLAN_AB_PCT reads 0 on /rec/status, so no couple sees it yet. Stays planned until the owner sets a share."
         }
       ],
       "decision": "",
@@ -5230,7 +5234,7 @@
     {
       "id": "EXP-2026-11-free-budget-fit",
       "name": "Planner: free couples get in / about at / over your budget per venue (no figures)",
-      "status": "planned",
+      "status": "live",
       "framework_version": 2,
       "owner": "Vivek",
       "launched_by": null,
@@ -5285,7 +5289,7 @@
         "type": "rollout",
         "note": "Volume too low for a read (~1/day). Read every budget-verdict answer by hand in week 1."
       },
-      "start_date": null,
+      "start_date": "2026-11-22",
       "planned_days": 7,
       "max_days": 14,
       "review_date": "2026-12-01",
@@ -5296,6 +5300,10 @@
         {
           "date": "2026-11-22",
           "note": "Planned. Offline: 2 of 12 real questions trigger it; refresh-message bug found and fixed (question 6302 would have used $10K instead of $2K)."
+        },
+        {
+          "date": "2026-11-22",
+          "note": "Live 2026-11-22T21:25Z (flag read back true on /rec/status). Package: live test-token call says Celestine about $45,580 = card (was $64,130). QA 11-22: 5/5 package spaces match card; free filter tightened (no digits or number words in verdict sentences)."
         }
       ],
       "decision": "",
@@ -5308,7 +5316,7 @@
     {
       "id": "EXP-2026-11-planner-package-totals",
       "name": "Planner all-in matches the venue card for the 25 package spaces",
-      "status": "planned",
+      "status": "live",
       "framework_version": 2,
       "owner": "Vivek",
       "launched_by": null,
@@ -5356,7 +5364,7 @@
       "assignment": {
         "type": "rollout"
       },
-      "start_date": null,
+      "start_date": "2026-11-22",
       "planned_days": 7,
       "max_days": 14,
       "review_date": "2026-12-01",
@@ -5366,6 +5374,10 @@
         {
           "date": "2026-11-22",
           "note": "Planned. Offline on live ep230 payloads (fn56 v29): flag off 0 of 25 package spaces match the card; flag on 24 exact + 1 off by $1 (rounding); 4 non-package spaces checked unchanged."
+        },
+        {
+          "date": "2026-11-22",
+          "note": "Live 2026-11-22T21:25Z (flag read back true on /rec/status). Package: live test-token call says Celestine about $45,580 = card (was $64,130). QA 11-22: 5/5 package spaces match card; free filter tightened (no digits or number words in verdict sentences)."
         }
       ],
       "decision": "",
@@ -5822,6 +5834,15 @@
       ],
       "source": "weweb editor",
       "ref": "3c0b81b1 contextTest"
+    },
+    {
+      "date": "2026-11-22",
+      "what": "Planner flags on: REC_PACKAGE_TOTALS=1 (Planner total = card for 25 package spaces), REC_FREE_BUDGET_FIT=1 (free in/about at/over budget verdicts), REC_PLAN_NEXT_STEP=1 (inert while REC_PLAN_AB_PCT=0). Code 019dfe9.",
+      "affects": [
+        "EXP-2026-11-planner-context-first"
+      ],
+      "source": "rec-engine Railway variables",
+      "ref": "019dfe9"
     }
   ]
 }
