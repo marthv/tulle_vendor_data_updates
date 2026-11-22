@@ -4995,7 +4995,7 @@
     {
       "id": "EXP-2026-12-pdf-limit-popup-plans",
       "name": "PDF limit: popup with the 3 plan cards and direct checkout for everyone (replaces the redirect to /pricing)",
-      "status": "planned",
+      "status": "shelved",
       "framework_version": 2,
       "owner": "Vivek",
       "launched_by": null,
@@ -5065,6 +5065,10 @@
         {
           "date": "2026-11-22",
           "note": "Owner changed the design: everyone gets the popup (no 50/50 split); judged before vs after."
+        },
+        {
+          "date": "2026-11-22",
+          "note": "Owner parked it: restore the Pricing Intelligence card first and see what that changes. QA 11-22: the redirect does not look like it hurts payments (limit-hitter 2-day pay 7.5% -> 7.1%, n=56, can't rule out a halving); the '0 upgrade clicks' was mostly the redirect's event not firing. Spec kept: tulletogether/.claude/specs/pdf_limit_popup_plans_spec_2026-11-22.md."
         }
       ],
       "decision": "",
@@ -5072,6 +5076,79 @@
       "bucket": "payment_funnel",
       "links": [
         "spec: tulletogether/.claude/specs/pdf_limit_popup_plans_spec_2026-11-22.md"
+      ]
+    },
+    {
+      "id": "EXP-2026-11-pi-card-restore",
+      "name": "Original Pricing Intelligence card restored on both vendor pages (Price Report hidden)",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "money",
+      "themes": [
+        "paywall"
+      ],
+      "bucket": "payment_funnel",
+      "what_changed": "The original Pricing Intelligence card (as before 11-17) replaces the Tulle Price Report on the Venue Vendor and Other Vendors pages, for members and free couples (restored in the WeWeb editor 11-21, live at the next publish).",
+      "surfaces": [
+        "weweb:vendor-page",
+        "weweb:other-vendors-page"
+      ],
+      "audience": {
+        "segment": "everyone viewing a vendor page (free couples see the locked card)",
+        "est_daily_exposed": 120,
+        "est_note": "~115-125 vendor-page visitors/day in Mixpanel 11-18..11-20 (memory project_board_2026-11-21)"
+      },
+      "hypothesis": "If we bring back the original Pricing Intelligence card, then the share of vendor-page visitors who click to upgrade from the card moves from ~10% (Price Report) back toward the old card's 14.9%, and purchases per day recover, because couples (and Des and Kate) found the old card clearer and it was the biggest upgrade entry point.",
+      "tests": "Does restoring the original PI card bring vendor-page upgrade clicks and purchases back to their pre-11-17 level?",
+      "goal": "Owner 2026-11-22: 'figure out the pricing intelligence update first and see what happens when we change that'. Measured (QA 11-22): vendor-page upgrade clicks fell ~45% when the Price Report replaced the card (old card 14-36/day; Price Report clicked_membership_for_pricing_venue_price_report 10-20/day); purchases 29 (11-11..15) vs 4 (11-20..21). Bar: unique card upgrade clicks / unique vendor-page visitors back to >= 13% within 7 days, purchases/day not down.",
+      "design": "pre/post",
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-11-18",
+          "2026-11-23"
+        ],
+        "post_start": "2026-11-24T00:00Z",
+        "note": "PROVISIONAL: pre = Price Report period on build 1404; post_start = the real publish time of the restored card. Reset at launch."
+      },
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.098,
+        "baseline_note": "Price Report period: 11/115 (11-18) and 24/246 (11-19..20) = 9.8% unlock clicks per vendor-page visitor; old card 254/1,700 = 14.9% (11-04..16); internal not excluded (memory project_board_2026-11-21)",
+        "mde_rel": 0.3,
+        "label": "unique PI-card upgrade clicks / unique vendor-page visitors per day (Mixpanel 3963130)"
+      },
+      "primary_metric": "Unique clicked_membership_for_pricing_venue_pricing_intelligence / unique viewed_vendor_page per day vs the Price Report's clicked_membership_for_pricing_venue_price_report rate; purchases/day (payment log table 16, internal excluded)",
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "guardrail": "purchases per day not down >25%",
+      "planned_days": 7,
+      "max_days": 14,
+      "start_date": null,
+      "review_date": "2026-12-01",
+      "reporting": "manual",
+      "rollback": "Re-show the Price Report (9568da51 / bcbabf98) and hide the PI cards (31d086ae / 91857962) in the editor, publish (backup .claude/xano_backups/weweb_restore_pi_card_pre_2026-11-21.json)",
+      "dates_note": "Ships in the SAME publish as: package double-count fix card formula (25 spaces), Ask Tulle bubble context-first 50/50, Meta tracking edits + sign-up attribution field, removed Gmail action. Only the card should move vendor-page upgrade clicks; the bubble test is a split. Before publishing: preview member + free (locked) views on a phone; check the old card's LOCKED view (no free first vendor since 11-18; 'PI Locked State Averages' ww-html looked hidden). Seasonality (Thanksgiving) affects purchases/day: read clicks per visitor first.",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Planned: owner parked the popup test to read this first. Restored in the editor 11-21 (EXACTLY as original, owner reversal ~23:20 UTC); not yet published (live build 1404)."
+        }
+      ],
+      "decision": "",
+      "spec_gaps": [],
+      "links": [
+        "backup: tulletogether/.claude/xano_backups/weweb_restore_pi_card_pre_2026-11-21.json"
       ]
     }
   ],
