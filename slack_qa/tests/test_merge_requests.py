@@ -230,3 +230,53 @@ def test_merged_vendor_cannot_be_unhidden_or_edited():
     assert b.handle(mention("unhide V30")) == "vendor:visibility:merged"
     assert b.handle(mention("change V30 website to x.com")) == "vendor:vendor_edit:merged"
     assert store.all() == []
+
+
+# --- owner 2026-11-22: three fixes after the first live try -------------------------------------------------------
+def test_same_name_same_state_listings_become_one_card():
+    rows = [dict(r) for r in ROWS] + [V(16506, "V16506", "Gramercy Mansion", state="MD",
+                                        addr="1400 Greenspring Valley Road, Stevenson, MD", lat=39.41, lng=-76.71)]
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    out = b.handle(mention("find duplicates of Gramercy Mansion"))
+    assert out == "merge:dupes:1", out
+    p = store.all()[0]
+    assert sorted([p["payload"]["survivor"]] + p["payload"]["losers"]) == ["V16506", "V6"]
+
+
+def test_same_name_different_states_are_listed_not_proposed():
+    rows = [dict(r) for r in ROWS] + [V(16506, "V16506", "Gramercy Mansion", state="NY", addr="9 Rd, Albany, NY",
+                                        lat=42.6, lng=-73.7)]
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    assert b.handle(mention("find duplicates of Gramercy Mansion")) == "merge:dupes-none"
+    txt = slack.of("chat.postMessage")[-1]["text"]
+    assert "(V6)" in txt and "(V16506)" in txt and store.all() == []
+
+
+def test_same_name_card_says_why_and_points_to_details():
+    rows = [dict(r) for r in ROWS] + [V(16506, "V16506", "Gramercy Mansion", state="MD", addr="Other Rd, MD",
+                                        lat=39.0, lng=-77.0)]
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    b.handle(mention("find duplicates of Gramercy Mansion"))
+    assert "compare the addresses under Details" in store.all()[0]["plain"]["why"]
+
+
+def test_wait_note_reflects_a_cold_vendor_list():
+    b, slack, store = bot()
+    b.feedback.directory.fresh = lambda: False
+    assert "about 3 minutes the first time" in b._wait_note()
+    b.feedback.directory.fresh = lambda: True
+    assert b._wait_note() == "Checking the listings..."
+
+
+def test_warm_loads_the_vendor_list_and_never_raises():
+    b, slack, store = bot()
+    assert b.warm() == f"warm:{len(ROWS)}"
+
+    class Boom:
+        def rows(self):
+            raise RuntimeError("xano down")
+    b.feedback.directory = Boom()
+    assert b.warm() == "warm:error"

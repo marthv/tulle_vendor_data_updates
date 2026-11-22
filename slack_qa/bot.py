@@ -323,6 +323,28 @@ class Bot:
         say(pl.render(vendor, rows, built_at, truncated))
         return f"pdfs:{len(rows)}"
 
+    # --- start-up warm (owner 2026-11-22: first request after a restart waited ~3 min) ---------------------------
+    def warm(self) -> str:
+        """Load the vendor list in the background at start-up. Never raises."""
+        if not getattr(self.xano, "enabled", False):
+            return "warm:no-xano"
+        try:
+            t0 = time.time()
+            n = len(self.feedback.directory.rows())
+            log.info("warm: vendor list loaded (%d rows) in %.0f s", n, time.time() - t0)
+            return f"warm:{n}"
+        except Exception:  # noqa: BLE001
+            log.exception("warm: vendor list load failed (requests will load it on demand)")
+            return "warm:error"
+
+    def _wait_note(self) -> str:
+        try:
+            cold = not self.feedback.directory.fresh()
+        except Exception:  # noqa: BLE001
+            cold = True
+        return ("Loading the vendor list (about 3 minutes the first time after a restart, instant after that)..."
+                if cold else "Checking the listings...")
+
     # --- merges by name / ID, and "find duplicates of X" (owner 2026-11-22) ---------------------------------------
     def merge_request(self, question: str, ev: dict) -> str | None:
         """'merge A and B' / 'merge A into B' / 'A and B are the same venue' -> the scan's own merge card in this thread;
@@ -363,7 +385,8 @@ class Bot:
             return "merge:no-xano"
         directory = self.feedback.directory
         resolve = lambda t: pl.resolve_vendor(directory, t)      # noqa: E731
-        timer = threading.Timer(self.working_after, lambda: say("Checking the listings (up to a minute)..."))
+        note = self._wait_note()               # decided now, before this request starts the load
+        timer = threading.Timer(self.working_after, lambda: say(note))
         timer.daemon = True
         timer.start()
         try:
@@ -425,19 +448,43 @@ class Bot:
         import pdf_list as pl
         from interactions import post_proposal
         vendor, hits = resolve(target)
-        if vendor is None:
+        if vendor is not None:
+            seeds = [vendor]
+        elif hits and 2 <= len(hits) <= mr.MAX_VENDORS and len({pl._exact(h.get("Name")) for h in hits}) == 1:
+            # owner 2026-11-22: "find duplicates of Gramercy Mansion" found two listings with exactly that name and
+            # asked "which one?" - those listings ARE the question. Check them as a group.
+            seeds = hits
+        else:
             if not hits and not pl.is_id(target):   # "any duplicates for this week?" -> normal Q&A (QA 11-22)
                 return None
             say(pl.candidates_text(target, hits))
             return "merge:dupes-ambiguous" if hits else "merge:dupes-not-found"
+        vendor = seeds[0]
         rows = self.feedback.directory.rows()
-        vid, name = str(vendor.get("Vendor_ID")), esc_text(vendor.get("Name"))
-        groups = mr.dupes_of(rows, {vid})
+        vids = {str(s.get("Vendor_ID")) for s in seeds}
+        vid = ", ".join(sorted(vids))
+        name = esc_text(vendor.get("Name"))
+        groups = mr.dupes_of(rows, vids)
         byid = {r["id"]: r for r in rows}
         skip = self.store.open_or_rejected_keys("merge")
         fresh = [g for g in groups
                  if dedupe.group_key([str(byid[i].get("Vendor_ID")) for i in g["ids"]]) not in skip][:mr.MAX_CARDS]
-        others = mr.same_name_others(rows, vendor)
+        why_text = ""
+        if not fresh and len(seeds) > 1:
+            # same exact name, but the scan's stricter rules (same Google listing / same address / nearby + same
+            # website) didn't link them: propose them only when they are in the same state and category, and say so
+            states = {dedupe.norm(s.get("State")) for s in seeds}
+            cats = {str(s.get("Category") or "").strip().lower() for s in seeds}
+            key = dedupe.group_key(sorted(vids))
+            if len(states) == 1 and len(cats) == 1 and key not in skip:
+                fresh = [{"ids": sorted((s["id"] for s in seeds), key=int), "rules": []}]
+                why_text = (f"Same name, both in {esc_text(seeds[0].get('State')) or 'the same state'}. The scan's "
+                            "stricter checks (same Google listing or address) didn't link them, so compare the "
+                            "addresses under Details before approving.")
+        others = [o for o in mr.same_name_others(rows, vendor) if str(o.get("Vendor_ID")) not in vids]
+        if len(seeds) > 1:                     # the same-name listings themselves, when they weren't proposed
+            others = [s for s in seeds] + others
+        vid = str(vendor.get("Vendor_ID")) if len(seeds) == 1 else vid
         if not fresh:
             lines = [f"No new duplicates of *{name}* ({vid}) by the scan's rules (same Google listing, or same name in "
                      "the same place, or a near-identical name with the same website nearby)."
@@ -446,7 +493,8 @@ class Bot:
                 lines.append("Other listings with the same name (different places, so probably different businesses):")
                 lines += [f"• {esc_text(o.get('Name'))} ({o.get('Vendor_ID')})"
                           + (f", {esc_text(o.get('State'))}" if o.get("State") else "") for o in others[:8]]
-                lines.append(f"If one is really the same, say `@Tulle Bot merge {vid} and V1234`.")
+                lines.append(f"If two are really the same, say `@Tulle Bot merge {vendor.get('Vendor_ID')} and "
+                             "V1234`.")
             say("\n".join(lines))
             return "merge:dupes-none"
         wanted = {str(byid[i].get("Vendor_ID")) for g in fresh for i in g["ids"]}
@@ -457,7 +505,7 @@ class Bot:
             "Nothing changes until someone approves a card.")
         posted = 0
         for g in fresh:
-            pr = dedupe.build_proposal(g, byid, refs)
+            pr = dedupe.build_proposal(g, byid, refs, why_text=why_text)
             p = self.store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
                                   key=pr["key"], source=f"mention:{channel}", plain=pr["plain"])
             if p is not None and post_proposal(self.slack, self.store, channel, p, thread_ts=reply_ts).get("ok"):

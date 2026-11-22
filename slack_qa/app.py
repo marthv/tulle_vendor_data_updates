@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, Request
@@ -32,6 +34,10 @@ _scheduler = None
 @asynccontextmanager
 async def lifespan(_app):
     global _scheduler
+    if os.environ.get("QA_WARM_ON_START", "1").strip().lower() not in ("0", "false", "no", "off"):
+        # owner 2026-11-22: after a restart the first request waited ~3 min while the 20k-vendor list loaded.
+        # Load it in the background now so nobody waits.
+        threading.Thread(target=lambda: get_bot().warm(), name="warm", daemon=True).start()
     if config.scheduler_enabled():
         from scheduler import Scheduler
         _scheduler = Scheduler(get_bot())

@@ -56,6 +56,10 @@ class VendorDirectory:
         self._rows, self._at = None, 0.0
         self._lock = threading.Lock()
 
+    def fresh(self) -> bool:
+        """True when the cached list is loaded and within ttl (a request will be instant)."""
+        return self._rows is not None and time.time() - self._at <= self.ttl
+
     def rows(self) -> list[dict]:
         with self._lock:
             if self._rows is None or time.time() - self._at > self.ttl:
