@@ -376,9 +376,12 @@ def test_merge_hint_never_names_the_same_id_twice():
                                         lat=42.6, lng=-73.7)]
     b, slack, store = make_bot(rows=rows)
     b.xano = RowsXano()
-    b.handle(mention("find duplicates of Gramercy Mansion"))
+    assert b.handle(mention("find duplicates of Gramercy Mansion")) == "merge:dupes-none"
     txt = slack.of("chat.postMessage")[-1]["text"]
-    assert "merge V6 and V6" not in txt and "merge V16506 and V16506" not in txt
+    assert "Listings with the same name" in txt                          # the hint IS shown here
+    import re as _re
+    a, c = _re.search(r"merge (V\d+) and (V\d+)", txt).groups()
+    assert a != c and {a, c} == {"V6", "V16506"}
 
 
 def test_dry_run_approved_groups_are_not_proposed_again():
@@ -386,6 +389,57 @@ def test_dry_run_approved_groups_are_not_proposed_again():
     b.handle(mention("find duplicates of Gramercy Mansion"))
     p = store.all()[0]
     store.transition(p["id"], {"pending"}, "dry_run", "UKATE")
-    assert "V6|V16506" in store.handled_keys("merge") or "merge:V16506|V6" in store.handled_keys("merge")
+    assert "merge:V16506|V6" in store.handled_keys("merge")
     assert b.handle(mention("merge V6 and V16506")) == "merge:approved-dry-run"
     assert len(store.all()) == 1
+
+
+# --- QA 11-22: approvals made during dry run can be applied for real once dry run is off -------------------------
+def _approved_in_dry_run():
+    import interactions
+    b, slack, store = _gramercy_pair()
+    b.handle(mention("find duplicates of Gramercy Mansion"))
+    p = store.all()[0]
+    calls = []
+
+    def fake_merge(payload, user, pid, mode="apply", dry_run=True):
+        calls.append(dry_run)
+        return {"ok": True, "dry_run": dry_run, "text": "dry" if dry_run else "Repointed 3 rows.", "result": {}}
+    it = interactions.Interactions(slack=slack, store=store, apply_fns={"merge": fake_merge})
+    from test_v2 import click
+    import cards
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6", ts=p["ts"])) == "approved:dry_run"
+    return b, slack, store, it, p, calls, click, cards
+
+
+def test_dry_run_approval_stays_put_while_dry_run_is_on():
+    b, slack, store, it, p, calls, click, cards = _approved_in_dry_run()
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6", ts=p["ts"])) == "noop:dry_run"
+    assert calls == [True]
+    assert "Apply for real" not in json.dumps(cards.render(store.get(p["id"]))[1])
+
+
+def test_apply_for_real_after_dry_run_is_switched_off(monkeypatch):
+    b, slack, store, it, p, calls, click, cards = _approved_in_dry_run()
+    monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
+    assert "Apply for real" in json.dumps(cards.render(store.get(p["id"]))[1])
+    b.handle(mention("what's waiting for approval?"))
+    assert "press Apply for real" in slack.of("chat.postMessage")[-1]["text"]
+    assert any(m == "chat.update" for m, _ in slack.calls)                 # card redrawn with the button
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6", ts=p["ts"])) == "approved:applied"
+    assert calls == [True, False] and store.get(p["id"])["status"] == "applied"
+
+
+def test_scan_skips_dry_run_approved_groups():
+    from proposals import Store
+    import tempfile
+    from pathlib import Path
+    st = Store(Path(tempfile.mkdtemp()) / "p.json")
+    p = st.create("merge", "t", "w", "y", "n", {"survivor": "V1", "losers": ["V2"]}, key="merge:V1|V2")
+    st.transition(p["id"], {"pending"}, "applying", "U")
+    st.transition(p["id"], {"applying"}, "dry_run", "U")
+    q = st.create("merge", "t", "w", "y", "n", {"survivor": "V3", "losers": ["V4"]}, key="merge:V3|V4")
+    st.transition(q["id"], {"pending"}, "applying", "U")
+    st.transition(q["id"], {"applying"}, "undone", "U")
+    keys = st.handled_keys("merge")
+    assert "merge:V1|V2" in keys and "merge:V3|V4" not in keys              # undone can be suggested again

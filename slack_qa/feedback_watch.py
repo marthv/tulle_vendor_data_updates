@@ -321,7 +321,7 @@ class FeedbackWatcher:
             return "feedback:duplicate:bad-vendor-ids"
         if str(a[0].get("Category") or "").lower() != str(b[0].get("Category") or "").lower():
             return "feedback:duplicate:different-categories"
-        if dedupe.group_key([va, vb]) in self.store.open_or_rejected_keys("merge"):   # before any Xano reads
+        if dedupe.group_key([va, vb]) in self.store.handled_keys("merge"):   # before any Xano reads
             return "feedback:duplicate:already-proposed"
         byid = {a[0]["id"]: a[0], b[0]["id"]: b[0]}
         refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),

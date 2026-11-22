@@ -116,6 +116,10 @@ def render(p: dict) -> tuple[str, list[dict]]:
         blocks.append(_context(outcome_line(p)))
         if status == "unknown":
             buttons.append(_btn(ACTION_RECHECK, p["id"], "Re-check"))
+        if status == "dry_run":
+            from proposals import default_dry_run
+            if not default_dry_run(kind):         # dry run is off now: an approval from the dry-run period can run
+                buttons.append(_btn(ACTION_APPROVE, p["id"], "Apply for real", "primary"))
         if status == "partial" and kind == "merge":
             buttons.append(_btn(ACTION_APPROVE, p["id"], "Resume merge", "primary"))
         if status in ("applied", "partial") and kind == "merge" and p.get("undoable", True):

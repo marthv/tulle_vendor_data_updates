@@ -116,14 +116,23 @@ def open_card(store, kind: str, vendor_id: str, field: str | None = None) -> dic
     return None
 
 
+def ready_to_apply(store) -> list[dict]:
+    """Cards approved while their kind was in dry run, now that dry run is OFF for that kind (owner 2026-11-22):
+    they show an 'Apply for real' button once their card is refreshed."""
+    from proposals import default_dry_run
+    return [p for p in store.all() if p.get("status") == "dry_run" and not default_dry_run(p.get("kind", ""))]
+
+
 def list_pending(store) -> str:
-    rows = [p for p in store.all() if p.get("status") in ("pending", "unknown", "partial")]
+    ready = ready_to_apply(store)
+    rows = [p for p in store.all() if p.get("status") in ("pending", "unknown", "partial")] + ready
     if not rows:
         return "Nothing is waiting for approval."
     rows.sort(key=lambda p: p.get("created_at", ""))
     lines = [f"*Waiting for approval: {len(rows)}*"]
     for p in rows[:15]:
-        tag = {"unknown": " (needs Re-check)", "partial": " (merge stopped part-way)"}.get(p.get("status"), "")
+        tag = {"unknown": " (needs Re-check)", "partial": " (merge stopped part-way)",
+               "dry_run": " (approved in dry run: press Apply for real)"}.get(p.get("status"), "")
         lines.append(f"• {_link(p)}{tag} - proposed {str(p.get('created_at', ''))[:10]}")
     if len(rows) > 15:
         lines.append(f"…and {len(rows) - 15} older ones.")

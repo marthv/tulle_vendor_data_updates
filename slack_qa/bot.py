@@ -422,7 +422,8 @@ class Bot:
             dry = next((p for p in prior if p.get("status") == "dry_run"), None)
             if dry:
                 say(f"These were already approved ({self._link(dry)}) while merges are in dry run, so nothing has "
-                    "moved yet. They'll be merged when merges are switched on.")
+                    "moved yet. Once merges are switched on, that card gets an *Apply for real* button "
+                    "(`@Tulle Bot what's waiting for approval?` lists them).")
                 return "merge:approved-dry-run"
             byid = {v["id"]: v for v in vendors}
             refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
@@ -506,19 +507,26 @@ class Bot:
             ps = [p for p in self.store.all() if p.get("kind") == "merge"
                   and (p.get("key") == k or str(p.get("key", "")).startswith(k + ":asked:"))]
             if ps:
-                existing.append(max(ps, key=lambda p: str(p.get("created_at", ""))))
+                # the card that explains the group best: open > approved in dry run > merged > rejected > others
+                rank = {"pending": 0, "applying": 0, "unknown": 0, "partial": 0, "undoing": 0, "dry_run": 1,
+                        "applied": 2, "rejected": 3, "undone": 4, "failed": 5, "post_failed": 6}
+                existing.append(min(ps, key=lambda p: (rank.get(p.get("status"), 9),
+                                                       "~" + str(p.get("created_at", "")))))
         if not fresh and existing:
             lines = [f"*{name}* ({vid}): there's already a card for "
                      + ("this group:" if len(existing) == 1 else f"these {len(existing)} groups:")]
             for p in existing[:mr.MAX_CARDS]:
                 pay = p.get("payload") or {}
-                ids = [str(pay.get("survivor"))] + [str(x) for x in pay.get("losers") or []]
+                ids = [str(x) for x in [pay.get("survivor")] + list(pay.get("losers") or []) if x]
                 st = p.get("status")
                 when = str(p.get("status_at") or p.get("created_at") or "")[:10]
                 state = {"pending": "waiting for approval", "unknown": "needs a Re-check on the card",
                          "partial": "stopped part-way (Resume or Undo on the card)",
                          "applied": "already merged", "undone": "merged, then undone",
                          "dry_run": f"approved on {when} while merges are in dry run, so nothing has moved yet",
+                         "applying": "being applied right now", "undoing": "being undone right now",
+                         "failed": "approved but it didn't apply (see the card)",
+                         "post_failed": "the card couldn't be posted",
                          "rejected": (f"rejected on {when}. If that was wrong, `@Tulle Bot merge "
                                       f"{' and '.join(ids)}` makes a new card")}.get(st, st or "unknown")
                 lines.append(f"• {self._link(p)} ({', '.join(ids)}): {state}.")
@@ -568,6 +576,12 @@ class Bot:
         channel = ev["channel"]
         reply_ts = ev.get("thread_ts") or ev.get("ts")
         if req["kind"] == "list_pending":
+            # dry run switched off since these were approved: redraw their cards so the Apply button appears
+            for p in va.ready_to_apply(self.store):
+                if p.get("channel") and p.get("ts"):
+                    import cards
+                    text, blocks = cards.render(p)
+                    self.slack.update_message(p["channel"], p["ts"], text, blocks)
             self.post(channel, va.list_pending(self.store), reply_ts, footer=False)
             return "vendor:list-pending"
         if req["kind"] == "list_applied":
