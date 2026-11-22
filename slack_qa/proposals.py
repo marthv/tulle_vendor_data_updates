@@ -113,6 +113,17 @@ class Store:
             return {p["key"] for p in self._data["proposals"].values()
                     if p.get("kind") == kind and p.get("key") and p.get("status") in NEVER_AGAIN}
 
+    def handled_keys(self, kind: str) -> set[str]:
+        """Keys a scan or 'find duplicates' must not suggest again: open, in flight, applied, rejected, or approved
+        while dry run was on (owner 2026-11-22: Kate's hand-check approves cards in dry run; re-posting them every
+        scan would bury her). 'asked again' keys count for their group."""
+        with self._lock:
+            out = set()
+            for p in self._data["proposals"].values():
+                if p.get("kind") == kind and p.get("key") and p.get("status") in (NEVER_AGAIN | {"dry_run"}):
+                    out.add(str(p["key"]).split(":asked:")[0])
+            return out
+
     def count_since(self, kind: str, iso_day: str) -> int:
         with self._lock:
             return sum(1 for p in self._data["proposals"].values()

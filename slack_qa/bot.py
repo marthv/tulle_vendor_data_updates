@@ -419,6 +419,11 @@ class Bot:
             if any(p.get("status") == "applied" for p in prior):
                 say("These were already merged.")
                 return "merge:already-merged"
+            dry = next((p for p in prior if p.get("status") == "dry_run"), None)
+            if dry:
+                say(f"These were already approved ({self._link(dry)}) while merges are in dry run, so nothing has "
+                    "moved yet. They'll be merged when merges are switched on.")
+                return "merge:approved-dry-run"
             byid = {v["id"]: v for v in vendors}
             refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
                                    page_delay=config.dedupe_page_delay(), only={10, 36})
@@ -468,7 +473,7 @@ class Bot:
         name = esc_text(vendor.get("Name"))
         groups = mr.dupes_of(rows, vids)
         byid = {r["id"]: r for r in rows}
-        skip = self.store.open_or_rejected_keys("merge")
+        skip = self.store.handled_keys("merge")
         fresh = [g for g in groups
                  if dedupe.group_key([str(byid[i].get("Vendor_ID")) for i in g["ids"]]) not in skip][:mr.MAX_CARDS]
         why_text = ""
@@ -491,16 +496,45 @@ class Bot:
         if len(seeds) > 1:                     # the same-name listings themselves, when they weren't proposed
             others = [s for s in seeds] + others
         vid = str(vendor.get("Vendor_ID")) if len(seeds) == 1 else vid
+        # owner 2026-11-22: when the group already has a card, link it and say where it stands (the old reply said
+        # "no duplicates ... probably different businesses" about the very pair that had a card)
+        gkeys = [dedupe.group_key([str(byid[i].get("Vendor_ID")) for i in g["ids"]]) for g in groups]
+        if len(seeds) > 1:
+            gkeys.append(dedupe.group_key(sorted(vids)))
+        existing = []
+        for k in dict.fromkeys(gkeys):
+            ps = [p for p in self.store.all() if p.get("kind") == "merge"
+                  and (p.get("key") == k or str(p.get("key", "")).startswith(k + ":asked:"))]
+            if ps:
+                existing.append(max(ps, key=lambda p: str(p.get("created_at", ""))))
+        if not fresh and existing:
+            lines = [f"*{name}* ({vid}): there's already a card for "
+                     + ("this group:" if len(existing) == 1 else f"these {len(existing)} groups:")]
+            for p in existing[:mr.MAX_CARDS]:
+                pay = p.get("payload") or {}
+                ids = [str(pay.get("survivor"))] + [str(x) for x in pay.get("losers") or []]
+                st = p.get("status")
+                when = str(p.get("status_at") or p.get("created_at") or "")[:10]
+                state = {"pending": "waiting for approval", "unknown": "needs a Re-check on the card",
+                         "partial": "stopped part-way (Resume or Undo on the card)",
+                         "applied": "already merged", "undone": "merged, then undone",
+                         "dry_run": f"approved on {when} while merges are in dry run, so nothing has moved yet",
+                         "rejected": (f"rejected on {when}. If that was wrong, `@Tulle Bot merge "
+                                      f"{' and '.join(ids)}` makes a new card")}.get(st, st or "unknown")
+                lines.append(f"• {self._link(p)} ({', '.join(ids)}): {state}.")
+            say("\n".join(lines))
+            return "merge:dupes-existing"
         if not fresh:
             lines = [f"No new duplicates of *{name}* ({vid}) by the scan's rules (same Google listing, or same name in "
-                     "the same place, or a near-identical name with the same website nearby)."
-                     + (" Some already have a card or were rejected." if groups else "")]
+                     "the same place, or a near-identical name with the same website nearby)."]
             if others:
-                lines.append("Other listings with the same name (different places, so probably different businesses):")
+                lines.append("Listings with the same name in different places (probably different businesses):")
                 lines += [f"• {esc_text(o.get('Name'))} ({o.get('Vendor_ID')})"
                           + (f", {esc_text(o.get('State'))}" if o.get("State") else "") for o in others[:8]]
-                lines.append(f"If two are really the same, say `@Tulle Bot merge {vendor.get('Vendor_ID')} and "
-                             "V1234`.")
+                a = str(others[0].get("Vendor_ID"))
+                b = str(vendor.get("Vendor_ID")) if a != str(vendor.get("Vendor_ID")) else (
+                    str(others[1].get("Vendor_ID")) if len(others) > 1 else "V1234")
+                lines.append(f"If two are really the same, say `@Tulle Bot merge {a} and {b}`.")
             say("\n".join(lines))
             return "merge:dupes-none"
         wanted = {str(byid[i].get("Vendor_ID")) for g in fresh for i in g["ids"]}

@@ -821,7 +821,7 @@ def _scan(xano, store, mode, max_cards, max_pages, page_delay, vendor_rows) -> d
     last_max = int(store.meta("dedupe_max_id", 0) or 0)
     if mode == "nightly" and last_max:
         groups = [g for g in groups if any(int(i) > last_max for i in g["ids"])]
-    skip = store.open_or_rejected_keys("merge")
+    skip = store.handled_keys("merge")      # incl. approved-in-dry-run (owner 2026-11-22)
     fresh = [g for g in groups
              if group_key([str(byid[i].get("Vendor_ID")) for i in g["ids"]]) not in skip][:max_cards]
     created = []

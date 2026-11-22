@@ -346,3 +346,46 @@ def test_get_bot_builds_exactly_one_bot_under_concurrency(monkeypatch):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert len(built) == 1 and all(g is built[0] for g in got)
+
+
+# --- owner screenshot 11-22: Gramercy pair already had a card -----------------------------------------------------
+def _gramercy_pair():
+    rows = [dict(r) for r in ROWS] + [V(16506, "V16506", "Gramercy Mansion", state="MD",
+                                        addr="1400 Greenspring Valley Road, Stevenson, MD", lat=39.401, lng=-76.701)]
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    return b, slack, store
+
+
+@pytest.mark.parametrize("status,needle", [("pending", "waiting for approval"), ("rejected", "rejected on"),
+                                           ("dry_run", "dry run"), ("applied", "already merged")])
+def test_existing_card_is_linked_with_its_status(status, needle):
+    b, slack, store = _gramercy_pair()
+    assert b.handle(mention("find duplicates of Gramercy Mansion")) == "merge:dupes:1"
+    p = store.all()[0]
+    if status != "pending":
+        store.transition(p["id"], {"pending"}, status, "U05UJMCHUV6")
+    assert b.handle(mention("find duplicates of Gramercy Mansion")) == "merge:dupes-existing"
+    txt = slack.of("chat.postMessage")[-1]["text"]
+    assert needle in txt and "V16506" in txt and "different businesses" not in txt
+    assert len(store.all()) == 1                                  # no second card
+
+
+def test_merge_hint_never_names_the_same_id_twice():
+    rows = [dict(r) for r in ROWS] + [V(16506, "V16506", "Gramercy Mansion", state="NY", addr="9 Rd, Albany, NY",
+                                        lat=42.6, lng=-73.7)]
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    b.handle(mention("find duplicates of Gramercy Mansion"))
+    txt = slack.of("chat.postMessage")[-1]["text"]
+    assert "merge V6 and V6" not in txt and "merge V16506 and V16506" not in txt
+
+
+def test_dry_run_approved_groups_are_not_proposed_again():
+    b, slack, store = _gramercy_pair()
+    b.handle(mention("find duplicates of Gramercy Mansion"))
+    p = store.all()[0]
+    store.transition(p["id"], {"pending"}, "dry_run", "UKATE")
+    assert "V6|V16506" in store.handled_keys("merge") or "merge:V16506|V6" in store.handled_keys("merge")
+    assert b.handle(mention("merge V6 and V16506")) == "merge:approved-dry-run"
+    assert len(store.all()) == 1
