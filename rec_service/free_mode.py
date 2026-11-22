@@ -149,7 +149,9 @@ def budget_verdict(amount, target):
 
 def _verdict_ok(s):
     """A sentence that only says a verdict: no figure anywhere, and no other price talk once the phrase is out."""
-    return bool(_VERDICT_PHRASE.search(s)) and not _FIGURE.search(s) and not has_price_talk(_VERDICT_PHRASE.sub(" ", s))
+    return (bool(_VERDICT_PHRASE.search(s)) and not _FIGURE.search(s)
+            and not re.search(r"\d|\b(?:hundred|thousand|million)s?\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|few|couple)\s+(?:grand|k)\b", s, re.I)
+            and not has_price_talk(_VERDICT_PHRASE.sub(" ", s)))
 
 
 def sanitize_text(text, allow_verdicts=False):

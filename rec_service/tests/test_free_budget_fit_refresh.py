@@ -24,3 +24,17 @@ def test_ordinary_questions_unchanged():
     assert free_mode.budget_target("Anything under $10,000?", 0) == 10000
     assert free_mode.budget_target("Less than 20000 want a wedding venue with different rooms", 0) == 20000
     assert free_mode.budget_target("which of these fit our budget?", 30000) == 30000
+
+
+def test_verdict_sentence_with_any_number_is_dropped():
+    """QA 2026-11-22: a verdict plus a bare or worded number must not pass the free filter."""
+    for bad in ["The Grand is over your budget by roughly 12000.", "The Grand is over your budget by 3 thousand.",
+                "Rosewood is about at your budget, give or take ten grand.", "Rosewood is over your budget by 5k."]:
+        assert not free_mode._verdict_ok(bad), bad
+    assert free_mode._verdict_ok("Rosewood looks over your budget.")
+    assert free_mode._verdict_ok("Kirkwood is in your budget, and the ballroom seats your guest list.")
+
+
+def test_venue_names_with_grand_still_pass():
+    assert free_mode._verdict_ok("Grand Hall is over your budget.")
+    assert free_mode._verdict_ok("The Grand Ballroom is in your budget.")
