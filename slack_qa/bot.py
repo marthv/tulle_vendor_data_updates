@@ -577,11 +577,11 @@ class Bot:
         reply_ts = ev.get("thread_ts") or ev.get("ts")
         if req["kind"] == "list_pending":
             # dry run switched off since these were approved: redraw their cards so the Apply button appears
-            for p in va.ready_to_apply(self.store):
-                if p.get("channel") and p.get("ts"):
-                    import cards
-                    text, blocks = cards.render(p)
-                    self.slack.update_message(p["channel"], p["ts"], text, blocks)
+            import cards
+            ready = [p for p in va.ready_to_apply(self.store) if p.get("channel") and p.get("ts")]
+            for p in sorted(ready, key=lambda p: str(p.get("created_at", "")))[:15]:   # = the 15 the list shows
+                text, blocks = cards.render(p)
+                self.slack.update_message(p["channel"], p["ts"], text, blocks)
             self.post(channel, va.list_pending(self.store), reply_ts, footer=False)
             return "vendor:list-pending"
         if req["kind"] == "list_applied":

@@ -443,3 +443,25 @@ def test_scan_skips_dry_run_approved_groups():
     st.transition(q["id"], {"applying"}, "undone", "U")
     keys = st.handled_keys("merge")
     assert "merge:V1|V2" in keys and "merge:V3|V4" not in keys              # undone can be suggested again
+
+
+def test_apply_for_real_is_merge_only_and_asks_to_confirm(monkeypatch):
+    import cards
+    import interactions
+    from test_v2 import click
+    monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
+    monkeypatch.setenv("VISIBILITY_DRY_RUN", "0")
+    b, slack, store = _gramercy_pair()
+    p = store.create("visibility", "V6: hide", "w", "y", "n", {"vendor_id": "V6", "action": "hide"}, dry_run=True)
+    store.transition(p["id"], {"pending"}, "applying", "U05UJMCHUV6")
+    store.transition(p["id"], {"applying"}, "dry_run", "U05UJMCHUV6")
+    assert "Apply for real" not in json.dumps(cards.render(store.get(p["id"]))[1])
+    calls = []
+    it = interactions.Interactions(slack=slack, store=store,
+                                   apply_fns={"visibility": lambda *a, **k: calls.append(1) or {"ok": True}})
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6")) == "noop:dry_run" and calls == []
+    monkeypatch.delenv("DEDUPE_DRY_RUN", raising=False)                     # the merge is approved in dry run...
+    b2, slack2, store2, it2, m, calls2, click2, cards2 = _approved_in_dry_run()
+    monkeypatch.setenv("DEDUPE_DRY_RUN", "0")                                # ...then dry run is switched off
+    blocks = json.dumps(cards2.render(store2.get(m["id"]))[1])
+    assert "Apply for real" in blocks and "Merge for real?" in blocks          # confirm dialog attached

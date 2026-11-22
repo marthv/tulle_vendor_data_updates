@@ -120,7 +120,8 @@ def ready_to_apply(store) -> list[dict]:
     """Cards approved while their kind was in dry run, now that dry run is OFF for that kind (owner 2026-11-22):
     they show an 'Apply for real' button once their card is refreshed."""
     from proposals import default_dry_run
-    return [p for p in store.all() if p.get("status") == "dry_run" and not default_dry_run(p.get("kind", ""))]
+    return [p for p in store.all() if p.get("status") == "dry_run" and p.get("kind") == "merge"
+            and not default_dry_run("merge")]
 
 
 def list_pending(store) -> str:

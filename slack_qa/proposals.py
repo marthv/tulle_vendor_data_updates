@@ -10,8 +10,10 @@ compare-and-set on `status`, which is what makes a double click (or Slack retryi
     applied --undo-----> undoing  --> undone | applied (undo refused) | unknown
     pending --card post failed--> post_failed   (not shown to anyone: may be proposed again, not counted in caps)
 
-`dry_run` is fixed at creation: a card posted while dry run was on can only ever dry-run, even if the flag is turned
-off later (the approver approved a card that said "nothing is written").
+`dry_run` is fixed at creation: Approve on a card posted while dry run was on only dry-runs, even if the flag is
+turned off later (the approver approved a card that said "nothing is written"). Exception (owner 2026-11-22): a MERGE
+card approved during the dry run gets an "Apply for real" button (with a confirm) once DEDUPE_DRY_RUN is off; a second,
+deliberate click runs it live. Merges re-read the live rows at apply time; other kinds don't, so they need a new card.
 """
 from __future__ import annotations
 

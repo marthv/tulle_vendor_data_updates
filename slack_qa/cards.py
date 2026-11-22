@@ -71,6 +71,12 @@ def _btn(action: str, pid: str, text: str, style: str | None = None, confirm: di
     return b
 
 
+APPLY_CONFIRM = {"title": {"type": "plain_text", "text": "Merge for real?"},
+                 "text": {"type": "mrkdwn", "text": "This was approved during the dry run. Merging now moves the "
+                                                    "duplicate's PDFs, pricing and saved lists onto the kept listing "
+                                                    "and hides the duplicate (undo stays on the card). Xano re-reads "
+                                                    "both listings first and refuses if they changed a lot."},
+                 "confirm": {"type": "plain_text", "text": "Merge"}, "deny": {"type": "plain_text", "text": "Cancel"}}
 UNDO_CONFIRM = {"title": {"type": "plain_text", "text": "Undo this merge?"},
                 "text": {"type": "mrkdwn", "text": "Moves everything back from the backup taken before the merge. Anything "
                                                    "someone changed since (a deleted package, an edited field) stays as "
@@ -116,10 +122,12 @@ def render(p: dict) -> tuple[str, list[dict]]:
         blocks.append(_context(outcome_line(p)))
         if status == "unknown":
             buttons.append(_btn(ACTION_RECHECK, p["id"], "Re-check"))
-        if status == "dry_run":
+        if status == "dry_run" and kind == "merge":
+            # dry run is off now: a merge approved during the dry run can run (merges re-read the live rows at
+            # apply time; other kinds don't, so they get a fresh card instead - QA 11-22)
             from proposals import default_dry_run
-            if not default_dry_run(kind):         # dry run is off now: an approval from the dry-run period can run
-                buttons.append(_btn(ACTION_APPROVE, p["id"], "Apply for real", "primary"))
+            if not default_dry_run(kind):
+                buttons.append(_btn(ACTION_APPROVE, p["id"], "Apply for real", "primary", confirm=APPLY_CONFIRM))
         if status == "partial" and kind == "merge":
             buttons.append(_btn(ACTION_APPROVE, p["id"], "Resume merge", "primary"))
         if status in ("applied", "partial") and kind == "merge" and p.get("undoable", True):

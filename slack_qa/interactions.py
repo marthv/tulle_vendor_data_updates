@@ -118,7 +118,7 @@ class Interactions:
     def _approve(self, p, user, chan, thread) -> str:
         was = p.get("status")
         from proposals import default_dry_run
-        if was == "dry_run":
+        if was == "dry_run" and p.get("kind") == "merge":
             # owner 2026-11-22: a card approved while dry run was on can be applied for real once dry run is off
             # ("Apply for real" button). While dry run is still on there is nothing more to do.
             if default_dry_run(p.get("kind", "")):
@@ -126,6 +126,9 @@ class Interactions:
                                             "real once dry run is switched off.", thread)
                 return "noop:dry_run"
             p, why = self.store.transition(p["id"], {"dry_run"}, "applying", user, dry_run=False)
+        elif was == "dry_run":                 # only merges re-read live data at apply time (QA 11-22)
+            self._ephemeral(chan, user, "This was approved during the dry run. Ask again to make a fresh card.", thread)
+            return "noop:dry_run"
         else:
             p, why = self.store.transition(p["id"], {"pending", "partial"}, "applying", user)
         if why:
