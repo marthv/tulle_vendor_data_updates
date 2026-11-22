@@ -4991,6 +4991,81 @@
       "review_note": "2026-11-20: review aligned with EXP-2026-11-price-report-vs-pi-card (12-01) - read it there as period 3, not as its own call.",
       "outcome": "reverted",
       "decided_on": "2026-11-21"
+    },
+    {
+      "id": "EXP-2026-12-pdf-limit-popup-plans",
+      "name": "PDF limit: popup with the 3 plan cards and direct checkout vs today's redirect to /pricing",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "money",
+      "themes": [
+        "paywall"
+      ],
+      "what_changed": "When a free couple hits the PDF-view limit, odd user ids see a popup over the vendor page with the 1 Week / 4 Weeks / Forever cards and a buy button on each (same prices and checkout as /pricing); even user ids keep today's redirect to /pricing?src=pdf_limit.",
+      "surfaces": [
+        "weweb:vendor-page",
+        "weweb:other-vendors-page",
+        "weweb:component:48be8a6c PDF Limit Reached",
+        "weweb:membership"
+      ],
+      "audience": {
+        "segment": "free couples hitting the PDF-view limit",
+        "est_daily_exposed": 16,
+        "est_note": "QA verifier 2026-11-22: ~15-18 unique limit-hitters/day (Mixpanel pdf_limit_popup_triggered); the redirect entry's ~25/day counts new accounts with 3+ PDF views"
+      },
+      "hypothesis": "If we show PDF-limit couples the plan cards with buy buttons in a popup on the vendor page instead of redirecting them to /pricing, then the share who pay within 7 days moves from 6.8% to ~14% (the smallest change this volume can detect in 6 weeks), because they decide at the moment they want the price, with one step fewer.",
+      "tests": "Does a popup with plan cards convert PDF-limit hitters better than the redirect to /pricing?",
+      "goal": "Owner 2026-11-22: put the popup back with the plan cards inside it so couples can buy immediately (like Claude.ai and other apps), forcing a decision at the limit. Reviewed 11-22 (market scan, first principles, QA decision mode: survives with changes): no public test of plans-in-modal vs redirect for one-time passes; Tulle's own history is confounded (popup 5-12 upgrade clicks/day before 11-19, redirect clicks barely tracked; limit-hitter 2-day pay 7.5% (14/186) vs 7.1% (4/56), inconclusive). Owner's 3-card version is the treatment arm. Spec: tulletogether/.claude/specs/pdf_limit_popup_plans_spec_2026-11-22.md.",
+      "design": "a/b split",
+      "assignment": {
+        "type": "split",
+        "rule": "user_id_parity",
+        "control": "even user id: redirect to /pricing (pdfLimitRedirect)",
+        "treatment": "odd user id: popup with plan cards (pdfLimitPopupPlans)"
+      },
+      "metric": {
+        "key": "gate_hitters_paid",
+        "params": {
+          "gate": "pdf_limit",
+          "days": 7
+        },
+        "direction": "increase",
+        "baseline": 0.068,
+        "baseline_note": "EXP-2026-11-pdf-limit-soft-redirect measured 2026-11-21: 16 of 236 new accounts with 3+ PDF views paid within 7 days (tables 1+16, internal excluded)",
+        "mde_rel": 1.0,
+        "label": "PDF-limit hitters paying within 7 days, by arm"
+      },
+      "primary_metric": "PDF-limit hitters paying within 7 days, popup arm vs redirect arm (payment log table 16 by user id, internal excluded)",
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "guardrail": "purchases per day not down >25%",
+      "planned_days": 35,
+      "max_days": 42,
+      "start_date": null,
+      "review_date": "2027-01-05",
+      "reporting": "auto",
+      "rollback": "Set pdfLimitPopupPlans false (everyone back to the redirect) and publish",
+      "dates_note": "Launch only after the restored Pricing Intelligence card is published and read for 7 days (owner 11-22 plan), so the two changes don't confound. 5-week run: at ~16 limit-hitters/day, 2 weeks can only detect ~3x; report the result with its uncertainty. review_date is provisional (earliest launch ~12-01 after the PI card read, + 35 days); reset it at launch. Power: a +50% lift (6.8% -> 10%) needs ~85 days at ~8/day/arm, so the bar is ~2x; a smaller real effect will read as 'no clear difference'.",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Planned (owner asked for spec + entry). Not built. Depends on: PI card publish + 7-day read; WeWeb build per spec; acceptance checks in the spec."
+        }
+      ],
+      "decision": "",
+      "spec_gaps": [],
+      "bucket": "payment_funnel",
+      "links": [
+        "spec: tulletogether/.claude/specs/pdf_limit_popup_plans_spec_2026-11-22.md"
+      ]
     }
   ],
   "changes": [
