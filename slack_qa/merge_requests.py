@@ -142,6 +142,32 @@ def dupes_of(rows: list[dict], vendor_ids: set[str]) -> list[dict]:
     return [g for g in dedupe.find_groups(rows) if want & set(g["ids"])]
 
 
+def _num(v):
+    try:
+        f = float(v)
+        return f if f else None                    # 0 = unknown location in table 11
+    except (TypeError, ValueError):
+        return None
+
+
+def same_place(vendors: list[dict], km: float = 2.0) -> bool:
+    """Every pair is within `km` (when both have coordinates) or, failing coordinates, in the same city."""
+    import math
+    for i, a in enumerate(vendors):
+        for b in vendors[i + 1:]:
+            la, oa, lb, ob = _num(a.get("lat")), _num(a.get("lng")), _num(b.get("lat")), _num(b.get("lng"))
+            if None not in (la, oa, lb, ob):
+                d = 2 * 6371 * math.asin(math.sqrt(math.sin(math.radians(lb - la) / 2) ** 2 + math.cos(
+                    math.radians(la)) * math.cos(math.radians(lb)) * math.sin(math.radians(ob - oa) / 2) ** 2))
+                if d > km:
+                    return False
+                continue
+            ca, cb = dedupe.city(str(a.get("Address") or "")), dedupe.city(str(b.get("Address") or ""))
+            if not ca or ca != cb:
+                return False
+    return True
+
+
 def same_name_others(rows: list[dict], vendor: dict) -> list[dict]:
     n = dedupe.norm(vendor.get("Name"))
     return [r for r in rows if r is not vendor and r.get("Vendor_ID") != vendor.get("Vendor_ID")

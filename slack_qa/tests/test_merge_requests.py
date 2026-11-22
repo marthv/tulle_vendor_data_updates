@@ -256,7 +256,7 @@ def test_same_name_different_states_are_listed_not_proposed():
 
 def test_same_name_card_says_why_and_points_to_details():
     rows = [dict(r) for r in ROWS] + [V(16506, "V16506", "Gramercy Mansion", state="MD", addr="Other Rd, MD",
-                                        lat=39.0, lng=-77.0)]
+                                        lat=39.405, lng=-76.705)]
     b, slack, store = make_bot(rows=rows)
     b.xano = RowsXano()
     b.handle(mention("find duplicates of Gramercy Mansion"))
@@ -296,3 +296,53 @@ def test_on_demand_scan_checks_everything_and_never_goes_silent(monkeypatch, q, 
     b.handle(mention(q, user="UKATE"))
     assert seen["mode"] == mode
     assert "No new duplicate" in slack.of("chat.postMessage")[-1]["text"]
+
+
+def test_chain_in_one_state_far_apart_is_listed_not_proposed():
+    rows = [dict(r) for r in ROWS] + [
+        V(40, "V40", "Hilton Garden Inn", state="TX", addr="1 A St, Austin, TX", lat=30.27, lng=-97.74),
+        V(41, "V41", "Hilton Garden Inn", state="TX", addr="2 B St, Dallas, TX", lat=32.78, lng=-96.80),
+        V(42, "V42", "Hilton Garden Inn", state="TX", addr="3 C St, Houston, TX", lat=29.76, lng=-95.37)]
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    assert b.handle(mention("find duplicates of Hilton Garden Inn")) == "merge:dupes-none"
+    assert store.all() == [] and "(V41)" in slack.of("chat.postMessage")[-1]["text"]
+
+
+def test_loose_name_match_never_becomes_a_group():
+    rows = [dict(r) for r in ROWS] + [
+        V(40, "V40", "Hilton Garden Inn", state="TX", addr="1 A St, Austin, TX", lat=30.27, lng=-97.74),
+        V(41, "V41", "Hilton Garden Inn", state="TX", addr="1 A St, Austin, TX", lat=30.27, lng=-97.74)]
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    out = b.handle(mention("find duplicates of Hilton"))        # nobody named "Hilton Garden Inn"
+    assert out == "merge:dupes-ambiguous" and store.all() == []
+
+
+def test_same_place_rules():
+    a = V(1, "V1", "X", lat=39.40, lng=-76.70)
+    assert mr.same_place([a, V(2, "V2", "X", lat=39.405, lng=-76.705)])
+    assert not mr.same_place([a, V(3, "V3", "X", lat=39.0, lng=-77.0)])
+    assert mr.same_place([V(4, "V4", "X", lat=0, lng=0, addr="1 A St, Reno, NV"),
+                          V(5, "V5", "X", lat=0, lng=0, addr="9 B St, Reno, NV")])
+
+
+def test_get_bot_builds_exactly_one_bot_under_concurrency(monkeypatch):
+    import sys
+    import threading
+    import types
+    import app as appmod
+    built = []
+
+    class SlowBot:
+        def __init__(self):
+            import time
+            time.sleep(0.05)
+            built.append(self)
+    monkeypatch.setitem(sys.modules, "bot", types.SimpleNamespace(Bot=SlowBot))
+    monkeypatch.setattr(appmod, "_bot", None)
+    got = []
+    ts = [threading.Thread(target=lambda: got.append(appmod.get_bot())) for _ in range(8)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert len(built) == 1 and all(g is built[0] for g in got)

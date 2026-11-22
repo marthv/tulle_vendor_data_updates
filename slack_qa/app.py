@@ -36,8 +36,10 @@ async def lifespan(_app):
     global _scheduler
     if os.environ.get("QA_WARM_ON_START", "1").strip().lower() not in ("0", "false", "no", "off"):
         # owner 2026-11-22: after a restart the first request waited ~3 min while the 20k-vendor list loaded.
-        # Load it in the background now so nobody waits.
-        threading.Thread(target=lambda: get_bot().warm(), name="warm", daemon=True).start()
+        # Load it in the background so nobody waits. The bot is built HERE, on the main thread, before the warm
+        # thread or the scheduler can race to build a second one (QA 11-22 blocker: two Bots = two proposal stores).
+        bot = get_bot()
+        threading.Thread(target=bot.warm, name="warm", daemon=True).start()
     if config.scheduler_enabled():
         from scheduler import Scheduler
         _scheduler = Scheduler(get_bot())
@@ -51,11 +53,18 @@ async def lifespan(_app):
 app = FastAPI(title="Tulle Bot Q&A", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
 
+_bot_lock = threading.Lock()
+
+
 def get_bot():
+    """One Bot per process (it owns the proposal store). Double-checked lock: request threads, the scheduler and the
+    warm thread may all ask at once."""
     global _bot
     if _bot is None:
-        from bot import Bot
-        _bot = Bot()
+        with _bot_lock:
+            if _bot is None:
+                from bot import Bot
+                _bot = Bot()
     return _bot
 
 

@@ -450,7 +450,9 @@ class Bot:
         vendor, hits = resolve(target)
         if vendor is not None:
             seeds = [vendor]
-        elif hits and 2 <= len(hits) <= mr.MAX_VENDORS and len({pl._exact(h.get("Name")) for h in hits}) == 1:
+        elif (hits and 2 <= len(hits) <= mr.MAX_VENDORS
+              and all(pl._exact(h.get("Name")) == pl._exact(target) for h in hits)):
+            # exact name only: the loose "every word appears" fallback must never pick a group nobody named (QA 11-22)
             # owner 2026-11-22: "find duplicates of Gramercy Mansion" found two listings with exactly that name and
             # asked "which one?" - those listings ARE the question. Check them as a group.
             seeds = hits
@@ -476,11 +478,15 @@ class Bot:
             states = {dedupe.norm(s.get("State")) for s in seeds}
             cats = {str(s.get("Category") or "").strip().lower() for s in seeds}
             key = dedupe.group_key(sorted(vids))
-            if len(states) == 1 and len(cats) == 1 and key not in skip:
+            # and in the same PLACE (same city, or within 2 km): a chain like "Hilton Garden Inn" x3 in one state
+            # is three hotels, not one (QA 11-22)
+            if len(states) == 1 and len(cats) == 1 and key not in skip and mr.same_place(seeds):
                 fresh = [{"ids": sorted((s["id"] for s in seeds), key=int), "rules": []}]
-                why_text = (f"Same name, both in {esc_text(seeds[0].get('State')) or 'the same state'}. The scan's "
-                            "stricter checks (same Google listing or address) didn't link them, so compare the "
-                            "addresses under Details before approving.")
+                where = esc_text(seeds[0].get("State")) or "the same state"
+                both = "both" if len(seeds) == 2 else f"all {len(seeds)}"
+                why_text = (f"Same name, {both} in the same place in {where}. The scan's stricter checks (same Google "
+                            "listing or address) didn't link them, so compare the addresses under Details before "
+                            "approving.")
         others = [o for o in mr.same_name_others(rows, vendor) if str(o.get("Vendor_ID")) not in vids]
         if len(seeds) > 1:                     # the same-name listings themselves, when they weren't proposed
             others = [s for s in seeds] + others
