@@ -273,8 +273,9 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
     registry_fallback  parsed experiment_log.json (dict); read from disk when None
     theme_mode         "light" | "sepia" | "dark" (the dash's theme.py mode); read from
                        st.session_state["tulle_theme_mode"] when None
-    height             iframe height in px; the page scrolls inside it and the detail
-                       drawer is pinned to the frame, so a fixed height is deliberate
+    height             starting iframe height in px; once loaded the page asks for a frame as
+                       tall as its content (Streamlit component iframes don't scroll), and
+                       places the detail drawer over the part of the frame that is on screen
     history_by_id      optional {exp_id: [history rows]} for the drawer trend chart (the
                        engine snapshot does not inline history; see attach_history)
     degraded_reason    why there is no engine snapshot (e.g. "engine not configured"); shown in
@@ -329,9 +330,9 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
         st.error(f"Experiments tab could not render: {type(exc).__name__}: {exc}")
         return
     h = int(height or DEFAULT_HEIGHT)
-    # st.iframe (Streamlit >= 1.52-ish) replaces the deprecated components.v1.html. A fixed
-    # height is used on purpose: the page scrolls inside the frame, so the slide-over drawer
-    # stays pinned to the visible frame instead of opening off-screen in a very tall iframe.
+    # st.iframe (Streamlit >= 1.52-ish) replaces the deprecated components.v1.html. This is
+    # only the starting height: the page resizes its (same-origin) frame to the content
+    # height and places the drawer over the visible part of the frame itself.
     if hasattr(st, "iframe"):
         try:
             st.iframe(html, height=h)

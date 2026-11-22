@@ -163,7 +163,7 @@ def test_card_per_experiment_grid_kept_under_details():
 def test_simple_view_running_timeline_decided():
     # owner 2026-11-21: "very, very simple to read" for a non-technical reader
     html = _page()
-    assert "runningNow() + timeline() + decidedList() + detailsBox()" in html
+    assert re.search(r"runningNow\(\)[^;]*timeline\(\)[^;]*decidedList\(\)[^;]*detailsBox\(\)", html)
     for s in ("Running now", "What we changed", "Decide on", "Chance it’s better", "So far:",
               "No starting point recorded – can’t judge this yet", "Measuring"):
         assert s in html, s
@@ -195,3 +195,28 @@ def test_planner_scorecard_strip_and_measuring():
         snap = json.load(f)
     keys = [t["key"] for t in snap["scorecards"]["planner"]]
     assert keys == ["free_pdf_open", "forever_return", "forever_second_question"]
+
+
+def test_frame_is_content_height_not_one_screen():
+    # owner 2026-11-22: "I can't scroll any further". Streamlit component iframes are
+    # scrolling="no", so asking for a one-screen frame cut the page off below the fold.
+    html = _page()
+    assert "innerHeight - 72" not in html
+    fit = html[html.index("function fitFrame()"):]
+    fit = fit[:fit.index(chr(10) + "}" + chr(10))]
+    assert "var h = contentHeight();" in fit
+    assert 'stSend("streamlit:setFrameHeight", {height: h})' in fit
+    ch = html[html.index("function contentHeight()"):].split(chr(10), 1)[0]
+    assert "app.getBoundingClientRect()" in ch and "innerHeight" not in ch
+    assert "new ResizeObserver(" in html and "KEEP.ro.observe(app)" in html
+    # the drawer goes over the visible part of the tall frame
+    assert "placeDrawer(!keep);" in html and "function placeDrawer(scrollIfNeeded)" in html
+
+
+def test_jump_links_and_back_to_top():
+    html = _page()
+    assert "renderHeader() + jumpRow() + runningNow()" in html
+    for target in ("nw-run-h", "nw-tl-h", "nw-dec-h", "nwdet"):
+        assert '"' + target + '"' in html.split("function jumpRow()", 1)[1].split(chr(10) + "}", 1)[0], target
+        assert 'id="' + target + '"' in html, target
+    assert html.count("toTopLink()") >= 5 and "data-totop" in html

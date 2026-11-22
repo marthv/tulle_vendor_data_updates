@@ -269,7 +269,7 @@ table.t td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
 .dw-h .m{font-size:12px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:4px 10px}
 .x{appearance:none;border:1px solid var(--line);background:var(--surface);width:32px;height:32px;border-radius:var(--r8);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-3);flex:none}
 .x:hover{color:var(--ink);border-color:var(--line-2)}
-.dw-b{overflow-y:auto;padding:20px 24px 48px;flex:1}
+.dw-b{overflow-y:auto;overscroll-behavior:contain;padding:20px 24px 48px;flex:1}
 .verdict{border-radius:var(--r12);padding:14px 16px;border:1px solid var(--line);background:var(--surface);margin-bottom:22px}
 .verdict.win{background:var(--win-tint);border-color:var(--win-line)}
 .verdict.warn{background:var(--warn-tint);border-color:var(--warn-line)}
@@ -605,6 +605,13 @@ details.seven>summary:hover{color:var(--ink)}
 .hdr .meta{font-size:14px}
 .banner{font-size:14px}
 .nw-sec{margin:28px 0 36px}
+/* jump links + back to top (owner 2026-11-22: "let me poke around and jump to different areas") */
+.jump{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin:14px 0 4px;font-size:14px;color:var(--ink-3)}
+.jump .linkbtn{font-size:14px}
+.jump .sep{color:var(--ink-4)}
+.totop{margin:-24px 0 28px;text-align:right}
+.nw-det+.totop{margin:12px 0 0}
+.nw-sec,.nw-det,.wrap>section{scroll-margin-top:16px}
 .nw-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px}
 .nw-h h2{font-family:var(--font-d);font-weight:600;font-size:24px;line-height:1.2;margin:0;color:var(--ink)}
 .nw-h span{font-size:14px;color:var(--ink-3)}
@@ -745,7 +752,7 @@ window.addEventListener("message", function(ev){
   var a = d.args || {};
   CTX.canWrite = !!a.can_write; CTX.writeNote = a.write_note || ""; CTX.results = a.note_results || {};
   var sig = String(a.sig || "") + "|" + JSON.stringify(CTX.results) + "|" + CTX.canWrite;
-  if (sig === lastSig) return;
+  if (sig === lastSig) { if (CUR.fitFrame) CUR.fitFrame(); return; }
   lastSig = sig;
   boot(a.snapshot || {}, a.theme || null);
 });
@@ -1561,12 +1568,20 @@ function detailsBox(){
 }
 function render(){
   if (ST.view === "changes" || ST.view === "rules") {
-    app.innerHTML = renderHeader() + '<div class="back"><button class="linkbtn" data-view="grid">← All experiments</button></div>' + (ST.view === "changes" ? renderChanges() : renderRules());
+    app.innerHTML = renderHeader() + '<div class="back"><button class="linkbtn" data-view="grid">← All experiments</button></div>' + (ST.view === "changes" ? renderChanges() : renderRules()) + toTopLink();
   } else {
-    app.innerHTML = renderHeader() + runningNow() + timeline() + decidedList() + detailsBox();
+    app.innerHTML = renderHeader() + jumpRow() + runningNow() + toTopLink() + timeline() + toTopLink() + decidedList() + toTopLink() + detailsBox() + toTopLink();
   }
   wire();
+  if (CUR.fitFrame) CUR.fitFrame();
 }
+/* one plain row of links to each part of the page (owner 2026-11-22) */
+function jumpRow(){
+  var go = [["nw-run-h", "Running now"], ["nw-tl-h", "Timeline"], ["nw-dec-h", "Decided"], ["nwdet", "Details for the team"]];
+  return '<nav class="jump" aria-label="Jump to">Jump to: ' + go.map(function(g){ return '<button class="linkbtn" data-jump="' + g[0] + '">' + g[1] + '</button>'; }).join('<span class="sep" aria-hidden="true">·</span>') +
+    '<span class="sep" aria-hidden="true">|</span><button class="linkbtn" data-view="changes">Shipped changes</button><span class="sep" aria-hidden="true">·</span><button class="linkbtn" data-view="rules">How calls are made</button></nav>';
+}
+function toTopLink(){ return '<div class="totop"><button class="linkbtn" data-totop>Back to top ↑</button></div>'; }
 function rerenderResults(){
   var r = document.getElementById("results"); if (!r) return render();
   r.innerHTML = resultsHTML();
@@ -1578,9 +1593,11 @@ function wireResults(root){
   bindRows(root);
 }
 function wire(){
-  app.querySelectorAll("[data-view]").forEach(function(b){ b.addEventListener("click", function(){ ST.view = b.getAttribute("data-view"); render(); window.scrollTo(0, 0); }); });
+  app.querySelectorAll("[data-view]").forEach(function(b){ b.addEventListener("click", function(){ ST.view = b.getAttribute("data-view"); render(); toTop(false); }); });
+  app.querySelectorAll("[data-jump]").forEach(function(b){ b.addEventListener("click", function(){ var t = document.getElementById(b.getAttribute("data-jump")); if (!t) return; if (t.tagName === "DETAILS") { t.open = true; KEEP.detOpen = true; } else t = t.closest("section") || t; scrollToEl(t); }); });
+  app.querySelectorAll("[data-totop]").forEach(function(b){ b.addEventListener("click", function(){ toTop(true); }); });
   app.querySelectorAll("[data-copy-backlog]").forEach(function(b){ b.addEventListener("click", function(){ copyText(backlogText(), b, document.getElementById("backlog-box")); var d = b.closest("details"); if (d) setTimeout(function(){ d.open = false; }, 900); }); });
-  app.querySelectorAll("[data-status-go]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status-go"); ST.view = "grid"; KEEP.detOpen = true; saveST(); render(); var dt = document.getElementById("nwdet"); if (dt) dt.scrollIntoView({block: "start"}); }); });
+  app.querySelectorAll("[data-status-go]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status-go"); ST.view = "grid"; KEEP.detOpen = true; saveST(); render(); var dt = document.getElementById("nwdet"); if (dt) scrollToEl(dt); }); });
   app.querySelectorAll("[data-status]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status"); saveST(); app.querySelectorAll("[data-status]").forEach(function(x){ x.setAttribute("aria-pressed", x === b); }); rerenderResults(); }); });
   app.querySelectorAll("[data-rot]").forEach(function(b){ b.addEventListener("click", function(){ ST.rot = !ST.rot; saveST(); b.setAttribute("aria-pressed", ST.rot); rerenderResults(); }); });
   var xq = document.getElementById("xq"); if (xq) xq.addEventListener("input", function(){ ST.q = xq.value; rerenderResults(); });
@@ -1889,7 +1906,7 @@ function openDrawer(id, opener, keep){
   if (keep) { drawer.style.transition = "none"; }
   drawer.classList.add("on"); scrim.classList.add("on");
   if (keep) { void drawer.offsetWidth; drawer.style.transition = ""; }
-  if (!keep) revealFrame();
+  placeDrawer(!keep);
   drawer.setAttribute("aria-hidden", "false"); app.setAttribute("aria-hidden", "true");
   try { app.inert = true; } catch(err) {}
   document.getElementById("dw-close").addEventListener("click", closeDrawer);
@@ -1924,32 +1941,74 @@ CUR.onKey = function(ev){
   }
 };
 
-/* ── Streamlit embedding. The dash renders this page in a same-origin srcdoc iframe with a fixed
-   height. Taller than the window, the page scrolls twice and the drawer (pinned to the frame)
-   opens with its header and close button above the viewport, under the dash's sticky tab bar.
-   So: size the frame to one screen, and scroll the frame into view when the drawer opens.
-   Every access is guarded; standalone (preview) or cross-origin it is a no-op. */
+/* ── Streamlit embedding. Streamlit draws component iframes with scrolling="no" (checked in the
+   1.60 frontend, ComponentInstance: scrolling:`no`), so nothing scrolls INSIDE the frame: a
+   frame one screen tall cut the page off below the first screen (owner 2026-11-22: "I can't
+   scroll any further"). So: the frame is as tall as the content and the dash page scrolls.
+   The drawer is fixed to the frame, so it is placed over the part of the frame on screen (and
+   follows the dash page if it scrolls). Every host access is guarded; standalone (preview) or
+   cross-origin it is a no-op and the page scrolls on its own. */
+var HEAD = 60;  // Streamlit's fixed header at the top of the dash page
 function hostFrame(){ try { var fe = window.frameElement; return fe && fe.ownerDocument && fe.ownerDocument.defaultView ? fe : null; } catch (err) { return null; } }
+function contentHeight(){ var r = app.getBoundingClientRect(); return Math.max(620, Math.ceil(r.bottom + (window.scrollY || 0))); }
 function fitFrame(){
-  var fe = hostFrame();
-  if (CTX.inSt) {
-    // component mode: Streamlit owns the iframe height; ask for one screen
-    var hh = 1100; try { if (fe) hh = Math.max(620, Math.round(fe.ownerDocument.defaultView.innerHeight - 72)); } catch (err) {}
-    stSend("streamlit:setFrameHeight", {height: hh});
-    try { if (fe) fe.style.scrollMarginTop = "64px"; } catch (err) {}
-    return;
-  }
-  if (!fe) return;
-  try { var h = Math.max(620, Math.round(fe.ownerDocument.defaultView.innerHeight - 72)); if (Math.abs(fe.offsetHeight - h) > 4) fe.style.height = h + "px"; fe.style.scrollMarginTop = "64px"; } catch (err) {}
-}
-function revealFrame(){
+  var h = contentHeight();
+  if (CTX.inSt) { stSend("streamlit:setFrameHeight", {height: h}); return; }
   var fe = hostFrame(); if (!fe) return;
-  fitFrame();  // a dash rerun can reset the frame height; re-fit before measuring
-  try { var r = fe.getBoundingClientRect(), pv = fe.ownerDocument.defaultView; if (r.top < 56 || r.bottom > pv.innerHeight + 8) fe.scrollIntoView({block: "start", behavior: "smooth"}); } catch (err) {}
+  try { if (Math.abs(fe.offsetHeight - h) > 2) fe.style.height = h + "px"; } catch (err) {}
 }
-fitFrame();
-if (!KEEP.resizeHooked) { try { var hf = hostFrame(); if (hf) { hf.ownerDocument.defaultView.addEventListener("resize", function(){ if (CUR.fitFrame) CUR.fitFrame(); }); KEEP.resizeHooked = true; } } catch (err) {} }
+function hostScroller(fe){
+  var d = fe.ownerDocument, w = d.defaultView, n = fe.parentElement;
+  while (n && n !== d.body && n !== d.documentElement) {
+    var oy = w.getComputedStyle(n).overflowY;
+    if ((oy === "auto" || oy === "scroll") && n.scrollHeight > n.clientHeight + 1) return n;
+    n = n.parentElement;
+  }
+  return d.scrollingElement || d.documentElement;
+}
+function scrollHostBy(dy, smooth){
+  var fe = hostFrame(); if (!fe || Math.abs(dy) < 1) return !!fe;
+  try { var sc = hostScroller(fe); if (sc.scrollBy) sc.scrollBy({top: dy, behavior: smooth ? "smooth" : "auto"}); else sc.scrollTop += dy; return true; } catch (err) { return false; }
+}
+function scrollToEl(el){
+  if (!el) return;
+  var fe = hostFrame();
+  if (fe) { try { if (scrollHostBy(el.getBoundingClientRect().top + fe.getBoundingClientRect().top - HEAD - 12, true)) return; } catch (err) {} }
+  el.scrollIntoView({block: "start", behavior: "smooth"});
+}
+function toTop(smooth){
+  var fe = hostFrame();
+  if (fe) { try { var r = fe.getBoundingClientRect(); if (r.top < HEAD) scrollHostBy(r.top - HEAD - 8, smooth); return; } catch (err) {} }
+  window.scrollTo({top: 0, behavior: smooth ? "smooth" : "auto"});
+}
+/* put the drawer over the part of the frame that is on screen, header and close button visible */
+function placeDrawer(scrollIfNeeded){
+  var fe = hostFrame();
+  if (!fe) { drawer.style.top = drawer.style.bottom = drawer.style.height = ""; return; }
+  try {
+    var r = fe.getBoundingClientRect(), vh = fe.ownerDocument.defaultView.innerHeight, fh = window.innerHeight;
+    var h = Math.min(fh, Math.max(320, vh - HEAD));
+    var top = Math.min(Math.max(0, HEAD - r.top), Math.max(0, fh - h));
+    drawer.style.top = Math.round(top) + "px"; drawer.style.bottom = "auto"; drawer.style.height = Math.round(h) + "px";
+    if (scrollIfNeeded) { var off = r.top + top; if (off < HEAD - 2 || off + h > vh + 2) scrollHostBy(off - HEAD, false); }
+  } catch (err) {}
+}
 CUR.fitFrame = fitFrame;
+CUR.onHostMove = function(){ if (drawer.classList.contains("on")) placeDrawer(false); };
+if (!KEEP.hostHooked) {
+  try {
+    var hf = hostFrame();
+    if (hf) {
+      var queued = false, onMove = function(){ if (queued) return; queued = true; requestAnimationFrame(function(){ queued = false; if (CUR.onHostMove) CUR.onHostMove(); }); };
+      hf.ownerDocument.addEventListener("scroll", onMove, true);   // capture: the dash scrolls an inner container, not the window
+      hf.ownerDocument.defaultView.addEventListener("resize", function(){ if (CUR.fitFrame) CUR.fitFrame(); onMove(); });
+      KEEP.hostHooked = true;
+    }
+  } catch (err) {}
+}
+/* re-fit whenever the content changes height (details opened, notes added, filters) */
+try { if (KEEP.ro) KEEP.ro.disconnect(); } catch (err) {}
+try { KEEP.ro = new ResizeObserver(function(){ clearTimeout(KEEP.roT); KEEP.roT = setTimeout(function(){ if (CUR.fitFrame) CUR.fitFrame(); }, 60); }); KEEP.ro.observe(app); } catch (err) {}
 
 var firstBoot = !KEEP.booted; KEEP.booted = true;
 render();
