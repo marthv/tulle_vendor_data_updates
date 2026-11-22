@@ -24,6 +24,7 @@ def _env(monkeypatch):
     def boom(*a, **k):
         raise AssertionError("network write attempted in a test")
     monkeypatch.setattr(requests, "post", boom)
+    monkeypatch.setenv("LOOKUP_USER_IDS", "UKATE,U05UJMCHUV6")      # mention() posts as UKATE
 
 
 class TableXano:
@@ -91,7 +92,7 @@ def test_no_pdfs_and_unknown_vendor():
     b, slack, store = bot_with_pdfs(rows=[])
     assert b.handle(mention("pdfs for V5")) == "pdfs:0"
     assert "no PDFs on file" in slack.of("chat.postMessage")[-1]["text"]
-    assert b.handle(mention("pdfs for Nowhere Barn")) == "pdfs:not-found"
+    assert not b.handle(mention("pdfs for Nowhere Barn")).startswith("pdfs:")   # unknown NAME -> normal Q&A path
 
 
 def test_index_is_read_once_and_reused():
@@ -113,8 +114,36 @@ def test_markup_in_labels_is_escaped():
     b, slack, store = bot_with_pdfs(rows=rows)
     b.handle(mention("pdfs for V5"))
     txt = slack.of("chat.postMessage")[-1]["text"]
-    assert "<!channel>" not in txt and "javascript:" not in txt.split("&lt;!channel&gt;")[0] + "x"[:0]
-    assert "<javascript" not in txt
+    assert "<!channel>" not in txt and "javascript" not in txt
+
+
+def test_names_that_dont_resolve_fall_through_to_normal_answers(monkeypatch):
+    b, slack, store = bot_with_pdfs()
+    for q in ["list the pdfs for venues in Ohio", "what pdfs from last month", "which pdfs for all venues"]:
+        out = b.handle(mention(q))
+        assert not out.startswith("pdfs:"), (q, out)       # handed on (Q&A / budget / reports), not a PDF reply
+    assert b.xano.calls == 0
+    assert not any("can't find a vendor" in p["text"] for p in slack.of("chat.postMessage"))
+
+
+def test_unknown_id_still_says_so_and_trailing_thanks_is_ignored():
+    b, slack, store = bot_with_pdfs()
+    assert b.handle(mention("pdfs for V999")) == "pdfs:not-found"
+    assert b.handle(mention("get me the pdfs for V5, thanks")) == "pdfs:2"
+
+
+def test_pdf_links_are_team_only(monkeypatch):
+    monkeypatch.setenv("LOOKUP_USER_IDS", "U05UJMCHUV6")
+    b, slack, store = bot_with_pdfs()
+    assert b.handle(mention("pdfs for V5", user="UGUEST")) == "pdfs:denied"
+    assert slack.of("chat.postMessage") == [] and "team only" in slack.of("chat.postEphemeral")[-1]["text"]
+    assert b.xano.calls == 0
+
+
+def test_index_keeps_only_shown_fields():
+    x = TableXano([dict(PDFS[0], confidentiality_evidence="secret stuff", last_error="boom")])
+    rows, _, _ = pl.PdfIndex(x).get("V5")
+    assert set(rows[0]) == set(pl.KEEP)
 
 
 def test_help_mentions_pdfs():

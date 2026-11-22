@@ -43,9 +43,18 @@ def parse(question: str) -> str | None:
     if not m:
         return None
     t = re.sub(r"^(?:the\s+)?(?:venue|vendor)\s+", "", m.group("t").strip(), flags=re.I).strip(" \"'“”")
+    t = re.split(r"\s*,\s*|\s+(?:thanks|thank you|pls|please)\b", t, maxsplit=1, flags=re.I)[0].strip()
     if not t or len(t.split()) > 8 or SENTENCE.search(t):
         return None
     return t
+
+
+def is_id(target: str) -> bool:
+    return bool(VID.match(target or ""))
+
+
+KEEP = ("PDF_ID", "Vendor_ID", "Current_Assignment", "PDF_Link", "Show_PDF", "Year_of_Pricing", "extraction_status",
+        "confidentiality_flag")
 
 
 def _exact(n: str) -> str:
@@ -73,8 +82,9 @@ class PdfIndex:
             if not self.fresh():
                 rows, truncated = self.xano.rows(10)
                 idx: dict[str, list[dict]] = {}
-                for r in rows:
-                    idx.setdefault(str(r.get("Vendor_ID") or "").strip().upper(), []).append(r)
+                for r in rows:                   # only the fields the list shows (QA 11-22: memory)
+                    idx.setdefault(str(r.get("Vendor_ID") or "").strip().upper(), []).append(
+                        {k: r.get(k) for k in KEEP})
                 self._by_vendor, self._at, self._truncated = idx, time.time(), truncated
             return list(self._by_vendor.get(vendor_id.upper(), [])), self._at, self._truncated
 
@@ -101,7 +111,7 @@ def _sort_key(r: dict):
 
 
 def render(vendor: dict, rows: list[dict], built_at: float, truncated: bool) -> str:
-    vid, name = vendor.get("Vendor_ID"), esc(vendor.get("Name") or vendor.get("Vendor_ID"))
+    vid, name = esc(vendor.get("Vendor_ID")), esc(vendor.get("Name") or vendor.get("Vendor_ID"))
     age_min = max(0, int((time.time() - built_at) // 60))
     age = "just now" if age_min < 2 else f"{age_min} min ago" if age_min < 120 else f"{age_min // 60} h ago"
     note = f"_PDF list read {age}; anything added since may not show yet._"
@@ -118,7 +128,8 @@ def render(vendor: dict, rows: list[dict], built_at: float, truncated: bool) -> 
     for r in rows[:MAX_LINES]:
         label = esc(r.get("Current_Assignment") or r.get("PDF_ID") or "PDF")
         link = str(r.get("PDF_Link") or "").strip()
-        title = f"<{link}|{label}>" if link.startswith("http") and "|" not in link and ">" not in link else label
+        ok = re.fullmatch(r"https?://[^\s<>|]+", link)
+        title = f"<{link}|{label}>" if ok else label
         bits = [b for b in (esc(r.get("Year_of_Pricing") or ""), esc(r.get("PDF_ID") or "")) if b]
         status = r.get("extraction_status") or "not extracted"
         bits.append("prices extracted" if status == "extracted" else f"prices: {esc(status)}")

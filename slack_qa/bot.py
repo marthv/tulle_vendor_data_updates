@@ -273,11 +273,18 @@ class Bot:
         def say(text):
             self.slack.post_message(channel, "_Tulle Bot (automated, read-only):_ " + text, thread_ts=reply_ts,
                                     sanitize=True)       # email-only filter: keeps Drive links intact
+        import customer_lookup as cl
+        user = ev.get("user", "")
+        if not cl.allowed(user):                 # paid PDF links: team list only (QA 11-22), same list as lookup
+            self.slack.post_ephemeral(channel, user, "PDF links are for the Tulle team only.",
+                                      thread_ts=ev.get("thread_ts"))
+            return "pdfs:denied"
+        if not self.limiter.allow(channel):
+            say("Too many requests in this channel just now. Try again in a minute.")
+            return "pdfs:rate-limited"
         if not getattr(self.xano, "enabled", False):
             say("I can't read the PDF list from here right now.")
             return "pdfs:no-xano"
-        if not self.limiter.allow(channel):
-            return "pdfs:rate-limited"
         try:
             vendor, hits = pl.resolve_vendor(self.feedback.directory, target)
         except Exception:  # noqa: BLE001
@@ -285,6 +292,8 @@ class Bot:
             say("I couldn't read the vendor list just now. Try again in a few minutes.")
             return "pdfs:lookup-error"
         if vendor is None:
+            if not hits and not pl.is_id(target):
+                return None                     # "pdfs for venues in Ohio" is a question, not a vendor (QA 11-22)
             say(pl.candidates_text(target, hits))
             return "pdfs:ambiguous" if hits else "pdfs:not-found"
         if self._pdf_index is None:
