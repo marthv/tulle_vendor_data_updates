@@ -74,6 +74,13 @@ def allowed(user: str) -> bool:
     return bool(user) and user in ids
 
 
+def public() -> bool:
+    """LOOKUP_REPLY=channel (owner 2026-11-22: "anyone can see the customer data"): the answer is posted in a thread
+    under the question, visible to the channel. Anything else (default) = ephemeral to the asker only. Who may ASK
+    is still LOOKUP_USER_IDS either way; emails stay masked; denials and usage hints stay private."""
+    return os.environ.get("LOOKUP_REPLY", "private").strip().lower() in ("channel", "public", "thread")
+
+
 def secret() -> str:
     return os.environ.get("CUSTOMER_LOOKUP_SECRET", "").strip()
 
@@ -106,9 +113,12 @@ def _n(v, default="?") -> str:
     return esc(v)
 
 
-def render(snap: dict) -> str:
+def render(snap: dict, shared: bool = False) -> str:
     try:
-        return _render(snap)
+        text = _render(snap)
+        if shared:
+            text = text.replace("_Only you can see this. Read-only:", "_Read-only:")
+        return text
     except Exception:  # noqa: BLE001 - an unexpected field type must still give the asker an answer
         log.warning("lookup render failed on an unexpected field type")
         return "I got an answer from Xano but couldn't format it. Nothing was changed."

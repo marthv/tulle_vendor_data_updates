@@ -30,7 +30,7 @@ HELP = ("I'm Tulle Bot (automated, read-only). I answer questions about recent c
         "`@Tulle Bot hide V1234 venue asked to be removed` / `@Tulle Bot unhide V1234`\n"
         "`@Tulle Bot change V1234 website to example.com` (also name, description, contact, seated capacity, type)\n"
         "`@Tulle Bot what's waiting for approval?` / `@Tulle Bot what was applied this week?`\n"
-        "*Customer lookup* (lookup list only; only you see the answer): `@Tulle Bot look up user 34819` or "
+        "*Customer lookup* (team only; read-only): `@Tulle Bot look up user 34819` or "
         "`@Tulle Bot what does user 34819 see?`")
 IGNORED_SUBTYPES_OK = {None, "thread_broadcast", "file_share"}
 QUESTION_START = re.compile(
@@ -246,8 +246,12 @@ class Bot:
                                               else str(res.get("error"))[:200]))
             log.info("lookup by %s failed (%s)", user, "unknown" if res.get("unknown") else "refused")
             return "lookup:failed"
-        tell(cl.render(res))
-        log.info("lookup by %s ok", user)          # never the email or the answer
+        if cl.public():                            # owner 2026-11-22: the team can all see the answer
+            self.slack.post_message(channel, cl.render(res, shared=True), thread_ts=ev.get("thread_ts") or ev.get("ts"),
+                                    sanitize=True)
+        else:
+            tell(cl.render(res))
+        log.info("lookup by %s ok (%s)", user, "channel" if cl.public() else "private")   # never the email/answer
         return "lookup:ok"
 
     # --- vendor actions in plain words (took over from the retired Tulle Ops app, 2026-11-21) -------------------

@@ -85,6 +85,29 @@ def test_lookup_is_ephemeral_readonly_and_not_logged(monkeypatch, caplog):
     assert "jane@example.com" not in caplog.text and "Jane Doe" not in caplog.text
 
 
+def test_channel_mode_posts_in_thread_for_everyone_with_email_masked(monkeypatch):
+    monkeypatch.setenv("CUSTOMER_LOOKUP_SECRET", "k")
+    monkeypatch.setenv("LOOKUP_USER_IDS", OWNER)
+    monkeypatch.setenv("LOOKUP_REPLY", "channel")
+
+    class R:
+        status_code = 200
+
+        def json(self):
+            return SNAP
+    monkeypatch.setattr(requests, "post", lambda *a, **k: R())
+    b, slack, store = make_bot()
+    p = mention("look up user 34819", user=OWNER)
+    assert b.handle(p) == "lookup:ok"
+    [post] = slack.of("chat.postMessage")
+    assert post["thread_ts"] == p["event"]["ts"] and "Timed*, 3 days left" in post["text"]
+    assert "Only you can see this" not in post["text"] and "jane@example.com" not in post["text"]
+    assert "j***@example.com" in post["text"] and slack.of("chat.postEphemeral") == []
+    # who may ask is unchanged: a non-listed user is still refused, privately
+    assert b.handle(mention("look up user 34819", user=KATE)) == "lookup:denied"
+    assert len(slack.of("chat.postMessage")) == 1
+
+
 def test_user_id_target_sends_only_user_id(monkeypatch):
     monkeypatch.setenv("CUSTOMER_LOOKUP_SECRET", "k")
     seen = {}
