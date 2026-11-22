@@ -340,7 +340,18 @@ class Bot:
 
         def say(text):
             self.post(channel, text, reply_ts, footer=False)
+        if req["kind"] == "merge_bad_into":
+            say("Use \"into\" once, at the end: `@Tulle Bot merge V1 and V2 into V3` keeps V3.")
+            return "merge:bad-into"
         if req["kind"] == "merge_incomplete":
+            # "merge V12" -> hint; "can you merge these?" / "merge the planner" -> not about a vendor: normal Q&A
+            t = req.get("target") or ""
+            try:
+                v, hits = pl.resolve_vendor(self.feedback.directory, t) if t else (None, [])
+            except Exception:  # noqa: BLE001
+                v, hits = None, []
+            if v is None and not hits and not pl.is_id(t):
+                return None
             say("Which two (or more) should I merge? e.g. `@Tulle Bot merge Rose Hall and Rose Hall Barn` or "
                 "`@Tulle Bot merge V13433 into V105` (\"into\" keeps the second one).")
             return "merge:incomplete"
@@ -358,17 +369,26 @@ class Bot:
         try:
             if req["kind"] == "dupes_of":
                 return self._dupes_of(req["target"], channel, reply_ts, say, resolve)
-            vendors, err = mr.split_targets(req["rest"], resolve)
+            vendors, err, looked_like_vendors = mr.split_targets(req["rest"], resolve)
             if err:
+                if not looked_like_vendors:     # "merge the planner and cost tools": not vendors -> normal Q&A
+                    return None
                 say(err)
                 return "merge:unresolved"
+            gone = [v for v in vendors if str(v.get("merged_into") or "").strip()]
+            if gone:                            # cached list can be a few hours old
+                say(f"{esc_text(gone[0].get('Name'))} ({gone[0].get('Vendor_ID')}) was already merged into "
+                    f"{gone[0].get('merged_into')}. Merge into that one instead.")
+                return "merge:already-merged"
             why_not = mr.check_group(vendors)
             if why_not:
                 say(why_not)
                 return "merge:refused"
             vids = [str(v.get("Vendor_ID")) for v in vendors]
             key = dedupe.group_key(vids)
-            prior = [p for p in self.store.all() if p.get("kind") == "merge" and p.get("key") == key]
+            # the plain key AND any 'asked again' keys (QA 11-22: otherwise every re-ask made another card)
+            prior = [p for p in self.store.all() if p.get("kind") == "merge"
+                     and (p.get("key") == key or str(p.get("key", "")).startswith(key + ":asked:"))]
             open_p = next((p for p in prior if p.get("status") in ("pending", "applying", "unknown", "partial")), None)
             if open_p:
                 say(f"There's already a card for these: {self._link(open_p)}.")
@@ -406,6 +426,8 @@ class Bot:
         from interactions import post_proposal
         vendor, hits = resolve(target)
         if vendor is None:
+            if not hits and not pl.is_id(target):   # "any duplicates for this week?" -> normal Q&A (QA 11-22)
+                return None
             say(pl.candidates_text(target, hits))
             return "merge:dupes-ambiguous" if hits else "merge:dupes-not-found"
         rows = self.feedback.directory.rows()
@@ -486,6 +508,12 @@ class Bot:
             self.post(channel, f"I can't find vendor {req['vendor_id']}. Check the ID (it looks like V1234).",
                       reply_ts, footer=False)
             return "vendor:not-found"
+        if str(hits[0].get("merged_into") or "").strip():
+            # a merged duplicate stays hidden: unhide/edit would bring back a listing whose PDFs and pricing moved
+            # (merge audit 11-22). The cached list can be hours old, so check the row itself.
+            self.post(channel, f"{req['vendor_id']} was merged into {hits[0].get('merged_into')}. Make the change on "
+                               "that listing instead.", reply_ts, footer=False)
+            return f"vendor:{req['kind']}:merged"
         pr = va.build_visibility(req, hits[0]) if req["kind"] == "visibility" else va.build_edit(req, hits[0])
         if isinstance(pr, str):
             self.post(channel, pr, reply_ts, footer=False)
@@ -614,8 +642,9 @@ class Bot:
             from scheduler import run_dedupe
             mode = "weekly" if re.search(r"\b(full|all|weekly)\b", question, re.I) else "nightly"
             # owner 2026-11-22: "bring up a bunch at one time" - 'scan duplicates 20' (max 25; default stays 10)
-            n = re.search(r"\b(\d{1,3})\b", question)
-            return run_dedupe(self, mode=mode, max_cards=max(1, min(25, int(n.group(1)))) if n else None)
+            n = re.search(r"\bduplicates?\s+(\d{1,3})\b|\b(\d{1,3})\s+(?:more\s+)?duplicates?\b", question, re.I)
+            n = (n.group(1) or n.group(2)) if n else None
+            return run_dedupe(self, mode=mode, max_cards=max(1, min(25, int(n))) if n else None)
         if eng.PUBLISH_Q.search(question) and re.search(r"\b(what|which|changed?|last|latest|recent)\b", question, re.I):
             deploy = self.slack.history(config.deploy_channel(), limit=100, days=14)
             text = eng.answer_publishes(self.engine, deploy)

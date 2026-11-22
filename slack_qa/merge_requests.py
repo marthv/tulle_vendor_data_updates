@@ -42,25 +42,41 @@ def parse(question: str) -> dict | None:
     q = re.sub(r"<[^|>]+\|([^>]+)>", r"\1", question or "").strip()
     m = DUPES_OF.match(q) or LISTED_TWICE.match(q)
     if m:
-        t = _clean(m.group("a"))
+        t = _clean(m.group("a")).rstrip("?").strip()
         return {"kind": "dupes_of", "target": t} if t and len(t.split()) <= 8 else None
     m = MERGE.match(q) or SAME.match(q)
     if m:
-        rest = m.group("rest")
+        rest = m.group("rest").rstrip("?").strip()
         if not SEP.search(rest):                         # "merge V12" alone: nothing to merge it with
-            return {"kind": "merge_incomplete"}
-        return {"kind": "merge", "rest": rest, "into": bool(re.search(r"\s+into\s+", rest, re.I))}
+            return {"kind": "merge_incomplete", "target": _clean(rest)}
+        into = [s for s in SEP.findall(rest) if s.lower() == "into"]
+        if into:
+            # "merge A into B" only: 'into' must be the last separator and appear once (QA 11-22: "merge V1 into V2
+            # and V3" would have kept V3)
+            last = [s for s in SEP.findall(rest)][-1]
+            if len(into) > 1 or str(last).lower() != "into":
+                return {"kind": "merge_bad_into"}
+        return {"kind": "merge", "rest": rest, "into": bool(into)}
     return None
 
 
-def split_targets(rest: str, resolve) -> tuple[list[dict] | None, str | None]:
+VID_LIKE = re.compile(r"^V\d{1,6}$", re.I)
+MAX_PARTS = 8         # QA 11-22: the split search is 2^(parts-1); refuse long lists instead of tying up a worker
+
+
+def split_targets(rest: str, resolve) -> tuple[list[dict] | None, str | None, bool]:
     """Find the split of `rest` into 2-4 vendors where every part resolves to exactly one vendor. Names can contain
-    'and' ("Smith and Co"), so every way of splitting on the separators is tried and the one where all parts
-    resolve wins. Returns (vendors in order, None) or (None, a reply explaining what didn't resolve)."""
+    'and' ("Smith and Co"), so every way of splitting on the separators is tried. Exactly one split must resolve; if
+    several do, ask which was meant (never guess). Returns (vendors, None, _) or (None, reply, anything_resolved);
+    anything_resolved=False means no part looked like a vendor at all (the caller lets the text go to normal Q&A)."""
     toks = SEP.split(rest)                               # [part, sep, part, sep, part ...] (sep None for commas)
     parts, seps = toks[0::2], toks[1::2]
     n = len(parts)
+    if n > MAX_PARTS:
+        return None, f"That's too many names for one merge. Name 2 to {MAX_VENDORS} vendors.", True
     best_fail = None
+    wins: list[list[dict]] = []
+    any_resolved = False
     for mask in range(1 << max(0, n - 1)):               # which separators are real splits (rest are part of names)
         groups, cur = [], parts[0]
         for i in range(n - 1):
@@ -78,20 +94,33 @@ def split_targets(rest: str, resolve) -> tuple[list[dict] | None, str | None]:
             v, hits = resolve(g)
             if v is None:
                 fail = (g, hits)
+                any_resolved = any_resolved or bool(hits)
                 break
+            any_resolved = True
             found.append(v)
         if fail is None:
-            return found, None
+            if not any(set(id(x) for x in found) == set(id(x) for x in w) and len(w) == len(found) for w in wins):
+                wins.append(found)
+            continue
         if best_fail is None or (fail[1] and not best_fail[1]):
             best_fail = fail
+    if len(wins) == 1:
+        return wins[0], None, True
+    if len(wins) > 1:                                   # e.g. "Smith and Co and Jones": never guess (QA 11-22)
+        opts = "\n".join("• " + " + ".join(f"{esc(v.get('Name'))} ({v.get('Vendor_ID')})" for v in w)
+                         for w in wins[:5])
+        return None, ("I can read that more than one way. Which did you mean? Ask again with the IDs:\n" + opts), True
+    if not any_resolved:                                # the loop stops at the first miss: check every part once
+        any_resolved = any(resolve(_clean(p))[0] is not None or VID_LIKE.match(_clean(p) or "")
+                           for p in parts if _clean(p))
     if best_fail is None:
-        return None, "Tell me 2 to 4 vendors to merge, e.g. `@Tulle Bot merge Rose Hall and Rose Hall Barn`."
+        return None, "Tell me 2 to 4 vendors to merge, e.g. `@Tulle Bot merge Rose Hall and Rose Hall Barn`.", False
     g, hits = best_fail
     if not hits:
-        return None, f"I can't find a vendor called “{esc(g)}”. Try its exact name or ID (V1234)."
+        return None, f"I can't find a vendor called “{esc(g)}”. Try its exact name or ID (V1234).", any_resolved
     opts = "\n".join(f"• {esc(h.get('Name'))} ({h.get('Vendor_ID')})" + (f", {esc(h.get('State'))}" if h.get("State")
                                                                            else "") for h in hits[:8])
-    return None, f"More than one vendor matches “{esc(g)}”. Which one? Ask again with the ID:\n{opts}"
+    return None, f"More than one vendor matches “{esc(g)}”. Which one? Ask again with the ID:\n{opts}", True
 
 
 def check_group(vendors: list[dict]) -> str | None:

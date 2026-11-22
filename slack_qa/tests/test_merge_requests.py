@@ -176,3 +176,57 @@ def test_live_merge_reply_shows_restored_and_conflicts(monkeypatch):
     assert r["ok"] and "Restored 5 values" in r["text"] and "1 value had been changed since" in r["text"]
     assert set(sent) == {"mode", "survivor_vendor_id", "loser_vendor_ids", "proposal_id", "approved_by",
                          "expected_counts", "secret"}                       # = ep578's inputs
+
+
+# --- QA 11-22 round 2 -------------------------------------------------------------------------------------------
+@pytest.mark.parametrize("q", ["merge the planner and cost tools", "combine the two cards and post again",
+                               "can you merge these?", "any duplicates for this week?", "is the bot listed twice?"])
+def test_non_vendor_text_falls_through_to_normal_answers(q):
+    b, slack, store = bot()
+    out = b.handle(mention(q))
+    assert not out.startswith("merge:"), (q, out)
+    assert store.all() == []
+
+
+def test_two_valid_readings_ask_instead_of_guessing():
+    rows = [dict(r) for r in ROWS] + [V(20, "V20", "Smith", addr="5 Fir St, Reno, NV", lat=39.4, lng=-119.7),
+                                      V(21, "V21", "Co and Jones", addr="6 Ash St, Reno, NV", lat=39.3, lng=-119.6),
+                                      V(22, "V22", "Jones", addr="7 Elm St, Reno, NV", lat=39.2, lng=-119.5)]
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    assert b.handle(mention("merge Smith and Co and Jones")) == "merge:unresolved"
+    assert "more than one way" in slack.of("chat.postMessage")[-1]["text"] and store.all() == []
+
+
+def test_into_must_be_last():
+    b, slack, store = bot()
+    assert b.handle(mention("merge V9 into V10 and V105")) == "merge:bad-into"
+
+
+def test_long_lists_are_refused_quickly():
+    parts = " and ".join(f"Name{i}" for i in range(30))
+    vendors, err, _ = mr.split_targets(parts, lambda t: (None, []))
+    assert vendors is None and "too many" in err
+
+
+def test_reask_after_reject_does_not_stack_cards():
+    b, slack, store = bot()
+    b.handle(mention("merge V9 and V10"))
+    p = store.all()[0]
+    store.transition(p["id"], {"pending"}, "rejected", "U05UJMCHUV6")
+    assert b.handle(mention("merge V9 and V10")) == "merge:proposed"
+    assert b.handle(mention("merge V9 and V10")) == "merge:duplicate"      # the 'asked again' card is still open
+
+
+def test_trailing_question_mark_and_batch_number():
+    assert mr.parse("merge V12 and V13?")["rest"] == "V12 and V13"
+
+
+def test_merged_vendor_cannot_be_unhidden_or_edited():
+    rows = [dict(r) for r in ROWS] + [V(30, "V30", "Old Dup", vis="0")]
+    rows[-1]["merged_into"] = "V105"
+    b, slack, store = make_bot(rows=rows)
+    b.xano = RowsXano()
+    assert b.handle(mention("unhide V30")) == "vendor:visibility:merged"
+    assert b.handle(mention("change V30 website to x.com")) == "vendor:vendor_edit:merged"
+    assert store.all() == []
