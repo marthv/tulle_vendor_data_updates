@@ -10,6 +10,7 @@ import time
 
 import config
 import knowledge
+from cards import esc as esc_text
 from llm import Claude
 from scrub import is_interpersonal, scrub_output
 from slack_api import Slack
@@ -31,6 +32,9 @@ HELP = ("I'm Tulle Bot (automated, read-only). I answer questions about recent c
         "`@Tulle Bot change V1234 website to example.com` (also name, description, contact, seated capacity, type)\n"
         "`@Tulle Bot what's waiting for approval?` / `@Tulle Bot what was applied this week?`\n"
         "*Pricing PDFs*: `@Tulle Bot PDFs for V1234` or `@Tulle Bot give me all the pdfs for Gramercy Mansion`\n"
+        "*Duplicates* (I post a merge card; nothing moves until an approver presses Approve): "
+        "`@Tulle Bot merge Rose Hall and Rose Hall Barn` · `@Tulle Bot merge V13433 into V105` (keeps the second) · "
+        "`@Tulle Bot find duplicates of Gramercy Mansion` · `@Tulle Bot scan duplicates 20`\n"
         "*Customer lookup* (team only; read-only): `@Tulle Bot look up user 34819` or "
         "`@Tulle Bot what does user 34819 see?`")
 IGNORED_SUBTYPES_OK = {None, "thread_broadcast", "file_share"}
@@ -188,6 +192,9 @@ class Bot:
         out = self.pdf_list(question, ev)
         if out is not None:
             return out
+        out = self.merge_request(question, ev)
+        if out is not None:
+            return out
         out = self.vendor_action(question, ev)
         if out is not None:
             return out
@@ -315,6 +322,130 @@ class Bot:
                 timer.cancel()
         say(pl.render(vendor, rows, built_at, truncated))
         return f"pdfs:{len(rows)}"
+
+    # --- merges by name / ID, and "find duplicates of X" (owner 2026-11-22) ---------------------------------------
+    def merge_request(self, question: str, ev: dict) -> str | None:
+        """'merge A and B' / 'merge A into B' / 'A and B are the same venue' -> the scan's own merge card in this thread;
+        'find duplicates of X' / 'is X listed twice?' -> cards for X's duplicate groups. None = not a merge request.
+        Nothing moves until an approver presses Approve (and Approve is a dry run until the Xano merge is built)."""
+        import dedupe
+        import merge_requests as mr
+        import pdf_list as pl
+        from interactions import post_proposal
+        req = mr.parse(question)
+        if req is None:
+            return None
+        channel = ev["channel"]
+        reply_ts = ev.get("thread_ts") or ev.get("ts")
+
+        def say(text):
+            self.post(channel, text, reply_ts, footer=False)
+        if req["kind"] == "merge_incomplete":
+            say("Which two (or more) should I merge? e.g. `@Tulle Bot merge Rose Hall and Rose Hall Barn` or "
+                "`@Tulle Bot merge V13433 into V105` (\"into\" keeps the second one).")
+            return "merge:incomplete"
+        if not self.limiter.allow(channel):
+            say("Too many requests in this channel just now. Try again in a minute.")
+            return "merge:rate-limited"
+        if not getattr(self.xano, "enabled", False):
+            say("I can't read the vendor list from here right now.")
+            return "merge:no-xano"
+        directory = self.feedback.directory
+        resolve = lambda t: pl.resolve_vendor(directory, t)      # noqa: E731
+        timer = threading.Timer(self.working_after, lambda: say("Checking the listings (up to a minute)..."))
+        timer.daemon = True
+        timer.start()
+        try:
+            if req["kind"] == "dupes_of":
+                return self._dupes_of(req["target"], channel, reply_ts, say, resolve)
+            vendors, err = mr.split_targets(req["rest"], resolve)
+            if err:
+                say(err)
+                return "merge:unresolved"
+            why_not = mr.check_group(vendors)
+            if why_not:
+                say(why_not)
+                return "merge:refused"
+            vids = [str(v.get("Vendor_ID")) for v in vendors]
+            key = dedupe.group_key(vids)
+            prior = [p for p in self.store.all() if p.get("kind") == "merge" and p.get("key") == key]
+            open_p = next((p for p in prior if p.get("status") in ("pending", "applying", "unknown", "partial")), None)
+            if open_p:
+                say(f"There's already a card for these: {self._link(open_p)}.")
+                return "merge:duplicate"
+            if any(p.get("status") == "applied" for p in prior):
+                say("These were already merged.")
+                return "merge:already-merged"
+            byid = {v["id"]: v for v in vendors}
+            refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
+                                   page_delay=config.dedupe_page_delay(), only={10, 36})
+            refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
+            pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
+                                       survivor_vid=vids[-1] if req["into"] else "",
+                                       why_text="Asked for in Slack.")
+            # a person asking again after an earlier Reject is a new decision: give it its own key
+            k = pr["key"] + (f":asked:{ev.get('ts')}" if any(p.get("status") == "rejected" for p in prior) else "")
+            p = self.store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
+                                  key=k, source=f"mention:{channel}:{ev.get('ts')}", plain=pr["plain"])
+            if p is None:
+                say("There's already a card for these.")
+                return "merge:duplicate"
+            res = post_proposal(self.slack, self.store, channel, p, thread_ts=reply_ts)
+            return "merge:proposed" + ("" if res.get("ok") else f":post-failed:{res.get('error')}")
+        except Exception:  # noqa: BLE001
+            log.exception("merge request failed")
+            say("I couldn't read the listings just now. Try again in a few minutes.")
+            return "merge:error"
+        finally:
+            timer.cancel()
+
+    def _dupes_of(self, target, channel, reply_ts, say, resolve) -> str:
+        import dedupe
+        import merge_requests as mr
+        import pdf_list as pl
+        from interactions import post_proposal
+        vendor, hits = resolve(target)
+        if vendor is None:
+            say(pl.candidates_text(target, hits))
+            return "merge:dupes-ambiguous" if hits else "merge:dupes-not-found"
+        rows = self.feedback.directory.rows()
+        vid, name = str(vendor.get("Vendor_ID")), esc_text(vendor.get("Name"))
+        groups = mr.dupes_of(rows, {vid})
+        byid = {r["id"]: r for r in rows}
+        skip = self.store.open_or_rejected_keys("merge")
+        fresh = [g for g in groups
+                 if dedupe.group_key([str(byid[i].get("Vendor_ID")) for i in g["ids"]]) not in skip][:mr.MAX_CARDS]
+        others = mr.same_name_others(rows, vendor)
+        if not fresh:
+            lines = [f"No new duplicates of *{name}* ({vid}) by the scan's rules (same Google listing, or same name in "
+                     "the same place, or a near-identical name with the same website nearby)."
+                     + (" Some already have a card or were rejected." if groups else "")]
+            if others:
+                lines.append("Other listings with the same name (different places, so probably different businesses):")
+                lines += [f"• {esc_text(o.get('Name'))} ({o.get('Vendor_ID')})"
+                          + (f", {esc_text(o.get('State'))}" if o.get("State") else "") for o in others[:8]]
+                lines.append(f"If one is really the same, say `@Tulle Bot merge {vid} and V1234`.")
+            say("\n".join(lines))
+            return "merge:dupes-none"
+        wanted = {str(byid[i].get("Vendor_ID")) for g in fresh for i in g["ids"]}
+        refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
+                               page_delay=config.dedupe_page_delay(), only={10, 36})
+        refs.build(wanted, rowids={int(i): str(byid[i].get("Vendor_ID")) for g in fresh for i in g["ids"]})
+        say(f"Found {len(fresh)} possible duplicate group{'s' if len(fresh) != 1 else ''} for *{name}* ({vid}). "
+            "Nothing changes until someone approves a card.")
+        posted = 0
+        for g in fresh:
+            pr = dedupe.build_proposal(g, byid, refs)
+            p = self.store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
+                                  key=pr["key"], source=f"mention:{channel}", plain=pr["plain"])
+            if p is not None and post_proposal(self.slack, self.store, channel, p, thread_ts=reply_ts).get("ok"):
+                posted += 1
+        return f"merge:dupes:{posted}"
+
+    @staticmethod
+    def _link(p: dict) -> str:
+        import vendor_actions as va
+        return va._link(p)
 
     # --- vendor actions in plain words (took over from the retired Tulle Ops app, 2026-11-21) -------------------
     def vendor_action(self, question: str, ev: dict) -> str | None:
@@ -482,7 +613,9 @@ class Bot:
                       reply_ts, footer=False)
             from scheduler import run_dedupe
             mode = "weekly" if re.search(r"\b(full|all|weekly)\b", question, re.I) else "nightly"
-            return run_dedupe(self, mode=mode)
+            # owner 2026-11-22: "bring up a bunch at one time" - 'scan duplicates 20' (max 25; default stays 10)
+            n = re.search(r"\b(\d{1,3})\b", question)
+            return run_dedupe(self, mode=mode, max_cards=max(1, min(25, int(n.group(1)))) if n else None)
         if eng.PUBLISH_Q.search(question) and re.search(r"\b(what|which|changed?|last|latest|recent)\b", question, re.I):
             deploy = self.slack.history(config.deploy_channel(), limit=100, days=14)
             text = eng.answer_publishes(self.engine, deploy)

@@ -393,7 +393,7 @@ def test_11_on_demand_scan_cooldown(monkeypatch):
     from state import RateLimiter, State
     import scheduler
     monkeypatch.setenv("DEDUPE_CHANNEL", "CDEDUPE")
-    monkeypatch.setattr(scheduler, "run_dedupe", lambda bot, mode=None: "dedupe:ran")
+    monkeypatch.setattr(scheduler, "run_dedupe", lambda bot, mode=None, max_cards=None: "dedupe:ran")
     b = Bot(slack=RecSlack(), claude=FakeClaude(), state=State(), limiter=RateLimiter(), github=object(),
             xano=object())
     ev = {"channel": "C1", "ts": "1.1", "user": OWNER}

@@ -31,7 +31,7 @@ def mark(store, job: str, now: datetime) -> None:
     store.set_meta(f"sched_{job}", now.strftime("%Y-%m-%d"))
 
 
-def run_dedupe(bot, now: datetime | None = None, mode: str | None = None) -> str:
+def run_dedupe(bot, now: datetime | None = None, mode: str | None = None, max_cards: int | None = None) -> str:
     import dedupe
     from interactions import post_proposal
     now = now or datetime.now(timezone.utc)
@@ -41,7 +41,7 @@ def run_dedupe(bot, now: datetime | None = None, mode: str | None = None) -> str
     if not getattr(bot.xano, "enabled", False):
         return "dedupe:no-xano"
     mode = mode or ("weekly" if now.weekday() == config.dedupe_weekly_dow() else "nightly")
-    res = dedupe.scan(bot.xano, bot.store, mode=mode, max_cards=config.dedupe_max_cards(),
+    res = dedupe.scan(bot.xano, bot.store, mode=mode, max_cards=max_cards or config.dedupe_max_cards(),
                       max_pages=config.dedupe_max_pages(), page_delay=config.dedupe_page_delay())
     props = res["proposals"]
     if res.get("busy"):

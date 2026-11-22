@@ -647,7 +647,7 @@ def _thing(r: dict) -> str:
 
 
 def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIndex, why_s: str,
-               reported: str = "") -> dict:
+               reported: str = "", why_text: str = "") -> dict:
     """The 3-4 short lines Des and Kate see. No ids, table names, Place IDs or row counts beyond what a person cares
     about (PDFs, couples who saved it)."""
     lv = [m.get("Vendor_ID") for m in losers]
@@ -655,7 +655,9 @@ def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIn
     where = _place(survivor)
     headline = (f"These look like the same {_thing(survivor)}: *{_esc(survivor.get('Name'))}*"
                 f"{f' ({_esc(where)})' if where else ''} listed {n_times}.")
-    if reported:
+    if why_text:                             # a person asked for this merge in Slack (merge_requests.py)
+        why = why_text
+    elif reported:
         why = f"Reported in #feedback: “{reported}”"
     else:
         best = next((r for r in ("A", "B", "C") if r in rules), None)
@@ -676,7 +678,8 @@ def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIn
         moving.append("its pricing")
     keep = {"it's the one couples can see": "the visible listing", "it has more PDFs": "the listing with more PDFs",
             "couples click it more": "the listing couples click most",
-            "it has the Google Place ID": "the listing linked to Google"}.get(why_s, "the original listing")
+            "it has the Google Place ID": "the listing linked to Google",
+            "you asked to keep it": "the listing you named to keep"}.get(why_s, "the original listing")
     moves = ", ".join(moving[:-1]) + f" and {moving[-1]}" if len(moving) > 1 else moving[0]
     dup = "duplicate is" if len(losers) == 1 else "duplicates are"
     happens = f"We'll keep {keep}, move {moves} onto it, and add up its clicks."
@@ -756,10 +759,12 @@ def details_text(p: dict) -> list[str]:
     return [c[:2900] for c in chunks]
 
 
-def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "") -> dict:
+def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", survivor_vid: str = "",
+                   why_text: str = "") -> dict:
     members = [byid[i] for i in group["ids"]]
     pdfs = refs.pdfs()
-    survivor, why_s = choose_survivor(members, pdfs)
+    forced = next((m for m in members if survivor_vid and str(m.get("Vendor_ID")) == survivor_vid), None)
+    survivor, why_s = (forced, "you asked to keep it") if forced else choose_survivor(members, pdfs)
     losers = [m for m in members if m is not survivor]
     sv, lv = survivor.get("Vendor_ID"), [m.get("Vendor_ID") for m in losers]
     counts, tables = {}, []
@@ -774,7 +779,7 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "") 
                        "count": n, "rows": rows})
         if action == "repoint":
             counts[f"t{tid}"] = n
-    plain = plain_card(survivor, losers, group.get("rules") or [], refs, why_s, reported=reported)
+    plain = plain_card(survivor, losers, group.get("rules") or [], refs, why_s, reported=reported, why_text=why_text)
     counters = counter_plan(survivor, losers)
     snapshots = {m.get("Vendor_ID"): safe_snapshot(m) for m in members}
     nxt = "Approve to merge, or Reject if they're different businesses (I won't suggest this pair again)."
