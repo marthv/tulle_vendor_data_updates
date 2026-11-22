@@ -688,11 +688,21 @@ class Bot:
             self.post(channel, f"Starting a duplicate scan; suggestions will land in <#{config.dedupe_channel()}>.",
                       reply_ts, footer=False)
             from scheduler import run_dedupe
-            mode = "weekly" if re.search(r"\b(full|all|weekly)\b", question, re.I) else "nightly"
-            # owner 2026-11-22: "bring up a bunch at one time" - 'scan duplicates 20' (max 25; default stays 10)
+            # owner 2026-11-22: an on-demand scan looks at EVERY vendor (the nightly job's "only vendors added since
+            # the last scan" mode found 0 and said nothing). 'scan new duplicates' keeps the nightly behaviour.
+            mode = "nightly" if re.search(r"\b(new|recent|latest)\b", question, re.I) else "weekly"
+            # 'scan duplicates 20' (max 25; default 10)
             n = re.search(r"\bduplicates?\s+(\d{1,3})\b|\b(\d{1,3})\s+(?:more\s+)?duplicates?\b", question, re.I)
             n = (n.group(1) or n.group(2)) if n else None
-            return run_dedupe(self, mode=mode, max_cards=max(1, min(25, int(n))) if n else None)
+            out = run_dedupe(self, mode=mode, max_cards=max(1, min(25, int(n))) if n else None)
+            if out.endswith(":0") or out.endswith(":busy"):     # never leave the asker with silence
+                self.post(channel, "A scan is already running; its cards will appear when it finishes."
+                          if out.endswith(":busy") else
+                          "No new duplicate suggestions: every group the scan finds already has a card or was "
+                          "rejected." if mode == "weekly" else
+                          "No new duplicates among vendors added since the last scan. Say `@Tulle Bot scan "
+                          "duplicates 20` to check every vendor.", reply_ts, footer=False)
+            return out
         if eng.PUBLISH_Q.search(question) and re.search(r"\b(what|which|changed?|last|latest|recent)\b", question, re.I):
             deploy = self.slack.history(config.deploy_channel(), limit=100, days=14)
             text = eng.answer_publishes(self.engine, deploy)

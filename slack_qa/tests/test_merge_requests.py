@@ -280,3 +280,19 @@ def test_warm_loads_the_vendor_list_and_never_raises():
             raise RuntimeError("xano down")
     b.feedback.directory = Boom()
     assert b.warm() == "warm:error"
+
+
+@pytest.mark.parametrize("q,mode", [("scan duplicates 20", "weekly"), ("scan duplicates", "weekly"),
+                                    ("scan new duplicates", "nightly")])
+def test_on_demand_scan_checks_everything_and_never_goes_silent(monkeypatch, q, mode):
+    import scheduler
+    seen = {}
+    monkeypatch.setenv("DEDUPE_CHANNEL", "CDEDUPE")
+    monkeypatch.setenv("QA_APPROVERS", "UKATE")
+    monkeypatch.setattr(scheduler, "run_dedupe",
+                        lambda bot, mode=None, max_cards=None: seen.update(mode=mode) or f"dedupe:{mode}:0")
+    b, slack, store = bot()
+    b.state.over_budget = lambda: False
+    b.handle(mention(q, user="UKATE"))
+    assert seen["mode"] == mode
+    assert "No new duplicate" in slack.of("chat.postMessage")[-1]["text"]
