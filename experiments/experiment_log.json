@@ -5150,6 +5150,231 @@
       "links": [
         "backup: tulletogether/.claude/xano_backups/weweb_restore_pi_card_pre_2026-11-21.json"
       ]
+    },
+    {
+      "id": "EXP-2026-11-planner-next-step",
+      "name": "Planner: 'Next for your wedding' suggestion back on, never the category just asked about",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "ux",
+      "themes": [
+        "planner"
+      ],
+      "bucket": "planner_engagement",
+      "in_rotation": true,
+      "tldr": "One tappable 'Next for your wedding: Find a photographer...' line under Planner answers, once a couple has something in My wedding or has asked 3+ questions. It now skips the category the couple just asked about (the reason it was switched off on 11-07). Question: do more couples go on to a second vendor category?",
+      "what_changed": "REC_PLAN_NEXT_STEP=1 on rec-engine: under the latest Planner answer, couples with something in My wedding (or 3+ typed questions) see one 'Next for your wedding' button for the first open slot (venue, photographer, catering, music, flowers, planner, hair and makeup). New in this build: the slot the answer was about (the tools' category or words in the question) is skipped. The button is already in ww-planner-chat (no publish needed).",
+      "surfaces": [
+        "rec-engine",
+        "weweb:planner",
+        "weweb:bubble"
+      ],
+      "audience": {
+        "segment": "Planner couples (free and paid) with something in My wedding or 3+ typed questions",
+        "est_daily_exposed": 5,
+        "est_note": "46 non-internal couples typed a Planner question in 4.8 days (table 79, 11-18 02:00..11-22 20:33 UTC); only engaged ones see the button, so ~5/day is a rough upper-middle guess, not measured"
+      },
+      "hypothesis": "If we show one next-category suggestion that never repeats what the couple just asked, then the share of Planner couples who look at a second vendor category rises from ~4% toward 8%, because the Planner points at the next booking instead of waiting to be asked.",
+      "tests": "Does the 'Next for your wedding' button get couples to look at a second vendor category?",
+      "goal": "Owner yes 2026-11-22 (Planner changes batch). Off since 11-07 because it repeated the category the couple had just asked for; fixed behind the same flag.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.043,
+        "baseline_note": "2 of 46 non-internal couples with a typed Planner question touched 2+ vendor categories (table 79 categories, 11-18..11-22, internal + team test accounts excluded). Small sample.",
+        "mde_rel": 1.0,
+        "label": "share of Planner couples who searched 2+ vendor categories within 3 days (table 79 categories)"
+      },
+      "primary_metric": "Couples with 2+ distinct table-79 categories among their ok refine rows within 3 days of their first, internal excluded; plus Mixpanel rec_refine_sent via=plan_next (clicks on the button)",
+      "guardrails": [
+        {
+          "key": "planner_second_question",
+          "label": "asked a 2nd question",
+          "params": {},
+          "max_drop_rel": 0.2
+        }
+      ],
+      "guardrail": "2nd-question rate not down >20%",
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-11-18",
+          "2026-11-23"
+        ],
+        "post_start": "2026-11-24T00:00Z",
+        "note": "PROVISIONAL: post_start = the real time REC_PLAN_NEXT_STEP=1 is read back on /rec/status; pre ends the day before. Both arms of EXP-2026-11-planner-context-first get it equally, so that split stays valid; this pre/post is evidence, not proof."
+      },
+      "start_date": null,
+      "planned_days": 14,
+      "max_days": 21,
+      "review_date": "2026-12-08",
+      "reporting": "manual",
+      "rollback": "Set REC_PLAN_NEXT_STEP=0 (or delete it) on rec-engine; redeploys in ~2 min. Code stays.",
+      "dates_note": "Ships with REC_PACKAGE_TOTALS (paid prices only) and REC_FREE_BUDGET_FIT (free budget questions only). Same push; flip on the same day is OK for this metric (neither of the other two changes which category is searched).",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Planned. Offline on 12 real questions (table 43, 11-17..22): with the old code 7 of 24 (question x plan-state) suggestions repeated the category just asked; with this branch 0 of 24."
+        }
+      ],
+      "decision": "",
+      "spec_gaps": [],
+      "links": [
+        "tulle_vendor_data_updates branch planner-three-changes-1122",
+        "tulletogether .claude/planner_changes_2026-11-22/before_after.md"
+      ]
+    },
+    {
+      "id": "EXP-2026-11-free-budget-fit",
+      "name": "Planner: free couples get in / about at / over your budget per venue (no figures)",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "money",
+      "themes": [
+        "planner",
+        "paywall"
+      ],
+      "bucket": "planner_engagement",
+      "in_rotation": false,
+      "tldr": "A free couple who asks 'anything under $20k?' gets each venue marked in your budget / about at your budget / over your budget, worked out in code. No dollar figure is ever shown. Too few such questions (~1 a day) for a verdict: this is a rollout watched for leaks and complaints.",
+      "what_changed": "REC_FREE_BUDGET_FIT=1 on rec-engine: on a free couple's budget question the server attaches a verdict word to each venue (budget_fit) and lets the three verdict phrases through the free-mode price filter in sentences with no figure. New in this build: the profile sheet's 'budget: $10K -> $2K' refresh message is judged against the NEW budget (it used the old one).",
+      "surfaces": [
+        "rec-engine",
+        "weweb:planner",
+        "weweb:bubble"
+      ],
+      "audience": {
+        "segment": "free (no full figures) couples asking a budget question in the Planner or bubble",
+        "est_daily_exposed": 1,
+        "est_note": "2 of 12 sampled real questions (11-17..22) were budget questions; one was a free couple's refresh message. Not measured over a full window."
+      },
+      "hypothesis": "If free couples asking about their budget get a per-venue verdict instead of 'I can't say', then fewer of them leave the Planner unhelped and more open a venue PDF, because the answer is useful without giving away paid prices.",
+      "tests": "Can free couples get a budget answer without any paid price leaking, and without hurting PDF opens or purchases?",
+      "goal": "Owner yes 2026-11-22. Free couple 11-18: 'This has been useless' after 'I can't say here what fits under a set number'.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": null,
+        "mde_rel": null,
+        "label": "rollout: no comparison"
+      },
+      "guardrails": [
+        {
+          "key": "planner_pdf_open_rate",
+          "label": "free couples opening a PDF from the Planner",
+          "params": {
+            "segment": "free"
+          },
+          "max_drop_rel": 0.25
+        },
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "guardrail": "free PDF-open rate and purchases/day not down >25%; zero dollar figures in free answers (Tulle Bot leak check + manual read of every budget_fit answer in week 1)",
+      "assignment": {
+        "type": "rollout",
+        "note": "Volume too low for a read (~1/day). Read every budget-verdict answer by hand in week 1."
+      },
+      "start_date": null,
+      "planned_days": 7,
+      "max_days": 14,
+      "review_date": "2026-12-01",
+      "reporting": "manual",
+      "rollback": "Set REC_FREE_BUDGET_FIT=0 (or delete it) on rec-engine; redeploys in ~2 min.",
+      "dates_note": "Known gaps: 'I want the venue to be at least 10k or less' (real free question 6352) is NOT detected as a budget question; a determined free couple could narrow a venue's price by asking 'under $X?' repeatedly (bounded by the free-question limit).",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Planned. Offline: 2 of 12 real questions trigger it; refresh-message bug found and fixed (question 6302 would have used $10K instead of $2K)."
+        }
+      ],
+      "decision": "",
+      "spec_gaps": [],
+      "links": [
+        "tulle_vendor_data_updates branch planner-three-changes-1122",
+        "tulletogether .claude/planner_changes_2026-11-22/before_after.md"
+      ]
+    },
+    {
+      "id": "EXP-2026-11-planner-package-totals",
+      "name": "Planner all-in matches the venue card for the 25 package spaces",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "ux",
+      "themes": [
+        "planner",
+        "data"
+      ],
+      "bucket": "data",
+      "in_rotation": false,
+      "tldr": "Accuracy fix, not a test. For the 25 hand-reviewed all-inclusive packages (Celestine, Pioneer Farm, Treasury on the Plaza...) the Planner added food and market estimates on top of the package price, so it quoted e.g. Celestine at $64,130 while the card says $45,580. With the flag on the Planner says the card's number (24 of 25 exact, 1 off by $1).",
+      "what_changed": "REC_PACKAGE_TOTALS=1 on rec-engine: estimate.compute treats fn56 v29 package spaces like the card does (food = extra-guest rate x guests above the included count; no market ceremony or service charge on top) and a ceremony the PDF marks 'included' costs $0 instead of the market estimate. Paid couples only (free couples never get these figures).",
+      "surfaces": [
+        "rec-engine",
+        "weweb:planner",
+        "weweb:bubble"
+      ],
+      "audience": {
+        "segment": "paid couples whose Planner answer prices one of 14 package venues (default space)",
+        "est_daily_exposed": 1,
+        "est_note": "not measured; 14 venues of ~10k priced, so rare"
+      },
+      "hypothesis": "If the Planner quotes the same all-in as the venue card for package venues, then no couple sees two different totals for one venue, because both use fn56's package terms.",
+      "tests": "Does the Planner's total equal the card's for every package space?",
+      "goal": "Owner yes 2026-11-22. Kate #feedback 11-20 (Celestine double count).",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": null,
+        "mde_rel": null,
+        "label": "rollout: no comparison"
+      },
+      "guardrails": [
+        {
+          "key": "planner_second_question",
+          "label": "asked a 2nd question (paid)",
+          "params": {
+            "segment": "paid"
+          },
+          "max_drop_rel": 0.25
+        }
+      ],
+      "guardrail": "paid 2nd-question rate not down >25%; spot-check: live call with the test token for Celestine V586 returns $45,580 at 100 guests",
+      "assignment": {
+        "type": "rollout"
+      },
+      "start_date": null,
+      "planned_days": 7,
+      "max_days": 14,
+      "review_date": "2026-12-01",
+      "reporting": "manual",
+      "rollback": "Set REC_PACKAGE_TOTALS=0 (or delete it) on rec-engine; the pre-change formula returns exactly (tests pin today's totals).",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Planned. Offline on live ep230 payloads (fn56 v29): flag off 0 of 25 package spaces match the card; flag on 24 exact + 1 off by $1 (rounding); 4 non-package spaces checked unchanged."
+        }
+      ],
+      "decision": "",
+      "spec_gaps": [],
+      "links": [
+        "tulle_vendor_data_updates branch planner-three-changes-1122",
+        "cherry-picks 3142398 (never pushed)",
+        "tulletogether .claude/inclusive_pkg_2026-11-20/fn56_v29_quickfixes.xs"
+      ]
     }
   ],
   "changes": [

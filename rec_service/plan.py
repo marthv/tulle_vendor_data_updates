@@ -5,6 +5,7 @@ come back with REC_PLAN_AB_PCT. Storage: Xano table 90 rec_wedding_plan.
 Pure helpers here (arm, slots, summary, next step); xano.py does the reads and writes; app.py the endpoints."""
 import hashlib
 import os
+import re
 
 # 2026-11-07 (owner): everyone gets the plan - no A/B. Kept as a dial: 0 = off for everyone, 1-99 = a split again.
 PLAN_AB_PCT = int(os.environ.get("REC_PLAN_AB_PCT", "100"))
@@ -82,13 +83,38 @@ def next_slot(items):
     return next((k for k in SLOT_KEYS if k not in have), "")
 
 
-def next_step(items, questions_asked):
+# Words that put a question in a slot (2026-11-22): the suggestion never offers the slot the couple just asked about.
+_SLOT_WORDS = {
+    "Venue": re.compile(r"\bvenues?\b|\bballrooms?\b|\bbarns?\b", re.I),
+    "Photography": re.compile(r"photograph|videograph|\bphotos?\b", re.I),
+    "Food and Beverage": re.compile(r"cater|\bfood\b|\bmenus?\b|bartend", re.I),
+    "Entertainment": re.compile(r"\bdjs?\b|\bbands?\b|\bmusic|entertain", re.I),
+    "Flowers": re.compile(r"flor(?:al|ist)|flower", re.I),
+    "Wedding Planner": re.compile(r"\bplanners?\b|coordinator", re.I),
+    "Beauty": re.compile(r"\bhair\b|make ?up|\bbeauty\b|\bmua\b", re.I),
+}
+
+
+def covered_slots(categories=(), text=""):
+    """Slot keys this answer was about: the vendor categories its tools searched ('venue', 'photography', ...) plus
+    any slot named in the couple's own words."""
+    cats = {str(c or "").strip().lower() for c in categories or ()}
+    out = {k for k in SLOT_KEYS if k.lower() in cats}
+    t = str(text or "")
+    out |= {k for k, rx in _SLOT_WORDS.items() if rx.search(t)}
+    return out
+
+
+def next_step(items, questions_asked, covered=()):
     """{'slot', 'label', 'ask'} - the one suggestion under an answer once the couple is engaged (owner: "when they ask
-    more, start building their wedding"): something already in the plan, or 3+ questions asked. None otherwise."""
+    more, start building their wedding"): something already in the plan, or 3+ questions asked. None otherwise.
+    covered: slot keys this answer was about (covered_slots) - never suggested (owner 2026-11-07: "I asked for a
+    photographer, then it says find a photographer again")."""
     active = [i for i in items or [] if (i.get("status") or "active") == "active"]
     if not active and questions_asked < 3:
         return None
-    s = next_slot(active)
+    have = {slot_of(i.get("slot")) for i in active} | set(covered or ())
+    s = next((k for k in SLOT_KEYS if k not in have), "")
     if not s:
         return None
     label = dict(SLOTS)[s]

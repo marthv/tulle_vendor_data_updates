@@ -1,0 +1,325 @@
+{
+ "vendor_id": "V3724",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "Florida",
+ "scope_label": "Florida",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [],
+ "partner_vendors_headline": "",
+ "partner_vendors_more_label": "",
+ "partner_vendors_linked_count": 0,
+ "spaces": [
+  {
+   "space_key": "V3724|tonysreceptionpalaceballrooms",
+   "label": "Tony's Reception Palace Ballrooms",
+   "chip_label": "Tony's Reception Palace Ballrooms 250",
+   "capacity_seated": 250,
+   "field_count": 1,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "1 of 3 fields for this space"
+  },
+  {
+   "space_key": "V3724|rubipackage",
+   "label": "Rubi Package",
+   "chip_label": "Rubi Package 250",
+   "capacity_seated": 250,
+   "field_count": 1,
+   "fields_total": 3,
+   "sort_rank": 1,
+   "has_pricing": true,
+   "status_line": "1 of 3 fields for this space"
+  },
+  {
+   "space_key": "V3724|sophia",
+   "label": "Sophia",
+   "chip_label": "Sophia 250",
+   "capacity_seated": 250,
+   "field_count": 1,
+   "fields_total": 3,
+   "sort_rank": 2,
+   "has_pricing": true,
+   "status_line": "1 of 3 fields for this space"
+  },
+  {
+   "space_key": "V3724|venecia",
+   "label": "Venecia",
+   "chip_label": "Venecia 250",
+   "capacity_seated": 250,
+   "field_count": 1,
+   "fields_total": 3,
+   "sort_rank": 3,
+   "has_pricing": true,
+   "status_line": "1 of 3 fields for this space"
+  },
+  {
+   "space_key": "V3724|verona",
+   "label": "Verona",
+   "chip_label": "Verona 250",
+   "capacity_seated": 250,
+   "field_count": 1,
+   "fields_total": 3,
+   "sort_rank": 4,
+   "has_pricing": true,
+   "status_line": "1 of 3 fields for this space"
+  },
+  {
+   "space_key": "V3724|weddingdiamondpackage",
+   "label": "Wedding Diamond Package",
+   "chip_label": "Wedding Diamond Package 250",
+   "capacity_seated": 250,
+   "field_count": 0,
+   "fields_total": 3,
+   "sort_rank": 5,
+   "has_pricing": true,
+   "status_line": "Rental fee only for this space"
+  },
+  {
+   "space_key": "V3724|weddingpremierepackage",
+   "label": "Wedding Premiere Package",
+   "chip_label": "Wedding Premiere Package 250",
+   "capacity_seated": 250,
+   "field_count": 0,
+   "fields_total": 3,
+   "sort_rank": 6,
+   "has_pricing": true,
+   "status_line": "Rental fee only for this space"
+  }
+ ],
+ "spaces_headline": "7 spaces at this venue",
+ "selected_space_key": "V3724|tonysreceptionpalaceballrooms",
+ "space": {
+  "space_key": "V3724|tonysreceptionpalaceballrooms",
+  "label": "Tony's Reception Palace Ballrooms",
+  "capacity_seated": 250,
+  "is_whole_venue": false,
+  "shared_pricing": false,
+  "contract_count": 1,
+  "field_count": 1,
+  "fields_total": 3,
+  "status_line": "1 of 3 fields for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the Tony's Reception Palace Ballrooms, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 100,
+  "guest_floor": 100,
+  "guest_floor_note": "Books a minimum of 100 guests.",
+  "fee_basis": "",
+  "fee_band_min": 0,
+  "fee_band_max": 0,
+  "guest_sensitivity": {
+   "responds": true,
+   "food_pinned": false,
+   "reason": "package",
+   "fb_min_breakeven_guests": null,
+   "breakeven_above_capacity": false,
+   "note": "The package price covers up to 100 guests; each guest above that adds $30."
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "Florida",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 40,
+     "p25": 80,
+     "median": 140,
+     "p75": 205,
+     "p90": 310,
+     "n_spaces": 94,
+     "n_vendors": 67
+    },
+    "fee_includes_fb": true,
+    "included_guests": 100,
+    "badge_code": "",
+    "badge_label": "In the package",
+    "sentence": "Included in this venue's $5,750 package price for up to 100 guests. Each extra guest is $30.",
+    "pp_fb": 30,
+    "fb_min": 0,
+    "fb_min_is_per_person": false
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": false,
+    "source": "package",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "Florida",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 500,
+     "p25": 1000,
+     "median": 2400,
+     "p75": 3000,
+     "p90": 4000,
+     "n_spaces": 79,
+     "n_vendors": 50
+    },
+    "sentence": "Not stated separately - this venue prices an all-inclusive package, so check the PDF for what it covers.",
+    "badge_code": "",
+    "badge_label": "",
+    "amount": 0
+   },
+   {
+    "key": "venue_fee",
+    "title": "Package price",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "Florida",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 2500,
+     "p25": 3700,
+     "median": 7000,
+     "p75": 10000,
+     "p90": 19500,
+     "n_spaces": 223,
+     "n_vendors": 147
+    },
+    "fee_includes_fb": true,
+    "included_guests": 100,
+    "badge_code": "",
+    "badge_label": "",
+    "sentence": "An all-inclusive price for the Tony's Reception Palace Ballrooms: the room plus food and drink for up to 100 guests. No separate food cost is added on top.",
+    "amount": 5750
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": false,
+    "source": "package",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "Florida",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 7,
+     "p25": 18,
+     "median": 22,
+     "p75": 23,
+     "p90": 25,
+     "n_spaces": 128,
+     "n_vendors": 87
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "Not stated - this venue prices an all-inclusive package. Check the PDF for any service charge on top.",
+    "badge_code": "",
+    "badge_label": "",
+    "pct": 0
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "unknown",
+    "sentence": "Sales tax is added on top of everything above. This venue did not state its rate."
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Where this venue has not disclosed a figure, the Florida average stands in. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [
+    "food_and_drink"
+   ],
+   "at_default": {
+    "guests": 100,
+    "total": 5750,
+    "per_guest": 58
+   },
+   "estimates": {
+    "pp_fb": 140,
+    "ceremony": 2400,
+    "service_pct": 22,
+    "venue_fee": 7000
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": true
+    },
+    {
+     "component": "ceremony",
+     "from_venue": false
+    },
+    {
+     "component": "service_charge",
+     "from_venue": false
+    }
+   ],
+   "from_venue_count": 1,
+   "total": 3,
+   "style": "mixed",
+   "headline": "1 of 3 costs came from this venue, plus their own rental fee"
+  },
+  "band": {
+   "metric": "all_in_pg_125",
+   "reference_guests": 125,
+   "scope": "state",
+   "scope_label": "Florida",
+   "basis": "all_in",
+   "basis_component": "",
+   "p10": 63.44,
+   "p25": 138,
+   "median": 203.36,
+   "p75": 288.75,
+   "p90": 436.48,
+   "n_spaces": 109,
+   "n_vendors": 74,
+   "position": "",
+   "sentence": "We cannot place the Tony's Reception Palace Ballrooms on this scale yet - not enough pricing from this venue."
+  },
+  "footer": "From the pricing PDF a couple uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}

@@ -6,7 +6,16 @@ os.environ.setdefault("REC_FOREVER_ONLY", "0")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 for mod in ("anthropic",):
     sys.modules.setdefault(mod, types.ModuleType(mod))
+import config  # noqa: E402
 import estimate  # noqa: E402
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _package_totals_on(monkeypatch):
+    # REC_PACKAGE_TOTALS (2026-11-22): the package formula only runs with the flag on; test_before_* below
+    # still pins the old (flag-independent) totals of the pre-v26 payloads.
+    monkeypatch.setattr(config, "PACKAGE_TOTALS", True)
 
 FIX = pathlib.Path(__file__).resolve().parent / "fixtures"
 

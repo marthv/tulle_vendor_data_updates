@@ -795,9 +795,12 @@ def _run_guarded(kind, token, user, messages, chat_id=0, prior_ids=(), active_fi
         **_search_props(user, usage.get("search")), **_ww_props(user)})
     if in_plan:   # 2026-11-07: the one "next for your wedding" suggestion once the couple is engaged
         asked = sum(1 for r in rows if r.get("status") == "ok" and r.get("kind") == "refine") + (kind == "refine")
-        # plan_next OFF (owner 2026-11-07: "I asked for a photographer, then it says find a photographer again").
+        # plan_next OFF by default (owner 2026-11-07: "I asked for a photographer, then it says find a photographer
+        # again"). REC_PLAN_NEXT_STEP=1 (owner yes 2026-11-22) now skips the slot(s) this answer was about.
         result = dict(result, plan_enabled=True,
-                      plan_next=plan.next_step(plan_rows, asked) if config.PLAN_NEXT_STEP else None)
+                      plan_next=plan.next_step(plan_rows, asked, plan.covered_slots(
+                          usage.get("categories"), messages[-1].get("content") if messages else ""))
+                      if config.PLAN_NEXT_STEP else None)
     return dict(result, paid=paid, has_access=access,
                 **_counters(kind, paid, rows, counted_free, feedback_given, access))
 
@@ -3098,6 +3101,10 @@ def status(authorization: str = Header(None)):
             "search_arm": railway_search.arm(user.get("id")), "railway_search_pct": config.RAILWAY_SEARCH_PCT,
             # "My wedding" A/B (2026-11-07): this couple's arm; the page shows Add + the plan only when enabled.
             "ab_plan": plan.arm(user.get("id")), "plan_enabled": plan.arm(user.get("id")) == "plan",
+            # 2026-11-22 Planner batch: the three flags' live values, so a flip can be read back (plan_ab_pct: real
+            # couples see 'Next for your wedding' only when it is > 0; internal accounts always get the plan).
+            "flags": {"plan_next_step": config.PLAN_NEXT_STEP, "free_budget_fit": config.FREE_BUDGET_FIT,
+                      "package_totals": config.PACKAGE_TOTALS, "plan_ab_pct": plan.PLAN_AB_PCT},
             # Whole-wedding proposal (2026-11-15): true = this account is assigned; the page shows "Plan my wedding".
             "whole_wedding": whole_wedding.assigned(user.get("id")), "ww_arm": whole_wedding.arm(user.get("id")),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}

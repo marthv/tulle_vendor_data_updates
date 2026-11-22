@@ -92,12 +92,23 @@ _OWN_BUDGET = re.compile(r"\b(?:my|our|the) budget\b|\b(?:in|within|under|over|f
 _RENTAL = re.compile(r"\b(?:venue|rental|site|space|location)\s+(?:fee|fees|cost|costs|price|rental)\b|\brental\b", re.I)
 
 
+_REFRESH_MSG = re.compile(r"^I updated my wedding details \(", re.I)
+_REFRESH_BUDGET = re.compile(r"^I updated my wedding details \([^)]*\bbudget:[^;)]*?(?:→|->)\s*([^;)]+)", re.I)
+
+
 def budget_target(text, profile_budget=0):
     """The couple's number in dollars from a budget-fit question, else 0. "Anything under $10,000?" -> 10000;
     "fits my $30k budget" -> 30000; "which of these fit our budget?" -> profile_budget. A number needs a budget word
     next to it somewhere in the message, and is ignored under $500 (guest counts, hours)."""
     t = " ".join(str(text or "").split())
     if not t:
+        return 0
+    # The profile sheet's own message "I updated my wedding details (budget: $10K → $2K). ..." (2026-11-22, real
+    # question 6302): the FIRST number is the OLD budget. Judge against the new one (after the arrow), else none.
+    rm = _REFRESH_BUDGET.search(t)
+    if rm:
+        return budget_target("under " + rm.group(1), 0)
+    if _REFRESH_MSG.search(t):
         return 0
     if _BUDGET_CTX.search(t):
         for m in _MONEY.finditer(t):

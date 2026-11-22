@@ -14,6 +14,8 @@ A line the venue's PDF doesn't give is filled with the panel's own estimate (all
 estimate. Tax is shown separately, only when the venue states its rate.
 """
 
+import config
+
 DEFAULT_SERVICE_PCT = 20
 
 
@@ -40,8 +42,16 @@ def inputs_from_panel(d):
         # fn56 v26: the rental is a package price that already covers food and drink for
         # `included_guests`; pp_fb is then the extra-guest rate. Costs the package does not
         # state come back with source 'package' and must add nothing (no market stand-in).
+        # Read whatever the payload says; compute() only USES these when config.PACKAGE_TOTALS is on, so a payload
+        # cached before a flag flip still prices the new way (and flag off = the old total exactly).
         "fee_includes_fb": bool(food.get("fee_includes_fb")),
         "included_guests": int(food.get("included_guests") or 0),
+        # fn56 v29 keeps the extra-guest rate on the food line even when its source is 'market' (no F&B rows of its
+        # own, e.g. Celestine's evening space): the card's pkgFood uses it, so we must too.
+        "pkg_extra_pp": _num(food.get("pp_fb")) if food.get("fee_includes_fb") else None,
+        # fn56: ceremony fee_type 'included' = $0 from the PDF (the card adds nothing; _num(0) used to fall back to
+        # the market ceremony estimate).
+        "ceremony_included": (comps.get("ceremony") or {}).get("fee_type") == "included",
         "ceremony_in_package": (comps.get("ceremony") or {}).get("source") == "package",
         "service_in_package": (comps.get("service_charge") or {}).get("source") == "package",
         "service_pct": _num((comps.get("service_charge") or {}).get("pct")),
@@ -74,15 +84,18 @@ def compute(inp, guests, override=None):
 
     rental, rs = pick(inp.get("rental"), "venue_fee")
     lines.append({"item": "Rental", "amount": rental, "source": rs})
-    if inp.get("ceremony_in_package") and not inp.get("ceremony"):
+    pkg = config.PACKAGE_TOTALS   # REC_PACKAGE_TOTALS (2026-11-22): off = exactly the pre-package formula
+    if pkg and inp.get("ceremony_included") and not inp.get("ceremony"):
+        ceremony, cs = 0, "this venue's PDF"
+    elif pkg and inp.get("ceremony_in_package") and not inp.get("ceremony"):
         ceremony, cs = 0, "not stated - package"
     else:
         ceremony, cs = pick(inp.get("ceremony"), "ceremony")
     lines.append({"item": "Ceremony on site", "amount": ceremony, "source": cs})
 
-    if inp.get("fee_includes_fb"):
+    if pkg and inp.get("fee_includes_fb"):
         # Inclusive package: food is inside the rental. Never add a per-head estimate on top.
-        pp = inp.get("pp_fb") or 0
+        pp = inp.get("pp_fb") or inp.get("pkg_extra_pp") or 0
         n = inp.get("included_guests") or 0
         if pp and n:
             food = pp * max(0, g - n)
@@ -118,7 +131,7 @@ def _finish(inp, lines, rental, ceremony, food, g, asked):
     subtotal = rental + ceremony + food
     pct = inp.get("service_pct")
     psrc = "this venue's PDF"
-    if not pct and inp.get("service_in_package"):
+    if not pct and config.PACKAGE_TOTALS and inp.get("service_in_package"):
         pct, psrc = 0, "not stated - package"
     elif not pct:
         pct = _num(est.get("service_pct")) or DEFAULT_SERVICE_PCT

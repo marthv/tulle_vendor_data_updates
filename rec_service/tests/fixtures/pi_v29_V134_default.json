@@ -1,0 +1,366 @@
+{
+ "vendor_id": "V134",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "Massachusetts",
+ "scope_label": "Massachusetts",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [
+  {
+   "key": "26northstudio",
+   "name": "26 North Studio",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "bharatparmar",
+   "name": "Bharat Parmar",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "ericbarryphotography",
+   "name": "Eric Barry Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "ferleimages",
+   "name": "Ferle Images",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "granitestagphotography",
+   "name": "Granite Stag Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "jenniferarayaphotography",
+   "name": "Jennifer Araya Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "perlaimages",
+   "name": "Perla Images",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  }
+ ],
+ "partner_vendors_headline": "7 vendors this venue works with",
+ "partner_vendors_more_label": "Show all 7",
+ "partner_vendors_linked_count": 0,
+ "spaces": [
+  {
+   "space_key": "V134|ballroom",
+   "label": "Ballroom",
+   "chip_label": "Ballroom 550",
+   "capacity_seated": 550,
+   "field_count": 3,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "3 of 3 fields for this space"
+  },
+  {
+   "space_key": "V134|andoverroom",
+   "label": "Andover Room",
+   "chip_label": "Andover Room 250",
+   "capacity_seated": 250,
+   "field_count": 3,
+   "fields_total": 3,
+   "sort_rank": 1,
+   "has_pricing": true,
+   "status_line": "3 of 3 fields for this space"
+  },
+  {
+   "space_key": "V134|trumpetersroom",
+   "label": "Trumpeters Room",
+   "chip_label": "Trumpeters Room 125",
+   "capacity_seated": 125,
+   "field_count": 3,
+   "fields_total": 3,
+   "sort_rank": 2,
+   "has_pricing": true,
+   "status_line": "3 of 3 fields for this space"
+  }
+ ],
+ "spaces_headline": "3 spaces at this venue",
+ "selected_space_key": "V134|ballroom",
+ "space": {
+  "space_key": "V134|ballroom",
+  "label": "Ballroom",
+  "capacity_seated": 550,
+  "is_whole_venue": false,
+  "shared_pricing": false,
+  "contract_count": 1,
+  "field_count": 3,
+  "fields_total": 3,
+  "status_line": "3 of 3 fields for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the Ballroom, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 0,
+  "guest_floor": 0,
+  "guest_floor_note": "",
+  "fee_basis": "",
+  "fee_band_min": 0,
+  "fee_band_max": 0,
+  "guest_sensitivity": {
+   "responds": true,
+   "food_pinned": false,
+   "reason": "below_fb_min_breakeven",
+   "fb_min_breakeven_guests": 134,
+   "breakeven_above_capacity": false,
+   "note": "Your guest count starts moving the food cost at about 134 guests. Below that, the minimum is what you pay."
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "Massachusetts",
+     "dimension": "capacity_band",
+     "bucket": "cap_401_plus",
+     "p10": 60,
+     "p25": 100,
+     "median": 100,
+     "p75": 251,
+     "p90": 329,
+     "n_spaces": 13,
+     "n_vendors": 7
+    },
+    "sentence": "This venue\u2019s $25,000 minimum already includes the $3,000 rental, so the rental is counted once: food and drink need to reach $22,000. Their menu is $165 a head, but below about 134 guests the minimum is what you actually pay.",
+    "pp_fb": 165,
+    "fb_min": 22000,
+    "fb_min_is_per_person": false,
+    "fb_min_breakeven_guests": 134,
+    "fb_min_binds_at_default": true,
+    "badge_code": "typical",
+    "badge_label": "Typical in Massachusetts",
+    "badge_scale": "Ranked against 13 comparable Massachusetts venues."
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "Massachusetts",
+     "dimension": "capacity_band",
+     "bucket": "cap_401_plus",
+     "p10": 750,
+     "p25": 1000,
+     "median": 1815,
+     "p75": 2000,
+     "p90": 3500,
+     "n_spaces": 14,
+     "n_vendors": 9
+    },
+    "sentence": "A one-off fee to hold the ceremony here rather than at a church or elsewhere.",
+    "amount": 2000,
+    "fee_type": "flat",
+    "badge_code": "typical",
+    "badge_label": "Typical in Massachusetts",
+    "badge_scale": "Ranked against 14 comparable Massachusetts venues."
+   },
+   {
+    "key": "venue_fee",
+    "title": "Rental fee",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "Massachusetts",
+     "dimension": "capacity_band",
+     "bucket": "cap_401_plus",
+     "p10": 750,
+     "p25": 3000,
+     "median": 4950,
+     "p75": 7500,
+     "p90": 17250,
+     "n_spaces": 18,
+     "n_vendors": 12
+    },
+    "sentence": "A flat charge to book the Ballroom for the day, before any food or service is added.",
+    "amount": 3000,
+    "badge_code": "typical",
+    "badge_label": "Typical in Massachusetts",
+    "badge_scale": "Ranked against 18 comparable Massachusetts venues."
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "Massachusetts",
+     "dimension": "capacity_band",
+     "bucket": "cap_401_plus",
+     "p10": 5,
+     "p25": 5,
+     "median": 10,
+     "p75": 13,
+     "p90": 20,
+     "n_spaces": 24,
+     "n_vendors": 12
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "12% added to everything above. It is not a tip, and most couples miss it when they budget.",
+    "pct": 12,
+    "badge_code": "typical",
+    "badge_label": "Typical in Massachusetts",
+    "badge_scale": "Ranked against 24 comparable Massachusetts venues."
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "venue",
+    "sentence": "7% on top of everything above, added at the end.",
+    "pct": 7
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Every figure above is this venue's own. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [
+    "food_and_drink",
+    "ceremony",
+    "service_charge"
+   ],
+   "at_default": {
+    "guests": 100,
+    "total": 30240,
+    "per_guest": 302
+   },
+   "estimates": {
+    "pp_fb": 100,
+    "ceremony": 1815,
+    "service_pct": 10,
+    "venue_fee": 4950
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": true
+    },
+    {
+     "component": "ceremony",
+     "from_venue": true
+    },
+    {
+     "component": "service_charge",
+     "from_venue": true
+    }
+   ],
+   "from_venue_count": 3,
+   "total": 3,
+   "style": "solid",
+   "headline": "Every figure here came from this venue"
+  },
+  "band": {
+   "metric": "all_in_pg_125",
+   "reference_guests": 125,
+   "scope": "state",
+   "scope_label": "Massachusetts",
+   "basis": "all_in",
+   "basis_component": "",
+   "p10": 126,
+   "p25": 134.4,
+   "median": 268.8,
+   "p75": 386.4,
+   "p90": 646.36,
+   "n_spaces": 16,
+   "n_vendors": 9,
+   "position": "average",
+   "sentence": "This sits in the middle for Massachusetts. Plenty of venues cost more, plenty cost less.",
+   "venue_per_guest": 242
+  },
+  "footer": "From the pricing PDF a couple uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}

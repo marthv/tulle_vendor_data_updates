@@ -302,6 +302,13 @@ PRESEARCH = os.environ.get("REC_PRESEARCH", "1") == "1"
 REFINE_ROUTER = os.environ.get("REC_REFINE_ROUTER", "0") == "1"
 # "Next for your wedding" suggestion under answers (2026-11-07): OFF - it repeated what the couple had just asked for.
 PLAN_NEXT_STEP = os.environ.get("REC_PLAN_NEXT_STEP", "0") == "1"
+# 2026-11-22 (owner yes): with the flag on, plan.next_step skips the slot(s) this answer just covered (the 11-07 reason
+# it was turned off: "I asked for a photographer, then it says find a photographer again").
+# PACKAGE TOTALS (owner yes 2026-11-22): the Planner's all-in matches the venue card for fn56's hand-reviewed PACKAGES
+#   (v29, 25 spaces): an all-inclusive package price is not topped up with food, a market ceremony or a market service
+#   charge; food = extra-guest rate x guests above the included count. Also: a ceremony the PDF marks 'included' is $0
+#   (it fell back to the market estimate). "0" = the pre-2026-11-22 formula exactly.
+PACKAGE_TOTALS = os.environ.get("REC_PACKAGE_TOTALS", "0") == "1"
 # SOURCED ANSWERS (owner 2026-11-07: "I really really don't want to hallucinate, so I want very clear sources"): venue
 # questions beyond price are answered from venue_details (PDF facts, vibes, description, Google reviews) and, for full
 # members, the web; every answer lists its sources and a web source must be a URL the search returned this request.

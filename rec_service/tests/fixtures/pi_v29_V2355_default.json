@@ -1,0 +1,259 @@
+{
+ "vendor_id": "V2355",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "New York",
+ "scope_label": "New York",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [],
+ "partner_vendors_headline": "",
+ "partner_vendors_more_label": "",
+ "partner_vendors_linked_count": 0,
+ "spaces": [
+  {
+   "space_key": "V2355|pioneerfarm",
+   "label": "Pioneer Farm",
+   "chip_label": "Pioneer Farm 220",
+   "capacity_seated": 220,
+   "field_count": 1,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "1 of 3 fields for this space"
+  }
+ ],
+ "spaces_headline": "1 space at this venue",
+ "selected_space_key": "V2355|pioneerfarm",
+ "space": {
+  "space_key": "V2355|pioneerfarm",
+  "label": "Pioneer Farm",
+  "capacity_seated": 220,
+  "is_whole_venue": false,
+  "shared_pricing": false,
+  "contract_count": 1,
+  "field_count": 1,
+  "fields_total": 3,
+  "status_line": "1 of 3 fields for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the Pioneer Farm, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 150,
+  "guest_floor": 150,
+  "guest_floor_note": "Books a minimum of 150 guests.",
+  "fee_basis": "",
+  "fee_band_min": 0,
+  "fee_band_max": 0,
+  "guest_sensitivity": {
+   "responds": false,
+   "food_pinned": true,
+   "reason": "package",
+   "fb_min_breakeven_guests": null,
+   "breakeven_above_capacity": false,
+   "note": "The package price covers up to 150 guests. Check the PDF for the rate above that."
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 115,
+     "p25": 175,
+     "median": 230,
+     "p75": 300,
+     "p90": 405,
+     "n_spaces": 172,
+     "n_vendors": 106
+    },
+    "fee_includes_fb": true,
+    "included_guests": 150,
+    "badge_code": "",
+    "badge_label": "In the package",
+    "sentence": "Included in this venue's $85,000 package price for up to 150 guests.",
+    "pp_fb": 0,
+    "fb_min": 0,
+    "fb_min_is_per_person": false
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": false,
+    "source": "package",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 750,
+     "p25": 1200,
+     "median": 1500,
+     "p75": 2000,
+     "p90": 4000,
+     "n_spaces": 81,
+     "n_vendors": 58
+    },
+    "sentence": "Not stated separately - this venue prices an all-inclusive package, so check the PDF for what it covers.",
+    "badge_code": "",
+    "badge_label": "",
+    "amount": 0
+   },
+   {
+    "key": "venue_fee",
+    "title": "Package price",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 2500,
+     "p25": 6500,
+     "median": 11500,
+     "p75": 18500,
+     "p90": 27500,
+     "n_spaces": 215,
+     "n_vendors": 138
+    },
+    "fee_includes_fb": true,
+    "included_guests": 150,
+    "badge_code": "",
+    "badge_label": "",
+    "sentence": "An all-inclusive price for the Pioneer Farm: the room plus food and drink for up to 150 guests. No separate food cost is added on top.",
+    "amount": 85000
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": false,
+    "source": "package",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 7,
+     "p25": 20,
+     "median": 21,
+     "p75": 23,
+     "p90": 24,
+     "n_spaces": 173,
+     "n_vendors": 103
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "Not stated - this venue prices an all-inclusive package. Check the PDF for any service charge on top.",
+    "badge_code": "",
+    "badge_label": "",
+    "pct": 0
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "unknown",
+    "sentence": "Sales tax is added on top of everything above. This venue did not state its rate."
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Where this venue has not disclosed a figure, the New York average stands in. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [
+    "food_and_drink"
+   ],
+   "at_default": {
+    "guests": 150,
+    "total": 85000,
+    "per_guest": 567
+   },
+   "estimates": {
+    "pp_fb": 230,
+    "ceremony": 1500,
+    "service_pct": 21,
+    "venue_fee": 11500
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": true
+    },
+    {
+     "component": "ceremony",
+     "from_venue": false
+    },
+    {
+     "component": "service_charge",
+     "from_venue": false
+    }
+   ],
+   "from_venue_count": 1,
+   "total": 3,
+   "style": "mixed",
+   "headline": "1 of 3 costs came from this venue, plus their own rental fee"
+  },
+  "band": {
+   "metric": "all_in_pg_200",
+   "reference_guests": 200,
+   "scope": "state",
+   "scope_label": "New York",
+   "basis": "all_in",
+   "basis_component": "",
+   "p10": 141.45,
+   "p25": 215.25,
+   "median": 315,
+   "p75": 416.45,
+   "p90": 661.41,
+   "n_spaces": 166,
+   "n_vendors": 104,
+   "position": "",
+   "sentence": "We cannot place the Pioneer Farm on this scale yet - not enough pricing from this venue."
+  },
+  "footer": "From the pricing PDF a couple uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}

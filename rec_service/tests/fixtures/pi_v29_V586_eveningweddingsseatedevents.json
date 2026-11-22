@@ -1,0 +1,507 @@
+{
+ "vendor_id": "V586",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "New York",
+ "scope_label": "New York",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [
+  {
+   "key": "baylymoore",
+   "name": "Bayly & Moore",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "briannawilbur",
+   "name": "Brianna Wilbur",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "christiannoble",
+   "name": "Christian Noble",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "courtneylee",
+   "name": "Courtney Lee",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "ericareaciephotography",
+   "name": "Erica Reacie Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "ericareadephotography",
+   "name": "Erica Reade Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "ericaresdephotography",
+   "name": "Erica Resde Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "jennyfu",
+   "name": "Jenny Fu",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "maxflatow",
+   "name": "Max Flatow",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "nataliawajdaphotography",
+   "name": "Natalia Wajda Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "vikm",
+   "name": "Vik M",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "wandermerephotography",
+   "name": "Wandermere Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "wandermorephotography",
+   "name": "Wandermore Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  }
+ ],
+ "partner_vendors_headline": "13 vendors this venue works with",
+ "partner_vendors_more_label": "Show all 13",
+ "partner_vendors_linked_count": 0,
+ "spaces": [
+  {
+   "space_key": "V586|celestine",
+   "label": "Celestine",
+   "chip_label": "Celestine 100",
+   "capacity_seated": 100,
+   "field_count": 3,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "3 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|eveningweddingscocktailparties",
+   "label": "Evening Weddings - Cocktail Parties",
+   "chip_label": "Evening Weddings - Cocktail Parties 100",
+   "capacity_seated": 100,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 1,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|daytimeweddingscocktailparties",
+   "label": "Daytime Weddings - Cocktail Parties",
+   "chip_label": "Daytime Weddings - Cocktail Parties 85",
+   "capacity_seated": 85,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 2,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|celestineindoordiningroomriversideterrace",
+   "label": "Celestine (Indoor Dining Room + Riverside Terrace)",
+   "chip_label": "Celestine (Indoor Dining Room + Riverside Terrace) 80",
+   "capacity_seated": 80,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 3,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|celestineeveningweddingseated",
+   "label": "Celestine - Evening Wedding (Seated)",
+   "chip_label": "Celestine - Evening Wedding (Seated) 80",
+   "capacity_seated": 80,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 4,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|celestineseatedeventevening",
+   "label": "Celestine - Seated Event (Evening)",
+   "chip_label": "Celestine - Seated Event (Evening) 80",
+   "capacity_seated": 80,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 5,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|celestinediningroomterrace",
+   "label": "Celestine Dining Room & Terrace",
+   "chip_label": "Celestine Dining Room & Terrace 80",
+   "capacity_seated": 80,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 6,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|celestinerestaurantterrace",
+   "label": "Celestine Restaurant & Terrace",
+   "chip_label": "Celestine Restaurant & Terrace 80",
+   "capacity_seated": 80,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 7,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|eveningweddingsseatedevents",
+   "label": "Evening Weddings - Seated Events",
+   "chip_label": "Evening Weddings - Seated Events 80",
+   "capacity_seated": 80,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 8,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  },
+  {
+   "space_key": "V586|daytimeweddingsseatedevents",
+   "label": "Daytime Weddings - Seated Events",
+   "chip_label": "Daytime Weddings - Seated Events 70",
+   "capacity_seated": 70,
+   "field_count": 2,
+   "fields_total": 3,
+   "sort_rank": 9,
+   "has_pricing": true,
+   "status_line": "2 of 3 fields for this space"
+  }
+ ],
+ "spaces_headline": "10 spaces at this venue",
+ "selected_space_key": "V586|eveningweddingsseatedevents",
+ "space": {
+  "space_key": "V586|eveningweddingsseatedevents",
+  "label": "Evening Weddings - Seated Events",
+  "capacity_seated": 80,
+  "is_whole_venue": false,
+  "shared_pricing": false,
+  "contract_count": 1,
+  "field_count": 2,
+  "fields_total": 3,
+  "status_line": "2 of 3 fields for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the Evening Weddings - Seated Events, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 0,
+  "guest_floor": 0,
+  "guest_floor_note": "",
+  "fee_basis": "Rental shown is the rate for 1-70 guests; see the PDF.",
+  "fee_band_min": 1,
+  "fee_band_max": 70,
+  "guest_sensitivity": {
+   "responds": false,
+   "food_pinned": true,
+   "reason": "package",
+   "fb_min_breakeven_guests": null,
+   "breakeven_above_capacity": false,
+   "note": "The package price covers up to 70 guests. Check the PDF for the rate above that."
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": true,
+    "source": "market",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_76_150",
+     "p10": 80,
+     "p25": 140,
+     "median": 220,
+     "p75": 300,
+     "p90": 425,
+     "n_spaces": 151,
+     "n_vendors": 96
+    },
+    "fee_includes_fb": true,
+    "included_guests": 70,
+    "badge_code": "",
+    "badge_label": "In the package",
+    "sentence": "Included in this venue's $30,000 package price for up to 70 guests. Each extra guest is $250.",
+    "pp_fb": 250,
+    "fb_min": 0,
+    "fb_min_is_per_person": false
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_76_150",
+     "p10": 800,
+     "p25": 1000,
+     "median": 1500,
+     "p75": 1850,
+     "p90": 3950,
+     "n_spaces": 77,
+     "n_vendors": 48
+    },
+    "sentence": "A one-off fee to hold the ceremony here rather than at a church or elsewhere.",
+    "amount": 1500,
+    "fee_type": "flat",
+    "badge_code": "typical",
+    "badge_label": "Typical in New York",
+    "badge_scale": "Ranked against 77 comparable New York venues."
+   },
+   {
+    "key": "venue_fee",
+    "title": "Package price",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_76_150",
+     "p10": 2325,
+     "p25": 5000,
+     "median": 9000,
+     "p75": 18000,
+     "p90": 30000,
+     "n_spaces": 190,
+     "n_vendors": 118
+    },
+    "fee_includes_fb": true,
+    "included_guests": 70,
+    "badge_code": "",
+    "badge_label": "",
+    "sentence": "An all-inclusive price for the Evening Weddings - Seated Events: the room plus food and drink for up to 70 guests. No separate food cost is added on top.",
+    "amount": 30000
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "New York",
+     "dimension": "capacity_band",
+     "bucket": "cap_76_150",
+     "p10": 5,
+     "p25": 6,
+     "median": 20,
+     "p75": 23,
+     "p90": 25,
+     "n_spaces": 179,
+     "n_vendors": 106
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "5% added to everything above. It is not a tip, and most couples miss it when they budget.",
+    "pct": 5,
+    "badge_code": "below",
+    "badge_label": "Below average in New York",
+    "badge_scale": "Ranked against 179 comparable New York venues."
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "unknown",
+    "sentence": "Sales tax is added on top of everything above. This venue did not state its rate."
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Where this venue has not disclosed a figure, the New York average stands in. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [
+    "ceremony",
+    "service_charge"
+   ],
+   "at_default": {
+    "guests": 100,
+    "total": 40950,
+    "per_guest": 410
+   },
+   "estimates": {
+    "pp_fb": 220,
+    "ceremony": 1500,
+    "service_pct": 20,
+    "venue_fee": 9000
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": false
+    },
+    {
+     "component": "ceremony",
+     "from_venue": true
+    },
+    {
+     "component": "service_charge",
+     "from_venue": true
+    }
+   ],
+   "from_venue_count": 2,
+   "total": 3,
+   "style": "mixed",
+   "headline": "2 of 3 costs came from this venue, plus their own rental fee"
+  },
+  "band": {
+   "metric": "all_in_pg_75",
+   "reference_guests": 75,
+   "scope": "state",
+   "scope_label": "New York",
+   "basis": "all_in",
+   "basis_component": "",
+   "p10": 126.07,
+   "p25": 221.45,
+   "median": 363.97,
+   "p75": 661.33,
+   "p90": 1173.33,
+   "n_spaces": 165,
+   "n_vendors": 102,
+   "position": "average",
+   "sentence": "This sits in the middle for New York. Plenty of venues cost more, plenty cost less.",
+   "venue_per_guest": 459
+  },
+  "footer": "From the pricing PDF a couple uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}

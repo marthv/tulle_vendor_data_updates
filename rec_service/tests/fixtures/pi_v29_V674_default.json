@@ -1,0 +1,469 @@
+{
+ "vendor_id": "V674",
+ "found": true,
+ "is_venue": true,
+ "entitled": true,
+ "state": "California",
+ "scope_label": "California",
+ "default_guests": 100,
+ "badge_scale_legend": "Below average is the cheapest quarter, typical is the middle half, above average is the top quarter, well above is the top tenth.",
+ "partner_vendors": [
+  {
+   "key": "alexjanaphotography",
+   "name": "Alex & Jana Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "ashleighmitchell",
+   "name": "Ashleigh Mitchell",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "bekkerscatering",
+   "name": "Bekker's Catering",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "christinaperhac",
+   "name": "Christina Perhac",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "davidcutler",
+   "name": "David Cutler",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "eleganceondisplay",
+   "name": "Elegance On Display",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "firstcharter",
+   "name": "First Charter",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "hsfloraldesign",
+   "name": "H & S Floral Design",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "jessicawoodard",
+   "name": "Jessica Woodard",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "lilacakeshop",
+   "name": "LILA Cake Shop",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "lovelypeonies",
+   "name": "Lovely Peonies",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "mikemilan",
+   "name": "Mike Milan",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "rusticevents",
+   "name": "Rustic Events",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "socalcandlerentals",
+   "name": "SoCal Candle Rentals",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "soireedesignevents",
+   "name": "Soiree Design & Events",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "strydertransportation",
+   "name": "Stryder Transportation",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "sweetmaplebakery",
+   "name": "Sweet Maple Bakery",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "sweetpeafloralcreations",
+   "name": "Sweet Pea Floral Creations",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  },
+  {
+   "key": "taylerashleyphotography",
+   "name": "Tayler Ashley Photography",
+   "is_url": false,
+   "is_link": false,
+   "href": "",
+   "vendor_id": "",
+   "vendor_idx": 0,
+   "vendor_name": "",
+   "gold_chip": false
+  }
+ ],
+ "partner_vendors_headline": "19 vendors this venue works with",
+ "partner_vendors_more_label": "Show all 19",
+ "partner_vendors_linked_count": 0,
+ "spaces": [
+  {
+   "space_key": "V674|circleoakranch",
+   "label": "Circle Oak Ranch",
+   "chip_label": "Circle Oak Ranch 200",
+   "capacity_seated": 200,
+   "field_count": 1,
+   "fields_total": 3,
+   "sort_rank": 0,
+   "has_pricing": true,
+   "status_line": "1 of 3 fields for this space"
+  }
+ ],
+ "spaces_headline": "1 space at this venue",
+ "selected_space_key": "V674|circleoakranch",
+ "space": {
+  "space_key": "V674|circleoakranch",
+  "label": "Circle Oak Ranch",
+  "capacity_seated": 200,
+  "is_whole_venue": false,
+  "shared_pricing": false,
+  "contract_count": 1,
+  "field_count": 1,
+  "fields_total": 3,
+  "status_line": "1 of 3 fields for this space",
+  "headline_prefix": "A peak-season Saturday dinner in the Circle Oak Ranch, before tax and gratuity",
+  "headline_note": "Off-peak and brunch usually cost less.",
+  "guest_min": 0,
+  "guest_floor": 0,
+  "guest_floor_note": "",
+  "fee_basis": "Rental shown is the rate for 1-100 guests; see the PDF.",
+  "fee_band_min": 1,
+  "fee_band_max": 100,
+  "guest_sensitivity": {
+   "responds": true,
+   "food_pinned": false,
+   "reason": "package",
+   "fb_min_breakeven_guests": null,
+   "breakeven_above_capacity": false,
+   "note": "The package price covers up to 100 guests; each guest above that adds $162."
+  },
+  "components": [
+   {
+    "key": "food_and_drink",
+    "title": "Food and drink",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "pp_fb",
+     "scope": "state",
+     "scope_label": "California",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 71,
+     "p25": 100,
+     "median": 149,
+     "p75": 200,
+     "p90": 320,
+     "n_spaces": 142,
+     "n_vendors": 100
+    },
+    "fee_includes_fb": true,
+    "included_guests": 100,
+    "badge_code": "",
+    "badge_label": "In the package",
+    "sentence": "Included in this venue's $32,800 package price for up to 100 guests. Each extra guest is $162.",
+    "pp_fb": 162,
+    "fb_min": 0,
+    "fb_min_is_per_person": false
+   },
+   {
+    "key": "ceremony",
+    "title": "Ceremony on site",
+    "visible": true,
+    "is_estimate": false,
+    "source": "package",
+    "benchmark": {
+     "metric": "ceremony_fee",
+     "scope": "state",
+     "scope_label": "California",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 750,
+     "p25": 1300,
+     "median": 1500,
+     "p75": 2800,
+     "p90": 5000,
+     "n_spaces": 133,
+     "n_vendors": 91
+    },
+    "sentence": "Not stated separately - this venue prices an all-inclusive package, so check the PDF for what it covers.",
+    "badge_code": "",
+    "badge_label": "",
+    "amount": 0
+   },
+   {
+    "key": "venue_fee",
+    "title": "Package price",
+    "visible": true,
+    "is_estimate": false,
+    "source": "venue",
+    "benchmark": {
+     "metric": "venue_fee",
+     "scope": "state",
+     "scope_label": "California",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 1995,
+     "p25": 3900,
+     "median": 6395,
+     "p75": 12000,
+     "p90": 20000,
+     "n_spaces": 347,
+     "n_vendors": 235
+    },
+    "fee_includes_fb": true,
+    "included_guests": 100,
+    "badge_code": "",
+    "badge_label": "",
+    "sentence": "An all-inclusive price for the Circle Oak Ranch: the room plus food and drink for up to 100 guests. No separate food cost is added on top.",
+    "amount": 32800
+   },
+   {
+    "key": "service_charge",
+    "title": "Service charge",
+    "visible": true,
+    "is_estimate": false,
+    "source": "package",
+    "benchmark": {
+     "metric": "service_pct",
+     "scope": "state",
+     "scope_label": "California",
+     "dimension": "capacity_band",
+     "bucket": "cap_151_250",
+     "p10": 9.25,
+     "p25": 20,
+     "median": 22,
+     "p75": 24,
+     "p90": 26,
+     "n_spaces": 219,
+     "n_vendors": 145
+    },
+    "applies_to": [
+     "food_and_drink",
+     "ceremony",
+     "venue_fee"
+    ],
+    "sentence": "Not stated - this venue prices an all-inclusive package. Check the PDF for any service charge on top.",
+    "badge_code": "",
+    "badge_label": "",
+    "pct": 0
+   },
+   {
+    "key": "tax",
+    "title": "Sales tax",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": false,
+    "source": "unknown",
+    "sentence": "Sales tax is added on top of everything above. This venue did not state its rate."
+   },
+   {
+    "key": "gratuity",
+    "title": "Gratuity",
+    "visible": true,
+    "excluded_from_total": true,
+    "is_estimate": true,
+    "source": "market",
+    "sentence": "Typically 15-20% on top, and separate from the service charge above. Venues that charge both do not always say so up front."
+   },
+   {
+    "key": "total",
+    "title": "What you'd pay this venue, before tax and gratuity",
+    "visible": true,
+    "is_estimate": false,
+    "excludes": [
+     "tax",
+     "gratuity"
+    ],
+    "source": "venue",
+    "sentence": "Where this venue has not disclosed a figure, the California average stands in. Tax and gratuity come on top.",
+    "scope_note": "Room, food and drink, ceremony and service charge. This is not your whole wedding - no flowers, photography, music or attire."
+   }
+  ],
+  "all_in": {
+   "gated": false,
+   "is_estimate": false,
+   "components_present": [
+    "food_and_drink"
+   ],
+   "at_default": {
+    "guests": 100,
+    "total": 32800,
+    "per_guest": 328
+   },
+   "estimates": {
+    "pp_fb": 149,
+    "ceremony": 1500,
+    "service_pct": 22,
+    "venue_fee": 6395
+   }
+  },
+  "provenance": {
+   "marks": [
+    {
+     "component": "food_and_drink",
+     "from_venue": true
+    },
+    {
+     "component": "ceremony",
+     "from_venue": false
+    },
+    {
+     "component": "service_charge",
+     "from_venue": false
+    }
+   ],
+   "from_venue_count": 1,
+   "total": 3,
+   "style": "mixed",
+   "headline": "1 of 3 costs came from this venue, plus their own rental fee"
+  },
+  "band": {
+   "metric": "all_in_pg_125",
+   "reference_guests": 125,
+   "scope": "state",
+   "scope_label": "California",
+   "basis": "all_in",
+   "basis_component": "",
+   "p10": 78.08,
+   "p25": 137.76,
+   "median": 228.04,
+   "p75": 344.8,
+   "p90": 520.98,
+   "n_spaces": 191,
+   "n_vendors": 128,
+   "position": "",
+   "sentence": "We cannot place the Circle Oak Ranch on this scale yet - not enough pricing from this venue."
+  },
+  "footer": "From the pricing PDF a couple uploaded for this space.",
+  "cta": null
+ },
+ "access_reason": "forever",
+ "free_views_left": 0
+}
