@@ -30,6 +30,7 @@ HELP = ("I'm Tulle Bot (automated, read-only). I answer questions about recent c
         "`@Tulle Bot hide V1234 venue asked to be removed` / `@Tulle Bot unhide V1234`\n"
         "`@Tulle Bot change V1234 website to example.com` (also name, description, contact, seated capacity, type)\n"
         "`@Tulle Bot what's waiting for approval?` / `@Tulle Bot what was applied this week?`\n"
+        "*Pricing PDFs*: `@Tulle Bot PDFs for V1234` or `@Tulle Bot give me all the pdfs for Gramercy Mansion`\n"
         "*Customer lookup* (team only; read-only): `@Tulle Bot look up user 34819` or "
         "`@Tulle Bot what does user 34819 see?`")
 IGNORED_SUBTYPES_OK = {None, "thread_broadcast", "file_share"}
@@ -125,6 +126,7 @@ class Bot:
             engine = Engine()
         self.engine = engine
         self._feedback = None
+        self._pdf_index = None
 
     @property
     def feedback(self):
@@ -181,6 +183,9 @@ class Bot:
                       f"There's no rule {fm.group(1)}. `@Tulle Bot rules` lists them.", reply_ts, footer=False)
             return "command:forget"
         out = self.customer_lookup(question, ev)
+        if out is not None:
+            return out
+        out = self.pdf_list(question, ev)
         if out is not None:
             return out
         out = self.vendor_action(question, ev)
@@ -253,6 +258,54 @@ class Bot:
             tell(cl.render(res))
         log.info("lookup by %s ok (%s)", user, "channel" if cl.public() else "private")   # never the email/answer
         return "lookup:ok"
+
+    # --- a vendor's pricing PDFs (owner 2026-11-22) --------------------------------------------------------------
+    def pdf_list(self, question: str, ev: dict) -> str | None:
+        """'PDFs for V1234' / 'give me all the pdfs for Gramercy Mansion' -> a list with Drive links. Read-only, no
+        model call. None = not a PDF-list request."""
+        import pdf_list as pl
+        target = pl.parse(question)
+        if target is None:
+            return None
+        channel = ev["channel"]
+        reply_ts = ev.get("thread_ts") or ev.get("ts")
+
+        def say(text):
+            self.slack.post_message(channel, "_Tulle Bot (automated, read-only):_ " + text, thread_ts=reply_ts,
+                                    sanitize=True)       # email-only filter: keeps Drive links intact
+        if not getattr(self.xano, "enabled", False):
+            say("I can't read the PDF list from here right now.")
+            return "pdfs:no-xano"
+        if not self.limiter.allow(channel):
+            return "pdfs:rate-limited"
+        try:
+            vendor, hits = pl.resolve_vendor(self.feedback.directory, target)
+        except Exception:  # noqa: BLE001
+            log.exception("pdf list: vendor lookup failed")
+            say("I couldn't read the vendor list just now. Try again in a few minutes.")
+            return "pdfs:lookup-error"
+        if vendor is None:
+            say(pl.candidates_text(target, hits))
+            return "pdfs:ambiguous" if hits else "pdfs:not-found"
+        if self._pdf_index is None:
+            self._pdf_index = pl.PdfIndex(self.xano)
+        timer = None
+        if not self._pdf_index.fresh():
+            timer = threading.Timer(self.working_after, lambda: say(
+                "Reading the PDF list (about a minute the first time, instant after that)..."))
+            timer.daemon = True
+            timer.start()
+        try:
+            rows, built_at, truncated = self._pdf_index.get(str(vendor.get("Vendor_ID")))
+        except Exception:  # noqa: BLE001
+            log.exception("pdf list: table 10 read failed")
+            say("I couldn't read the PDF list just now. Try again in a few minutes.")
+            return "pdfs:read-error"
+        finally:
+            if timer:
+                timer.cancel()
+        say(pl.render(vendor, rows, built_at, truncated))
+        return f"pdfs:{len(rows)}"
 
     # --- vendor actions in plain words (took over from the retired Tulle Ops app, 2026-11-21) -------------------
     def vendor_action(self, question: str, ev: dict) -> str | None:
