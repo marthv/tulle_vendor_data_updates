@@ -151,11 +151,30 @@ def test_toolbar_search_status_bucket_rotation_sort():
     assert "localStorage" in html and "try {" in html
 
 
-def test_card_per_experiment_and_calendar_filters_grid():
+def test_card_per_experiment_grid_kept_under_details():
     html = _page()
     assert 'class="xc s-' in html and "list.map(card)" in html
-    assert "data-calexp" in html and "data-calweek" in html and "data-calclear" in html
-    assert "Showing: " in html and "calActive(e, ST.cal)" in html
+    # owner 2026-11-21: the full grid + filters stay, but closed under "Details for the team"
+    assert 'id="nwdet"' in html and "Details for the team" in html
+    # the old thin calendar strip (names cut off) is gone
+    assert "data-calexp" not in html and "calStrip" not in html
+
+
+def test_simple_view_running_timeline_decided():
+    # owner 2026-11-21: "very, very simple to read" for a non-technical reader
+    html = _page()
+    assert "runningNow() + timeline() + decidedList() + detailsBox()" in html
+    for s in ("Running now", "What we changed", "Decide on", "Chance it’s better", "So far:",
+              "No starting point recorded – can’t judge this yet", "Measuring"):
+        assert s in html, s
+    # timeline names sit in their own column and wrap; never ellipsised
+    assert ".tn b{display:block" in html and "overflow-wrap:anywhere" in html
+    # decided: 10 newest, the rest behind a toggle; plain outcome words
+    assert "list.slice(0, 10)" in html and 'id="dlmore"' in html
+    for w in ('"Kept"', '"Reverted"', '"Shelved"', '"No clear answer"'):
+        assert w in html, w
+    # a chance under the bar is never rounded up to the bar
+    assert "function chanceVs(p, bar)" in html
 
 
 def test_drawer_why_and_how_sections():

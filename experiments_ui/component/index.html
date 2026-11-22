@@ -539,40 +539,9 @@ details.seven>summary:hover{color:var(--ink)}
 .xbar2{margin:0 0 12px}
 .xq{flex:1 1 280px;min-width:200px}
 .xbar .sel{flex:0 1 auto;max-width:100%}
-.cal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);box-shadow:var(--sh1);padding:10px 0 6px;margin:14px 0 10px;--cl:190px}
-.cal-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:0 14px 6px}
-.cal-h h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0}
-.cal-h>span{font-size:12px;color:var(--ink-3)}
-.ckey{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.ckey i{display:inline-block;width:12px;height:6px;border-radius:3px;margin-left:6px}
-.k-rot,.cb.rot{background:var(--g700)} .k-live,.cb.live{background:var(--g500)} .k-call,.cb.call{background:var(--warn-fill)}
-.k-dec,.cb.dec{background:var(--ink-5)} .k-plan{border:1.5px dashed var(--ink-4);height:6px}
-.cs{max-height:230px;overflow:auto;position:relative;overscroll-behavior:contain}
-.cin{position:relative}
-.cr{display:flex;align-items:center;height:20px}
-.cl{position:sticky;left:0;z-index:3;flex:none;width:var(--cl);padding:0 10px 0 14px;font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--surface);line-height:20px}
-.ct{position:relative;height:20px;flex:none}
-.chead{position:sticky;top:0;z-index:4;background:var(--surface);height:24px;border-bottom:1px solid var(--line)}
-.chead .cl{height:24px}
-.chead .ct{height:24px}
-.cw{position:absolute;top:0;height:24px;appearance:none;border:0;border-left:1px solid var(--line);background:none;font-size:11px;color:var(--ink-3);text-align:left;padding:0 0 0 4px;cursor:pointer;white-space:nowrap;overflow:hidden}
-.cw b{color:var(--ink-2);font-weight:600}
-.cw:hover,.cw.on{background:var(--win-tint);color:var(--win-ink)}
-.cbody{position:relative;padding:3px 0}
-.cgrid{position:absolute;top:0;bottom:0;left:var(--cl);pointer-events:none}
-.cg{position:absolute;top:0;bottom:0;border-left:1px solid var(--line)}
-.cg.on{background:color-mix(in srgb,var(--g500) 9%,transparent)}
-.ctoday{position:absolute;top:0;bottom:0;width:2px;background:var(--bad-fill);opacity:.8}
-.cb{position:absolute;top:5px;height:10px;border-radius:5px;border:0;padding:0;cursor:pointer;appearance:none}
-.cb.plan{background:transparent;border:1.5px dashed var(--ink-4)}
-.cb.tail{background:color-mix(in srgb,var(--g500) 22%,transparent);pointer-events:none;border-radius:0 5px 5px 0}
-.cb:hover{filter:brightness(1.1);box-shadow:0 0 0 2px color-mix(in srgb,var(--focus) 35%,transparent)}
-.cb.on{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink)}
-.cfoot{margin:6px 14px 2px;font-size:12px;color:var(--ink-3)}
-.showing{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);background:var(--win-tint);border:1px solid var(--win-line);border-radius:999px;padding:4px 12px;margin:0 0 12px;width:fit-content;max-width:100%}
 .xg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 @media (max-width:980px){.xg{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:620px){.xg{grid-template-columns:minmax(0,1fr)}.cal{--cl:0px}.cl{padding:0;width:0}.ckey{display:none}.xbar .sel{flex:1 1 140px}.bk-tag{display:none}}
+@media (max-width:620px){.xg{grid-template-columns:minmax(0,1fr)}.xbar .sel{flex:1 1 140px}.bk-tag{display:none}}
 .xc{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);box-shadow:var(--sh1);padding:12px 14px;cursor:pointer;min-width:0;transition:border-color .15s,box-shadow .15s,transform .15s}
 .xc:hover{border-color:var(--line-2);box-shadow:var(--sh2);transform:translateY(-1px)}
 .xc:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -629,6 +598,119 @@ details.seven>summary:hover{color:var(--ink)}
 .wh dt{color:var(--ink-3);font-weight:500}
 .wh dd{margin:0;color:var(--ink-2)}
 @media (max-width:620px){.wh dl{grid-template-columns:1fr}.wh dt{margin-top:6px}}
+
+/* ── Simple view (owner 2026-11-21): big plain cards, a readable timeline, a short decided list ── */
+.wrap{font-size:15px}
+.hdr h1{font-size:30px}
+.hdr .meta{font-size:14px}
+.banner{font-size:14px}
+.nw-sec{margin:28px 0 36px}
+.nw-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+.nw-h h2{font-family:var(--font-d);font-weight:600;font-size:24px;line-height:1.2;margin:0;color:var(--ink)}
+.nw-h span{font-size:14px;color:var(--ink-3)}
+.nw-empty{background:var(--surface);border:1px dashed var(--line-2);border-radius:var(--r12);padding:22px;text-align:center;color:var(--ink-3);font-size:16px}
+.nw-cards{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+.nw-card{display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r16);box-shadow:var(--sh1);padding:22px 24px;cursor:pointer;min-width:0;transition:border-color .15s,box-shadow .15s}
+.nw-card:hover{border-color:var(--line-2);box-shadow:var(--sh2)}
+.nw-card:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.nw-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.nw-run{display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:600;color:var(--win-ink)}
+.nw-run i{width:9px;height:9px;border-radius:50%;background:var(--win-fill)}
+.nw-rot{font-size:13px;color:var(--ink-3);border:1px solid var(--line-2);border-radius:999px;padding:1px 10px}
+.nw-card h3{font-family:var(--font-d);font-weight:600;font-size:21px;line-height:1.35;margin:0;color:var(--ink);overflow-wrap:anywhere}
+.nw-what{margin:0;font-size:16px;line-height:1.5;color:var(--ink-2)}
+.nw-what span,.nw-dates span,.nv-k,.nw-note span{display:block;font-size:13px;font-weight:600;color:var(--ink-3);margin-bottom:2px}
+.nw-what em{color:var(--ink-4)}
+.nw-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.nw-dates b{font-size:17px;font-weight:600;color:var(--ink)}
+.nw-dates em{font-style:normal;font-size:14px;color:var(--ink-3);margin-left:8px}
+.nw-metric{font-size:15px;color:var(--ink-3)}
+.nw-metric b{color:var(--ink-2);font-weight:600}
+.nw-nums{display:grid;grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr) minmax(0,1.15fr);gap:12px;align-items:stretch}
+.nv{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r12);padding:12px 14px;min-width:0}
+.nv.warn{background:var(--warn-tint);border-color:var(--warn-line)}
+.nv-v{font-family:var(--font-d);font-weight:600;font-size:30px;line-height:1.15;color:var(--ink);font-variant-numeric:tabular-nums lining-nums}
+.nv-v.muted{color:var(--ink-4);font-size:24px}
+.nv-v.good{color:var(--win-ink)}
+.nv-s{font-size:14px;color:var(--ink-3);margin-top:2px}
+.nv-none{font-size:16px;font-weight:600;line-height:1.35;color:var(--warn-ink);margin-top:2px}
+.nv-arrow{display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--ink-4)}
+.nv-bar{position:relative;height:10px;border-radius:5px;background:var(--track);margin:8px 0 4px}
+.nv-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--ink-4)}
+.nv-bar i.ok{background:var(--win-fill)}
+.nv-bar b{position:absolute;top:-4px;width:3px;height:18px;border-radius:2px;background:var(--ink);transform:translateX(-1.5px)}
+.nw-sofar{font-size:16px;line-height:1.5;color:var(--ink);padding:12px 14px;border-radius:var(--r12);background:var(--neutral-tint);border:1px solid var(--line)}
+.nw-sofar b{font-weight:600}
+.nw-sofar.t-win{background:var(--win-tint);border-color:var(--win-line);color:var(--win-ink)}
+.nw-sofar.t-lean-good{background:var(--win-tint);border-color:var(--win-line)}
+.nw-sofar.t-warn,.nw-sofar.t-lean-bad{background:var(--warn-tint);border-color:var(--warn-line);color:var(--warn-ink)}
+.nw-sofar.t-bad{background:var(--bad-tint);border-color:var(--bad-line);color:var(--bad-ink)}
+.nw-conf{display:block;font-size:14px;color:var(--ink-3);margin-top:4px}
+.nw-note{font-size:14px;color:var(--ink-2);border-left:3px solid var(--line-2);padding:2px 0 2px 12px}
+.nw-note p{margin:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.nw-more{font-size:15px;font-weight:600;color:var(--brand);margin-top:auto}
+.nw-planned{font-size:15px;color:var(--ink-3);margin:14px 0 0}
+.nw-planned .linkbtn{font-size:15px}
+@media (max-width:620px){
+  .hdr h1{font-size:26px}
+  .nw-card{padding:18px 16px}
+  .nw-nums{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .nv-arrow{display:none}
+  .nv-ch{grid-column:1/-1}
+  .nv-v{font-size:26px}
+}
+/* timeline: names column + bars column; names wrap, never cut off */
+.tlc{background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);box-shadow:var(--sh1);padding:6px 0}
+.tr{display:grid;grid-template-columns:minmax(200px,38%) minmax(0,1fr);gap:16px;align-items:center;padding:10px 18px;border-top:1px solid var(--line);cursor:pointer}
+.tr:hover{background:var(--surface-2)}
+.tr:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.tr.thead{border-top:0;cursor:default;padding-top:6px;padding-bottom:6px}
+.tr.thead:hover{background:none}
+.tr.thead+.tr{border-top:1px solid var(--line)}
+.tn b{display:block;font-size:15px;font-weight:600;line-height:1.35;color:var(--ink);overflow-wrap:anywhere}
+.tn span{display:block;font-size:14px;color:var(--ink-3);margin-top:2px}
+.tt{position:relative;height:22px}
+.thead .tt{height:20px}
+.tk{position:absolute;top:0;transform:translateX(-50%);font-size:14px;color:var(--ink-3);white-space:nowrap}
+.tk.today{color:var(--bad-ink);font-weight:600;transform:translateX(-50%)}
+.ttoday{position:absolute;top:-10px;bottom:-10px;width:2px;margin-left:-1px;background:var(--bad-fill);opacity:.55}
+.tb{position:absolute;top:5px;height:12px;border-radius:6px}
+.tb.live{background:var(--win-fill)}
+.tb.plan{background:transparent;border:2px dashed var(--win-line);border-left:0;border-radius:0 6px 6px 0;height:12px}
+.tdec{position:absolute;top:2px;width:3px;height:18px;margin-left:-1.5px;border-radius:2px;background:var(--ink-2)}
+.tdot{position:absolute;top:4px;width:14px;height:14px;margin-left:-7px;border-radius:50%}
+.o-shipped{background:var(--win-fill)} .o-reverted{background:var(--warn-fill)} .o-shelved{background:var(--ink-5)} .o-inconclusive,.o-unknown{background:var(--line-2)}
+.tkey{display:flex;gap:18px;flex-wrap:wrap;font-size:14px;color:var(--ink-3);margin:10px 2px 0}
+.tkey i.k{display:inline-block;width:22px;height:10px;border-radius:5px;margin-right:7px;vertical-align:-1px}
+.tkey i.k.live{background:var(--win-fill)} .tkey i.k.plan{background:transparent;border:2px dashed var(--win-line)}
+@media (max-width:620px){
+  .tr{grid-template-columns:minmax(0,1fr);gap:6px;padding:10px 14px}
+  .tr.thead .tn{display:none}
+}
+.tl-more>summary{cursor:pointer;font-size:15px;font-weight:600;color:var(--brand);padding:10px 18px;border-top:1px solid var(--line)}
+/* decided list */
+.dl{background:var(--surface);border:1px solid var(--line);border-radius:var(--r12);box-shadow:var(--sh1);overflow:hidden}
+.dr{display:grid;grid-template-columns:150px minmax(0,1fr) 120px;gap:16px;align-items:start;padding:13px 18px;border-top:1px solid var(--line);cursor:pointer}
+.dr:first-child{border-top:0}
+.dr:hover{background:var(--surface-2)}
+.dr:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.dr .pill{font-size:14px;line-height:24px;justify-self:start}
+.dr-t b{display:block;font-size:15px;font-weight:600;line-height:1.4;color:var(--ink);overflow-wrap:anywhere}
+.dr-t p{margin:3px 0 0;font-size:14px;color:var(--ink-3);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dr-d{font-size:14px;color:var(--ink-3);text-align:right;white-space:nowrap;padding-top:2px}
+.dl-more{margin-top:12px}
+.dl-more>summary{cursor:pointer;font-size:15px;font-weight:600;color:var(--brand);padding:6px 0;width:max-content}
+.dl-more .dl{margin-top:8px}
+@media (max-width:620px){.dr{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"o d" "t t";gap:8px;padding:12px 14px}.dr>.dr-o{grid-area:o}.dr>.dr-d{grid-area:d}.dr>.dr-t{grid-area:t}}
+/* details for the team (the old full view, closed by default) */
+.nw-det{margin:8px 0 0;border-top:1px solid var(--line);padding-top:6px}
+.nw-det>summary{cursor:pointer;padding:12px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;list-style:none}
+.nw-det>summary::-webkit-details-marker{display:none}
+.nw-det>summary::before{content:"▸";color:var(--ink-3);font-size:14px}
+.nw-det[open]>summary::before{content:"▾"}
+.nw-det>summary b{font-size:17px;font-weight:600;color:var(--ink-2)}
+.nw-det>summary span{font-size:14px;color:var(--ink-3)}
+.nw-tech{font-size:13px;color:var(--ink-3);margin:0 0 10px}
 </style>
 </head>
 <body>
@@ -1070,7 +1152,8 @@ function backlogText(){
 /* overview: every live experiment with a number on one "chance it's better" axis, in two lanes
    (rotation, backlog), coloured by the recommended call; the tier bars are the dashed lines */
 
-var OUT = {shipped: ["Shipped","win"], reverted: ["Reverted","warn"], shelved: ["Shelved","neutral"], inconclusive: ["Inconclusive","outline"], unknown: ["Concluded","outline"]};
+/* plain outcome words (owner 2026-11-21): Kept / Reverted / Shelved / No clear answer */
+var OUT = {shipped: ["Kept","win"], reverted: ["Reverted","warn"], shelved: ["Shelved","neutral"], inconclusive: ["No clear answer","outline"], unknown: ["Finished","outline"]};
 function outcomeOf(d){ var o = String(d.outcome || "").toLowerCase(); return OUT[o] ? o : (OUT[String(d.status || "").toLowerCase()] ? String(d.status).toLowerCase() : "unknown"); }
 function outcomePill(d){ var o = OUT[outcomeOf(d)]; return '<span class="pill ' + o[1] + '"><i></i>' + o[0] + '</span>'; }
 function finalLine(d){ return tldrOf(d) || d.decision || d.takeaway || ""; }
@@ -1221,29 +1304,21 @@ var ST = KEEP.ST || {
   q: "", status: hashStatus || (STATUSES.some(function(s){ return s[0] === SAVED.status; }) ? SAVED.status : "all"),
   bucket: SAVED.bucket || "", rot: !!SAVED.rot,
   sort: SORTS.some(function(s){ return s[0] === SAVED.sort; }) ? SAVED.sort : "needs",
-  cal: null, cOnly: H.unlogged === "1", cSrc: "", sel: {}
+  cOnly: H.unlogged === "1", cSrc: "", sel: {}
 };
 KEEP.ST = ST;
+if (KEEP.detOpen == null) KEEP.detOpen = !!hashStatus;
 function saveST(){ try { window.localStorage.setItem(LS_KEY, JSON.stringify({status: ST.status, bucket: ST.bucket, rot: ST.rot, sort: ST.sort})); } catch (err) {} }
 /* backlog (live, not in rotation, not yet decided) for the "Copy backlog decisions" action */
 var G = {backlog: LIVE.filter(function(e){ return !inRot(e) && !pendingDec(e); }).sort(function(a, b){ return cmpKey(sevKey(a), sevKey(b)); })};
 
 function hay(e){ return [nameOf(e), e.id, whatChanged(e), e.hypothesis, e.tests, metricOf(e).label, BUCKET_NAME[bucketOf(e)], themesOf(e).join(" "), tldrOf(e), e.decision].concat(notesFor(e.id).map(function(n){ return n.text; })).join(" ").toLowerCase(); }
-function calActive(e, sel){
-  if (!sel) return true;
-  if (sel.type === "exp") return e.id === sel.id;
-  var s = startOf(e); if (!s) return false;
-  var en = endOf(e); if (!isDecidedRow(e) && statusOf(e) !== "planned") en = en && en > TODAY ? en : TODAY;
-  var to = addDays(sel.from, 6);
-  return s <= to && (en || s) >= sel.from;
-}
 function passes(e, skip){
   if (skip !== "status" && ST.status !== "all" && statusGroup(e) !== ST.status) return false;
   if (ST.bucket && bucketOf(e) !== ST.bucket) return false;
   if (ST.rot && !(inRot(e) && !isDecidedRow(e))) return false;
   var q = ST.q.trim().toLowerCase();
   if (q && hay(e).indexOf(q) < 0) return false;
-  if (skip !== "cal" && !calActive(e, ST.cal)) return false;
   return true;
 }
 var SG_RANK = {call: 0, running: 1, planned: 2, decided: 3};
@@ -1261,52 +1336,6 @@ function sortKey(e){
 }
 function listed(){ return ALL.filter(function(e){ return passes(e); }).sort(function(a, b){ return cmpKey(sortKey(a), sortKey(b)); }); }
 
-/* ── calendar strip: one thin row per experiment the other filters leave in. Click a bar to show
-   just that experiment; click a week to show everything active that week. */
-var DAY_PX = 10;
-function calStrip(){
-  var rows = ALL.filter(function(e){ return passes(e, "cal") && startOf(e) && pd(startOf(e)); });
-  var undated = ALL.filter(function(e){ return passes(e, "cal") && !(startOf(e) && pd(startOf(e))); }).length;
-  var CAL_RANK = {call: 0, running: 1, planned: 2, decided: 3};
-  rows.sort(function(a, b){ var ra = CAL_RANK[statusGroup(a)], rb = CAL_RANK[statusGroup(b)]; if (ra !== rb) return ra - rb; var ia = inRot(a) ? 0 : 1, ib = inRot(b) ? 0 : 1; if (ia !== ib) return ia - ib; return ra === 3 ? String(endOf(b) || "").localeCompare(String(endOf(a) || "")) : String(startOf(a)).localeCompare(String(startOf(b))); });
-  var lo = addDays(TODAY, -42), hi = addDays(TODAY, 28);
-  rows.forEach(function(e){ var s = startOf(e), en = endOf(e) || s, st = stopOf(e); if (s < lo) lo = s; [en, st].forEach(function(x){ if (x && x > hi) hi = x; }); });
-  if (daysBetween(lo, TODAY) > 150) lo = addDays(TODAY, -150);
-  if (daysBetween(TODAY, hi) > 90) hi = addDays(TODAY, 90);
-  lo = addDays(lo, -((pd(lo).getUTCDay() + 6) % 7));
-  var n = daysBetween(lo, hi) + 7, W = n * DAY_PX;
-  var X = function(s){ var k = daysBetween(lo, s); return k == null ? null : Math.max(0, Math.min(n, k)) * DAY_PX; };
-  var head = "", grid = "";
-  for (var i = 0; i < n; i += 7) {
-    var ds = addDays(lo, i), on = ST.cal && ST.cal.type === "week" && ST.cal.from === ds, dd = pd(ds);
-    head += '<button class="cw' + (on ? " on" : "") + '" style="left:' + (i * DAY_PX) + 'px;width:' + (7 * DAY_PX) + 'px" data-calweek="' + ds + '" aria-pressed="' + !!on + '" title="Show experiments active the week of ' + esc(fd(ds, true)) + '">' + (dd.getUTCDate() <= 7 ? '<b>' + MON[dd.getUTCMonth()] + '</b> ' : "") + dd.getUTCDate() + '</button>';
-    grid += '<div class="cg' + (on ? " on" : "") + '" style="left:' + (i * DAY_PX) + 'px;width:' + (7 * DAY_PX) + 'px"></div>';
-  }
-  var body = rows.map(function(e){
-    var s = startOf(e), en = endOf(e), sg = statusOf(e), dec = isDecidedRow(e), x0 = X(s), x1;
-    if (dec) x1 = X(en || s);
-    else if (sg === "planned") x1 = X(en || addDays(s, tlOf(e).planned || 14));
-    else x1 = X(en && en > TODAY ? en : TODAY);
-    var st = !dec && sg !== "planned" ? stopOf(e) : null, sel = ST.cal && ST.cal.type === "exp" && ST.cal.id === e.id;
-    var cls = dec ? "dec" : sg === "planned" ? "plan" : sg === "call" ? "call" : inRot(e) ? "rot" : "live";
-    var tip = nameOf(e) + " · " + statusMeta(e)[0] + " · " + timeText(e);
-    return '<div class="cr"><span class="cl" title="' + esc(nameOf(e)) + '">' + esc(nameOf(e)) + '</span><div class="ct" style="width:' + W + 'px">' +
-      (st && X(st) > x1 ? '<span class="cb tail" style="left:' + x1 + 'px;width:' + (X(st) - x1) + 'px"></span>' : "") +
-      '<button class="cb ' + cls + (sel ? " on" : "") + '" style="left:' + x0 + 'px;width:' + Math.max(x1 - x0, 6) + 'px" data-calexp="' + esc(e.id) + '" aria-pressed="' + sel + '" title="' + esc(tip) + '" aria-label="' + esc("Filter to " + tip) + '"></button></div></div>';
-  }).join("");
-  var tx = X(TODAY);
-  return '<section class="cal" aria-label="Calendar"><div class="cal-h"><h2>Calendar</h2><span>Click a bar to show that experiment, or a week to show what ran then.</span><span class="grow"></span><span class="ckey"><i class="k-rot"></i>In rotation <i class="k-live"></i>Running <i class="k-call"></i>Needs a call <i class="k-plan"></i>Planned <i class="k-dec"></i>Decided</span></div>' +
-    (rows.length ? '<div class="cs" id="cscroll" tabindex="0" role="region" aria-label="Experiment calendar, scrolls sideways"><div class="cin" style="width:calc(' + W + 'px + var(--cl))">' +
-      '<div class="cr chead"><span class="cl"></span><div class="ct" style="width:' + W + 'px">' + head + '</div></div>' +
-      '<div class="cbody"><div class="cgrid" style="width:' + W + 'px">' + grid + '<div class="ctoday" style="left:' + tx + 'px" title="Today"></div></div>' + body + '</div></div></div>'
-      : '<div class="empty" style="padding:14px">Nothing with dates matches these filters.</div>') +
-    (undated ? '<p class="cfoot">' + undated + ' without a start date ' + (undated === 1 ? "isn’t" : "aren’t") + ' on the calendar (still in the cards below).</p>' : "") + '</section>';
-}
-function showingChip(){
-  if (!ST.cal) return "";
-  var t = ST.cal.type === "exp" ? (findExp(ST.cal.id) ? nameOf(findExp(ST.cal.id)) : ST.cal.id) : "Active the week of " + fd(ST.cal.from, true);
-  return '<div class="showing"><span>Showing: <b>' + esc(trunc(t, 80)) + '</b></span><button class="linkbtn" data-calclear aria-label="Clear calendar filter">✕ clear</button></div>';
-}
 function gridHTML(){
   var list = listed();
   if (!list.length) return '<div class="card"><div class="empty">' + (ALL.length ? 'Nothing matches.<br><button class="linkbtn" data-clearall>Clear search and filters</button>' : (S.degraded ? "No experiments in the registry." : "No experiments yet.")) + '</div></div>';
@@ -1321,16 +1350,15 @@ function renderHeader(){
   var gen = S.generated_at ? String(S.generated_at) : "";
   var genTxt = gen ? fd(gen) + " " + (gen.slice(11,16) ? gen.slice(11,16) + " UTC" : "") : "unknown";
   var unlogged = CHANGES.filter(function(c){ return c.unlogged; }).length, nb = todayBadge();
-  var nRot = LIVE.filter(inRot).length, mx = num(ROT.max) || 3;
-  var h = '<div class="hdr"><div><h1>Experiments</h1><div class="meta num">Updated ' + esc(genTxt) + ' · ' + LIVE.length + ' running' + (ROTMODE || nRot ? ' (' + nRot + '/' + mx + ' in rotation' + (ROT.next_call_date ? ', next call ' + esc(fd(ROT.next_call_date)) : "") + ')' : "") + ' · ' + PLANNED.length + ' planned · ' + DECIDED.length + ' decided</div></div>' +
-    '<div class="hdr-r">' + (nb ? '<button class="pill warn needbadge" data-status-go="call" title="Same count as the daily DM">' + nb + ' need' + (nb === 1 ? "s" : "") + ' a call</button>' : '<span class="pill ok"><i></i>Nothing waiting on a call</span>') +
-    (S.fixture ? '<span class="badge-fixture" title="' + esc(S.fixture_note || "") + '">Fixture data · not a readout</span>' : "") +
+  var h = '<div class="hdr"><div><h1>Experiments</h1><div class="meta num">' + LIVE.length + ' running · ' + DECIDED.length + ' decided · updated ' + esc(genTxt) + '</div></div>' +
+    '<div class="hdr-r">' + (nb ? '<button class="pill warn needbadge" data-status-go="call" title="Same count as the daily DM">' + nb + ' need' + (nb === 1 ? "s" : "") + ' a decision</button>' : "") +
+    (S.fixture ? '<span class="badge-fixture" title="' + esc(S.fixture_note || "") + '">Sample data · not real results</span>' : "") +
     '<details class="ovf"><summary class="btn" aria-label="More actions">More' + (unlogged ? ' <span class="dot" aria-hidden="true"></span>' : "") + '</summary><div class="menu" role="menu">' +
       '<button role="menuitem" data-view="changes">Shipped changes' + (unlogged ? ' · <b>' + unlogged + ' unlogged</b>' : "") + '</button>' +
       '<button role="menuitem" data-view="rules">How calls are made</button>' +
       (G.backlog.length ? '<button role="menuitem" data-copy-backlog>Copy backlog decisions for Claude Code (' + G.backlog.length + ')</button>' : "") +
     '</div></details></div></div>';
-  if (S.degraded) h += '<div class="banner warn" role="status">' + esc(S.degraded_note || "Engine snapshot unavailable: registry view only.") + '</div>';
+  if (S.degraded) h += '<div class="banner warn" role="status" title="' + esc(S.degraded_note || "") + '">Live numbers aren’t connected right now, so “Now” shows “Measuring”. Starting points come from each test’s plan.</div>';
   h += '<div id="backlog-box"></div>';
   return h;
 }
@@ -1366,43 +1394,193 @@ function scorecardStrip(){
   var inline = rows.map(function(t){ var a = obj(t.after); return '<span class="sc-i">' + esc(SHORT[t.key] || trunc(t.label || t.key, 24)) + ' <b class="num">' + (t.error || !num(a.n) ? "–" : esc(pct(num(a.conv) / num(a.n))) + '</b> <span class="sc-c num">(' + fmtInt(a.conv) + '/' + fmtInt(a.n) + ')</span>') + (t.error || !num(a.n) ? "</b>" : "") + '</span>'; }).join("");
   return '<details class="sc"' + (KEEP.scOpen ? " open" : "") + ' id="scard"><summary><b>Planner</b><span class="sc-in">' + inline + '</span><span class="sc-hint">last 7 days · open for details</span></summary><div class="sc-g">' + rows.map(scoreTile).join("") + '</div></details>';
 }
-function resultsHTML(){ return showingChip() + gridHTML(); }
+function resultsHTML(){ return gridHTML(); }
 function engineErrors(){
   if (!arr(S.errors).length) return "";
   return '<details class="foot-err"><summary>' + S.errors.length + ' engine error' + (S.errors.length === 1 ? "" : "s") + ' this run</summary><pre>' + esc(S.errors.map(function(x){ x = obj(x); return (x.id || "") + " " + (x.stage || "") + " " + (x.key || "") + ": " + (x.error || x.message || JSON.stringify(x)); }).join("\n")) + '</pre></details>';
+}
+/* ── Simple view (owner 2026-11-21: "very, very simple to read ... for a non-technical person").
+   Top to bottom: Running now (one big card per live test: what changed, dates, before -> now,
+   chance it's better against the bar, one plain "so far" line), a timeline with full names
+   (live + decided in the last 30 days), and a short Decided list. Everything technical (filters,
+   every card, the Planner scorecard, engine errors) sits closed under "Details for the team".
+   Numbers come only from the snapshot / registry; nothing here estimates anything. */
+function engineMissing(e){ return !!S.degraded || /no metric runner/i.test(String(readoutOf(e).error || "") + " " + String(e.reason || "") + " " + tldrOf(e)); }
+function plainName(e){ return String(e.plain_name || e.short_name || nameOf(e)).replace(/\s*->\s*/g, " → "); }
+/* never round a chance that is under the bar up to the bar (94.7% must not read as "95%") */
+function chanceVs(p, bar){
+  p = num(p); if (p == null) return "–";
+  if (bar != null && p < bar && Math.round(p * 100) >= Math.round(bar * 100)) return (Math.floor(p * 1000) / 10).toFixed(1) + "%";
+  return chance(p);
+}
+function relDays(d){
+  var k = daysBetween(TODAY, d); if (k == null) return "";
+  if (k === 0) return "today"; if (k === 1) return "tomorrow"; if (k === -1) return "1 day late";
+  return k > 0 ? "in " + k + " days" : (-k) + " days late";
+}
+/* starting point and the latest number, with the registry baseline as the fallback start */
+function beforeNow(e){
+  var sp = startPoint(e), m = metricOf(e);
+  sp.hasB = sp.b != null && sp.b !== "";
+  if (!sp.hasB && num(m.baseline) != null) { sp.b = num(m.baseline); sp.bText = null; sp.baselineOnly = true; sp.hasB = true; }
+  sp.hasA = sp.a != null && sp.a !== "" && !engineMissing(e);
+  sp.bShow = sp.hasB ? (sp.bText || fmtVal(sp.b, sp.perDay)) : "";
+  sp.aShow = sp.hasA ? fmtVal(sp.a, sp.perDay) : "";
+  sp.split = atypeOf(e) === "split";
+  return sp;
+}
+function hasFlag(e, f){ return e.health === f || arr(e.flags).indexOf(f) >= 0; }
+/* one plain sentence: leaning better / leaning worse / too early / can't reach a verdict */
+function soFar(e){
+  var sp = beforeNow(e), p = pBeatOf(e), bar = barOf(e), dr = daysRunning(e);
+  if (pendingDec(e)) return ["neutral", decLine(e).replace(/ — registry update pending$/, "") + "."];
+  if (isPaused(e)) return ["neutral", "Paused. Nothing is being measured until it is switched back on."];
+  if (e.health === "guardrail_breach") return ["bad", "Something it is meant to protect got worse. Needs a look now."];
+  if (atypeOf(e) === "rollout") return ["neutral", "Rolled out to everyone, so there is no before/after test. It is only watched for problems."];
+  if (!sp.hasB) return ["warn", "No starting point recorded, so we can't tell yet whether it works."];
+  if (!sp.hasA) return ["neutral", "Too early to say. The new number is still being measured."];
+  if (e.health === "callable_win") return ["win", "Looks better, and clearly enough to decide: keep it."];
+  if (e.health === "callable_loss") return ["bad", "Looks worse, and clearly enough to decide: undo it."];
+  if (hasFlag(e, "starved") || hasFlag(e, "zombie")) return ["warn", "Not enough couples to get a clear answer before the deadline" + (p != null ? " (leaning " + (p >= 0.5 ? "better" : "worse") + " so far)." : ".")];
+  if (p == null) return ["neutral", "Too early to say."];
+  var lean = p >= 0.5 ? "Leaning better" : "Leaning worse";
+  if (dr != null && dr < 7) return [p >= 0.5 ? "lean-good" : "lean-bad", lean + " so far, but it's too early: it needs at least a week."];
+  return [p >= 0.5 ? "lean-good" : "lean-bad", lean + ", but not sure enough yet (" + chanceVs(p, bar) + " vs the " + chance(bar) + " needed)."];
+}
+function lastHandNote(e){
+  var r = arr(e.results).map(obj).filter(function(x){ return x.note; });
+  if (!r.length) return null;
+  r.sort(function(a, b){ return String(a.date || "").localeCompare(String(b.date || "")); });
+  return r[r.length - 1];
+}
+function liveCard(e){
+  var sp = beforeNow(e), p = pBeatOf(e), bar = barOf(e), sf = soFar(e), t = tlOf(e), dr = daysRunning(e);
+  var start = startOf(e), dec = reviewDate(e), m = metricOf(e), what = whatChanged(e);
+  var dayTxt = dr != null ? "Day " + dr + (t.planned ? " of " + t.planned : "") : "";
+  var conf = hasFlag(e, "confounded") && sp.hasA;
+  var before = sp.hasB ?
+      '<div class="nv-k">Before</div><div class="nv-v num">' + esc(sp.bShow) + '</div><div class="nv-s">' + esc(sp.baselineOnly ? "starting point from the plan" : (sp.bCnt ? sp.bCnt : "") + (sp.split ? (sp.bCnt ? " · " : "") + "couples without the change" : "")) + '</div>'
+    : '<div class="nv-k">Before</div><div class="nv-none">No starting point recorded – can’t judge this yet</div>';
+  var now = sp.hasA ?
+      '<div class="nv-k">Now</div><div class="nv-v num">' + esc(sp.aShow) + '</div><div class="nv-s num">' + esc(sp.aCnt ? "(" + sp.aCnt + ")" : "") + (sp.split ? " couples with the change" : "") + '</div>'
+    : '<div class="nv-k">Now</div><div class="nv-v muted">Measuring</div><div class="nv-s">' + (engineMissing(e) ? "live numbers aren’t connected here yet" : "no new number yet") + '</div>';
+  var ch;
+  if (p != null && sp.hasA) {
+    var ok = p >= bar;
+    ch = '<div class="nv-k">Chance it’s better</div><div class="nv-v num ' + (ok ? "good" : "") + '">' + esc(chanceVs(p, bar)) + '</div>' +
+      '<div class="nv-bar" role="img" aria-label="' + esc(chanceVs(p, bar) + " chance it is better; it needs " + chance(bar)) + '"><i class="' + (ok ? "ok" : "") + '" style="width:' + (p * 100).toFixed(1) + '%"></i><b style="left:' + (bar * 100).toFixed(1) + '%"></b></div>' +
+      '<div class="nv-s">needs ' + esc(chance(bar)) + ' to call it</div>';
+  } else {
+    ch = '<div class="nv-k">Chance it’s better</div><div class="nv-v muted">–</div><div class="nv-bar" aria-hidden="true"><b style="left:' + (bar * 100).toFixed(1) + '%"></b></div><div class="nv-s">needs ' + esc(chance(bar)) + ' to call it</div>';
+  }
+  var hn = lastHandNote(e);
+  return '<article class="nw-card" role="button" tabindex="0" data-open="' + esc(e.id) + '" aria-label="' + esc(plainName(e) + ". " + sf[1]) + '">' +
+    '<div class="nw-top"><span class="nw-run"><i></i>Running' + (dayTxt ? " · " + esc(dayTxt) : "") + '</span>' + (inRot(e) ? '<span class="nw-rot">On the weekly call</span>' : "") + '</div>' +
+    '<h3>' + esc(plainName(e)) + '</h3>' +
+    '<p class="nw-what"><span>What we changed</span>' + (what ? esc(what) : '<em>Not written down yet.</em>') + '</p>' +
+    '<div class="nw-dates"><div><span>Started</span><b class="num">' + esc(start ? fd(start, true) : "not recorded") + '</b></div><div><span>Decide on</span><b class="num">' + esc(dec ? fd(dec, true) : "no date set") + '</b>' + (dec ? '<em>' + esc(relDays(dec)) + '</em>' : "") + '</div></div>' +
+    (m.label ? '<div class="nw-metric">What we measure: <b>' + esc(m.label) + '</b></div>' : "") +
+    '<div class="nw-nums"><div class="nv' + (sp.hasB ? "" : " warn") + '">' + before + '</div><div class="nv-arrow" aria-hidden="true">→</div><div class="nv">' + now + '</div><div class="nv nv-ch">' + ch + '</div></div>' +
+    '<div class="nw-sofar t-' + sf[0] + '"><b>So far:</b> ' + esc(sf[1]) + (conf ? ' <span class="nw-conf">Other changes went live at the same time, so treat this as a hint, not proof.</span>' : "") + '</div>' +
+    (hn ? '<div class="nw-note"><span>Latest note' + (hn.date ? " (" + esc(fd(hn.date)) + ")" : "") + '</span><p>' + esc(hn.note) + '</p></div>' : "") +
+    '<div class="nw-more">Details →</div>' +
+    '</article>';
+}
+function runningNow(){
+  var live = LIVE.slice().sort(function(a, b){ return String(reviewDate(a) || "9").localeCompare(String(reviewDate(b) || "9")); });
+  var h = '<section class="nw-sec" aria-labelledby="nw-run-h"><div class="nw-h"><h2 id="nw-run-h">Running now</h2><span>' + (live.length ? live.length + " test" + (live.length === 1 ? "" : "s") + " live" : "") + '</span></div>';
+  if (!live.length) h += '<div class="nw-empty">Nothing is running right now.</div>';
+  else h += '<div class="nw-cards">' + live.map(liveCard).join("") + '</div>';
+  if (PLANNED.length) h += '<p class="nw-planned">Planned, not started yet: ' + PLANNED.map(function(e){ return '<button class="linkbtn" data-xopen="' + esc(e.id) + '">' + esc(plainName(e)) + '</button>'; }).join(", ") + '</p>';
+  return h + '</section>';
+}
+function decidedOn(d){ var x = d.decided_on || d.end_date; return x ? String(x).slice(0, 10) : null; }
+/* timeline: names in their own column (never cut off), bars to the right on one date scale */
+function timeline(){
+  var recent = DECIDED.filter(function(d){ var x = decidedOn(d), k = x ? daysBetween(x, TODAY) : null; return k != null && k >= 0 && k <= 30; });
+  var live = LIVE.slice().sort(function(a, b){ return String(startOf(a) || "").localeCompare(String(startOf(b) || "")); });
+  recent.sort(function(a, b){ return String(decidedOn(b)).localeCompare(String(decidedOn(a))) || String(startOf(b) || "").localeCompare(String(startOf(a) || "")); });
+  var TL_MAX = 8, shownDec = recent.slice(0, TL_MAX), hidden = recent.length - shownDec.length;
+  var rows = live.concat(recent);
+  if (!rows.length) return "";
+  var lo = addDays(TODAY, -14), hi = addDays(TODAY, 7);
+  rows.forEach(function(e){ var s = startOf(e); if (s && pd(s) && s < lo) lo = s; var en = isDecidedRow(e) ? decidedOn(e) : reviewDate(e); if (en && pd(en) && en > hi) hi = en; });
+  if (daysBetween(lo, TODAY) > 75) lo = addDays(TODAY, -75);
+  if (daysBetween(TODAY, hi) > 45) hi = addDays(TODAY, 45);
+  lo = addDays(lo, -2); hi = addDays(hi, 2);
+  var span = Math.max(daysBetween(lo, hi), 1);
+  var X = function(d){ var k = daysBetween(lo, d); return k == null ? null : Math.max(0, Math.min(100, k / span * 100)); };
+  var ticks = "", d0 = pd(lo), mth = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1));
+  while (mth.toISOString().slice(0, 10) <= hi) { var iso = mth.toISOString().slice(0, 10); ticks += '<span class="tk" style="left:' + X(iso).toFixed(2) + '%">' + MON[mth.getUTCMonth()] + '</span>'; mth = new Date(Date.UTC(mth.getUTCFullYear(), mth.getUTCMonth() + 1, 1)); }
+  var tx = X(TODAY).toFixed(2);
+  var rowHTML = function(e){
+    var dec = isDecidedRow(e), s = startOf(e), sOk = s && pd(s), x0 = sOk ? X(s) : null, bars = "", when, cls;
+    if (dec) {
+      var en = decidedOn(e), o = outcomeOf(e); cls = "o-" + o;
+      if (sOk) bars = '<span class="tb ' + cls + '" style="left:' + x0.toFixed(2) + '%;width:' + Math.max(X(en || s) - x0, 0.8).toFixed(2) + '%"></span>';
+      else if (en) bars = '<span class="tdot ' + cls + '" style="left:' + X(en).toFixed(2) + '%"></span>';
+      when = (sOk ? fd(s) + " – " : "") + (en ? fd(en) : "") + " · " + OUT[o][0];
+    } else {
+      var rv = reviewDate(e), xn = X(TODAY);
+      if (sOk) {
+        bars = '<span class="tb live" style="left:' + x0.toFixed(2) + '%;width:' + Math.max(xn - x0, 0.8).toFixed(2) + '%"></span>';
+        if (rv && rv > TODAY) bars += '<span class="tb plan" style="left:' + xn.toFixed(2) + '%;width:' + (X(rv) - xn).toFixed(2) + '%"></span>';
+        if (rv) bars += '<span class="tdec" style="left:' + X(rv).toFixed(2) + '%" title="Decide on ' + esc(fd(rv, true)) + '"></span>';
+      }
+      when = (sOk ? "Started " + fd(s) : "No start date") + (rv ? " · decide " + fd(rv) : "");
+    }
+    return '<div class="tr" role="button" tabindex="0" data-open="' + esc(e.id) + '"><div class="tn"><b>' + esc(plainName(e)) + '</b><span class="num">' + esc(when) + '</span></div>' +
+      '<div class="tt"><span class="ttoday" style="left:' + tx + '%"></span>' + bars + '</div></div>';
+  };
+  var body = live.concat(shownDec).map(rowHTML).join("");
+  var more = hidden ? '<details class="tl-more"' + (KEEP.tlOpen ? " open" : "") + ' id="tlmore"><summary>Show ' + hidden + ' more decided in the last 30 days</summary>' + recent.slice(TL_MAX).map(rowHTML).join("") + '</details>' : "";
+  return '<section class="nw-sec" aria-labelledby="nw-tl-h"><div class="nw-h"><h2 id="nw-tl-h">Timeline</h2><span>Running now, and anything decided in the last 30 days</span></div>' +
+    '<div class="tlc"><div class="tr thead" aria-hidden="true"><div class="tn"></div><div class="tt">' + ticks + '<span class="tk today" style="left:' + tx + '%">Today</span></div></div>' + body + more + '</div>' +
+    '<div class="tkey"><span><i class="k live"></i>Running</span><span><i class="k plan"></i>Until the decision date</span><span><i class="k o-shipped"></i>Kept</span><span><i class="k o-reverted"></i>Reverted</span><span><i class="k o-shelved"></i>Shelved</span><span><i class="k o-inconclusive"></i>No clear answer</span></div></section>';
+}
+function learningOf(d){
+  var t = d.decision || d.takeaway || tldrOf(d) || "";
+  return String(t).replace(/^(Shipped|Reverted|Shelved|Inconclusive|Concluded)[^:]{0,40}:\s*/i, "");
+}
+function decidedRow(d){
+  var o = OUT[outcomeOf(d)], x = decidedOn(d);
+  return '<div class="dr" role="button" tabindex="0" data-open="' + esc(d.id) + '"><span class="pill ' + o[1] + ' dr-o"><i></i>' + o[0] + '</span><div class="dr-t"><b>' + esc(plainName(d)) + '</b>' + (learningOf(d) ? '<p>' + esc(learningOf(d)) + '</p>' : "") + '</div><span class="dr-d num">' + esc(x ? fd(x, true) : "date not recorded") + '</span></div>';
+}
+function decidedList(){
+  var list = DECIDED.slice().sort(function(a, b){ return String(decidedOn(b) || "").localeCompare(String(decidedOn(a) || "")); });
+  if (!list.length) return "";
+  var top = list.slice(0, 10), rest = list.slice(10);
+  return '<section class="nw-sec" aria-labelledby="nw-dec-h"><div class="nw-h"><h2 id="nw-dec-h">Decided</h2><span>' + list.length + ' so far · newest first</span></div>' +
+    '<div class="dl">' + top.map(decidedRow).join("") + '</div>' +
+    (rest.length ? '<details class="dl-more"' + (KEEP.dlOpen ? " open" : "") + ' id="dlmore"><summary>Show ' + rest.length + ' older decision' + (rest.length === 1 ? "" : "s") + '</summary><div class="dl">' + rest.map(decidedRow).join("") + '</div></details>' : "") + '</section>';
+}
+function detailsBox(){
+  return '<details class="nw-det" id="nwdet"' + (KEEP.detOpen ? " open" : "") + '><summary><b>Details for the team</b><span>every experiment with filters, Planner numbers, engine notes</span></summary>' +
+    (S.degraded && S.degraded_note ? '<p class="nw-tech">' + esc(S.degraded_note) + '</p>' : "") +
+    scorecardStrip() + toolbar() + '<div id="results">' + resultsHTML() + '</div>' + engineErrors() + '</details>';
 }
 function render(){
   if (ST.view === "changes" || ST.view === "rules") {
     app.innerHTML = renderHeader() + '<div class="back"><button class="linkbtn" data-view="grid">← All experiments</button></div>' + (ST.view === "changes" ? renderChanges() : renderRules());
   } else {
-    app.innerHTML = renderHeader() + '<div id="calwrap">' + calStrip() + '</div>' + scorecardStrip() + toolbar() + '<div id="results">' + resultsHTML() + '</div>' + engineErrors();
+    app.innerHTML = renderHeader() + runningNow() + timeline() + decidedList() + detailsBox();
   }
   wire();
 }
 function rerenderResults(){
   var r = document.getElementById("results"); if (!r) return render();
   r.innerHTML = resultsHTML();
-  var cw = document.getElementById("calwrap"); if (cw) { cw.innerHTML = calStrip(); wireResults(cw); }
   var c = counts(); app.querySelectorAll("[data-count]").forEach(function(s){ s.textContent = c[s.getAttribute("data-count")]; });
   wireResults(r);
 }
 function wireResults(root){
-  root.querySelectorAll("[data-calexp]").forEach(function(b){ b.addEventListener("click", function(){ var id = b.getAttribute("data-calexp"); ST.cal = ST.cal && ST.cal.type === "exp" && ST.cal.id === id ? null : {type: "exp", id: id}; rerenderResults(); var nb = document.querySelector('[data-calexp="' + id + '"]'); if (nb) nb.focus({preventScroll: true}); }); });
-  root.querySelectorAll("[data-calweek]").forEach(function(b){ b.addEventListener("click", function(){ var w = b.getAttribute("data-calweek"); ST.cal = ST.cal && ST.cal.type === "week" && ST.cal.from === w ? null : {type: "week", from: w}; rerenderResults(); var nb = document.querySelector('[data-calweek="' + w + '"]'); if (nb) nb.focus({preventScroll: true}); }); });
-  root.querySelectorAll("[data-calclear]").forEach(function(b){ b.addEventListener("click", function(){ ST.cal = null; rerenderResults(); }); });
-  root.querySelectorAll("[data-clearall]").forEach(function(b){ b.addEventListener("click", function(){ ST.q = ""; ST.status = "all"; ST.bucket = ""; ST.rot = false; ST.cal = null; saveST(); render(); }); });
-  var cs = root.querySelector("#cscroll");
-  if (cs) {
-    if (KEEP.cscroll != null) cs.scrollLeft = KEEP.cscroll;
-    else { var tl = cs.querySelector(".ctoday"); if (tl) cs.scrollLeft = Math.max(0, tl.offsetLeft - cs.clientWidth * 0.6); }
-    cs.addEventListener("scroll", function(){ KEEP.cscroll = cs.scrollLeft; });
-  }
+  root.querySelectorAll("[data-clearall]").forEach(function(b){ b.addEventListener("click", function(){ ST.q = ""; ST.status = "all"; ST.bucket = ""; ST.rot = false; saveST(); render(); }); });
   bindRows(root);
 }
 function wire(){
   app.querySelectorAll("[data-view]").forEach(function(b){ b.addEventListener("click", function(){ ST.view = b.getAttribute("data-view"); render(); window.scrollTo(0, 0); }); });
   app.querySelectorAll("[data-copy-backlog]").forEach(function(b){ b.addEventListener("click", function(){ copyText(backlogText(), b, document.getElementById("backlog-box")); var d = b.closest("details"); if (d) setTimeout(function(){ d.open = false; }, 900); }); });
-  app.querySelectorAll("[data-status-go]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status-go"); ST.view = "grid"; ST.cal = null; saveST(); render(); }); });
+  app.querySelectorAll("[data-status-go]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status-go"); ST.view = "grid"; KEEP.detOpen = true; saveST(); render(); var dt = document.getElementById("nwdet"); if (dt) dt.scrollIntoView({block: "start"}); }); });
   app.querySelectorAll("[data-status]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status"); saveST(); app.querySelectorAll("[data-status]").forEach(function(x){ x.setAttribute("aria-pressed", x === b); }); rerenderResults(); }); });
   app.querySelectorAll("[data-rot]").forEach(function(b){ b.addEventListener("click", function(){ ST.rot = !ST.rot; saveST(); b.setAttribute("aria-pressed", ST.rot); rerenderResults(); }); });
   var xq = document.getElementById("xq"); if (xq) xq.addEventListener("input", function(){ ST.q = xq.value; rerenderResults(); });
@@ -1413,8 +1591,11 @@ function wire(){
   CUR.closeMenus = closeMenus;
   if (!KEEP.menuHooked) { document.addEventListener("click", function(ev){ if (CUR.closeMenus) CUR.closeMenus(ev); }); KEEP.menuHooked = true; }
   var r = document.getElementById("results"); if (r) wireResults(r); else bindRows(app);
-  var cw = document.getElementById("calwrap"); if (cw) wireResults(cw);
+  app.querySelectorAll(".nw-sec").forEach(bindRows);
   var scd = document.getElementById("scard"); if (scd) scd.addEventListener("toggle", function(){ KEEP.scOpen = scd.open; });
+  var ndt = document.getElementById("nwdet"); if (ndt) ndt.addEventListener("toggle", function(){ KEEP.detOpen = ndt.open; });
+  var tlm = document.getElementById("tlmore"); if (tlm) tlm.addEventListener("toggle", function(){ KEEP.tlOpen = tlm.open; });
+  var dlm = document.getElementById("dlmore"); if (dlm) dlm.addEventListener("toggle", function(){ KEEP.dlOpen = dlm.open; });
 }
 function closeMenus(ev){ app.querySelectorAll("details.ovf[open]").forEach(function(d){ if (!d.contains(ev.target)) d.open = false; }); }
 
