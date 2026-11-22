@@ -182,7 +182,10 @@ def parse_when(v):
     t = str(v or "").strip()
     if not t:
         return None
-    for fmt in ("%m/%d/%Y, %I:%M:%S %p", "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y, %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y"):
+    # 2026-11-22: also Airtable's long form "February 8, 2025 at 4:50 PM" (it fell through to fromisoformat -> None,
+    # so 'earliest' picked a later ISO date). Mirrors endpoint 578 (vendor/merge).
+    for fmt in ("%m/%d/%Y, %I:%M:%S %p", "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y, %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y",
+                "%B %d, %Y at %I:%M %p", "%B %d, %Y at %I:%M:%S %p", "%b %d, %Y at %I:%M %p", "%B %d, %Y", "%b %d, %Y"):
         try:
             return datetime.strptime(t, fmt)
         except ValueError:
@@ -234,7 +237,12 @@ def counter_plan(survivor: dict, losers: list[dict]) -> list[dict]:
             after = max((_num(v) for v in vals), default=0)
             after = int(after) if float(after).is_integer() else after
         elif rule in ("earliest", "most_recent"):
-            ds = [(parse_when(v), v) for v in vals if v not in (None, "", 0) and parse_when(v) is not None]
+            present = [v for v in vals if v not in (None, "", 0)]
+            ds = [(parse_when(v), v) for v in present if parse_when(v) is not None]
+            # 2026-11-22: if any present value can't be parsed, keep the survivor's value (same rule as endpoint 578),
+            # rather than picking from the parseable subset and showing a plan the endpoint won't apply.
+            if len(ds) != len(present):
+                ds = []
             pick = (min(ds, key=lambda t: t[0]) if rule == "earliest" else max(ds, key=lambda t: t[0])) if ds else None
             after = pick[1] if pick else sv
         elif rule == "with_place_id":

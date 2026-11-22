@@ -434,3 +434,24 @@ def test_undone_or_rejected_merge_card_does_not_claim_hidden(monkeypatch):
     for st in ("undone", "undoing", "rejected", "post_failed"):
         p["status"], p["decided_by"] = st, OWNER
         assert "hidden from search" not in card_text(cards.render(p)[1]), st
+
+
+def test_parse_when_airtable_long_form_2026_11_22():
+    assert dedupe.parse_when("February 8, 2025 at 4:50 PM") is not None
+    assert dedupe.parse_when("February 8, 2025 at 4:50 PM") < dedupe.parse_when("2026-01-05")
+    s = V(1, "V1", "A", pid="P")
+    s["Time_of_Submission"] = "2026-01-05"
+    l = V(2, "V2", "A", pid="P")
+    l["Time_of_Submission"] = "February 8, 2025 at 4:50 PM"
+    plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
+    assert plan["Time_of_Submission"]["after"] == "February 8, 2025 at 4:50 PM"
+
+
+def test_earliest_keeps_survivor_when_a_date_is_unparseable_2026_11_22():
+    s = V(1, "V1", "A", pid="P")
+    s["Time_of_Submission"] = "2026-01-05"
+    l = V(2, "V2", "A", pid="P")
+    l["Time_of_Submission"] = "sometime last spring"
+    plan = {c["column"]: c for c in dedupe.counter_plan(s, [l])}
+    # survivor keeps its own value, so the column is unchanged and not planned at all
+    assert plan.get("Time_of_Submission", {"after": "2026-01-05"})["after"] == "2026-01-05"
