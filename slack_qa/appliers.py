@@ -2,7 +2,7 @@
 outside Slack. Each is a DRY RUN when the proposal was created under dry run (fixed at creation) OR its variable
 is not explicitly off (fails closed):
 
-  merge        -> POST XANO_MERGE_URL (endpoint NOT built yet; see XANO_MERGE_PROPOSAL.md)   DEDUPE_DRY_RUN
+  merge        -> POST XANO_MERGE_URL (Xano ep578 /vendor/merge, built 2026-11-22; dry run until wired)   DEDUPE_DRY_RUN
   vendor_edit  -> Xano ep280 /vendor/edit/stage then ep281 /vendor/edit/apply (existing, drift-guarded)
                                                                                              VENDOR_EDIT_DRY_RUN
   task         -> GitHub issue in TASK_REPO with TASK_GITHUB_TOKEN                           TASK_DRY_RUN
@@ -92,11 +92,17 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
         return _out(False, "Xano queued the merge and is still running it.", unknown=True)
     moved = res.get("repointed_total", "?")
     result = {k: v for k, v in res.items() if k != "secret"}
+    # ep578 (built 2026-11-22) reports conflicts (values changed by someone since, left as they are) - show the count
+    conflicts = res.get("conflicts") or res.get("undo_conflicts") or []
+    note = (f" {len(conflicts)} value{'s' if len(conflicts) != 1 else ''} had been changed since and "
+            "{} left as they are.".format("was" if len(conflicts) == 1 else "were")) if conflicts else ""
     if mode == "undo":
-        return _out(True, f"Restored {esc(moved)} rows from backup {esc(res.get('backup_id', '?'))}.", result=result)
+        restored = res.get("restored_total", moved)            # ep578 reports restored_total on undo
+        return _out(True, f"Restored {esc(restored)} values from backup {esc(res.get('backup_id', '?'))}.{note}",
+                    result=result)
     return _out(True, f"Repointed {esc(moved)} rows into {payload.get('survivor')}; "
-                      f"{', '.join(payload.get('losers') or [])} retired (backup {esc(res.get('backup_id', '?'))}).",
-                result=result)
+                      f"{', '.join(payload.get('losers') or [])} retired (backup {esc(res.get('backup_id', '?'))})."
+                      f"{note}", result=result)
 
 
 def merge_status(payload: dict, proposal_id: str) -> dict:

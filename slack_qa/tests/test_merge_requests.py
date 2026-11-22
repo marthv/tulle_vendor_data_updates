@@ -151,3 +151,28 @@ def test_scan_accepts_a_batch_size(monkeypatch):
     b.state.over_budget = lambda: False
     b.handle(mention("scan duplicates 20", user="UKATE"))
     assert seen.get("n") == 20
+
+
+class R200:
+    status_code = 200
+
+    def __init__(self, body):
+        self._b = body
+
+    def json(self):
+        return self._b
+
+
+def test_live_merge_reply_shows_restored_and_conflicts(monkeypatch):
+    import appliers
+    monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
+    monkeypatch.setenv("XANO_MERGE_URL", "https://x/api:aow91bcd/vendor/merge")
+    monkeypatch.setenv("XANO_MERGE_SECRET", "s")
+    sent = {}
+    monkeypatch.setattr(requests, "post", lambda url, json=None, **k: sent.update(json) or R200(
+        {"status": "undone", "restored_total": 5, "backup_id": 87, "undo_conflicts": [{"t": 1}]}))
+    r = appliers.merge({"survivor": "V105", "losers": ["V13433"], "counts": {"t10": 1}}, "U1", "p1", mode="undo",
+                       dry_run=False)
+    assert r["ok"] and "Restored 5 values" in r["text"] and "1 value had been changed since" in r["text"]
+    assert set(sent) == {"mode", "survivor_vendor_id", "loser_vendor_ids", "proposal_id", "approved_by",
+                         "expected_counts", "secret"}                       # = ep578's inputs

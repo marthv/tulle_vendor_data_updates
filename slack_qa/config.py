@@ -148,7 +148,7 @@ def merge_dry_run() -> bool:           # DEDUPE_DRY_RUN=0 -> Approve calls the X
     return _dry("DEDUPE_DRY_RUN")
 
 
-def merge_url() -> str:                # XANO_MERGE_URL: the (not yet built) vendor merge endpoint
+def merge_url() -> str:                # XANO_MERGE_URL: Xano ep578 POST /vendor/merge (api group 3)
     return _s("XANO_MERGE_URL")
 
 
