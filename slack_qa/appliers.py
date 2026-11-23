@@ -56,7 +56,7 @@ def _out(ok, text, dry=False, unknown=False, result=None):
 
 
 # --- merge ---------------------------------------------------------------------------------------------
-RUNNING_TEXT = "The merge is running in Xano right now. Wait a minute, then press Re-check."
+RUNNING_TEXT = "A merge or undo is running in Xano right now (one at a time). Wait a few minutes, then press Re-check."
 # Every refusal ep578 v2 can give (live XanoScript read 2026-11-22) -> what the card says. tests/test_ep578_contract.py
 # holds one line per endpoint message. "Nothing was changed" is added by _refusal.
 REFUSALS = (
