@@ -1740,6 +1740,11 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             vendor_id: a vendor_id returned by search_venues.
         """
+        if vendor_id not in seen and vendor_id in prior:   # shown in an earlier answer: it may have been merged since
+            try:
+                vendor_id = (xano.cached_vendor_card(vendor_id, prefetch_stats) or {}).get("vendor_id") or vendor_id
+            except Exception:
+                pass
         p = fetch_pricing(vendor_id)
         pricing_cache[vendor_id] = p
         return _ev(dict(shape(p), headline=p.get("headline"), source_note=p.get("source_note")))
@@ -2465,6 +2470,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
 
     # Rule 1: drop anything the model did not get from a search in this request.
     cards = []
+    merged_to = set()   # kept vendors an earlier card's id was merged into (xano.follow_merge)
     for i, vid in enumerate(final.get("vendor_ids", [])):
         if vid not in seen and vid in prior:
             try:
@@ -2476,8 +2482,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             elif c and c.get("category") in xano.LISTING_CATEGORIES:   # listings only: no pricing at all
                 seen[vid] = _listing_card(c)
             elif c:
-                c = card(c, raw_pricing_or_none(vid))
+                c = card(c, raw_pricing_or_none(c.get("vendor_id") or vid))   # kept vendor's id if vid was merged
                 seen[vid] = _light_card(c) if light else c
+            if (c or {}).get("vendor_id") not in (None, vid):
+                merged_to.add(c["vendor_id"])
+        if vid in seen and seen[vid].get("vendor_id") in merged_to and any(
+                x.get("vendor_id") == seen[vid]["vendor_id"] for x in cards):
+            continue   # a merged duplicate and the vendor it was merged into, both named: one card
         if vid in seen:
             reasons = final.get("reasons") or []
             cards.append(dict(seen[vid], reason=reasons[i] if i < len(reasons) else ""))

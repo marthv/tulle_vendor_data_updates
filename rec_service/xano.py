@@ -1044,12 +1044,24 @@ def saved_vendor_ids(user):
     return ids[:30]
 
 
+def follow_merge(row):
+    """A merged duplicate's table-11 row (merged_into = the kept vendor's Vendor_ID) -> the kept vendor's row; any other
+    row unchanged and without a read (2026-11-22, vendor merges: old chats, page bubbles and saved lists still name the
+    duplicate, whose PDFs and pricing moved). ONE hop: ep578 refuses chained merges. Kept row missing -> the row itself."""
+    kept = str((row or {}).get("merged_into") or "").strip()
+    if not kept or kept == row.get("Vendor_ID"):
+        return row
+    rows = [r for r in _search_all(11, [{"Vendor_ID": kept}]) if r.get("Vendor_ID") == kept]
+    return rows[0] if rows else row
+
+
 def vendor_card(vendor_id):
-    """One vendor as a card (same shape search_venues returns), looked up by Vendor_ID in table 11."""
+    """One vendor as a card (same shape search_venues returns), looked up by Vendor_ID in table 11. A merged duplicate
+    gives the KEPT vendor's card (its vendor_id / vendor_idx, not the one asked for)."""
     rows = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
     if not rows:
         return None
-    return card_from_row(rows[0])
+    return card_from_row(follow_merge(rows[0]))
 
 
 _IDX_CACHE = OrderedDict()   # vendor_idx -> (time, card or None); REC_PAGE_VENUE, 2026-11-18
@@ -1072,6 +1084,8 @@ def vendor_card_by_idx(vendor_idx, ttl_s=3600):
             return hit[1]
     try:
         it = _meta("GET", "/table/11/content/%d" % idx)
+        if isinstance(it, dict) and it.get("Vendor_ID"):
+            it = follow_merge(it)
     except XanoError:
         it = None
     card = card_from_row(it) if isinstance(it, dict) and it.get("Vendor_ID") else None
@@ -1172,6 +1186,10 @@ def venue_details(vendor_id, with_amounts):
 
     Reads tables directly with the metadata token, so the paywall is enforced HERE: amounts only when
     with_amounts (Forever, DETAIL: FULL)."""
+    t11 = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
+    if t11:   # merged duplicate -> the kept vendor's facts (its PDFs moved there)
+        t11 = [follow_merge(t11[0])]
+        vendor_id = t11[0].get("Vendor_ID") or vendor_id
     rows = [r for r in _search_all(36, [{"VENDOR_ID": vendor_id}]) if r.get("VENDOR_ID") == vendor_id]
     latest = {}
     for r in rows:   # dedupe: latest extraction per (PDF, space)
@@ -1213,7 +1231,6 @@ def venue_details(vendor_id, with_amounts):
     vname = first.get("VENUE_NAME") or "this venue"
     out["sources"] = {"spaces_and_about": "%s pricing PDF on Tulle%s" % (vname, " (%s)" % year if year else ""),
                       "google": "Google reviews of %s" % vname}
-    t11 = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
     g = (t11[0].get("google_data_cache") or {}) if t11 else {}
     if g.get("rating"):
         revs = []
