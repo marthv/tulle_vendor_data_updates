@@ -212,6 +212,9 @@ def outcome_line(p: dict) -> str:
     who = f"<@{p['decided_by']}>" if p.get("decided_by") else "someone"
     res = p.get("result_text") or ""
     st = p.get("status")
+    if st == "applied" and ((p.get("result") or {}).get("warnings")
+                            or (p.get("result") or {}).get("status") == "applied_with_warnings"):
+        return f":warning: Merged, but something needs a look. {res} Approved by {who}."
     if st == "applied":
         return f":white_check_mark: Applied. {res} Approved by {who}."
     if st == "dry_run":

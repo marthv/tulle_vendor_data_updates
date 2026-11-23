@@ -234,7 +234,7 @@ class Pdf:
         self.link = str(row.get("PDF_Link") or "").strip()
         self.fid = drive_ro.file_id(self.link)
         self.years = years(row.get("Year_of_Pricing"))
-        self.visible = row.get("Show_PDF") is not False
+        self.visible = row.get("Show_PDF") is not False and bool(self.link)      # ep578 counts visible the same way
         self.assignment = str(row.get("Current_Assignment") or "").strip()
         self.is_primary = self.assignment.lower() == "primary"
         self.extracted = str(row.get("extraction_status") or "") == "extracted"
@@ -312,13 +312,14 @@ def compare(a: Pdf, b: Pdf) -> dict:
 
 
 # --- which copy stays --------------------------------------------------------------------------------------------
-def post_merge_primary(pdfs: list[Pdf], survivor: str) -> str:
-    """PDF_ID that is the visible Primary once merged: the kept listing's own, else a duplicate's."""
-    for group in ([p for p in pdfs if p.vid == survivor], [p for p in pdfs if p.vid != survivor]):
-        prim = sorted((p for p in group if p.visible and p.is_primary), key=lambda p: p.rid)
-        if prim:
-            return prim[0].pid
-    return ""
+def post_merge_primary(pdfs: list[Pdf], survivor: str, losers: list[str] | None = None) -> str:
+    """PDF_ID that is the visible Primary once merged, by ep578 v2's own rule: the kept listing's, else the first
+    duplicate's (card order), then newer year, then older row."""
+    order = [survivor] + list(losers or [])
+    prim = [p for p in pdfs if p.visible and p.is_primary]
+    prim.sort(key=lambda p: (order.index(p.vid) if p.vid in order else len(order),
+                             -max((int(y) for y in p.years), default=0), p.rid))
+    return prim[0].pid if prim else ""
 
 
 def keep_key(p: Pdf, primary: str):
@@ -326,10 +327,10 @@ def keep_key(p: Pdf, primary: str):
     return (0 if p.pid and p.pid == primary else 1, -y, -(p.text.pages if p.text else 0), -p.prices.n, p.rid)
 
 
-def decide(pdfs: list[Pdf], survivor: str, results: dict) -> tuple[list[dict], list[str]]:
+def decide(pdfs: list[Pdf], survivor: str, results: dict, losers: list[str] | None = None) -> tuple[list[dict], list[str]]:
     """Flags from the pair verdicts. Each flag's keep copy is never hidden by any other flag."""
     notes: list[str] = []
-    primary = post_merge_primary(pdfs, survivor)
+    primary = post_merge_primary(pdfs, survivor, losers)
     kept: list[Pdf] = []
     flags: list[dict] = []
 
@@ -422,7 +423,7 @@ def check(xano, survivor: str, losers: list[str], drive=None, seconds: float = C
                                  "why": r["differed"] if r["verdict"] != "dup" else r["matched"]})
             if r["verdict"] == "keep" and r["matched"]:
                 out["notes"].append(f"two entries are the same file but {r['differed']}; both are kept")
-    out["flags"], notes = decide(pdfs, survivor, results)
+    out["flags"], notes = decide(pdfs, survivor, results, vids[1:])
     out["notes"] = list(dict.fromkeys(out["notes"] + notes))
     for n, f in enumerate(out["flags"], 1):
         f["n"] = n
@@ -561,8 +562,8 @@ def _ref(p: dict, survivor: str) -> str:
 
 def summary_line(c: dict) -> str:
     if c.get("status") != "ok":
-        return (f":page_facing_up: *PDF check unavailable* ({_esc(c.get('reason') or 'unknown')}). The merge still works; "
-                "no PDFs will be hidden.")
+        return (f":page_facing_up: *PDF check unavailable* ({_esc(c.get('reason') or 'unknown')}). Approve tries it again "
+                "first; the merge isn't sent until the PDF list can be read.")
     n, k = c.get("visible", 0), len(c.get("flags") or [])
     if n < 2:
         return (f":page_facing_up: *PDF check:* {n or 'no'} visible PDF{'s' if n != 1 else ''} on these listings, so "

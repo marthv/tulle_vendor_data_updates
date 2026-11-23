@@ -145,10 +145,15 @@ class Interactions:
         live = not default_dry_run("merge") and (p.get("status") == "dry_run" or not p.get("dry_run", True))
         if not live:
             return None                        # a dry run hides nothing
-        if pl.get("pdf_check") is None and pl.get("snapshots"):      # a card from before this check existed
+        if pl.get("snapshots") and (pl.get("pdf_check") or {}).get("status") != "ok":
+            # a card from before this check existed, or one whose check failed: the merge is never sent without the
+            # PDF list the approver saw (the endpoint compares it, Amendment 2)
             self._pdf_recheck(p, user, chan, thread)
-            self._ephemeral(chan, user, "I've added the duplicate-PDF check to this card. Have a look, then press "
-                                        "Approve again.", thread)
+            now = ((self.store.get(p["id"]) or {}).get("payload") or {}).get("pdf_check") or {}
+            self._ephemeral(chan, user, "I've run the duplicate-PDF check and added it to this card. Have a look, then "
+                                        "press Approve again." if now.get("status") == "ok" else
+                            "I still can't read the PDFs on these listings, so nothing was merged. Try again in a few "
+                            "minutes.", thread)
             return "pdf:shown-first"
         shown = block_id.split(":")[2] if block_id.count(":") >= 2 else ""
         if block_id.startswith("tb:") and shown != pdf_dupes.version(pl):
@@ -261,8 +266,9 @@ class Interactions:
             to = "applied" if was_undo else "pending"     # a confirmed no-op undo leaves it applied; else re-approvable
         else:
             to = "unknown"
+        extra = {"result": st["result"]} if "result" in st else {}
         p, _ = self.store.transition(p["id"], {"unknown"}, to, user, result_text=st.get("text", ""),
-                                     rechecked_by=user)
+                                     rechecked_by=user, **extra)
         self._refresh(p)
         return f"recheck:{to}"
 

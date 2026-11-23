@@ -426,6 +426,10 @@ def test_apply_for_real_after_dry_run_is_switched_off(monkeypatch):
     b.handle(mention("what's waiting for approval?"))
     assert "press Apply for real" in slack.of("chat.postMessage")[-1]["text"]
     assert any(m == "chat.update" for m, _ in slack.calls)                 # card redrawn with the button
+    # 2026-11-22: a real merge is never sent before the PDF list could be read and shown (stale-card guard)
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6", ts=p["ts"])) == "pdf:shown-first"
+    assert calls == [True]
+    store.set_pdf_check(p["id"], {"status": "ok", "visible": 0, "flags": [], "pdfs": []})
     assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6", ts=p["ts"])) == "approved:applied"
     assert calls == [True, False] and store.get(p["id"])["status"] == "applied"
 

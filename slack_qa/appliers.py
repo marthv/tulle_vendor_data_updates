@@ -71,10 +71,19 @@ REFUSALS = (          # (what the endpoint says, what the card says)
 
 
 def _is_running(res: dict) -> bool:
-    if str(res.get("status") or "").lower() == "running":
+    if res.get("running") is True or str(res.get("status") or "").lower() == "running":
         return True
     return not res.get("ok") and bool(re.search(r"\b(running|in progress|locked)\b",
                                                 f"{res.get('code', '')} {res.get('error', '')}", re.I))
+
+
+def _warnings(res: dict) -> str:
+    """QA 2026-11-22: a rebuild problem or a straggler must not read as a clean "Applied"."""
+    w = res.get("warnings") or []
+    if not w:
+        return ""
+    said = "; ".join(str(x.get("detail") or x.get("code")) if isinstance(x, dict) else str(x) for x in w[:3])
+    return f" :warning: The rows moved, but Xano reported a problem: {esc(said[:300])}."
 
 
 def _refusal(res: dict) -> str:
@@ -142,13 +151,11 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
     conflicts = res.get("conflicts") or res.get("undo_conflicts") or []
     note = (f" {len(conflicts)} value{'s' if len(conflicts) != 1 else ''} had been changed since and "
             "{} left as they are.".format("was" if len(conflicts) == 1 else "were")) if conflicts else ""
-    warn = res.get("rebuild_warnings") or res.get("warnings") or res.get("rebuild_errors")
-    if warn:                                  # QA 2026-11-22: a rebuild problem must not read as a clean "Applied"
-        note += (" :warning: The rows moved, but rebuilding this venue's prices or search entry reported a problem: "
-                 f"{esc(str(warn)[:200])}.")
+    note += _warnings(res)
     if hide:                                  # never claim PDFs were hidden unless the endpoint says so
-        done = res.get("hidden_pdf_ids")
-        note += (f" Hid {n_hide}." if isinstance(done, list) and set(hide) <= {str(x) for x in done} else
+        done = res.get("hide_pdf_ids")
+        stuck = any("Show_PDF" in str(c.get("column")) for c in conflicts if isinstance(c, dict))
+        note += (f" Hid {n_hide}." if isinstance(done, list) and set(hide) <= {str(x) for x in done} and not stuck else
                  f" I asked Xano to hide {n_hide} but it didn't confirm that: check the listing.")
     if mode == "undo":
         restored = res.get("restored_total", moved)            # ep578 reports restored_total on undo
@@ -171,9 +178,10 @@ def merge_status(payload: dict, proposal_id: str) -> dict:
     if not res.get("ok"):
         return {"state": "unknown", "text": f"The status check didn't answer ({esc(res.get('error'))})."}
     st = str(res.get("status") or "none")
-    if st == "applied":
+    if st in ("applied", "applied_with_warnings"):
         return {"state": "applied", "text": f"Confirmed: the merge ran ({esc(res.get('repointed_total', '?'))} rows, "
-                                            f"backup {esc(res.get('merge_id', '?'))})."}
+                                            f"backup {esc(res.get('merge_id', '?'))}).{_warnings(res)}",
+                "result": {"status": st, "warnings": res.get("warnings") or []}}
     if st == "partial":
         return {"state": "partial", "text": "The merge stopped part-way; everything that moved is backed up."}
     if st == "partial_undo":

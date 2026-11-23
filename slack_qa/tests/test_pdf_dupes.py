@@ -402,14 +402,14 @@ class Sent:
 
 def test_exact_is_covered_by_approve_and_sent_with_expected_state(live, monkeypatch):
     store, slack, it, x, p = make(EXACT_ROWS)
-    sent = Sent(monkeypatch, {"status": "applied", "repointed_total": 3, "backup_id": 1, "hidden_pdf_ids": ["P2"]})
+    sent = Sent(monkeypatch, {"status": "applied", "repointed_total": 3, "backup_id": 1, "hide_pdf_ids": ["P2"]})
     body = str(cards.render(p)[1])
     assert "pre-selected" in body and "PDF check" in body and cards.validate(cards.render(p)[1]) == []
     assert press(it, p, cards.ACTION_APPROVE, block_id=approve_block(p)) == "approved:applied"
     assert sent.body["hide_pdf_ids"] == ["P2"]
-    assert sent.body["expected_state"][1] == {"vendor_id": "V2", "Name": "Oak Barn", "Address": B["Address"],
-                                              "Category": B["Category"], "Place_ID": "G1",
-                                              "Validated_Data": B["Validated_Data"], "pdf_ids": ["P2", "P3"]}
+    assert sent.body["expected_state"]["V2"] == {"Name": "Oak Barn", "Address": B["Address"], "Category": B["Category"],
+                                                 "Place_ID": "G1", "Validated_Data": B["Validated_Data"],
+                                                 "pdf_ids": ["P2", "P3"]}
     assert "Hid 1 duplicate PDF." in store.get(p["id"])["result_text"]
 
 
@@ -481,7 +481,9 @@ def test_refusals_read_clearly(live, monkeypatch, msg, want):
     assert want in store.get(p["id"])["result_text"]
 
 
-@pytest.mark.parametrize("reply,status", [({"status": "running"}, 200), ({"message": "This merge is already running."}, 400)])
+@pytest.mark.parametrize("reply,status", [({"status": "running"}, 200), ({"message": "This merge is already running."}, 400),
+                                          ({"message": "Another merge or undo is running right now (m1). Nothing was "
+                                                       "written. Wait for it to finish, then press Re-check."}, 400)])
 def test_running_only_offers_recheck(live, monkeypatch, reply, status):
     store, slack, it, x, p = make(EXACT_ROWS)
     Sent(monkeypatch, reply, status)
@@ -496,12 +498,42 @@ def test_running_only_offers_recheck(live, monkeypatch, reply, status):
         assert press(it, q, cards.ACTION_RECHECK) == "recheck:unknown"            # still running: stays Re-check only
 
 
+def test_status_says_running_while_header_is_partial(live, monkeypatch):
+    Sent(monkeypatch, {"status": "partial", "running": True, "busy": True})
+    assert appliers.merge_status({"survivor": "V1", "losers": ["V2"]}, "p")["state"] == "unknown"
+    Sent(monkeypatch, {"status": "partial", "running": False, "busy": False})
+    assert appliers.merge_status({"survivor": "V1", "losers": ["V2"]}, "p")["state"] == "partial"
+
+
 def test_rebuild_warning_is_shown(live, monkeypatch):
     store, slack, it, x, p = make(EXACT_ROWS)
-    Sent(monkeypatch, {"status": "applied", "repointed_total": 1, "backup_id": 1, "hidden_pdf_ids": ["P2"],
-                       "rebuild_warnings": ["fn54 failed"]})
+    Sent(monkeypatch, {"status": "applied_with_warnings", "repointed_total": 1, "backup_id": 1, "hide_pdf_ids": ["P2"],
+                       "warnings": [{"code": "rebuild_failed", "detail": "rebuild failed for V1: fn54"}]})
+    assert press(it, p, cards.ACTION_APPROVE, block_id=approve_block(p)) == "approved:applied"
+    q = store.get(p["id"])
+    assert "rebuild failed for V1" in q["result_text"] and "Merged, but something needs a look" in cards.outcome_line(q)
+    st = appliers.merge_status(q["payload"], q["id"])
+    assert st["state"] == "applied" and "rebuild failed" in st["text"]
+
+
+def test_hide_conflict_is_not_reported_as_hidden(live, monkeypatch):
+    store, slack, it, x, p = make(EXACT_ROWS)
+    Sent(monkeypatch, {"status": "applied", "repointed_total": 1, "backup_id": 1, "hide_pdf_ids": ["P2"],
+                       "conflicts": [{"table": "t10", "row_id": 2, "column": "Show_PDF", "reason": "changed"}]})
     press(it, p, cards.ACTION_APPROVE, block_id=approve_block(p))
-    assert "reported a problem" in store.get(p["id"])["result_text"]
+    assert "didn't confirm" in store.get(p["id"])["result_text"]
+
+
+def test_merge_is_never_sent_without_the_pdf_list(live, monkeypatch):
+    store, slack, it, x, p = make(EXACT_ROWS)
+    store._data["proposals"][p["id"]]["payload"]["pdf_check"] = pd._unavailable("x")
+    sent = Sent(monkeypatch, {"status": "applied"})
+    x.status = 500
+    assert press(it, p, cards.ACTION_APPROVE, block_id=f"tb:{p['id']}") == "pdf:shown-first" and sent.body is None
+    x.status = 200
+    assert press(it, p, cards.ACTION_APPROVE, block_id=f"tb:{p['id']}") == "pdf:shown-first" and sent.body is None
+    p = store.get(p["id"])
+    assert press(it, p, cards.ACTION_APPROVE, block_id=approve_block(p)) == "approved:applied" and sent.body["expected_state"]
 
 
 # --- extension point ----------------------------------------------------------------------------------------------------

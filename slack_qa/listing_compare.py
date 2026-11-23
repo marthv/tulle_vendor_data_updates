@@ -231,16 +231,17 @@ def blocks(payload: dict) -> list[dict]:
     return out
 
 
-def expected_state(payload: dict) -> list[dict]:
-    """What the card showed for every listing, for the endpoint's stale-card refusal. pdf_ids covers hidden PDFs too and
-    is null when the PDF list couldn't be read."""
-    out = []
+def expected_state(payload: dict) -> dict:
+    """What the card showed for every listing, for the endpoint's stale-card refusal (ep578 v2 shape):
+    {Vendor_ID: {Name, Address, Category, Place_ID, Validated_Data, pdf_ids}}, text trimmed, blank = "". pdf_ids covers
+    hidden PDFs too ("#<row id>" when a row has no PDF_ID). {} when the PDF list couldn't be read: Approve then runs the
+    check again instead of sending (interactions._pdf_gate), so a merge never goes out without this."""
+    out = {}
     snaps = payload.get("snapshots") or {}
     for vid in _order(payload):
-        s = snaps.get(vid)
-        if not s:
-            return []
-        ps = pdfs_of(payload, vid)
-        out.append({"vendor_id": vid, **{k: s.get(k) for k in STATE_FIELDS},
-                    "pdf_ids": None if ps is None else sorted(p["pdf_id"] for p in ps)})
+        s, ps = snaps.get(vid), pdfs_of(payload, vid)
+        if not s or ps is None:
+            return {}
+        out[vid] = {k: "" if s.get(k) is None else str(s.get(k)).strip() for k in STATE_FIELDS}
+        out[vid]["pdf_ids"] = sorted(p["pdf_id"] or f"#{p['row_id']}" for p in ps)
     return out
