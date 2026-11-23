@@ -264,8 +264,8 @@ def merge_timeout() -> float:
     return _f("XANO_MERGE_TIMEOUT", 300)     # a merge plans, locks, writes and rebuilds; measured previews alone 14-65 s
 
 
-def merge_recheck_grace() -> float:    # seconds after Approve during which "no merge recorded" proves nothing: the
-    return _f("XANO_MERGE_RECHECK_GRACE", 420)  # endpoint plans for up to a minute before it writes its first record
+def merge_recheck_grace() -> float:    # seconds after Approve during which "no merge recorded" proves nothing (the
+    return _f("XANO_MERGE_RECHECK_GRACE", 120)  # request may not have reached Xano yet; ep578 v3 takes its lock first)
 
 
 def feedback_venue_requests() -> bool:  # FEEDBACK_VENUE_REQUESTS=0 turns off the "Venue not in Tulle" triage (needs FEEDBACK_WATCH=1)

@@ -1,4 +1,5 @@
-"""ep578 v2 (live XanoScript read 2026-11-22): one line per status and refusal, and what the card says for each."""
+"""ep578 v3 (live XanoScript, updated 2026-11-23 03:37:42 UTC): every status and refusal VERBATIM (only the ids are samples), and
+what the card says for each."""
 import re
 
 import pytest
@@ -29,8 +30,10 @@ REFUSED = [
     ("The survivor was itself merged into another record; merge into the final record instead.", "failed", "Merge into that"),
     ("A loser is already merged into a record.", "failed", "already merged into another"),
     ("Another record is already merged into one of the losers; merge chains are refused.", "failed", "can't be merged again"),
-    ("Another merge touching one of these records stopped part-way; finish or undo that one first.", "failed",
-     "stopped part-way"),
+    ("Another merge already involves one of these records: me1 (applied). Finish or undo that one first.", "failed",
+     "merge them all in one go (up to 3 duplicates)"),
+    ("Stale plan, nothing was written: V2 Address changed; the PDFs changed. Press Re-check and approve again.", "failed",
+     "changed while the merge was starting"),
     ("The survivor has since been merged into another record; undo that later merge first.", "failed", "later merge first"),
     ("Drift: a live reference count is more than 2x what the card showed. Re-scan this pair before merging.", "failed",
      "Many more rows"),
@@ -45,16 +48,16 @@ REFUSED = [
      "failed", "even when both have it"),
     ("Refused: florists with 2 priced quotes after the merge are not merged yet: the florals summary would silently use only "
      "the last one", "failed", "Florists with more than one"),
-    ("Refused: hiding P9 would hide the survivor's only visible Primary", "failed", "only Primary"),
-    ("expected_state is required for apply.", "failed", "no record of what it showed"),
+    ("Refused: hiding these would leave no visible Primary PDF", "failed", "no visible Primary"),
+    ("Refused: expected_state is missing: send the card's current_state (preview returns it) so a stale card cannot be applied",
+     "failed", "no record of what it showed"),
+    ("Refused: stale card: expected_state for V2 lacks pdf_ids", "failed", "changed after this card"),
     ("Refused: hide_pdf_ids has a repeated PDF_ID", "failed", "listed twice"),
     ("Refused: PDF P9 does not belong to the survivor or a loser", "failed", "isn't on these listings"),
     ("Refused: PDF_ID P9 is on more than one row of this group; cannot tell which to hide", "failed", "shares its id"),
     ("Refused: hiding these would leave the survivor with no visible PDF", "failed", "leave the listing with none"),
     ("Another merge or undo is running right now (me1). Nothing was written. Wait for it to finish, then press Re-check.",
      "unknown", "running in Xano right now"),
-    ("This merge changed state (none -> partial) while this request waited; press Re-check.", "unknown", "changed state"),
-    ("One of these records was merged while this request waited.", "unknown", "merged while this request waited"),
     ("This proposal was already applied.", "unknown", "already applied"),
     ("This proposal was undone (or is mid-undo); it cannot be applied again.", "unknown", "cannot be applied again"),
     ("No merge exists for this proposal_id.", "unknown", "No merge exists"),
@@ -87,7 +90,8 @@ STATUS = [({"status": "none", "running": False, "busy": False}, "none"),
           ({"status": "partial", "running": False}, "partial"), ({"status": "partial", "running": True}, "unknown"),
           ({"status": "applied"}, "applied"),
           ({"status": "applied_with_warnings", "warnings": [{"code": "stragglers", "detail": "rows still on a loser"}]}, "applied"),
-          ({"status": "partial_undo"}, "applied"), ({"status": "undone"}, "undone"),
+          ({"status": "partial_undo"}, "applied"),                    # v1 merges only; v3 never ends there
+          ({"status": "undone"}, "undone"),
           ({"status": "undoing", "running": True}, "unknown"), ({"status": "undoing", "running": False}, "applied"),
           ({"status": "undone_with_warnings", "warnings": [{"detail": "fn54"}]}, "undone"),
           ({"status": "something_new"}, "unknown")]
@@ -114,11 +118,10 @@ def test_every_apply_reply(world, monkeypatch, reply, to, text):                
 
 @pytest.mark.parametrize("reply,out,text", [
     ({"status": "undone", "restored_total": 4, "backup_id": 9}, "undo:ok", "Restored 4"),
-    ({"status": "undone", "restored_total": 4, "warnings": [{"detail": "fn54"}]}, "undo:ok", "Everything was put back, but"),
-    ({"status": "undone_with_warnings", "restored_total": 4, "warnings": [{"detail": "fn54"}]}, "undo:ok", "put back, but"),
+    ({"status": "undone_with_warnings", "restored_total": 4, "warnings": [{"detail": "t10 row 5, Show_PDF: changed since the "
+                                                                           "merge; left as is"}]}, "undo:ok", "Not everything"),
     ({"status": "undoing"}, "undo:unknown", "undo stopped part-way"),
-    ({"status": "brand_new"}, "undo:unknown", "don't know"),
-    ({"status": "partial_undo"}, "undo:unknown", "undo stopped part-way")])
+    ({"status": "brand_new"}, "undo:unknown", "don't know")])
 def test_every_undo_reply(world, monkeypatch, reply, out, text):                                    # noqa: F811
     world.store._data["proposals"][world.p["id"]]["status"] = "applied"
     sent = Sent(monkeypatch, reply)
@@ -227,3 +230,65 @@ def test_no_email_or_secret_in_the_stored_preview():
     s = mc.slim({"survivor": "V1", "losers": ["V2"], "t11_plan": [{"column": "User_Email", "role": "survivor",
                                                                     "new": "a@b.co"}], "rows": [1], "secret": "x"})
     assert not re.search(r"a@b\.co|secret|rows", str(s))
+
+
+def test_undone_with_warnings_can_be_undone_again(world, monkeypatch):                              # noqa: F811
+    world.store._data["proposals"][world.p["id"]]["status"] = "applied"
+    Sent(monkeypatch, {"status": "undone_with_warnings", "restored_total": 1, "warnings": [{"detail": "rebuild failed"}]})
+    press(world.it, world.get(), cards.ACTION_UNDO)
+    q = world.get()
+    assert q["status"] == "undone" and "mostly undone" in cards.outcome_line(q)
+    assert "Undo again" in [e["text"]["text"] for b in cards.render(q)[1] if b["type"] == "actions" for e in b["elements"]]
+    Sent(monkeypatch, {"status": "undone", "restored_total": 1})
+    assert press(world.it, q, cards.ACTION_UNDO) == "undo:ok"
+    q = world.get()
+    assert ":leftwards_arrow" in cards.outcome_line(q) and "Undo again" not in str(cards.render(q)[1])
+    sent = Sent(monkeypatch, {"status": "undone"})
+    assert press(world.it, q, cards.ACTION_UNDO).startswith("noop") and sent.body is None      # clean undo: nothing to repeat
+
+
+def test_second_merge_into_the_same_listing_is_stopped_before_it_is_sent(world, monkeypatch):       # noqa: F811
+    for st, blocked in (("applied", True), ("partial", True), ("unknown", True), ("undone", False), ("rejected", False)):
+        other = world.store.create("merge", "t", "w", "y", "n", {"survivor": "V1", "losers": ["V77"]}, key=f"x{st}")
+        world.store._data["proposals"][other["id"]]["status"] = st
+        press(world.it, world.get(), cards.ACTION_PRICE_RECHECK)
+        shown = "Xano will refuse this one" in str(cards.render(world.get())[1])
+        assert shown is blocked
+        if blocked:
+            assert world.approve() == "price:touching" and world.sent.body is None
+            assert "up to 3 duplicates" in str(cards.render(world.get())[1])
+        world.store._data["proposals"].pop(other["id"])
+    press(world.it, world.get(), cards.ACTION_PRICE_RECHECK)
+    assert world.approve() == "approved:applied"
+
+
+def test_a_group_with_three_duplicates_is_one_merge():
+    import dedupe
+    rows = [dict(A, id=i, Vendor_ID=f"V{i}") for i in range(1, 5)]
+    [g] = dedupe.find_groups(rows)
+
+    class Refs:
+        counts, rows, not_counted, xano, pdf_names = {}, {}, {t for t, *_ in dedupe.REF_TABLES}, None, {}
+
+        def pdfs(self):
+            return {}
+    pl = dedupe.build_proposal(g, {r["id"]: r for r in rows}, Refs())["payload"]
+    assert len(pl["losers"]) == 3
+
+
+def test_asking_for_two_of_three_says_to_merge_all_at_once():
+    from bot import Bot
+    import merge_requests as mr
+    rows = [dict(A, id=i, Vendor_ID=f"V{i}") for i in range(1, 4)]
+    me = type("B", (), {"feedback": type("F", (), {"directory": type("D", (), {"rows": staticmethod(lambda: rows)})})})()
+    said = Bot._others_note(me, mr, ["V1", "V2"])
+    assert "V3" in said and "one request" in said
+    assert Bot._others_note(me, mr, ["V1", "V2", "V3"]) == ""
+
+
+def test_dry_run_is_on_unless_explicitly_off(monkeypatch):
+    for v, dry in ((None, True), ("", True), ("1", True), ("O", True), ("flase", True), ("0", False), ("off", False)):
+        monkeypatch.delenv("DEDUPE_DRY_RUN", raising=False)
+        if v is not None:
+            monkeypatch.setenv("DEDUPE_DRY_RUN", v)
+        assert config.merge_dry_run() is dry

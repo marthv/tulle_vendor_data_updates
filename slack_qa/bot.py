@@ -431,7 +431,7 @@ class Bot:
             refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
             pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
                                        survivor_vid=vids[-1] if req["into"] else "",
-                                       why_text=mr.asked_why(vendors))
+                                       why_text=mr.asked_why(vendors) + self._others_note(mr, vids))
             # a person asking again after an earlier Reject or Undo is a new decision: give it its own key
             k = pr["key"] + (f":asked:{ev.get('ts')}"
                              if any(p.get("status") in ("rejected", "undone") for p in prior) else "")
@@ -448,6 +448,21 @@ class Bot:
             return "merge:error"
         finally:
             timer.cancel()
+
+    def _others_note(self, mr, vids) -> str:
+        """Another listing the scan would group with these: say so now, because a later merge into the same listing is
+        refused until this one is undone (ep578 v3), so all the duplicates should go in one merge."""
+        try:
+            rows = self.feedback.directory.rows()
+            byid = {r["id"]: r for r in rows}
+            more = sorted({str(byid[i].get("Vendor_ID")) for g in mr.dupes_of(rows, set(vids)) for i in g["ids"]} - set(vids))
+        except Exception:  # noqa: BLE001 - a hint only
+            log.exception("others note failed")
+            return ""
+        if not more:
+            return ""
+        return (f" *Also looks the same*: {', '.join(more)}. Merge them together in one request (up to 3 duplicates): a later "
+                "merge into this listing is refused until this one is undone.")
 
     def _dupes_of(self, target, channel, reply_ts, say, resolve) -> str:
         import dedupe

@@ -175,6 +175,10 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
             blocks.append(_section("*Next steps:* " + p["next_steps"]))
     status = p.get("status", "pending")
     if kind == "merge":
+        if price.get("touching") and status in ("pending", "dry_run"):
+            blocks.append(_section(":no_entry: *Xano will refuse this one:* " + esc("; ".join(price["touching"])) + ". A listing "
+                                   "can only be in one merge at a time. To add another duplicate, undo the earlier merge and "
+                                   "merge them all in one go (up to 3 duplicates)."))
         blocks += _allow_blocks(p, status) + _pdf_blocks(p, status) + extra_blocks
     ask = confirm_dialog(confirm_text) if confirm_text else None
     buttons = []
@@ -202,6 +206,8 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
                                     confirm=confirm_dialog(confirm_text, APPLY_CONFIRM) if ask else APPLY_CONFIRM))
         if status == "partial" and kind == "merge":
             buttons.append(_btn(ACTION_APPROVE, p["id"], "Resume merge", "primary", confirm=ask))
+        if status == "undone" and kind == "merge" and (p.get("result") or {}).get("warnings"):
+            buttons.append(_btn(ACTION_UNDO, p["id"], "Undo again", confirm=UNDO_CONFIRM))     # ep578 v3 allows a re-run
         if status in ("applied", "partial") and kind == "merge" and p.get("undoable", True):
             buttons.append(_btn(ACTION_UNDO, p["id"], "Undo merge", confirm=UNDO_CONFIRM))
     pdf = (payload.get("pdf_check") or {}) if kind == "merge" else {}
@@ -251,7 +257,9 @@ def outcome_line(p: dict) -> str:
         return f":hourglass_flowing_sand: Applying… approved by {who}."
     if st == "undone":
         undo = f"<@{p['undo_by']}>" if p.get("undo_by") else who
-        return f":leftwards_arrow_with_hook: Merge undone by {undo} (first approved by {who}). {res}"
+        mark = ":warning: Merge mostly undone" if (p.get("result") or {}).get("warnings") else \
+            ":leftwards_arrow_with_hook: Merge undone"
+        return f"{mark} by {undo} (first approved by {who}). {res}"
     if st == "failed":
         return f":warning: Approved by {who} but it didn't apply. {res}"
     if st == "unknown":

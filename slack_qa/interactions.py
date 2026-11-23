@@ -153,6 +153,7 @@ class Interactions:
         self._refresh(p)
         pl = p["payload"]
         ans = merge_checks.price(self.xano, pl)
+        ans["touching"] = merge_checks.touching(self.store, pid, pl)
         p, why = self.store.set_price(pid, ans, only_if=lambda now: merge_checks.current(dict(now, price=ans)))
         if why:                                 # another click changed the choices: its own recompute redraws the card
             return "price:superseded"
@@ -180,6 +181,11 @@ class Interactions:
                             "Nothing was merged: I didn't have Xano's preview of this merge. I've asked for it again; have a "
                             "look at the card, then press Approve again.", thread)
             return "price:no-preview"
+        hit = merge_checks.touching(self.store, p["id"], pl)
+        if hit:
+            self._ephemeral(chan, user, "Nothing was merged: " + "; ".join(hit) + ". A listing can only be in one merge at a "
+                                        "time. Undo the earlier merge and merge them all in one go (up to 3 duplicates).", thread)
+            return "price:touching"
         old = pl["price"]
         shown = block_id.split(":")[3] if block_id.count(":") >= 3 else ""
         if block_id.startswith("tb:") and shown != str(old.get("stamp")):
@@ -189,6 +195,7 @@ class Interactions:
             return "price:stale"
         self._ephemeral(chan, user, "Checking the price once more, then merging (a few minutes; the card updates)…", thread)
         new = merge_checks.price(self.xano, pl, pv=old.get("preview"))
+        new["touching"] = hit
         if not merge_checks.moved(old, new):
             return None
         p2, why = self.store.set_price(p["id"], new, only_if=lambda now: merge_checks.current(dict(now, price=new)))
@@ -336,7 +343,8 @@ class Interactions:
         if p.get("kind") != "merge":
             return "ignored:undo-not-merge"
         was = p.get("status")
-        p, why = self.store.transition(p["id"], {"applied", "partial"}, "undoing", user)
+        again = was == "undone" and bool((p.get("result") or {}).get("warnings"))      # ep578 v3: undo may be run again
+        p, why = self.store.transition(p["id"], {"undone"} if again else {"applied", "partial"}, "undoing", user)
         if why:
             self._ephemeral(chan, user, why, thread)
             return "noop:" + (p or {}).get("status", "missing")
@@ -345,9 +353,10 @@ class Interactions:
             p, _ = self.store.transition(p["id"], {"undoing"}, "unknown", user, result_text=res["text"],
                                          unknown_from="undoing")
         elif res.get("ok") and not res.get("dry_run"):
-            p, _ = self.store.transition(p["id"], {"undoing"}, "undone", user, result_text=res["text"])
+            p, _ = self.store.transition(p["id"], {"undoing"}, "undone", user, result_text=res["text"],
+                                         result=res.get("result") or {})
         else:                              # refused / dry run: back to where it was (applied or partial)
-            p, _ = self.store.transition(p["id"], {"undoing"}, was if was in ("applied", "partial") else "applied",
+            p, _ = self.store.transition(p["id"], {"undoing"}, was if was in ("applied", "partial", "undone") else "applied",
                                          user, result_text=(p.get("result_text") or "") + f" (Undo: {res['text']})")
         self._refresh(p)
         return "undo:" + ("unknown" if res.get("unknown") else "ok" if res.get("ok") else "failed")

@@ -209,6 +209,21 @@ class Store:
         self._log(rec)
         return out, ""
 
+    def merges_touching(self, vids, exclude: str = "") -> list[str]:
+        """Other merges of this bot that ran (or may have) with one of these listings: ep578 refuses a new merge on any of
+        them until that one is undone."""
+        want, say = {str(v) for v in vids if v}, {"applied": "already merged", "partial": "a merge stopped part-way",
+                                                  "unknown": "a merge whose outcome isn't known",
+                                                  "applying": "a merge is running", "undoing": "an undo is running"}
+        out = []
+        with self._lock:
+            for q in self._data["proposals"].values():
+                pl = q.get("payload") or {}
+                ids = {str(x) for x in [pl.get("survivor")] + list(pl.get("losers") or []) if x}
+                if q.get("kind") == "merge" and q.get("id") != exclude and q.get("status") in say and want & ids:
+                    out.append(f"{', '.join(sorted(want & ids))}: {say[q['status']]} ({' + '.join(sorted(ids))})")
+        return out
+
     def set_price(self, pid: str, result: dict, only_if=None) -> tuple[dict | None, str]:
         """Attach the price answer while the merge hasn't run. `only_if(payload)` is checked under the lock, so an answer
         for an older choice never overwrites a newer one."""

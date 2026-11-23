@@ -39,6 +39,10 @@ def submit(fn) -> None:
     _QUEUE.submit(job)
 
 
+def touching(store, pid: str, payload: dict) -> list[str]:
+    return store.merges_touching([payload.get("survivor")] + list(payload.get("losers") or []), exclude=pid)
+
+
 def finish(slack, store, pid: str, xano=None) -> None:
     """Compute a posted card's price (with ep578's preview) and redraw the card."""
     import cards
@@ -49,6 +53,7 @@ def finish(slack, store, pid: str, xano=None) -> None:
     if not p or p.get("status") not in ("pending", "dry_run") or current(p["payload"]):
         return
     ans = price(xano, p["payload"])
+    ans["touching"] = touching(store, pid, p["payload"])
     p, why = store.set_price(pid, ans, only_if=lambda now: current(dict(now, price=ans)))
     if p and not why and p.get("channel") and p.get("ts"):
         text, blocks = cards.render(p)

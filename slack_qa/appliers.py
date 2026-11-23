@@ -57,12 +57,16 @@ def _out(ok, text, dry=False, unknown=False, result=None):
 
 # --- merge ---------------------------------------------------------------------------------------------
 RUNNING_TEXT = "A merge or undo is running in Xano right now (one at a time). Wait a few minutes, then press Re-check."
-# Every refusal ep578 v2 can give (live XanoScript read 2026-11-22) -> what the card says. tests/test_ep578_contract.py
+# Every refusal ep578 v3 can give (live XanoScript, 2026-11-23 03:37:42 UTC) -> what the card says. test_ep578_contract.py
 # holds one line per endpoint message. "Nothing was changed" is added by _refusal.
 REFUSALS = (
-    (r"only visible Primary", "Hiding this PDF would hide the listing's only Primary. Choose Keep both on a fresh card."),
-    (r"expected_state (?:is )?(?:required|mandatory|missing)|needs? expected_state",
-     "The card has no record of what it showed. Ask for a fresh card."),
+    (r"no visible Primary PDF", "Hiding these PDFs would leave the listing with no visible Primary. Choose Keep both on a "
+                                "fresh card."),
+    (r"expected_state is missing", "The card has no record of what it showed. Ask for a fresh card."),
+    (r"^Stale plan", "One of these listings, or its PDFs, changed while the merge was starting. Ask for a fresh card."),
+    (r"Another merge already involves one of these records",
+     "An earlier merge already used one of these listings, and a listing can only be in one merge at a time. To add another "
+     "duplicate to it, undo the earlier merge and merge them all in one go (up to 3 duplicates)."),
     (r"stale card", "One of these listings, or its PDFs, changed after this card was posted. Ask for a fresh card."),
     (r"a hidden listing \(", "The duplicate is hidden from search. Find out why, then answer the question on a fresh card."),
     (r"the survivor is hidden", "The kept listing is hidden from search and the merge would make it visible. Find out why, "
@@ -82,8 +86,6 @@ REFUSALS = (
     (r"survivor was itself merged", "The kept listing was already merged into another one. Merge into that one instead."),
     (r"A loser is already merged", "The duplicate was already merged into another listing."),
     (r"merge chains are refused", "Another listing was already merged into the duplicate, so it can't be merged again."),
-    (r"stopped part-way; finish or undo", "Another merge of one of these listings stopped part-way. Finish or undo that "
-                                          "one first."),
     (r"do not match the merge recorded", "Xano has a different merge recorded for this card. Ask the owner before doing "
                                          "anything else."),
     (r"survivor has since been merged", "The kept listing has since been merged into another one. Undo that later merge "
@@ -95,8 +97,7 @@ REFUSALS = (
 REFUSALS = tuple((re.compile(rx, re.I), text) for rx, text in REFUSALS)
 ANSWERABLE = re.compile(r"a hidden listing \(|the survivor is hidden|holds the gold chip", re.I)
 # the endpoint knows more about this merge than the card does: never report a plain failure, ask mode=status (Re-check)
-ASK_STATUS = re.compile(r"already applied|was undone \(or is mid-undo\)|already undone|changed state|No merge exists|"
-                        r"was merged while this request waited", re.I)
+ASK_STATUS = re.compile(r"already applied|was undone \(or is mid-undo\)|already undone|No merge exists", re.I)
 
 
 def plain_refusals(said: str) -> list[str]:
@@ -117,8 +118,10 @@ def _warnings(res: dict, undo: bool = False) -> str:
     if not w:
         return ""
     said = "; ".join(str(x.get("detail") or x.get("code")) if isinstance(x, dict) else str(x) for x in w[:3])
-    did = "Everything was put back" if undo else "The rows moved"
-    return f" :warning: {did}, but Xano reported a problem: {esc(said[:300])}."
+    if undo:
+        return (f" :warning: Not everything could be put back: {esc(said[:300])}. *Undo again* retries it; a value someone "
+                "changed since stays as they left it.")
+    return f" :warning: The rows moved, but Xano reported a problem: {esc(said[:300])}."
 
 
 def _refusal(res: dict) -> str:
@@ -235,7 +238,8 @@ def merge_status(payload: dict, proposal_id: str) -> dict:
     if st in ("partial_undo", "undoing"):          # 'undoing' while it really runs is caught by _is_running above
         return {"state": "applied", "text": "The undo stopped part-way. Press Undo merge again to finish it."}
     if st in ("undone", "undone_with_warnings"):
-        return {"state": "undone", "text": f"Confirmed: the merge ran and was undone.{_warnings(res, undo=True)}"}
+        return {"state": "undone", "text": f"Confirmed: the merge ran and was undone.{_warnings(res, undo=True)}",
+                "result": {"status": st, "warnings": res.get("warnings") or []}}
     if st != "none":                               # a status this bot doesn't know: never read it as "no merge"
         return {"state": "unknown", "text": f"Xano reports a status I don't know ({esc(st)}). Ask the owner."}
     return {"state": "none", "text": "Confirmed: no merge exists for this card, so nothing changed."}
