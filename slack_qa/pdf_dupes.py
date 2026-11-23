@@ -3,15 +3,17 @@
 check(xano, survivor, losers) reads the table-10 rows of the listings on a merge card (within one listing too) and
 compares every pair of VISIBLE PDFs. Read-only. Types:
   EXACT        same Drive file, or two files with the same Drive md5                 -> pre-selected to hide (untickable)
-  SAME_TEXT    re-saved: every word and number the same, in the same order           -> needs its own click
-  SAME_PRICES  new design: same pricing year and EVERY price on file identical       -> needs its own click
+  SAME_TEXT    re-saved: every word, number and currency sign the same, in order     -> needs its own click
+  SAME_PRICES  new design: same year, same stored prices on the same rooms, and the text of both PDFs read and agreeing
+               on every price, %, guest number and day, in order                     -> needs its own click
   SUBSET       an excerpt: every phrase of the shorter one is in the longer one      -> needs its own click
   SAME_LINK    both open the same web page (not a Drive file)                        -> needs its own click
 Except for EXACT (one file can't be two years), a different pricing year, or any price that differs, means KEEP BOTH.
 Missing data means "can't tell", never a flag.
-A changed number, day, or word order is never "the same text". What is compared without Drive access: the file id in the
-link, and the prices already extracted (t36/37/84/85/87/92/93). Stored prices cover only part of a PDF, so SAME_PRICES
-without the text needs more matching prices, matching room/package names, and says on the card the PDFs weren't read.
+SAME_TEXT, SAME_PRICES and SUBSET also need our stored prices (t36/37/84/85/87/92/93) to agree, and to be printed in the
+text: a stored price the text doesn't show came from a picture, which is never compared. Without Drive access only EXACT
+(same link) can be found; same stored prices alone are "not checked" (QA 2026-11-22: 1 of 10 such flags was wrong, V7122).
+Empty or blank files are left out of everything.
 
 Which copy stays: the PDF that will be the listing's Primary after the merge (the kept listing's own), then newer year,
 more pages, more extracted rows, older row. A copy that stays is never itself on the hide list, so at least one always
@@ -38,9 +40,12 @@ CHECK_SECONDS = 40            # whole check; the card posts with "PDF check unav
 MAX_FLAGS = 8                 # more than this on one card: the rest are listed as "not offered" (kept)
 MAX_PDFS = 24
 MIN_TOKENS, MIN_MONEY = 120, 3        # a text layer with less than this can't prove two PDFs are the same
-MIN_PRICES_TEXT, MIN_PRICES_NO_TEXT = 3, 5
+MIN_PRICES_TEXT = 3
+EMPTY_MD5 = "d41d8cd98f00b204e9800998ecf8427e"
+SMALL_FILE = 20_000           # a file this small with no text at all is blank
+NOT_CHECKED = "same prices on file, but the PDFs weren't read, so not checked"
 TYPE_LABEL = {"EXACT": "Exact copy of the same file", "SAME_TEXT": "Same PDF saved again",
-              "SAME_PRICES": "Possibly the same prices in a new design", "SUBSET": "An excerpt of the longer PDF",
+              "SAME_PRICES": "Looks like the same prices in a new design", "SUBSET": "An excerpt of the longer PDF",
               "SAME_LINK": "Both open the same web page"}
 
 # --- prices on file -----------------------------------------------------------------------------------------
@@ -129,6 +134,13 @@ def _price_diff(a: Prices, b: Prices, k) -> str:
     return f"{k[1].replace('_', ' ').lower()} on file differs ({_fmt(x - y)} vs {_fmt(y - x)})"
 
 
+def price_diffs(a: Prices, b: Prices, n: int = 3) -> list[str]:
+    """Every stored column that differs, in words (first n)."""
+    out = [_price_diff(a, b, k) for k in sorted(set(a.by_col) | set(b.by_col))
+           if a.by_col.get(k, set()) != b.by_col.get(k, set())]
+    return out[:n] + ([f"and {len(out) - n} more"] if len(out) > n else [])
+
+
 def compare_prices(a: Prices, b: Prices) -> tuple[str, str]:
     """("same" | "differ" | "cant", plain reason). Same = every column that has a value on either PDF has exactly the
     same values on the other."""
@@ -145,9 +157,21 @@ def compare_prices(a: Prices, b: Prices) -> tuple[str, str]:
 
 
 # --- text ----------------------------------------------------------------------------------------------------
-_TOK = re.compile(r"\d[\d,]*(?:\.\d+)?|[^\W\d_]+")
-_MONEY = re.compile(r"[$£€]\s?(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s?(?:usd\b|dollars\b|per person\b|/person\b|pp\b)",
-                    re.I)
+CUR = "$£€¥₹"
+_WORDNUM = {w: n for n, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve".split())}
+QUALIFIERS = set("""not no non never without except excluding excludes exclude excluded includes include included including
+inclusive exclusive plus additional extra only minimum maximum min max waived discount draft expired revised""".split())
+_TOK = re.compile(r"\d[\d,]*(?:\.\d+)?|[^\W\d_]+|[" + CUR + "%]")
+_MONEY = re.compile(r"([" + CUR + r"])\s?(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s?(?:usd\b|dollars\b|per person\b|"
+                    r"/person\b|pp\b)", re.I)
+_DAYS = ("mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekday|"
+         "weekend|january|february|march|april|may|june|july|august|september|october|november|december|spring|summer|"
+         "fall|autumn|winter|peak|off-peak")
+# what a couple pays, in reading order: money with its sign, percentages, guest and hour counts, days / months / seasons
+_HEAD = re.compile(r"(?P<cur>[" + CUR + r"])\s?(?P<amt>\d[\d,]*(?:\.\d+)?)|(?P<pct>\d+(?:\.\d+)?)\s?%|"
+                   r"(?P<cnt>\d[\d,]*|(?:" + "|".join(_WORDNUM) + r"))\s*[-+]?\s*(?P<unit>guests?|people|persons?|pax|ppl|hours?|hrs?)\b|"
+                   r"(?P<bare>\d[\d,]*(?:\.\d+)?)\s?(?:usd|dollars|per person|/person|pp)\b|\b(?P<day>" + _DAYS + r")s?\b",
+                   re.I)
 # words that change what a price means: if one of these is only on one side, it isn't "the same text"
 GUARD = set("""not no non never without except excluding excludes exclude excluded includes include included including
 inclusive exclusive plus additional extra only minimum maximum min max per person guest guests each waived discount
@@ -167,7 +191,15 @@ class Text:
         self.page_toks = [[self._n(x) for x in _TOK.findall(p)] for p in t.split("\f")]
         self.toks = [x for p in self.page_toks for x in p]
         self.pages = pages
-        self.money = {round(float((m[0] or m[1]).replace(",", "")), 2) for m in _MONEY.findall(t)}
+        self.money = {(m[0], round(float((m[1] or m[2]).replace(",", "")), 2)) for m in _MONEY.findall(t)}
+        found = list(_HEAD.finditer(t))
+        self.head = [self._head(m) for m in found]
+        # the 4 words just before each price / % / count: what that number is for
+        self.labels = [tuple(re.findall(r"[^\W\d_]+", t[max(0, m.start() - 120):m.start()])[-4:])
+                       for m, h in zip(found, self.head) if h[0] != "day"]
+        self.qualifiers = collections.Counter(w for w in re.findall(r"[^\W\d_]+", t) if w in QUALIFIERS)
+        self.numbers = {round(float(x.replace(",", "")), 2) for x in _NUM.findall(t)}
+        self.words = set(re.findall(r"[^\W\d_]+", t))
         self.years = frozenset(re.findall(r"(?<!\d)20[12345]\d(?!\d)", t))
         self.joined = "".join(self.toks)
 
@@ -179,6 +211,24 @@ class Text:
                 tok = tok.rstrip("0").rstrip(".")
             return "#" + tok + "#"              # marks keep "1" + "50" from reading as "150"
         return tok
+
+    @staticmethod
+    def _head(m) -> tuple:
+        g = m.groupdict()
+        f = lambda x: round(float(_WORDNUM.get(x.lower(), x.replace(",", ""))), 2)  # noqa: E731
+        if g["amt"]:
+            return ("money", g["cur"], f(g["amt"]))
+        if g["pct"]:
+            return ("%", f(g["pct"]))
+        if g["cnt"]:
+            return ("hours" if g["unit"][0].lower() == "h" else "guests", f(g["cnt"]))
+        if g["bare"]:
+            return ("money", "", f(g["bare"]))
+        return ("day", g["day"][:3].lower())
+
+    @property
+    def blank(self) -> bool:
+        return not self.toks
 
     @property
     def usable(self) -> bool:
@@ -205,11 +255,11 @@ def same_text(a: Text, b: Text) -> tuple[bool, str]:
     if a.pages and b.pages and a.pages != b.pages:
         return False, f"{a.pages} pages vs {b.pages}"
     if a.joined == b.joined:
-        return True, "every word and number is the same, in the same order"
+        return True, "every word and number in the text is the same, in the same order"
     s, g = (a, b) if len(a.toks) <= len(b.toks) else (b, a)
     extra = _insertions(s.toks, g.toks)
     if extra is not None and len(extra) <= min(10, max(2, len(s.toks) // 100)) \
-            and not any(e.startswith("#") or e in GUARD for e in extra):
+            and not any(e.startswith("#") or e in GUARD or e in CUR + "%" for e in extra):
         return True, f"same except {len(extra)} extra word{'s' if len(extra) != 1 else ''} ({', '.join(extra[:5])})"
     na, nb = [t for t in a.toks if t[0] == "#"], [t for t in b.toks if t[0] == "#"]
     if na != nb:
@@ -241,8 +291,16 @@ class Pdf:
         self.extracted = str(row.get("extraction_status") or "") == "extracted"
         self.unique = True             # False: another table-10 row has the same PDF_ID, so it can't be hidden safely
         self.md5 = ""
+        self.size: int | None = None                    # bytes, from Drive; None = not read
         self.text: Text | None = None
         self.prices = Prices()
+
+    @property
+    def broken(self) -> bool:
+        """An empty file, or a tiny one with no text at all: there is nothing in it to compare."""
+        if self.size == 0 or self.md5 == EMPTY_MD5:
+            return True
+        return bool(self.text and self.text.blank and self.size is not None and self.size < SMALL_FILE)
 
     def year_text(self) -> str:
         return "-".join(sorted(self.years)) or "no year"
@@ -260,13 +318,20 @@ def _out(verdict, type_=None, matched="", differed="", conf="", subset="") -> di
 
 def compare(a: Pdf, b: Pdf) -> dict:
     """{"verdict": dup|keep|cant, "type", "matched", "differed", "confidence", "subset": the shorter one's PDF_ID}"""
+    if a.broken or b.broken:
+        return _out("cant", None, "", "one of them is an empty file")
     conflict = bool(a.years and b.years and a.years != b.years)
     same_file = bool(a.fid and a.fid == b.fid)
     if same_file or (a.md5 and a.md5 == b.md5):
         why = "both open the same Google Drive file" if same_file else "the two files are identical, byte for byte"
         # owner 2026-11-22: one file can't be two years, so identical files are EXACT whatever our year labels say. The
         # year rule is for the other types. decide() spells out which label stays.
-        return _out("dup", "EXACT", why, "nothing", "certain")
+        r = _out("dup", "EXACT", why, "nothing", "certain")
+        if a.prices.n and b.prices.n:               # one file, read twice: our two readings should agree
+            r["stored_diff"] = price_diffs(a.prices, b.prices)
+        elif a.prices.n or b.prices.n:
+            r["stored_diff"] = ["only one of the two copies has prices on file"]
+        return r
     if conflict:
         return _out("keep", None, "", f"different years ({a.year_text()} vs {b.year_text()})")
     if a.link and a.link == b.link and not a.fid:
@@ -274,42 +339,97 @@ def compare(a: Pdf, b: Pdf) -> dict:
                     "nothing" if a.years and b.years else "one has no pricing year", "high")
     if not a.years or not b.years:
         return _out("cant", None, "", "no pricing year on one of them")
-    ta, tb = a.text, b.text
-    both_text = bool(ta and tb and ta.usable and tb.usable)
-    if both_text:
-        same, detail = same_text(ta, tb)
-        if same:
-            return _out("dup", "SAME_TEXT", f"pricing year {a.year_text()}; {detail}", "nothing that affects a price",
-                        "high")
-        for s, g in ((a, b), (b, a)):
-            if is_subset(s.text, g.text):
-                return _out("dup", "SUBSET", f"pricing year {a.year_text()}; every line of the shorter one is in the "
-                            "longer one", "the longer one has more in it", "high", subset=s.pid)
+    # --- everything below needs our stored prices to agree, whatever the text says
     if not (a.extracted and b.extracted):
         return _out("cant", None, "", "one of them hasn't been read for prices yet")
     if a.prices.years and b.prices.years and a.prices.years != b.prices.years:
         return _out("keep", None, "", "the prices inside are for different years "
                     f"({', '.join(sorted(a.prices.years))} vs {', '.join(sorted(b.prices.years))})")
+    ta, tb = a.text, b.text
+    both_text = bool(ta and tb and ta.usable and tb.usable)
+    same, detail = same_text(ta, tb) if both_text else (False, "")
+    for s, g in ((a, b), (b, a)):
+        if both_text and not same and is_subset(s.text, g.text):
+            return _subset(a, s, g)
     verdict, why = compare_prices(a.prices, b.prices)
     if verdict != "same":
-        return _out("keep" if verdict == "differ" else "cant", None, "", why)
-    if ta and tb and ta.money and tb.money and ta.money != tb.money:       # even when the text is too short to prove
-        return _out("keep", None, "", f"dollar amounts printed in the PDFs differ "          # sameness, it can disprove it
-                    f"({_fmt(ta.money - tb.money)} vs {_fmt(tb.money - ta.money)})")
-    if both_text:
-        if ta.years and tb.years and ta.years != tb.years:
-            return _out("keep", None, "", "the years printed in the PDFs differ")
-        if len(a.prices.dollars) < MIN_PRICES_TEXT:
-            return _out("cant", None, "", "too few prices to be sure")
-        return _out("dup", "SAME_PRICES", f"pricing year {a.year_text()}; {why}; and every dollar amount printed in "
-                    "both PDFs", "the design or wording", "high")
-    if len(a.prices.dollars) < MIN_PRICES_NO_TEXT:
-        return _out("cant", None, "", "too few prices on file to be sure")
+        if same:
+            why = "the text is the same, but " + ("our stored prices differ: " + "; ".join(price_diffs(a.prices, b.prices))
+                                                  if verdict == "differ" else why)
+        return _out("keep" if verdict == "differ" else "cant", None, "same text" if same and verdict == "differ" else "", why)
     if a.prices.rows != b.prices.rows:
-        return _out("cant", None, "", "the same amounts, but not on the same rooms or packages")
-    return _out("dup", "SAME_PRICES", f"pricing year {a.year_text()}; {why}, on the same rooms or packages",
-                "the PDFs themselves were not read, so a price not on file could differ: open both before hiding",
-                "medium")
+        return _out("cant", None, "", "the same amounts on file, but not on the same rooms or packages")
+    if not both_text:
+        if ta and tb and ta.money and tb.money and ta.money != tb.money:       # too short to prove sameness, but it disproves it
+            return _out("keep", None, "", "prices printed in the PDFs differ")
+        return _out("cant", None, "", NOT_CHECKED)
+    unseen = _unseen(a, ta) or _unseen(b, tb)
+    if unseen:
+        return _out("cant", None, "", f"a stored price ({unseen}) isn't in the PDF's text, so it was read from a picture")
+    if same:
+        return _out("dup", "SAME_TEXT", f"pricing year {a.year_text()}; {detail}; our stored prices agree",
+                    "pictures in the PDFs weren't compared", "high")
+    if len(a.prices.dollars) < MIN_PRICES_TEXT:
+        return _out("cant", None, "", "too few prices to be sure")
+    diff = _head_diff(ta, tb) or _room_diff(a, b)
+    if diff:
+        return _out("keep", None, "", diff)
+    return _out("dup", "SAME_PRICES", f"pricing year {a.year_text()}; {why}, on the same rooms or packages; and every price, "
+                "percentage, guest number and day in the text of both PDFs, in the same order and next to the same words",
+                "the design or wording; pictures weren't compared", "high")
+
+
+def _subset(a: Pdf, s: Pdf, g: Pdf) -> dict:
+    """s reads entirely inside g: an excerpt, unless a stored price of the excerpt isn't one of the longer PDF's."""
+    missing = [(k, v) for k, v in sorted(s.prices.by_col.items()) if not v <= g.prices.by_col.get(k, set())]
+    if missing:
+        k, v = missing[0]
+        return _out("keep", None, "same text", "the shorter one's text is inside the longer one, but our stored prices differ: "
+                    f"{k[1].replace('_', ' ').lower()} {_fmt(v - g.prices.by_col.get(k, set()))}")
+    if not s.prices.dollars or not g.prices.dollars:
+        return _out("cant", None, "", "one of them has no prices on file yet")
+    unseen = _unseen(s, s.text)
+    if unseen:
+        return _out("cant", None, "", f"a stored price ({unseen}) isn't in the PDF's text, so it was read from a picture")
+    return _out("dup", "SUBSET", f"pricing year {a.year_text()}; every line of text in the shorter one is in the longer one; "
+                "its stored prices are all the longer one's too", "the longer one has more in it; pictures weren't compared",
+                "high", subset=s.pid)
+
+
+def _unseen(p: Pdf, t: Text) -> str:
+    """A stored dollar amount that isn't printed in the PDF's own text ('' = all are)."""
+    gone = sorted(v for v in p.prices.dollars if v not in t.numbers)
+    return _fmt(gone[:1]) if gone else ""
+
+
+def _head_diff(ta: Text, tb: Text) -> str:
+    if ta.head == tb.head:
+        if ta.years != tb.years:
+            return "the years printed in the PDFs differ"
+        for x, y in zip(ta.labels, tb.labels):
+            if x != y:
+                return f"the same amounts are printed next to different words ({' '.join(x)} / {' '.join(y)})"
+        q = list(((ta.qualifiers - tb.qualifiers) + (tb.qualifiers - ta.qualifiers)).keys())
+        return f"words that change what a price means differ ({', '.join(q[:3])})" if q else ""
+    ca, cb = collections.Counter(ta.head), collections.Counter(tb.head)
+    x, y = list((ca - cb)), list((cb - ca))
+    if not x and not y:
+        return "the same prices and days are printed, but in a different order, so they may be on different lines"
+    say = lambda h: " ".join(f"{v:g}" if isinstance(v, float) else str(v) for v in h[0][1:]) + (  # noqa: E731
+        "" if h[0][0] in ("money", "day") else f" {h[0][0]}") if h else "none"
+    return f"printed prices or numbers differ ({say(x)} vs {say(y)})"
+
+
+GENERIC_LABEL = set("the and of a an whole venue room space package all day wedding reception ceremony".split())
+
+
+def _room_diff(a: Pdf, b: Pdf) -> str:
+    """A stored room / package name whose own words are printed in one PDF and not in the other."""
+    for label in {r[1] for r in a.prices.rows}:
+        w = {x for x in re.findall(r"[^\W\d_]+", label) if x not in GENERIC_LABEL}
+        if w and (w <= a.text.words) != (w <= b.text.words):
+            return "a room or package name is printed in only one of them"
+    return ""
 
 
 # --- which copy stays --------------------------------------------------------------------------------------------
@@ -349,10 +469,10 @@ def decide(pdfs: list[Pdf], survivor: str, results: dict, losers: list[str] | No
         flags.append({"keep_pdf_id": keep.pid, "hide_pdf_id": hide.pid, "type": r["type"], "what_matched": r["matched"],
                       "what_differed": differed, "year_label_differs": keep.years != hide.years, "confidence": r["confidence"], "keep": keep.public(),
                       "hide": hide.public(), "choice": "hide" if r["type"] == "EXACT" else "keep",
-                      "reason": f"{TYPE_LABEL[r['type']]}: {r['matched']}."})
+                      "stored_diff": r.get("stored_diff") or [], "reason": f"{TYPE_LABEL[r['type']]}: {r['matched']}."})
         return True
 
-    for p in sorted((p for p in pdfs if p.visible), key=lambda p: keep_key(p, primary)):
+    for p in sorted((p for p in pdfs if p.visible and not p.broken), key=lambda p: keep_key(p, primary)):
         hits = [(k, res(k, p)) for k in kept if res(k, p).get("verdict") == "dup" and res(k, p)["type"] != "SUBSET"]
         hits.sort(key=lambda h: list(TYPE_LABEL).index(h[1]["type"]))         # the strongest match explains the flag
         if not (hits and flag(hits[0][0], p, hits[0][1])):
@@ -424,8 +544,15 @@ def check(xano, survivor: str, losers: list[str], drive=None, seconds: float = C
             out["compared"] += 1
             if r["verdict"] in ("keep", "cant"):
                 out[r["verdict"]] += 1
+            if r["verdict"] == "keep" and r["matched"] == "same text":
+                out["notes"].append(f"{a.pid} and {b.pid}: {r['differed']}. Both are kept")
+            if r["differed"] == NOT_CHECKED:
+                out["notes"].append(f"{a.pid} and {b.pid} have the same prices on file, but the PDFs weren't read: not checked")
             out["pairs"].append({"a": a.pid, "b": b.pid, "verdict": r["verdict"], "type": r["type"],
                                  "why": r["differed"] if r["verdict"] != "dup" else r["matched"]})
+    for p in vis:
+        if p.broken:
+            out["notes"].append(f"{p.pid} is an empty or blank file; it isn't compared or hidden")
     out["flags"], notes = decide(pdfs, survivor, results, vids[1:])
     out["notes"] = list(dict.fromkeys(out["notes"] + notes))
     for n, f in enumerate(out["flags"], 1):
@@ -440,7 +567,10 @@ def _read_files(drive, vis: list[Pdf], deadline: float) -> tuple[str, str]:
         return "none", "none"
 
     def meta(p):
-        p.md5 = str(drive.meta(p.fid).get("md5Checksum") or "")
+        m = drive.meta(p.fid)
+        p.md5 = str(m.get("md5Checksum") or "")
+        if str(m.get("size") or "").isdigit():
+            p.size = int(m["size"])
         return bool(p.md5)
 
     def text(p):
@@ -465,7 +595,8 @@ def _read_files(drive, vis: list[Pdf], deadline: float) -> tuple[str, str]:
     n = run(meta, want, 4)
     files = "checked" if n == len(vis) else "partly" if n else "failed"
     per_year = collections.Counter(p.years for p in want if p.years)
-    todo = [p for p in want if p.years and per_year[p.years] > 1]
+    todo = [p for p in want if p.size != 0 and ((p.years and per_year[p.years] > 1)
+                                                or (p.size is not None and p.size < SMALL_FILE))]
     if not todo:
         return files, "none"
     t = run(text, todo, 2)                  # 2 at a time: a PDF can be 25 MB
@@ -602,7 +733,9 @@ def flag_text(f: dict, survivor: str) -> str:
             f"Keep {_ref(f['keep'], survivor)} · possible duplicate {_ref(f['hide'], survivor)}\n"
             f"Matched: {_esc(f['what_matched'])}. "
             f"{':warning: *Year labels differ.* ' if f.get('year_label_differs') else ''}"
-            f"Differed: {_esc(f['what_differed'])}.\n{choice}")
+            f"Differed: {_esc(f['what_differed'])}."
+            + (f"\n:warning: *Same file, but our stored prices differ:* {_esc('; '.join(f['stored_diff']))}."
+               if f.get("stored_diff") else "") + f"\n{choice}")
 
 
 def details_lines(payload: dict) -> str:

@@ -999,6 +999,9 @@ def details_text(p: dict) -> list[str]:
                   ". Couples' emails and the raw Google cache are never stored here.")
     import pdf_dupes
     chunks.append(pdf_dupes.details_lines(pl))
+    detail = str((pl.get("price") or {}).get("detail") or "")
+    if detail:
+        chunks += ["*Price check in full*\n" + detail[:2600]] + ([detail[2600:5300]] if len(detail) > 2600 else [])
     chunks.append("*Stored by name, not id (not rewritten automatically)*\n" +
                   "\n".join(f"• {t} · {f}: {why}" for t, f, why in NAME_KEYED))
     return [c[:2900] for c in chunks]

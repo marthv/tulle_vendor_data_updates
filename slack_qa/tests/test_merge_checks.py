@@ -7,6 +7,7 @@ import requests
 
 import cards
 import interactions
+import listing_compare as lc
 import merge_checks as mc
 import price_impact
 import pdf_dupes as pd
@@ -27,7 +28,7 @@ def rec(total=100, alert=False, cant=(), stamp="s1"):
 def world(monkeypatch, live):                                            # noqa: F811
     """A live merge card whose price answer the test controls through w.answer (dict or callable)."""
     class W:
-        answer, seen = rec(), []
+        answer, seen, preview_ok = rec(), [], True
     w = W()
 
     def compute(xano, survivor, losers, *, preview=None, hidden_pdfs=(), deadline=0, live_check=True):
@@ -37,8 +38,10 @@ def world(monkeypatch, live):                                            # noqa:
     monkeypatch.setattr(price_impact, "compute", compute)
     monkeypatch.setattr(price_impact, "blocks", lambda r: {
         "alert": r["alert"], "confirm_text": "Price moves. Merge anyway?" if r["alert"] else None,
-        "extra_blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": f"AFTER {r['after']['total']}"}}]})
-    monkeypatch.setattr(mc, "preview", lambda payload, hide: None)
+        "extra_blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": f"AFTER {(r['after'] or {}).get('total')}"}}]})
+    monkeypatch.setattr(mc, "preview", lambda payload, hide: {
+        "status": "preview", "survivor": payload["survivor"], "losers": payload["losers"], "hide_pdf_ids": hide, "refusals": [],
+        "current_state": lc._shown_state(payload) if w.preview_ok else None})
     w.x = FakeXano({10: [dict(r) for r in EXACT_ROWS], 11: [dict(A), dict(B)]})
     w.store, w.slack = Store(), RecSlack()
     pl = {"survivor": "V1", "losers": ["V2"], "counts": {}, "rules": ["A"],
@@ -90,7 +93,31 @@ def test_failure_is_an_alert_with_confirm_never_a_pass(world):
     q = world.get()
     assert q["payload"]["price"]["status"] == "failed" and "couldn't compute" in str(cards.render(q)[1])
     assert q["payload"]["price"]["confirm_text"] and "Check price again" in labels(q)
-    assert world.approve() == "approved:applied"               # the approver confirmed "couldn't compute"
+    # a failed check holds no preview, and nothing is ever sent without Xano's preview of this merge
+    assert world.approve() == "price:no-preview" and world.sent.body is None
+
+
+def test_cant_compute_with_a_good_preview_can_be_confirmed(world):
+    world.answer = dict(rec(None), cant=["x"], alert=True, reasons=["can't compute: x"], after=None)
+    press(world.it, world.get(), cards.ACTION_PRICE_RECHECK)
+    assert world.get()["payload"]["price"]["cant"] and world.approve() == "approved:applied"
+
+
+def test_no_preview_no_merge(world):
+    world.preview_ok = False
+    press(world.it, world.get(), cards.ACTION_PRICE_RECHECK)
+    assert world.approve() == "price:no-preview" and world.sent.body is None
+    world.preview_ok = True
+    assert world.approve() == "price:no-preview" and world.approve() == "approved:applied"     # asked again, seen, approved
+
+
+def test_preview_that_disagrees_with_the_card_stops_it(world):
+    pl = world.store._data["proposals"][world.p["id"]]["payload"]
+    pl["price"]["preview"]["current_state"]["V2"]["Address"] = "moved"
+    assert world.approve() == "price:no-preview" and world.sent.body is None
+    import appliers
+    out = appliers.merge(world.get()["payload"], OWNER, "p", dry_run=False)
+    assert not out["ok"] and "Nothing was changed" in out["text"] and world.sent.body is None
 
 
 def test_cant_compute_with_a_different_after_price_is_reshown():

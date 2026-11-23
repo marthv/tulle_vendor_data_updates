@@ -97,7 +97,7 @@ def _compute(xano, payload: dict, hide: list[str], pv="fetch") -> dict:
     pv = slim(preview(payload, hide)) if pv == "fetch" else pv
     r = price_impact.compute(xano, payload.get("survivor"), list(payload.get("losers") or []), preview=pv,
                              hidden_pdfs=hide, deadline=SECONDS)
-    b = price_impact.blocks(r)
+    b = short(r, price_impact.blocks(r))
     extra = list(b["extra_blocks"])
     # refusals a person can answer on the card (hidden / gold / unhide) have their own buttons there
     refusals = [x for x in (pv or {}).get("refusals") or []
@@ -111,7 +111,47 @@ def _compute(xano, payload: dict, hide: list[str], pv="fetch") -> dict:
             "survivor": payload.get("survivor"), "refusals": refusals, "seconds": r.get("seconds"), "preview": pv,
             # belt and braces: an alert always has a confirm text
             "confirm_text": b["confirm_text"] or ("The price couples see changes. Merge anyway?" if r["alert"] else None),
-            "extra_blocks": extra}
+            "extra_blocks": extra, "detail": b["detail"]}
+
+
+STRONG = {"can't compute", "price shown or not", "opening price"}     # headline >= 10%, none <-> some, or not computable
+
+
+def _clip(t: str, n: int) -> str:
+    return t if len(t) <= n else t[: n - 1].rstrip() + "…"
+
+
+def short(r: dict, b: dict) -> dict:
+    """price_impact's answer in the space a card has (its logic is untouched: what alerts, and why, is decided there).
+    33 of 40 high-tier groups alert, so the loud header and the strongest confirm are kept for the headline price or
+    "can't compute"; everything else is one plain line and a plain confirm. The full text goes to Details."""
+    full = list(b["extra_blocks"])
+    if not r.get("alert"):
+        return {"extra_blocks": full, "confirm_text": b["confirm_text"], "detail": ""}
+    kinds, why = list(r.get("kinds") or []), [str(x) for x in r.get("reasons") or []]
+    strong = bool(STRONG & set(kinds)) or bool(r.get("cant")) or not kinds
+    esc = pdf_dupes._esc
+    texts = [x["text"]["text"] for x in full if x.get("type") == "section"]
+    figures = next((t for t in texts if "predicted" in t.lower()), texts[-1] if texts else "")
+    keep = [ln for ln in figures.split("\n") if ln.startswith("• `V") or ln.startswith("• Kept listing")]
+    top = "; ".join(_clip(x, 140) for x in why[:2]) + (f"; and {len(why) - 2} more under Details" if len(why) > 2 else "")
+    out = []
+    if strong:
+        out.append({"type": "header", "text": {"type": "plain_text", "text": _clip("PRICE ALERT: " + (why or ["see below"])[0], 148)}})
+        if len(why) > 1:
+            out.append({"type": "section", "text": {"type": "mrkdwn", "text": esc(_clip("Also: " + "; ".join(
+                _clip(x, 140) for x in why[1:3]) + (f"; and {len(why) - 3} more under Details" if len(why) > 3 else ""), 700))}})
+    else:
+        out.append({"type": "section", "text": {"type": "mrkdwn", "text": esc(_clip(
+            "Price note (the headline price moves less than 10%): " + top + ".", 700))}})
+    if keep:
+        out.append({"type": "section", "text": {"type": "mrkdwn", "text": _clip("\n".join(keep), 1800)}})
+    import price_impact
+    out.append({"type": "context", "elements": [{"type": "mrkdwn", "text": esc(getattr(
+        price_impact, "PREDICTED", "Predicted from stored data")) + "."}]})
+    first = esc(_clip((why or ["the price couples see changes"])[0], 180))
+    confirm = f"Price alert: {first}. Merge anyway?" if strong else f"Note: {first}. Continue with the merge?"
+    return {"extra_blocks": out, "confirm_text": confirm, "detail": "\n\n".join(texts)[:5500]}
 
 
 def price(xano, payload: dict, seconds: float = SECONDS, wait: float = WAIT, pv="fetch") -> dict:

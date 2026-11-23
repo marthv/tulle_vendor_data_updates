@@ -60,6 +60,9 @@ RUNNING_TEXT = "A merge or undo is running in Xano right now (one at a time). Wa
 # Every refusal ep578 v2 can give (live XanoScript read 2026-11-22) -> what the card says. tests/test_ep578_contract.py
 # holds one line per endpoint message. "Nothing was changed" is added by _refusal.
 REFUSALS = (
+    (r"only visible Primary", "Hiding this PDF would hide the listing's only Primary. Choose Keep both on a fresh card."),
+    (r"expected_state (?:is )?(?:required|mandatory|missing)|needs? expected_state",
+     "The card has no record of what it showed. Ask for a fresh card."),
     (r"stale card", "One of these listings, or its PDFs, changed after this card was posted. Ask for a fresh card."),
     (r"a hidden listing \(", "The duplicate is hidden from search. Find out why, then answer the question on a fresh card."),
     (r"the survivor is hidden", "The kept listing is hidden from search and the merge would make it visible. Find out why, "
@@ -154,6 +157,9 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
     if mode == "apply":                        # what the approver saw; the endpoint refuses if it changed since
         import listing_compare
         state = listing_compare.expected_state(payload)
+        if payload.get("snapshots") and not listing_compare.preview_state(payload):
+            return _out(False, "I don't have Xano's preview of this merge matching what the card shows, so nothing was sent. "
+                               "Nothing was changed. Ask for a fresh card.")
         if state:
             body["expected_state"] = state
         allow = payload.get("allow") or {}    # only an approver's explicit OK on this card
@@ -178,11 +184,15 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
                           "all backed up).", result={k: v for k, v in res.items() if k != "secret"})
         out["partial"] = True
         return out
-    if res.get("status") in ("partial", "partial_undo"):
+    if res.get("status") in ("partial", "partial_undo", "undoing"):
         return _out(False, "Xano says the undo stopped part-way.", unknown=True,
                     result={k: v for k, v in res.items() if k != "secret"})
     if res.get("status") == "queued":
         return _out(False, "Xano queued the merge and is still running it.", unknown=True)
+    known = ("undone", "undone_with_warnings") if mode == "undo" else ("applied", "applied_with_warnings")
+    if res.get("status") not in known + ("", None):
+        return _out(False, f"Xano replied with a status I don't know ({esc(res.get('status'))}).", unknown=True,
+                    result={k: v for k, v in res.items() if k != "secret"})
     moved = res.get("repointed_total", "?")
     result = {k: v for k, v in res.items() if k != "secret"}
     # ep578 (built 2026-11-22) reports conflicts (values changed by someone since, left as they are) - show the count
@@ -222,10 +232,12 @@ def merge_status(payload: dict, proposal_id: str) -> dict:
                 "result": {"status": st, "warnings": res.get("warnings") or []}}
     if st == "partial":
         return {"state": "partial", "text": "The merge stopped part-way; everything that moved is backed up."}
-    if st == "partial_undo":
+    if st in ("partial_undo", "undoing"):          # 'undoing' while it really runs is caught by _is_running above
         return {"state": "applied", "text": "The undo stopped part-way. Press Undo merge again to finish it."}
-    if st == "undone":
-        return {"state": "undone", "text": "Confirmed: the merge ran and was undone."}
+    if st in ("undone", "undone_with_warnings"):
+        return {"state": "undone", "text": f"Confirmed: the merge ran and was undone.{_warnings(res, undo=True)}"}
+    if st != "none":                               # a status this bot doesn't know: never read it as "no merge"
+        return {"state": "unknown", "text": f"Xano reports a status I don't know ({esc(st)}). Ask the owner."}
     return {"state": "none", "text": "Confirmed: no merge exists for this card, so nothing changed."}
 
 

@@ -145,6 +145,10 @@ def test_merge_endpoint_receives_snapshots(monkeypatch):
         def json(self):
             return {"repointed_total": 5, "backup_id": 1}
     monkeypatch.setattr(requests, "post", lambda url, json=None, **k: sent.update(json) or R())
+    assert not appliers.merge(p["payload"], OWNER, p["id"], dry_run=False)["ok"] and sent == {}    # 2026-11-22: no preview
+    import listing_compare
+    p["payload"]["pdf_check"] = {"status": "ok", "pdfs": []}
+    p["payload"]["price"] = {"preview": {"current_state": listing_compare._shown_state(p["payload"])}}
     appliers.merge(p["payload"], OWNER, p["id"], dry_run=False)
     assert "snapshots" not in sent and "counters" not in sent          # the endpoint recomputes from live rows
     assert sent["survivor_vendor_id"] == "V105" and sent["loser_vendor_ids"] == ["V13433"]

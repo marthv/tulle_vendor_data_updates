@@ -45,6 +45,8 @@ REFUSED = [
      "failed", "even when both have it"),
     ("Refused: florists with 2 priced quotes after the merge are not merged yet: the florals summary would silently use only "
      "the last one", "failed", "Florists with more than one"),
+    ("Refused: hiding P9 would hide the survivor's only visible Primary", "failed", "only Primary"),
+    ("expected_state is required for apply.", "failed", "no record of what it showed"),
     ("Refused: hide_pdf_ids has a repeated PDF_ID", "failed", "listed twice"),
     ("Refused: PDF P9 does not belong to the survivor or a loser", "failed", "isn't on these listings"),
     ("Refused: PDF_ID P9 is on more than one row of this group; cannot tell which to hide", "failed", "shares its id"),
@@ -85,7 +87,10 @@ STATUS = [({"status": "none", "running": False, "busy": False}, "none"),
           ({"status": "partial", "running": False}, "partial"), ({"status": "partial", "running": True}, "unknown"),
           ({"status": "applied"}, "applied"),
           ({"status": "applied_with_warnings", "warnings": [{"code": "stragglers", "detail": "rows still on a loser"}]}, "applied"),
-          ({"status": "partial_undo"}, "applied"), ({"status": "undone"}, "undone")]
+          ({"status": "partial_undo"}, "applied"), ({"status": "undone"}, "undone"),
+          ({"status": "undoing", "running": True}, "unknown"), ({"status": "undoing", "running": False}, "applied"),
+          ({"status": "undone_with_warnings", "warnings": [{"detail": "fn54"}]}, "undone"),
+          ({"status": "something_new"}, "unknown")]
 
 
 @pytest.mark.parametrize("reply,state", STATUS)
@@ -110,6 +115,9 @@ def test_every_apply_reply(world, monkeypatch, reply, to, text):                
 @pytest.mark.parametrize("reply,out,text", [
     ({"status": "undone", "restored_total": 4, "backup_id": 9}, "undo:ok", "Restored 4"),
     ({"status": "undone", "restored_total": 4, "warnings": [{"detail": "fn54"}]}, "undo:ok", "Everything was put back, but"),
+    ({"status": "undone_with_warnings", "restored_total": 4, "warnings": [{"detail": "fn54"}]}, "undo:ok", "put back, but"),
+    ({"status": "undoing"}, "undo:unknown", "undo stopped part-way"),
+    ({"status": "brand_new"}, "undo:unknown", "don't know"),
     ({"status": "partial_undo"}, "undo:unknown", "undo stopped part-way")])
 def test_every_undo_reply(world, monkeypatch, reply, out, text):                                    # noqa: F811
     world.store._data["proposals"][world.p["id"]]["status"] = "applied"
@@ -142,6 +150,7 @@ def test_timeout_goes_to_status_never_resends(world, monkeypatch):              
 def _with(world, a=None, b=None):
     pl = world.store._data["proposals"][world.p["id"]]["payload"]
     pl["snapshots"] = {"V1": dict(A, **(a or {})), "V2": dict(B, **(b or {}))}
+    pl["price"]["preview"]["current_state"] = lc._shown_state(pl)
     return world.get()
 
 
@@ -194,10 +203,11 @@ def test_preview_runs_in_the_background_and_not_on_the_click(world, monkeypatch)
     jobs, previews = [], []
     monkeypatch.setattr(mc, "submit", jobs.append)
     monkeypatch.setattr(mc, "preview", lambda p, h: previews.append(h) or {
-        "status": "preview", "survivor": "V1", "losers": ["V2"], "hide_pdf_ids": h, "refusals": []})
+        "status": "preview", "survivor": "V1", "losers": ["V2"], "hide_pdf_ids": h, "refusals": [],
+        "current_state": lc._shown_state(p)})
     store, slack = Store(), RecSlack()
     pl = dict(world.get()["payload"])
-    pl.pop("price")
+    pl.pop("price")                             # as a freshly built card
     p = store.create("merge", "t", "w", "y", "n", pl, plain={"headline": "h", "why": "y", "happens": "z."})
     interactions.post_proposal(slack, store, "C1", p, xano=world.x)
     assert previews == [] and "tb_approve" not in str(slack.of("chat.postMessage")[-1]["blocks"])

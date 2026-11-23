@@ -49,9 +49,15 @@ def pdf(n, text=None, prices=None, pages=0, **kw):
     p = pd.Pdf(row(n, **kw))
     if text is not None:
         p.text = T(text, pages)
+        prices = base_rows() if prices is None else prices
     for tid, r in prices or []:
         p.prices.add(tid, r)
     return p
+
+
+def base_rows(**kw):
+    """Stored prices as they would be read from BASE (every amount is printed in it)."""
+    return [t36(**{**dict(space="Grand Ballroom", fee=9500, pp=185, menu=142, bar=118, cer=6200), **kw})]
 
 
 def t36(space="Ballroom", fee=5000, pp=150, menu=120, bar=45, cer=1500, year="2026", **kw):
@@ -100,12 +106,12 @@ def test_one_stored_price_or_year_differs_is_kept(change):
 
 
 def test_different_pricing_year_is_kept_even_with_identical_text_and_prices():
-    r = pd.compare(pdf(1, BASE, [t36()], year="2025"), pdf(2, BASE, [t36()], year="2026"))
+    r = pd.compare(pdf(1, BASE, year="2025"), pdf(2, BASE, year="2026"))
     assert r["verdict"] == "keep" and "different years" in r["differed"]
 
 
 def test_same_stored_prices_but_a_printed_price_differs_is_kept():
-    r = pd.compare(pdf(1, BASE, [t36()]), pdf(2, doc(sections=_sec(0, fee=9600), filler="Brand new look"), [t36()]))
+    r = pd.compare(pdf(1, BASE), pdf(2, doc(sections=_sec(3, fee=9600), filler="Brand new look")))
     assert r["verdict"] != "dup"
 
 
@@ -165,29 +171,34 @@ def test_card_says_the_copy_is_still_counted():
 
 def test_subset_flagged_and_changed_excerpt_is_not():
     pages = BASE.split("\f")
-    r = pd.compare(pdf(1, BASE), pdf(2, "\f".join(pages[1:4])))
+    r = pd.compare(pdf(1, BASE), pdf(2, "\f".join(pages[1:4]), base_rows(bar=0)))
     assert (r["type"], r["subset"]) == ("SUBSET", "P2")
     r = pd.compare(pdf(1, BASE), pdf(2, "\f".join(pages[1:4]).replace("$6,200", "$6,400")))
     assert r["verdict"] != "dup"
 
 
 def test_same_prices_new_design():
-    new = doc(filler="Totally different words about our lovely estate, its views and its people. " * 2)
-    r = pd.compare(pdf(1, BASE, [t36()]), pdf(2, new, [t36()]))
-    assert (r["type"], r["confidence"]) == ("SAME_PRICES", "high")
-    r = pd.compare(pdf(1, prices=[t36()]), pdf(2, prices=[t36()]))
-    assert (r["type"], r["confidence"]) == ("SAME_PRICES", "medium") and "not read" in r["differed"]
+    new = doc(filler="Totally different words about our lovely estate, its views and its people. " * 2 +
+              "Come for a tasting for four guests before the big day")
+    r = pd.compare(pdf(1, BASE), pdf(2, new))
+    assert (r["type"], r["confidence"]) == ("SAME_PRICES", "high") and "pictures weren't compared" in r["differed"]
+    r = pd.compare(pdf(1, prices=[t36()]), pdf(2, prices=[t36()]))               # QA: V7122 - never without the text
+    assert (r["verdict"], r["differed"]) == ("cant", pd.NOT_CHECKED)
+    r = pd.compare(pdf(1, BASE), pdf(2, prices=base_rows()))                     # one read, one not: still not checked
+    assert (r["verdict"], r["differed"]) == ("cant", pd.NOT_CHECKED)
 
 
 # --- missing data -> can't tell ---------------------------------------------------------------------------------------
 @pytest.mark.parametrize("a,b", [
-    (pdf(1, BASE, [t36()], year=""), pdf(2, BASE, [t36()])),
-    (pdf(1, BASE, [t36()], year="No date listed"), pdf(2, BASE, [t36()])),
+    (pdf(1, BASE, year=""), pdf(2, BASE)),
+    (pdf(1, BASE, year="No date listed"), pdf(2, BASE)),
+    (pdf(1, BASE, []), pdf(2, BASE)),                                   # text equal, but no stored prices on one
     (pdf(1, "scan", [t36()], status="failed"), pdf(2, "scan", [t36()])),
     (pdf(1), pdf(2)),
     (pdf(1, prices=[t36()]), pdf(2)),
     (pdf(1, "short text $1 $2 $3"), pdf(2, "short text $1 $2 $3")),
     (pdf(1, FILLER * 8), pdf(2, FILLER * 8)),                        # same words, prices only in images
+    (pdf(1, BASE, [t36()]), pdf(2, BASE, [t36()])),                  # text equal, stored prices came from a picture (QA N17)
     (pdf(1, prices=[(36, {"Venue_Fee_on_Lowest_Saturday": 5000})]), pdf(2, prices=[(36, {"Venue_Fee_on_Lowest_Saturday": 5000})])),
     (pdf(1, prices=[t36()]), pdf(2, prices=[t36(), (37, {"Venue_Fee": "5000"})])),
 ])
@@ -223,7 +234,7 @@ def test_keep_rule_order_and_preselection():
 
 
 def test_primary_excerpt_is_never_offered():
-    flags, notes = _decide([pdf(1, "\f".join(BASE.split("\f")[1:4])), pdf(2, BASE, vid="V2")])
+    flags, notes = _decide([pdf(1, "\f".join(BASE.split("\f")[1:4]), base_rows(bar=0)), pdf(2, BASE, vid="V2")])
     assert flags == [] and any("Primary" in n for n in notes)
 
 
@@ -290,7 +301,8 @@ def fid(n):
 
 
 def test_check_flags_exact_and_text_and_reports_coverage():
-    x = FakeXano({10: [row(1), row(2, "V2"), row(3, "V2", assign="Supplemental 1")]})
+    r36 = [dict(base_rows()[0][1], PDF_ID=f"P{n}", VENDOR_ID=v) for n, v in ((1, "V1"), (2, "V2"), (3, "V2"))]
+    x = FakeXano({10: [row(1), row(2, "V2"), row(3, "V2", assign="Supplemental 1")], 36: r36})
     d = FakeDrive({fid(1): ("m1", BASE), fid(2): ("m1", BASE), fid(3): ("m3", re.sub(" ", "  ", BASE))})
     c = pd.check(x, "V1", ["V2"], drive=d)
     assert (c["files"], c["text"], c["visible"]) == ("checked", "checked", 3)
@@ -332,7 +344,8 @@ def test_prices_failing_keeps_the_file_checks_and_compares_no_prices():
     c = pd.check(x, "V1", ["V2"])
     assert c["prices"] == "failed" and [f["type"] for f in c["flags"]] == ["EXACT"] and "prices on file" in pd.summary_line(c)
     c = pd.check(FakeXano(x.tables), "V1", ["V2"])
-    assert c["prices"] == "checked" and {f["type"] for f in c["flags"]} == {"EXACT", "SAME_PRICES"}
+    assert c["prices"] == "checked" and {f["type"] for f in c["flags"]} == {"EXACT"}
+    assert any("not checked" in n for n in c["notes"])
 
 
 def test_time_bound():
@@ -374,6 +387,10 @@ def live(monkeypatch):
     monkeypatch.delenv("QA_APPROVERS", raising=False)
 
 
+def preview_for(pl):
+    return {"current_state": lc._shown_state(pl), "hide_pdf_ids": [], "refusals": []}
+
+
 def make(pdf_rows, a=A, b=B, reply=None, drive=None, monkeypatch=None):
     x = FakeXano({10: pdf_rows})
     c = pd.check(x, "V1", ["V2"], drive=drive)
@@ -392,7 +409,7 @@ def make(pdf_rows, a=A, b=B, reply=None, drive=None, monkeypatch=None):
 def _price_stub(monkeypatch):
     """A price answer that never moves; the real check is tested in test_merge_checks.py."""
     monkeypatch.setattr(merge_checks, "price", lambda xano, payload, **k: {
-        "status": "ok", "alert": False, "cant": False, "stamp": "s1", "after_total": 1, "refusals": [], "extra_blocks": [],
+        "preview": preview_for(payload), "status": "ok", "alert": False, "cant": False, "stamp": "s1", "after_total": 1, "refusals": [], "extra_blocks": [],
         "confirm_text": None, "survivor": payload.get("survivor"), "hide": sorted(pd.hide_ids(payload))})
 
 

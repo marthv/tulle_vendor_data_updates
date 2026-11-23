@@ -272,6 +272,12 @@ def expected_state(payload: dict) -> dict:
     return out
 
 
+def preview_state(payload: dict) -> bool:
+    """True when ep578's own preview was made for this card and says exactly what the card shows."""
+    pv = ((payload.get("price") or {}).get("preview") or {}).get("current_state")
+    return bool(pv) and pv == _shown_state(payload)
+
+
 def _shown_state(payload: dict) -> dict:
     out = {}
     snaps = payload.get("snapshots") or {}

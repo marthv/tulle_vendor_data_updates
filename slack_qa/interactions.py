@@ -161,6 +161,7 @@ class Interactions:
 
     def _price_gate(self, p, user, chan, thread, block_id) -> str | None:
         """The approver must have seen the current price answer, and it must still be true right now."""
+        import listing_compare
         import merge_checks
         pl = p.get("payload") or {}
         if not pl.get("snapshots"):
@@ -170,6 +171,15 @@ class Interactions:
             self._ephemeral(chan, user, "I've worked out the price couples would see and added it to this card. Have a "
                                         "look, then press Approve again.", thread)
             return "price:shown-first"
+        if not listing_compare.preview_state(pl):
+            had = bool(((pl["price"].get("preview") or {}).get("current_state")))
+            if not had:
+                self._price(p["id"], user, chan, thread)          # try Xano's preview once more; the card is redrawn
+            self._ephemeral(chan, user, "Nothing was merged: one of these listings changed while the card was being made. "
+                                        "Ask for a fresh card." if had else
+                            "Nothing was merged: I didn't have Xano's preview of this merge. I've asked for it again; have a "
+                            "look at the card, then press Approve again.", thread)
+            return "price:no-preview"
         old = pl["price"]
         shown = block_id.split(":")[3] if block_id.count(":") >= 3 else ""
         if block_id.startswith("tb:") and shown != str(old.get("stamp")):

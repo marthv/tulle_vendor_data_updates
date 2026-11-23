@@ -433,6 +433,12 @@ def test_apply_for_real_after_dry_run_is_switched_off(monkeypatch):
     assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6", ts=p["ts"])) == "pdf:shown-first"
     assert calls == [True]
     store.set_pdf_check(p["id"], {"status": "ok", "visible": 0, "flags": [], "pdfs": []})
+    # ... nor without Xano's own preview of this merge
+    assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6", ts=p["ts"])) == "price:no-preview"
+    assert calls == [True]
+    import listing_compare
+    q = store.get(p["id"])["payload"]
+    store.set_price(p["id"], dict(q["price"], preview={"current_state": listing_compare._shown_state(q)}))
     assert it.handle(click(cards.ACTION_APPROVE, p["id"], user="U05UJMCHUV6", ts=p["ts"])) == "approved:applied"
     assert calls == [True, False] and store.get(p["id"])["status"] == "applied"
 
