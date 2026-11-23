@@ -61,6 +61,11 @@ FLT_LABEL = {"flt_min_venue_fee": "lowest rental", "flt_max_venue_fee": "highest
              "flt_min_fbmin": "lowest food minimum", "flt_max_fbmin": "highest food minimum"}
 
 
+# what an alert can be about, most important first; the card names these, so a confirm step never looks unexplained
+KINDS = ("can't compute", "price shown or not", "opening price", "opening room", "own figures or estimate", "room",
+         "guest count", "hand-reviewed rule", "search filter")
+
+
 class CantCompute(RuntimeError):
     pass
 
@@ -418,7 +423,7 @@ def compute(xano, survivor: str, losers: list[str], *, preview: dict | None = No
     The live pricing code ignores Show_PDF itself; that is re-checked on every card.
     `stamp` fingerprints the answer: compare it again on Approve and refuse / re-show the card if it moved."""
     t0 = time.monotonic()
-    out = {"survivor": survivor, "losers": list(losers), "cant": [], "reasons": [], "notes": [], "now": {},
+    out = {"survivor": survivor, "losers": list(losers), "cant": [], "_why": [], "notes": [], "now": {},
            "after": None, "rooms": [], "filters": None, "assumptions": [], "lost_rules": []}
     reader = None
     try:
@@ -429,7 +434,10 @@ def compute(xano, survivor: str, losers: list[str], *, preview: dict | None = No
     except Exception as e:  # noqa: BLE001 - never let a bug or a dropped connection hide a price change
         log.warning("price impact failed: %s", type(e).__name__)
         out["cant"].append(f"could not finish the check ({type(e).__name__})")
-    out["reasons"] = [f"can't compute: {c}" for c in out["cant"]] + out["reasons"]
+    tagged = [("can't compute", f"can't compute: {c}") for c in out["cant"]] + out.pop("_why")
+    tagged.sort(key=lambda x: KINDS.index(x[0]))      # stable: the order inside a kind is kept
+    out["reasons"] = [t for _, t in tagged]
+    out["kinds"] = [k for k in KINDS if any(x[0] == k for x in tagged)]
     out["alert"] = bool(out["reasons"])
     out["stamp"] = hashlib.sha256(json.dumps(
         [[(v, d["total"], d["kind"], d["visible"]) for v, d in sorted(out["now"].items())],
@@ -551,7 +559,7 @@ def _compute(reader, out, survivor, losers, preview, hidden, live_check):
     out["order_sensitive_rooms"] = len({json.dumps(sorted((r["space_key"], r["venue_fee"], r["fb_min"], r["pp_fb"],
                                         r["ceremony_fee"], r["service_pct"]) for r in x)) for x, _ in runs}) > 1
     if out["order_sensitive_rooms"]:
-        out["notes"].append("Some rooms' names or figures depend on database row order, so the room list is approximate")
+        out["cant"].append("some rooms or their figures depend on database row order")
     after["by_guests"] = {g: describe(sim_panel(run, survivor, rows, cats[survivor], bm, guests=g))["total"]
                           for g in GUESTS[1:]}
     after["all_spaces"] = _space_totals(run, survivor, rows, cats[survivor], bm)
@@ -568,7 +576,7 @@ def _compute(reader, out, survivor, losers, preview, hidden, live_check):
                             f"{alone['text']} ({alone.get('space')})")
     _rooms(out, T, rows, by, survivor, losers)
     _overlays(out, code[FN_PANEL]["code"], by, rows, ids)
-    _reasons(out, survivor, losers)
+    _reasons(out, by, survivor, losers)
 
 
 def payload_diff(sim: dict, live: dict) -> str:
@@ -601,6 +609,10 @@ def _canon(v):
     return {k: _canon(x) for k, x in v.items()}
 
 
+def _add(out, kind, text):
+    out["_why"].append((kind, text))
+
+
 def _filters(out, code, T, vend, survivor, plan):
     if not code[FN_FILTERS]["pin_ok"]:
         out["cant"].append("the live filter code (fn21) changed since this check was written")
@@ -615,7 +627,7 @@ def _filters(out, code, T, vend, survivor, plan):
     for k in changed:
         a, b = now[k], float(after[k])
         if a == 0 or b == 0 or _big(_pct(a, b)):
-            out["reasons"].append(f"search filter, {FLT_LABEL[k]}: {money(a) if a else 'none'} -> "
+            _add(out, "search filter", f"search filter, {FLT_LABEL[k]}: {money(a) if a else 'none'} -> "
                                   f"{money(b) if b else 'none'}")
 
 
@@ -629,7 +641,7 @@ def _non_venue(out, T, cats, survivor, losers):
         out["cant"].append(f"{cats[survivor] or 'this'} pages are not simulated, and {moving} price rows would move to the "
                            "kept listing")
     elif not out["visible"][survivor] and any(out["visible"].values()):
-        out["reasons"].append(f"{survivor} (kept) is hidden today and becomes visible")
+        _add(out, "price shown or not", f"{survivor} (kept) is hidden today and becomes visible")
     else:
         out["notes"].append("No price rows move. This is not a venue, so there is no price card")
 
@@ -665,12 +677,23 @@ def _overlays(out, code56, by, rows, ids):
             and any(r["space_key"] == k for r in by(62, k.split("|")[0]))]
     out["lost_rules"] = lost
     if lost:
-        out["reasons"].append("a hand-reviewed price rule (package price, or fee inside the minimum) is tied to a listing or "
+        _add(out, "hand-reviewed rule", "a hand-reviewed price rule (package price, or fee inside the minimum) is tied to a listing or "
                               "room name this merge changes, so it would stop applying: " + ", ".join(lost))
 
 
-def _reasons(out, survivor, losers):
-    after, rs = out["after"], out["reasons"]
+def _same_room(row, after_rows):
+    """The after-merge row a room ends up in: same name, else the one row fn54 merged its spelling into. None = gone."""
+    exact = [r for r in after_rows if r["space_slug"] == row["space_slug"]]
+    if exact:
+        return exact[0]
+    pdfs = set(row.get("source_pdf_ids") or [])
+    near = [r for r in after_rows if pdfs & set(r.get("source_pdf_ids") or []) and len(row["space_slug"]) >= 4
+            and (row["space_slug"] in r["space_slug"] or r["space_slug"] in row["space_slug"])]
+    return near[0] if len(near) == 1 else None
+
+
+def _reasons(out, by, survivor, losers):
+    after = out["after"]
     none_after = after["kind"] == "none" or not after["visible"]
     for v in [survivor] + losers:
         n = out["now"][v]
@@ -681,32 +704,49 @@ def _reasons(out, survivor, losers):
             continue
         if none_now or none_after:
             if v == survivor or n["visible"]:      # a hidden loser nobody saw is no change for couples
-                rs.append(f"{who}: {'no price shown (hidden)' if not n['visible'] else n['text']} -> "
-                          f"{'no price shown' if none_after else after['text']}")
+                _add(out, "price shown or not",
+                     f"{who}: {'no price shown (hidden)' if not n['visible'] else n['text']} -> "
+                     f"{'no price shown' if none_after else after['text']}")
             continue
         p = n["change"] = _pct(n["total"], after["total"])
         if n["kind"] != after["kind"]:
-            rs.append(f"{who}: {_kind(n['kind'])} -> {_kind(after['kind'])}")
+            _add(out, "own figures or estimate", f"{who}: {_kind(n['kind'])} -> {_kind(after['kind'])}")
         if _big(p):
-            rs.append(f"{who}: {money(n['total'])} -> {money(after['total'])} ({_signed(p)})")
+            _add(out, "opening price", f"{who}: opening price {money(n['total'])} -> {money(after['total'])} ({_signed(p)})")
+        else:
+            for g in GUESTS[1:]:
+                a, b = n["by_guests"][g], after["by_guests"][g]
+                if _big(_pct(a, b)):
+                    _add(out, "guest count", f"{who}: at {g} guests {money(a)} -> {money(b)} ({_signed(_pct(a, b))}); "
+                                             f"{_signed(p)} at {n['guests']} guests")
+        _room_changes(out, by(62, v), v, who, v == survivor)
+
+
+def _room_changes(out, rows, v, who, kept):
+    """Every room couples can pick on this listing today: where it goes, and what it costs there."""
+    n, after = out["now"][v], out["after"]
+    for r in sorted(rows, key=lambda x: x.get("sort_rank") or 0):
+        d, opens = n["all_spaces"][r["space_key"]], r["space_key"] == n.get("space_key")
+        to = _same_room(r, after["rows"])
+        opening_after = bool(to) and to["space_key"] == after.get("space_key")
+        renamed = bool(to) and to["space_slug"] != r["space_slug"]
+        if opens and (not opening_after or renamed):
+            t = f"{who}: opens on {d['space']} today, on {after.get('space')} after"
+            t += f"; {d['space']} is gone" if to is None else f"; {d['space']} is combined into {to['space_label']}" if renamed else ""
+            if kept:
+                _add(out, "opening room", t)
+            else:
+                out["notes"].append(t)
+        if to is None:
+            _add(out, "room", f"{who}: room {d['space']} ({money(d['total'])}) is no longer listed under that name")
             continue
-        for g in GUESTS[1:]:
-            a, b = n["by_guests"][g], after["by_guests"][g]
-            if _big(_pct(a, b)):
-                rs.append(f"{who}: at {g} guests {money(a)} -> {money(b)} ({_signed(_pct(a, b))})")
-                break
-    # rooms couples can pick on the kept listing today, beyond the one it opens on
-    sn = out["now"][survivor]
-    if sn["visible"] and not none_after:
-        for k, d in sn["all_spaces"].items():
-            if k == sn.get("space_key"):
-                continue
-            b = after["all_spaces"].get(k)
-            if b is None:
-                out["notes"].append(f"Room no longer listed under this name: {d['space']}")
-            elif _big(_pct(d["total"], b["total"])):
-                rs.append(f"room {d['space']}: {money(d['total'])} -> {money(b['total'])} "
-                          f"({_signed(_pct(d['total'], b['total']))})")
+        if renamed and not (opens and kept):        # fn54 joins look-alike names: they can be two different rooms
+            _add(out, "room", f"{who}: room {d['space']} is no longer listed; combined into {to['space_label']}")
+        b = after["all_spaces"][to["space_key"]]["total"]
+        if opens and opening_after:
+            continue                        # this is the opening price, already compared above
+        if _big(_pct(d["total"], b)):
+            _add(out, "room", f"{who}: room {d['space']} {money(d['total'])} -> {money(b)} ({_signed(_pct(d['total'], b))})")
 
 
 def _kind(k):
@@ -723,33 +763,41 @@ def _esc(s) -> str:
     return str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("*", "").replace("`", "")
 
 
-def _line(v, d, tag):
-    if not d.get("visible", True):
-        return f"• `{v}` {tag}: hidden, couples see nothing (stored price: {d['text']})"
-    if d["kind"] == "none":
-        return f"• `{v}` {tag}: no price shown"
-    extra = [f"{d['guests']} guests", _esc(d["space"])]
+PREDICTED = "Predicted from stored data, not checked against the PDFs"
+
+
+def _facts(d):
+    extra = [f"exact {money(d['total'])}", f"{d['guests']} guests", "opens on " + _esc(d["space"])]
     if d["spaces"] > 1:
-        extra.append(f"first of {d['spaces']} spaces")
+        extra.append(f"{d['spaces']} rooms")
     if d["kind"] == "market":
         extra.append("all market estimate")
     elif d["estimated"]:
         extra.append(f"{len(d['estimated'])} of 4 costs estimated")
-    return f"• `{v}` {tag}: *{d['text']}* (exact {money(d['total'])}; {', '.join(extra)})"
+    return f"({', '.join(extra)})"
+
+
+def _line(v, d, tag, after):
+    """One listing: today's price next to the predicted one."""
+    today = ("hidden, no price shown" if not d["visible"] else
+             d["text"] if d["kind"] == "none" else f"*{d['text']}* {_facts(d)}")
+    if after is None:
+        return f"• `{v}` {tag}: today {today}; predicted: can't compute"
+    then = ("no price shown" if after["kind"] == "none" or not after["visible"] else f"*{after['text']}*")
+    ch = d.get("change")
+    moved = "" if ch is None else ", same total" if d["total"] == after["total"] else f", {_signed(ch)}"
+    return f"• `{v}` {tag}: today {today} -> predicted {then}{moved}"
 
 
 def blocks(r: dict) -> dict:
     """{extra_blocks, confirm_text, alert} for the merge card. confirm_text is None when no confirm step is needed."""
-    lines = []
-    if r["now"]:
-        lines.append("*Today*")
-        lines += [_line(v, r["now"][v], "kept" if v == r["survivor"] else "merged away")
-                  for v in [r["survivor"]] + r["losers"] if v in r["now"]]
-    if r["after"]:
-        a, n = r["after"], r["now"][r["survivor"]]
-        ch = n.get("change")
-        tail = "" if ch is None else (", same total as today" if n["total"] == a["total"] else f", {_signed(ch)}")
-        lines += ["*After the merge*", _line(r["survivor"], a, "kept") + tail]
+    a = r.get("after")
+    lines = [f"*{PREDICTED}.*"] + [_line(v, r["now"][v], "kept" if v == r["survivor"] else "merged away", a)
+                                  for v in [r["survivor"]] + r["losers"] if v in r["now"]]
+    if a:
+        n = r["now"][r["survivor"]]
+        if a["kind"] != "none":
+            lines.append(f"• Kept listing after the merge: *{a['text']}* {_facts(a)}")
         if a.get("position") != n.get("position"):
             lines.append(f"• Place on the market scale: {_esc(n.get('position') or 'not placed')} -> "
                          f"{_esc(a.get('position') or 'not placed')}")
@@ -768,26 +816,22 @@ def blocks(r: dict) -> dict:
             lines.append(f"    - {c['field']}: {vals} -> {float(c['after'] or 0):,.10g} after")
     if len(r["rooms"]) > 4:
         lines.append(f"• and {len(r['rooms']) - 4} more rooms combined")
-    lines += ["• " + _esc(x) for x in r["notes"][:4] + r["assumptions"]]
-    head = "PRICE ALERT: the price couples see changes or can't be checked" if r["alert"] else "Price couples see"
+    lines += ["• " + _esc(x) for x in r["assumptions"] + r["notes"][:6]]
+    if len(r["notes"]) > 6:
+        lines.append(f"• and {len(r['notes']) - 6} more notes")
+    head = ("PRICE ALERT: " + ", ".join(r["kinds"])) if r["alert"] else "Price couples see"
     out = [{"type": "header", "text": {"type": "plain_text", "text": head[:150]}}]
     if r["alert"]:
-        why = r["reasons"][:6] + ([f"and {len(r['reasons']) - 6} more"] if len(r["reasons"]) > 6 else [])
+        why = r["reasons"][:8] + ([f"and {len(r['reasons']) - 8} more"] if len(r["reasons"]) > 8 else [])
         out.append(_sec("*Why you are asked to confirm*\n" + "\n".join("• " + _esc(x) for x in why)))
-    if lines:
-        out.append(_sec("\n".join(lines)))
+    out.append(_sec("\n".join(lines)))
     out.append({"type": "context", "elements": [{"type": "mrkdwn", "text":
-               "Before tax and gratuity, at the guest count the page opens on. Predicted by running the live pricing code on "
-               "the combined rows; pages can keep showing a stored figure for up to 4 hours."}]})
+               PREDICTED + ". Before tax and gratuity, at the guest count the page opens on. Pages can keep showing a stored "
+               "figure for up to 4 hours."}]})
     confirm = None
     if r["alert"]:
-        a, n = r.get("after"), r["now"].get(r["survivor"])
-        if a and n and not r["cant"]:
-            first = f"{n['text'] if n.get('visible') else 'hidden'} -> {a['text']}. "
-        else:
-            first = ""
         # clipped before escaping so an entity is never cut; Slack allows 300 characters
-        raw = first + r["reasons"][0]
+        raw = f"Alert on: {', '.join(r['kinds'])}. {r['reasons'][0]}"
         confirm = _esc(raw if len(raw) <= 200 else raw[:197] + "...") + " Merge anyway?"
     return {"extra_blocks": out, "confirm_text": confirm, "alert": r["alert"]}
 

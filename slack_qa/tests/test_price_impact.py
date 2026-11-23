@@ -177,9 +177,10 @@ def test_ten_percent_is_an_alert_and_just_under_is_shown_only():
     r, b, _ = go(world(10000, 11000, l_room="Garden"))
     assert r["after"]["total"] == 11000 and b["alert"] and "+10.0%" in text(b)
     assert b["confirm_text"].endswith("Merge anyway?") and len(b["confirm_text"]) <= 300
-    r, b, _ = go(world(10000, 10990, l_room="Garden"))
+    # under 10% on the same room: shown, no alert
+    r, b, _ = go(world(10000, 10990), preview=preview({11: "Past Season PDF 1", 12: "Primary"}))
     assert r["after"]["total"] == 10990 and not b["alert"]
-    assert "+9.9%" in text(b) and b["confirm_text"] is None     # shown anyway
+    assert "+9.9%" in text(b) and b["confirm_text"] is None
 
 
 def test_a_drop_is_an_alert_too():
@@ -231,6 +232,110 @@ def test_visible_loser_without_a_price_is_none_to_some():
     w[36] = w[36][:1]
     r, b, _ = go(w)
     assert b["alert"] and any(x.startswith("V2 (merged away): no price shown ->") for x in r["reasons"])
+
+
+def test_opening_room_change_is_an_alert_even_when_the_price_barely_moves():
+    r, b, _ = go(world(10000, 10990, l_room="Garden"))
+    assert r["kinds"] == ["opening room"] and b["alert"] and b["confirm_text"]
+    assert r["reasons"] == ["V1 (kept): opens on Ballroom today, on Garden after"]
+    assert "PRICE ALERT: opening room" in text(b)
+
+
+def multi(rooms, stored_total=None):
+    """rooms: {vendor: [(room, fee), ...]} with one PDF per vendor; the stored t62 rows come from the toy fn54."""
+    w = world()
+    w[36] = [{"id": 10 * i + j, "VENDOR_ID": v, "PDF_ID": "P" + v[1:], "Venue_Space_Name": n, "Fee": fee,
+              "Venue_Fee_on_a_Peak_Season_Saturday": fee}
+             for i, v in enumerate(rooms, 1) for j, (n, fee) in enumerate(rooms[v])]
+    run = pi.engine(TOY54, TOY56)
+    w[62] = []
+    for x in w[11]:
+        v = x["Vendor_ID"]
+        mine = [r for r in w[36] if r["VENDOR_ID"] == v]
+        fees = [r["Fee"] for r in mine if v == "V1"] + ([r["Fee"] for r in w[36]] if v == "V2" else [])
+        x["flt_min_venue_fee"], x["flt_max_venue_fee"] = min(fees), max(fees)
+        w[62] += pi.sim_spaces(run, v, mine, [], [p for p in w[10] if p["Vendor_ID"] == v], {"flt_states": ["Ohio"]})
+    return w
+
+
+def test_loser_room_that_moves_alerts_although_the_headline_does_not():
+    r, b, _ = go(multi({"V1": [("Ballroom", 10000), ("Barn", 4000)], "V2": [("Ballroom", 10000), ("Barn", 6000)]}))
+    assert r["now"]["V1"]["change"] == 0 and r["now"]["V2"]["change"] == 0
+    assert r["kinds"] == ["room"] and "V2 (merged away): room Barn $6,000 -> $4,000 (-33.3%)" in r["reasons"]
+
+
+def test_loser_room_that_disappears_alerts():
+    src = {54: TOY54.replace("const rows = Object", "if (Object.keys(g).length > 2) delete g.Attic; const rows = Object"),
+           56: TOY56, 21: TOY21}
+    w = multi({"V1": [("Ballroom", 10000), ("Barn", 4000)], "V2": [("Ballroom", 10000), ("Attic", 4000)]})
+    r, b, _ = go(w, src=src)
+    assert r["kinds"] == ["room"] and r["reasons"] == ["V2 (merged away): room Attic ($4,000) is no longer listed under that name"]
+
+
+def test_kept_opening_room_that_disappears_is_named():
+    src = {54: TOY54.replace("const rows = Object", "if (Object.keys(g).length > 1) delete g.Ballroom; const rows = Object"),
+           56: TOY56, 21: TOY21}
+    r, b, _ = go(world(10000, 10000, l_room="Garden"), src=src)
+    assert "opening room" in r["kinds"]
+    assert "V1 (kept): opens on Ballroom today, on Garden after; Ballroom is gone" in r["reasons"]
+
+
+def test_hidden_loser_rooms_do_not_alert():
+    w = multi({"V1": [("Ballroom", 10000), ("Barn", 4000)], "V2": [("Ballroom", 10000), ("Barn", 6000)]})
+    w[11][1]["Validated_Data"] = "0"
+    r, _, _ = go(w)
+    assert not any("V2" in x for x in r["reasons"])
+
+
+def test_spelling_merged_into_another_room_is_not_gone():
+    a = [{"space_slug": "grandballroom", "source_pdf_ids": ["P1", "P2"]}, {"space_slug": "barn", "source_pdf_ids": ["P2"]}]
+    assert pi._same_room({"space_slug": "ballroom", "source_pdf_ids": ["P2"]}, a) is a[0]
+    assert pi._same_room({"space_slug": "ballroom", "source_pdf_ids": ["P9"]}, a) is None
+    assert pi._same_room({"space_slug": "__WHOLE__", "source_pdf_ids": ["P1"]}, a) is None
+
+
+def test_look_alike_names_joined_by_the_rebuild_alert_on_both_sides():
+    # V1727 shape: same total, but the long name is folded into the short one
+    src = {54: TOY54.replace("const rows = Object", """if (g['Lake House at Trail Club'] && g['Lake House']) {
+          g['Lake House'] = g['Lake House at Trail Club'].concat(g['Lake House']); delete g['Lake House at Trail Club']; }
+        const rows = Object""").replace("k.toLowerCase()", "k.toLowerCase().split(' ').join('')"), 56: TOY56, 21: TOY21}
+    w = world(10000, 10000, s_room="Lake House at Trail Club", l_room="Lake House")
+    for x in w[62]:
+        x["space_slug"] = x["space_slug"].replace(" ", "")
+        x["space_key"] = x["space_key"].replace(" ", "")
+    r, b, _ = go(w, src=src)
+    assert r["kinds"] == ["opening room"] and r["now"]["V1"]["change"] == 0
+    assert r["reasons"] == ["V1 (kept): opens on Lake House at Trail Club today, on Lake House after; "
+                            "Lake House at Trail Club is combined into Lake House"]
+    for x in w[62]:                                # the other way round: the merged-away listing's name is the one folded
+        x["VENDOR_ID"] = {"V1": "V2", "V2": "V1"}[x["VENDOR_ID"]]
+        x["space_key"] = x["VENDOR_ID"] + "|" + x["space_slug"]
+    for x in w[36] + []:
+        x["VENDOR_ID"] = {"V1": "V2", "V2": "V1"}[x["VENDOR_ID"]]
+    for x in w[10]:
+        x["Vendor_ID"] = {"V1": "V2", "V2": "V1"}[x["Vendor_ID"]]
+    pi._CODE.clear()
+    r, b, _ = go(w, src=src)
+    assert r["kinds"] == ["room"]
+    assert r["reasons"] == ["V2 (merged away): room Lake House at Trail Club is no longer listed; combined into Lake House"]
+
+
+def test_guest_count_alert_names_the_count():
+    w = multi({"V1": [("Ballroom", 10000)], "V2": [("Ballroom", 10000)]})
+    w[62][1].update(venue_fee=5000, pp_fb=50)        # 10,000 at 100 guests too, but not at 50
+    r, b, _ = go(w)
+    assert r["kinds"] == ["guest count"] and any("V2 (merged away): at 50 guests $7,500 -> $10,000" in x for x in r["reasons"])
+    assert "Alert on: guest count" in b["confirm_text"]
+
+
+def test_card_says_what_it_rests_on_and_pairs_today_with_predicted():
+    for w in (world(), world(10000, 20000)):
+        _, b, _ = go(w)
+        assert "Predicted from stored data, not checked against the PDFs" in text(b)
+        for v in ("V1", "V2"):
+            assert re.search(rf"`{v}`[^•]*: today [^•]*-> predicted \*\$10,000\*", text(b))
+    _, b, _ = go(world(), fail=(36,))
+    assert "Predicted from stored data, not checked against the PDFs" in text(b)
 
 
 def test_row_order_dependence_is_cant_compute():
