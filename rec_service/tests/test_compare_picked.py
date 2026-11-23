@@ -174,3 +174,8 @@ def test_per_person_ceremony(monkeypatch):
     assert estimate.compute(inp, 100)["total_before_tax_and_gratuity"] == 54035   # ep230 at_default, read live 2026-11-22
     monkeypatch.setattr(config, "CEREMONY_PER_PERSON", False)
     assert estimate.compute(inp, 100)["total_before_tax_and_gratuity"] < 54035
+
+
+def test_saved_takes_the_latest_venues_only():
+    assert compare.saved_venue_ids(FakeXano(), {"favorited_vendors": ["V1", "V3", "V2"]}) == ["V2", "V1"]
+    assert compare.saved_venue_ids(FakeXano(), {}) == []

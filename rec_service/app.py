@@ -1857,7 +1857,8 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     if name not in cost_tools.TOOLS and not picked:
         raise HTTPException(400, {"status": "unknown_tool", "tools": list(cost_tools.TOOLS)})
     if picked:
-        ids = compare.clean_ids((body.args or {}).get("vendor_ids"))
+        ids = (compare.saved_venue_ids(xano, user) if (body.args or {}).get("saved") else
+               compare.clean_ids((body.args or {}).get("vendor_ids")))
         if len(ids) < compare.MIN_VENUES:
             raise HTTPException(400, {"status": "need_two_venues"})
         if not compare.spend(user["id"], ids):

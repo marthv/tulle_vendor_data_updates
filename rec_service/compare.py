@@ -83,6 +83,14 @@ def clean_ids(raw):
     return out[:MAX_VENUES]
 
 
+def saved_venue_ids(xano, user):
+    """The couple's most recently saved VENUES (favorited_vendors is in save order; photographers etc. are left out)."""
+    recent = list(dict.fromkeys(str(v).strip() for v in reversed((user or {}).get("favorited_vendors") or []) if str(v or "").strip()))[:12]
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        cards = list(pool.map(lambda v: _safe(xano.cached_vendor_card, v), recent))
+    return [c["vendor_id"] for c in cards if c and (c.get("category") or "Venue") == "Venue"][:MAX_VENUES]
+
+
 # ---------------------------------------------------------------- one venue
 
 def _int(v):
