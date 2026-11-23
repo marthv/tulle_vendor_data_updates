@@ -144,11 +144,22 @@ def test_exact_by_md5_and_by_same_drive_file():
     assert pd.compare(a, b)["verdict"] == "cant"                        # two unknown md5s are never "equal"
 
 
-def test_exact_file_with_two_year_labels_is_kept_and_noted():
-    a, b = pdf(1, year="2024"), pdf(2, year="2026")
-    a.md5 = b.md5 = "abc"
-    r = pd.compare(a, b)
-    assert r["verdict"] == "keep" and "one label is wrong" in r["differed"]
+def test_exact_file_with_two_year_labels_is_preselected_with_a_visible_note():
+    a, b = md5(pdf(1, year="2024")), md5(pdf(2, vid="V2", year="2026"))         # owner: one file can't be two years
+    flags, _ = _decide([a, b])
+    f = flags[0]
+    assert (f["type"], f["keep_pdf_id"], f["hide_pdf_id"], f["choice"]) == ("EXACT", "P1", "P2", "hide")
+    text = pd.flag_text(dict(f, n=1), "V1")
+    assert "Year labels differ" in text and "labelled 2024 and keeps that label" in text and "labelled 2026" in text
+    same, _ = _decide([md5(pdf(1)), md5(pdf(2, vid="V2"))])
+    assert "Year labels differ" not in pd.flag_text(dict(same[0], n=1), "V1")
+    a.md5 = ""                                                                 # not the same file: the year rule holds
+    assert pd.compare(a, b)["verdict"] == "keep"
+
+
+def test_card_says_the_copy_is_still_counted():
+    line = pd.summary_line({"status": "ok", "visible": 2, "flags": [{}], "files": "checked", "text": "checked"})
+    assert "never added together" in line and "second PDF" in line and "room count" in line
 
 
 def test_subset_flagged_and_changed_excerpt_is_not():

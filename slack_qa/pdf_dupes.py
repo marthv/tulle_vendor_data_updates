@@ -7,7 +7,8 @@ compares every pair of VISIBLE PDFs. Read-only. Types:
   SAME_PRICES  new design: same pricing year and EVERY price on file identical       -> needs its own click
   SUBSET       an excerpt: every phrase of the shorter one is in the longer one      -> needs its own click
   SAME_LINK    both open the same web page (not a Drive file)                        -> needs its own click
-A different pricing year, or any price that differs, means KEEP BOTH. Missing data means "can't tell", never a flag.
+Except for EXACT (one file can't be two years), a different pricing year, or any price that differs, means KEEP BOTH.
+Missing data means "can't tell", never a flag.
 A changed number, day, or word order is never "the same text". What is compared without Drive access: the file id in the
 link, and the prices already extracted (t36/37/84/85/87/92/93). Stored prices cover only part of a PDF, so SAME_PRICES
 without the text needs more matching prices, matching room/package names, and says on the card the PDFs weren't read.
@@ -263,9 +264,9 @@ def compare(a: Pdf, b: Pdf) -> dict:
     same_file = bool(a.fid and a.fid == b.fid)
     if same_file or (a.md5 and a.md5 == b.md5):
         why = "both open the same Google Drive file" if same_file else "the two files are identical, byte for byte"
-        if conflict:                  # the bar: different year = keep both. Someone should fix the wrong label instead.
-            return _out("keep", None, why, f"labelled {a.year_text()} and {b.year_text()}, so one label is wrong")
-        return _out("dup", "EXACT", why, "nothing" if a.years and b.years else "one has no pricing year", "certain")
+        # owner 2026-11-22: one file can't be two years, so identical files are EXACT whatever our year labels say. The
+        # year rule is for the other types. decide() spells out which label stays.
+        return _out("dup", "EXACT", why, "nothing", "certain")
     if conflict:
         return _out("keep", None, "", f"different years ({a.year_text()} vs {b.year_text()})")
     if a.link and a.link == b.link and not a.fid:
@@ -341,8 +342,12 @@ def decide(pdfs: list[Pdf], survivor: str, results: dict, losers: list[str] | No
         if not hide.pid or not hide.unique:
             notes.append("one likely duplicate can't be hidden safely: its PDF id is blank or shared with another file")
             return False
+        differed = r["differed"]
+        if r["type"] in ("EXACT", "SAME_LINK") and keep.years != hide.years:
+            differed = (f"our year labels: the copy that stays is labelled {keep.year_text()} and keeps that label, the "
+                        f"hidden one is labelled {hide.year_text()}. Check which year is right")
         flags.append({"keep_pdf_id": keep.pid, "hide_pdf_id": hide.pid, "type": r["type"], "what_matched": r["matched"],
-                      "what_differed": r["differed"], "confidence": r["confidence"], "keep": keep.public(),
+                      "what_differed": differed, "year_label_differs": keep.years != hide.years, "confidence": r["confidence"], "keep": keep.public(),
                       "hide": hide.public(), "choice": "hide" if r["type"] == "EXACT" else "keep",
                       "reason": f"{TYPE_LABEL[r['type']]}: {r['matched']}."})
         return True
@@ -421,8 +426,6 @@ def check(xano, survivor: str, losers: list[str], drive=None, seconds: float = C
                 out[r["verdict"]] += 1
             out["pairs"].append({"a": a.pid, "b": b.pid, "verdict": r["verdict"], "type": r["type"],
                                  "why": r["differed"] if r["verdict"] != "dup" else r["matched"]})
-            if r["verdict"] == "keep" and r["matched"]:
-                out["notes"].append(f"two entries are the same file but {r['differed']}; both are kept")
     out["flags"], notes = decide(pdfs, survivor, results, vids[1:])
     out["notes"] = list(dict.fromkeys(out["notes"] + notes))
     for n, f in enumerate(out["flags"], 1):
@@ -578,9 +581,11 @@ def summary_line(c: dict) -> str:
         why = " (the bot can't open Google Drive yet)" if c.get("files") == "no_access" else ""
         part = "fully " if "partly" in (c.get("files"), c.get("text")) else ""
         out += f" _Not {part}checked: {' and '.join(nc)}{why}._"
-    if k:                                     # fn54 / fn21 don't read Show_PDF (checked 2026-11-22)
+    if k:          # live fn54 / fn21 read 2026-11-22: neither reads Show_PDF. Prices are min / max / first-non-null (never
+        # summed), but fn21 flt_space_count = number of t36 rows and fn54 contract_count = number of distinct PDF ids.
         out += (" Hiding a PDF takes it off the page; prices already read from it still count toward this venue's "
-                "prices.")
+                "prices. Amounts are never added together, but the copy still counts as a second PDF and its rooms count "
+                "again in this venue's room count.")
     for note in (c.get("notes") or [])[:3]:
         out += f"\n_Note: {_esc(note)}._"
     return out
@@ -592,7 +597,9 @@ def flag_text(f: dict, survivor: str) -> str:
         choice += " (pre-selected because it's an exact copy; Approve covers it, or press Keep both)"
     return (f"*PDF {f.get('n', '')}. {TYPE_LABEL[f['type']]}* ({f['confidence']})\n"
             f"Keep {_ref(f['keep'], survivor)} · possible duplicate {_ref(f['hide'], survivor)}\n"
-            f"Matched: {_esc(f['what_matched'])}. Differed: {_esc(f['what_differed'])}.\n{choice}")
+            f"Matched: {_esc(f['what_matched'])}. "
+            f"{':warning: *Year labels differ.* ' if f.get('year_label_differs') else ''}"
+            f"Differed: {_esc(f['what_differed'])}.\n{choice}")
 
 
 def details_lines(payload: dict) -> str:
