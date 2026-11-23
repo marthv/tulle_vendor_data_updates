@@ -179,3 +179,9 @@ def test_per_person_ceremony(monkeypatch):
 def test_saved_takes_the_latest_venues_only():
     assert compare.saved_venue_ids(FakeXano(), {"favorited_vendors": ["V1", "V3", "V2"]}) == ["V2", "V1"]
     assert compare.saved_venue_ids(FakeXano(), {}) == []
+
+
+def test_place():
+    assert compare._place({"address": "1 A St, Brooklyn, NY 11201, USA", "state": "New York"}) == "Brooklyn, New York"
+    assert compare._place({"address": "80 Wythe Ave, Brooklyn, NY 11249", "state": "New York"}) == "Brooklyn, New York"
+    assert compare._place({"address": "Somewhere in Tuscany", "state": "International"}) == "International"

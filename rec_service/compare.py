@@ -120,9 +120,12 @@ def _image(img):
 def _place(card):
     addr = str(card.get("address") or "")
     parts = [p.strip() for p in addr.split(",") if p.strip()]
+    if parts and parts[-1].lower() in ("usa", "united states", "us"):
+        parts = parts[:-1]
     state = card.get("state")
     state = state if isinstance(state, str) else ", ".join(state or [])
-    city = parts[-3] if len(parts) >= 3 else ""
+    # "80 Wythe Ave, Brooklyn, NY 11249" -> Brooklyn; anything without a "ST 12345" ending is not guessed at
+    city = parts[-2] if len(parts) >= 3 and re.match(r"[A-Z]{2}( [0-9]{5})?", parts[-1]) else ""
     return ", ".join(x for x in (city, state) if x)
 
 
