@@ -117,6 +117,9 @@ def compute(inp, guests, override=None):
 
     pp, ps = pick(inp.get("pp_fb"), "pp_fb")
     fb_min = inp.get("fb_min") or 0
+    min_only = bool(config.MIN_FOOD_ONLY and fb_min and not inp.get("pp_fb"))
+    if min_only:
+        pp, ps = 0, "this venue's PDF"
     food = pp * g
     food_line = {"item": "Food and drink", "per_guest": pp, "guests": g, "amount": food, "source": ps,
                  "math": "%s x %d guests = %s" % (_money(pp), g, _money(food))}
@@ -126,7 +129,10 @@ def compute(inp, guests, override=None):
         if floor > food:
             food = floor
             food_line.update(amount=floor, minimum_applies=True,
-                             math="%s minimum (above %s x %d guests)" % (_money(floor), _money(pp), g))
+                             math=("%s minimum; food may cost more" % _money(floor)) if min_only else
+                             "%s minimum (above %s x %d guests)" % (_money(floor), _money(pp), g))
+            if min_only:
+                food_line["minimum_only"] = True
     lines.append(food_line)
     return _finish(inp, lines, rental, ceremony, food, g, asked)
 

@@ -96,7 +96,7 @@ def saved_venue_ids(xano, user):
 def _int(v):
     try:
         return int(float(v))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
@@ -165,8 +165,10 @@ def _cost(e, inp):
         if l["item"] == "Food and drink":
             if l.get("per_guest"):
                 row["per_guest"] = round(l["per_guest"])
-            if l.get("minimum_applies"):
-                row["minimum_applies"] = True
+            if l.get("minimum_applies"):     # the amount IS the PDF's minimum, whatever the per-guest figure's source was
+                row.update(minimum_applies=True, source="pdf")
+                if l.get("minimum_only"):
+                    row["minimum_only"] = True
         if l["item"] == "Service charge":
             row["pct"] = l.get("pct")
         if key == "ceremony" and row["source"] == "pdf" and not row["amount"]:
@@ -174,7 +176,7 @@ def _cost(e, inp):
         lines.append(row)
     return {"total": e["total_before_tax_and_gratuity"], "guests": e["guests"], "per_guest": e["per_guest"],
             "at_minimum": bool(e.get("priced_at_guest_minimum")), "lines": lines,
-            "tax_pct": (e.get("tax") or {}).get("pct"), "estimated": list(e.get("estimated_lines") or [])}
+            "tax_pct": (e.get("tax") or {}).get("pct"), "estimated": [r["label"] for r in lines if r["source"] == "estimate" and r["amount"] > 0]}
 
 
 def _word(vs):
@@ -277,7 +279,8 @@ def differences(venues, guests, full, limit=3):
         if v["fits"]["minimum"] is False:
             out.append("%s has a %d guest minimum, above your %d." % (v["name"], v["guest_minimum"], guests))
         elif v["fits"]["seats"] is False:
-            out.append("%s lists seating for %d, below your %d." % (v["name"], v["seats"], guests))
+            where = "%s (%s)" % (v["name"], v["room"]) if v.get("seats_is_room") and v.get("room") else v["name"]
+            out.append("%s lists seating for %d, below your %d." % (where, v["seats"], guests))
     off = [v for v in venues if v.get("off_peak")]
     if full and off:
         v = max(off, key=lambda x: x["cost"]["total"] - x["off_peak"]["total"])
@@ -343,5 +346,6 @@ def summary_text(w):
     """The line stored with the widget (no model); later turns of the chat read it."""
     names = [v["name"] for v in w["venues"]]
     if w["level"] == "full":
-        return "Here are %s side by side for %d guests, from each venue's pricing PDF." % (_and(names), w["guests"])
+        est = any((v.get("cost") or {}).get("estimated") for v in w["venues"])
+        return "Here are %s side by side for %d guests.%s" % (_and(names), w["guests"], " Estimated parts are marked." if est else "")
     return "Here are %s side by side for %d guests. Their exact prices are in each venue's pricing PDF." % (_and(names), w["guests"])

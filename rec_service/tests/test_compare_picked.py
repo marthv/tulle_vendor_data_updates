@@ -185,3 +185,41 @@ def test_place():
     assert compare._place({"address": "1 A St, Brooklyn, NY 11201, USA", "state": "New York"}) == "Brooklyn, New York"
     assert compare._place({"address": "80 Wythe Ave, Brooklyn, NY 11249", "state": "New York"}) == "Brooklyn, New York"
     assert compare._place({"address": "Somewhere in Tuscany", "state": "International"}) == "International"
+
+
+def test_minimum_only_food(monkeypatch):
+    inp = inputs(pp_fb=None, fb_min=15000, estimates={"pp_fb": 150}, rental=3000)
+    monkeypatch.setattr(config, "MIN_FOOD_ONLY", True)
+    e = estimate.compute(inp, 100)
+    assert e["total_before_tax_and_gratuity"] == round((3000 + 15000) * 1.2) and "Food and drink" not in e["estimated_lines"]
+    row = next(l for l in compare._cost(e, inp)["lines"] if l["key"] == "food")
+    assert row["source"] == "pdf" and row["minimum_only"]
+    monkeypatch.setattr(config, "MIN_FOOD_ONLY", False)
+    assert estimate.compute(inp, 200)["total_before_tax_and_gratuity"] == round((3000 + 30000) * 1.2)   # as before
+
+
+def test_a_pdf_minimum_is_never_tagged_estimate():
+    inp = inputs(pp_fb=None, fb_min=60000, estimates={"pp_fb": 150})
+    c = compare._cost(estimate.compute(inp, 100), inp)
+    assert next(l for l in c["lines"] if l["key"] == "food")["source"] == "pdf" and c["estimated"] == []
+
+
+def test_stored_full_widget_for_a_member_without_entitlement(monkeypatch):
+    import app
+    from fastapi.testclient import TestClient
+    w = build(FakeXano())
+    user = {"id": 5, "total_amount_paid": 30}
+    monkeypatch.setattr(app, "_auth", lambda a: ("t", user))
+    monkeypatch.setattr(app.xano, "get_chat", lambda u, c: {"id": c, "title": "x"})
+    monkeypatch.setattr(app.xano, "get_messages", lambda c: [{"role": "assistant", "text": "Here.", "cards": [], "chips": [], "widgets": [w]}])
+    monkeypatch.setattr(app.xano, "has_paid_access", lambda u: True)
+    monkeypatch.setattr(app.xano, "beta_member", lambda u: False)
+    r = TestClient(app.app).get("/rec/chats/7", headers={"Authorization": "Bearer t"})
+    assert r.status_code == 200 and "venue_side_by_side" in r.text and "36000" not in r.text and "$" not in r.text
+    monkeypatch.setattr(app.xano, "pi_entitled", lambda u: True)
+    monkeypatch.setattr(app.xano, "beta_member", lambda u: True)
+    assert "36000" in TestClient(app.app).get("/rec/chats/7", headers={"Authorization": "Bearer t"}).text
+
+
+def test_infinite_guests():
+    assert build(FakeXano(), guests=float("inf"))["guests"] == 100

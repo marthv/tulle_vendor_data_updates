@@ -1735,7 +1735,12 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
         for t in turns:                  # a whole-wedding card: its PDF sentences for this reader (free views left or not)
             if any(isinstance(w, dict) and w.get("type") == whole_wedding.PROPOSAL for w in t.get("widgets") or []):
                 t["widgets"] = [free_mode.proposal_wording(w, _ww_reader(user)) for w in t["widgets"]]
-    elif _detail(xano.beta_member(user), True) != "full":
+    elif not xano.pi_entitled(user):       # a plan without exact-price entitlement: a stored side by side is words only
+        for t in turns:
+            if any(isinstance(w, dict) and w.get("type") == compare.TYPE for w in t.get("widgets") or []):
+                t["widgets"] = [compare.lock(dict(w, reason="member")) if isinstance(w, dict) and w.get("type") == compare.TYPE
+                                else w for w in t["widgets"]]
+    if xano.has_paid_access(user) and _detail(xano.beta_member(user), True) != "full":
         # A plan without full figures reopening a whole-wedding proposal made with them (2026-11-16): that card and
         # the sentences around it are re-locked. A chat with no such card is returned exactly as before.
         for t in turns:
