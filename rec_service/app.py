@@ -283,6 +283,7 @@ class RefineBody(BaseModel):
     ctx_arm: str = Field("", max_length=16)   # 11-14 context-first test: "context" | "control" | "" (test off)
     ww: Optional[dict] = None     # 11-15 whole-wedding flow (whole_wedding.py): sent only by a page that can draw its
                                   # cards. {v, action?, category?, answers?, skip?, active?}. None = flow never runs.
+    onboarding: bool = False      # 11-23: the sign-up flow's one question (REC_ONBOARDING): not counted as a free question
 
 
 QUOTE_KEYS = ("document_type", "summary", "vendor_name", "category", "total_cost", "package_name", "deposit_or_paid",
@@ -1644,6 +1645,16 @@ def _page_venue(user, text, fresh):
     return pat.sub(sub, text, count=1), card
 
 
+def _onboarding_free(user, body):
+    """The sign-up flow's question is free once: only while this couple has no question on record."""
+    if not (config.ONBOARDING and body.onboarding):
+        return False
+    try:
+        return not any((r.get("kind") or "refine") == "refine" for r in xano.user_usage(user["id"]))
+    except Exception:
+        return False
+
+
 def _refine(token, user, body, background, tracker):
     if body.ww is not None and body.quote is None and whole_wedding.assigned(user.get("id")):   # flag off -> never assigned
         out = _ww_refine(token, user, body, background, tracker)
@@ -1696,7 +1707,7 @@ def _refine(token, user, body, background, tracker):
     if out is None:
         if body.quote:
             msgs = msgs[:-1] + [{"role": "user", "content": text + quote_block(body.quote, str(body.quote.get("_file_name") or ""))}]
-        out = _run_guarded("refine", token, user, msgs, tracker=tracker)
+        out = _run_guarded("refine", token, user, msgs, tracker=tracker, waive_free=_onboarding_free(user, body))
     if out.get("stopped"):
         return out           # no chat created, nothing saved
     out["chips"] = ensure_chips(out.get("chips"))

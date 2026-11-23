@@ -312,6 +312,9 @@ PACKAGE_TOTALS = os.environ.get("REC_PACKAGE_TOTALS", "0") == "1"
 # PER-PERSON CEREMONY (2026-11-22): a ceremony fee the PDF states per guest is multiplied by the guests, as the venue page
 # does (Tavern on the Green $20 a head was added once: totals $1,188-$2,119 low on 4 of 40 sampled venues). 0 = as before.
 CEREMONY_PER_PERSON = os.environ.get("REC_CEREMONY_PER_PERSON", "0").strip() == "1"
+# ONBOARDING (owner 2026-11-23): the new sign-up flow asks the Planner one real question; that first question is not counted
+# against the free ones (once per account: only while the couple has no question on record). "0" = counted like any other.
+ONBOARDING = os.environ.get("REC_ONBOARDING", "0").strip() == "1"
 # FOOD MINIMUM ONLY (2026-11-22): a PDF that states a food-and-drink minimum and no per-guest price. "1" = the venue page's
 # rule (count the minimum alone, said as such); "0" = as before (the state's per-guest average on top, 9% of 159 venues off
 # the page at 100 guests). OWNER DECISION - ships off.
