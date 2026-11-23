@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from urllib.parse import parse_qs
 
@@ -23,6 +24,10 @@ log = logging.getLogger("slack_qa.interactions")
 ACTIONS = (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO, cards.ACTION_RECHECK, cards.ACTION_DETAILS,
            cards.ACTION_PDF_HIDE, cards.ACTION_PDF_KEEP, cards.ACTION_PDF_RECHECK, cards.ACTION_PRICE_RECHECK,
            cards.ACTION_SWAP, cards.ACTION_ALLOW)
+
+
+def _took(text, t0: float) -> str:
+    return f"{str(text or '').rstrip()} Took {max(1, round(time.monotonic() - t0))} s."
 
 
 def _age(iso) -> float:
@@ -247,7 +252,6 @@ class Interactions:
             self._refresh(p)
             self._ephemeral(chan, user, "This card was changed, so nothing happened. Check it and press Approve again.", thread)
             return "stale:changed"
-        self._ephemeral(chan, user, "Checking the price once more, then merging (a few minutes; the card updates)…", thread)
         new = merge_checks.price(self.xano, pl, pv=old.get("preview"))
         new["touching"] = hit
         if not merge_checks.moved(old, new):
@@ -365,7 +369,7 @@ class Interactions:
 
     def _approve(self, p, user, chan, thread, block_id: str = "") -> str:
         was = p.get("status")
-        from proposals import fingerprint, is_void
+        from proposals import default_dry_run, fingerprint, is_void
         if is_void(p):
             p2, why = self.store.transition(p["id"], {"pending", "dry_run"}, "failed", user, result_text=(
                 "This card was made before the current merge checks, so it can't be approved. Ask for a fresh card. Nothing "
@@ -373,6 +377,11 @@ class Interactions:
             self._refresh(p2)
             self._ephemeral(chan, user, why or "That card is from before the current checks. Ask for a fresh one.", thread)
             return "void"
+        if p.get("kind") == "merge" and was in ("pending", "dry_run", "partial") and not default_dry_run("merge") \
+                and not (was == "pending" and p.get("dry_run", True)):
+            # said at once (owner 2026-11-23: nothing showed for 30 s after a press); the card itself turns to "Applying…"
+            # as soon as the checks pass
+            self._ephemeral(chan, user, "Checking, then merging… (up to a few minutes; the card updates)", thread)
         expect = fingerprint(p.get("payload") or {}) if p.get("kind") == "merge" and was in ("pending", "dry_run") else None
         try:
             stop = self._pdf_gate(p, user, chan, thread, block_id)
@@ -383,12 +392,11 @@ class Interactions:
             return "gate:error"
         if stop:
             return stop
-        from proposals import default_dry_run
         if was == "dry_run" and p.get("kind") == "merge":
             # owner 2026-11-22: a card approved while dry run was on can be applied for real once dry run is off
             # ("Apply for real" button). While dry run is still on there is nothing more to do.
             if default_dry_run(p.get("kind", "")):
-                self._ephemeral(chan, user, "This was approved while changes are in dry run. It can be applied for "
+                self._ephemeral(chan, user, "This was approved in a dry run, and dry run is still on. It can be applied for "
                                             "real once dry run is switched off.", thread)
                 return "noop:dry_run"
             p, why = self.store.transition(p["id"], {"dry_run"}, "applying", user, expect=expect, dry_run=False)
@@ -407,7 +415,10 @@ class Interactions:
             return "noop:" + (p or {}).get("status", "missing")
         self._refresh(p)
         fn = self.apply_fns.get(p["kind"])
+        t0 = time.monotonic()
         res = self._run(fn, p, user) if fn else {"ok": False, "text": f"no applier for {p['kind']}"}
+        if p["kind"] == "merge" and res.get("ok") and not res.get("dry_run"):
+            res = dict(res, text=_took(res.get("text"), t0))
         if res.get("partial"):
             to = "partial"
         elif res.get("unknown"):
@@ -430,14 +441,20 @@ class Interactions:
         again = was == "undone" and bool((p.get("result") or {}).get("warnings"))      # ep578 v3: undo may be run again
         p, why = self.store.transition(p["id"], {"undone"} if again else {"applied", "partial"}, "undoing", user)
         if why:
-            self._ephemeral(chan, user, why, thread)
+            st = (p or {}).get("status")
+            self._ephemeral(chan, user, {"undoing": "It's already being undone; the card updates when it's done.",
+                                         "undone": "It's already undone."}.get(st, why), thread)
             return "noop:" + (p or {}).get("status", "missing")
+        # shown at once, before the slow call: a message to the person and the card without buttons
+        self._ephemeral(chan, user, "Undoing… (up to a minute; the card updates)", thread)
+        self._refresh(p)
+        t0 = time.monotonic()
         res = self._run(self.apply_fns["merge"], p, user, mode="undo")
         if res.get("unknown"):
             p, _ = self.store.transition(p["id"], {"undoing"}, "unknown", user, result_text=res["text"],
                                          unknown_from="undoing")
         elif res.get("ok") and not res.get("dry_run"):
-            p, _ = self.store.transition(p["id"], {"undoing"}, "undone", user, result_text=res["text"],
+            p, _ = self.store.transition(p["id"], {"undoing"}, "undone", user, result_text=_took(res["text"], t0),
                                          result=res.get("result") or {})
         else:                              # refused / dry run: back to where it was (applied or partial)
             p, _ = self.store.transition(p["id"], {"undoing"}, was if was in ("applied", "partial", "undone") else "applied",

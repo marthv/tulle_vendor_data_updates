@@ -426,9 +426,17 @@ class Bot:
                 return "merge:already-merged"
             dry = next((p for p in prior if p.get("status") == "dry_run"), None)
             if dry:
-                say(f"These were already approved ({self._link(dry)}) while merges are in dry run, so nothing has "
-                    "moved yet. Once merges are switched on, that card gets an *Apply for real* button "
-                    "(`@Tulle Bot what's waiting for approval?` lists them).")
+                if config.merge_dry_run():
+                    say(f"These were already approved ({self._link(dry)}) in a dry run, and merges are still in dry run, so "
+                        "nothing has moved yet. Once merges are switched on, that card gets an *Apply for real* button "
+                        "(`@Tulle Bot what's waiting for approval?` lists them).")
+                else:                               # merges are on: redraw that card so its button is there now
+                    import cards
+                    if dry.get("channel") and dry.get("ts"):
+                        text, blocks = cards.render(dry)
+                        self.slack.update_message(dry["channel"], dry["ts"], text, blocks)
+                    say(f"These were approved in a dry run, so nothing has moved yet. Merges are on now: press *Apply for "
+                        f"real* on {self._link(dry)}.")
                 return "merge:approved-dry-run"
             byid = {v["id"]: v for v in vendors}
             refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
@@ -548,7 +556,9 @@ class Bot:
                          "applied": "already merged",
                          "undone": (f"merged, then undone. If it should be merged after all, `@Tulle Bot merge "
                                     f"{' and '.join(ids)}` makes a new card"),
-                         "dry_run": f"approved on {when} while merges are in dry run, so nothing has moved yet",
+                         "dry_run": f"approved on {when} in a dry run, so nothing has moved yet" + (
+                             "; merges are still in dry run" if config.merge_dry_run() else
+                             ". Merges are on now: press *Apply for real* on the card"),
                          "applying": "being applied right now", "undoing": "being undone right now",
                          "failed": "approved but it didn't apply (see the card)",
                          "post_failed": "the card couldn't be posted",

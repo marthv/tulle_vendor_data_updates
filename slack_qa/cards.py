@@ -76,25 +76,30 @@ def _btn(action: str, pid: str, text: str, style: str | None = None, confirm: di
 
 
 APPLY_CONFIRM = {"title": {"type": "plain_text", "text": "Merge for real?"},
-                 "text": {"type": "mrkdwn", "text": "This was approved during the dry run. Merging now moves the "
+                 # plain_text everywhere in a confirm object: Slack's field table allows nothing else (docs.slack.dev)
+                 "text": {"type": "plain_text", "text": "This was approved during the dry run. Merging now moves the "
                                                     "duplicate's PDFs, pricing and saved lists onto the kept listing "
                                                     "and hides the duplicate (undo stays on the card). Xano re-reads "
                                                     "both listings first and refuses if they changed a lot."},
-                 "confirm": {"type": "plain_text", "text": "Merge"}, "deny": {"type": "plain_text", "text": "Cancel"}}
+                 "confirm": {"type": "plain_text", "text": "Merge"}, "deny": {"type": "plain_text", "text": "Cancel"},
+                 "style": "danger"}
 UNDO_CONFIRM = {"title": {"type": "plain_text", "text": "Undo this merge?"},
-                "text": {"type": "mrkdwn", "text": "Moves everything back from the backup taken before the merge. Anything "
+                "text": {"type": "plain_text", "text": "Moves everything back from the backup taken before the merge. Anything "
                                                    "someone changed since (a deleted package, an edited field) stays as "
                                                    "it is and is listed as a conflict."},
-                "confirm": {"type": "plain_text", "text": "Undo"}, "deny": {"type": "plain_text", "text": "Cancel"}}
+                "confirm": {"type": "plain_text", "text": "Undo"}, "deny": {"type": "plain_text", "text": "Cancel"},
+                "style": "danger"}
 
 
 def confirm_dialog(text: str, base: dict | None = None) -> dict:
     """A Slack confirm dialog that asks `text` first (Block Kit limit: 300 characters), then `base`'s own text."""
+    import html
+    text = html.unescape(str(text)).replace("*", "").replace("`", "")          # plain text: no markup, no entities
     text = f"{text} {base['text']['text']}" if base else text
     return {"title": base["title"] if base else {"type": "plain_text", "text": "Are you sure?"},
-            "text": {"type": "mrkdwn", "text": clip(text, 300)},
+            "text": {"type": "plain_text", "text": clip(text, 300)},
             "confirm": base["confirm"] if base else {"type": "plain_text", "text": "Yes, approve"},
-            "deny": {"type": "plain_text", "text": "Cancel"}}
+            "deny": {"type": "plain_text", "text": "Cancel"}, "style": "danger"}
 
 
 def _pdf_blocks(p: dict, status: str) -> list[dict]:
@@ -220,7 +225,9 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
         buttons.append(_btn(ACTION_PDF_RECHECK, p["id"], "Run PDF check again"))
     if price and (waiting or price.get("cant")) and status in ("pending", "dry_run"):
         buttons.append(_btn(ACTION_PRICE_RECHECK, p["id"], "Check price again"))
-    if kind == "merge" and payload.get("snapshots"):
+    if status in ("applying", "undoing"):
+        buttons = []                                        # nothing to press while it runs
+    elif kind == "merge" and payload.get("snapshots"):
         buttons.append(_btn(ACTION_DETAILS, p["id"], "Details"))
     if buttons:
         bid = f"tb:{p['id']}"
@@ -261,6 +268,9 @@ def outcome_line(p: dict) -> str:
         return f":x: Rejected by {who}." + (f" {res}" if res else "")
     if st == "applying":
         return f":hourglass_flowing_sand: Applying… approved by {who}."
+    if st == "undoing":
+        undo = f"<@{p['undo_by']}>" if p.get("undo_by") else who
+        return f":hourglass_flowing_sand: Undoing… (up to a minute) asked for by {undo}."
     if st == "undone":
         undo = f"<@{p['undo_by']}>" if p.get("undo_by") else who
         mark = ":warning: Merge mostly undone" if (p.get("result") or {}).get("warnings") else \
@@ -277,6 +287,23 @@ def outcome_line(p: dict) -> str:
     if st == "post_failed":
         return "Card could not be posted."
     return st or ""
+
+
+CONFIRM_LIMITS = {"title": 100, "text": 300, "confirm": 30, "deny": 30}
+
+
+def validate_confirm(c: dict | None) -> list[str]:
+    """Slack's confirmation dialog object, strictly by its field table: all four texts present, plain_text, within limits."""
+    if c is None:
+        return []
+    errs = [f"unknown field {k}" for k in c if k not in CONFIRM_LIMITS and k != "style"]
+    for k, n in CONFIRM_LIMITS.items():
+        o = c.get(k) or {}
+        if o.get("type") != "plain_text" or not 1 <= len(o.get("text") or "") <= n or set(o) - {"type", "text"}:
+            errs.append(k)
+    if c.get("style") not in (None, "primary", "danger"):
+        errs.append("style")
+    return errs
 
 
 def validate(blocks: list[dict]) -> list[str]:
@@ -311,6 +338,7 @@ def validate(blocks: list[dict]) -> list[str]:
                     errs.append(f"block {i}: value/action_id too long")
                 if e.get("style") not in (None, "primary", "danger"):
                     errs.append(f"block {i}: style")
+                errs += [f"block {i}: confirm {x}" for x in validate_confirm(e.get("confirm"))]
         if len(b.get("block_id", "")) > 255:
             errs.append(f"block {i}: block_id too long")
     return errs
