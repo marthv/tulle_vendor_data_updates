@@ -5478,7 +5478,7 @@
     },
     {
       "id": "EXP-2026-11-onboarding-try-it",
-      "name": "Onboarding: try the product instead of two pop-ups and a tour",
+      "name": "Onboarding: the Planner runs it, instead of two pop-ups and a tour",
       "status": "planned",
       "framework_version": 2,
       "owner": "Vivek",
@@ -5489,8 +5489,8 @@
       ],
       "bucket": "onboarding",
       "in_rotation": false,
-      "tldr": "New sign-ups look up a venue, open its price sheet, compare two and save one inside onboarding (Wispr Flow style), instead of two question pop-ups and a tooltip tour. Question: do more open a PDF within a day, without fewer finishing?",
-      "what_changed": "DESIGN ONLY, nothing built: replaces the Onboarding Popup (bbdfe17d) and the after-onboarding tours (3ee46d5b, da263895, 33629def) for the test arm with a full-screen 'do it' flow plus a self-filling checklist. Prototype: claude.ai artifact X2wdrqCwNwy7jwUYF7zmbL.",
+      "tldr": "New sign-ups answer Tulle in a chat pop-up, ask it one real question about a venue and open a price sheet, instead of two question pop-ups and a tooltip tour. Question: do more open PDFs within a day and come back to the Planner, without fewer finishing?",
+      "what_changed": "DESIGN ONLY, nothing built: pop-up over the app where the Planner asks stage, source, age, states (all), guests (25-500 by 25) and budget (slider $5K + typed), shows three venues, takes one real question, then one price sheet (uses 1 of 3 free views), then closes. A 'specific venue' search with a path when Tulle doesn't have it. No comparison step (not live) and no 'tell me when you have it'. Prototype: claude.ai artifact X2wdrqCwNwy7jwUYF7zmbL.",
       "surfaces": [
         "weweb:sign-up",
         "weweb:discovery",
@@ -5501,7 +5501,7 @@
         "est_daily_exposed": 97,
         "est_note": "Xano 2,724 sign-ups ex-internal in 28 days (10-25..11-21) = 97.3/day; Mixpanel sees 88% of them"
       },
-      "hypothesis": "If new couples do the real thing during onboarding (look up a venue, open a price sheet, compare, save), then the share opening a PDF within 1 day rises from 63.9% to 69%+ (and 3 PDFs within 1 day from 27.7%), because today the flow ends before anyone sees a price.",
+      "hypothesis": "If new couples use the Planner and open a price sheet during onboarding, then first PDF within 1 day rises from 63.9% to 69%+ and 3 PDFs within 1 day from 27.7%, because today the flow ends before anyone sees a price.",
       "tests": "Does doing the product inside onboarding get more new couples to open a pricing PDF within a day?",
       "goal": "Owner 2026-11-22: onboarding modelled on Wispr Flow, replacing the two modals and rethinking the tour; everyone must get through onboarding as before, ideally payment rate moves too.",
       "metric": {
@@ -5509,7 +5509,7 @@
         "params": {},
         "direction": "increase",
         "baseline": 0.639,
-        "baseline_note": "viewed_vendor_pdf within 1 day of signed_up, Mixpanel 10-25..11-21 (phone 59.2%, desktop 76.0%). The PDF opened inside onboarding counts in the test arm, so ALSO read PDFs opened after onboarding and 3 PDFs in 1 day (27.7%) - otherwise the metric is partly self-fulfilling.",
+        "baseline_note": "viewed_vendor_pdf within 1 day of signed_up, Mixpanel 10-25..11-21 (phone 59.2%, desktop 76.0%). The onboarding PDF counts in the test arm, so read it WITH 3 PDFs in 1 day (27.7%) and a second Planner question after onboarding; first PDF alone is partly self-fulfilling. Pass needs both up.",
         "mde_rel": 0.08,
         "label": "opened 1+ pricing PDF within 1 day of sign-up"
       },
@@ -5551,7 +5551,8 @@
       "decided_on": null,
       "outcome": null,
       "spec_gaps": [
-        "owner decisions: which questions stay, whether the practice PDF uses a free view, full screen vs modal"
+        "split key and exposure event not built",
+        "who answers 'not on Tulle' requests: nobody yet, so the flow makes no promise"
       ],
       "links": [
         "tulletogether .claude/onboarding_2026-11-22/LOOMS.md",
