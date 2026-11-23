@@ -57,6 +57,7 @@ CHAIN_DOMAIN_MIN = 6        # a domain on this many vendors is a chain / platfor
 BRAND_NAME_MIN = 3          # a normalised name on this many vendors is a brand ("hilton garden inn", "first baptist church")
 MAX_GROUP = 4
 MAX_KM = 10.0               # two records further apart than this are never one business, whatever else matches
+NOT_A_PLACE_ID = {"na", "none", "null", "nan", "x", "tbd", "unknown"}      # plus anything with "/", spaces, quotes, ":"
 HOLD_HIDDEN = True          # groups with a hidden member are not suggested (a person can still ask for them by name)
 
 # Every place a vendor is referenced (workspace 1, all 58 tables' schemas read 2026-11-20, read-only).
@@ -343,8 +344,10 @@ def domain(u: str) -> str:
 
 
 def place_id(r: dict) -> str | None:
+    """A real Google Place ID, else None. Table 11 also holds "N/A" etc.: matched as an id, "N/A" paired unrelated
+    photographers with similar names (found 2026-11-22)."""
     v = str(r.get("Place_ID") or "").strip()
-    return v if v and v != "None" else None
+    return v if re.fullmatch(r"[A-Za-z0-9_-]+", v) and v.lower() not in NOT_A_PLACE_ID else None
 
 
 def _km(a, b) -> float:
@@ -409,7 +412,10 @@ def state_keys(v) -> frozenset:
 
 def addr_state(addr: str) -> str:
     """US state code at the end of an address ("..., Boston, MA 02199, USA" -> "ma"); "" when it isn't clearly one."""
-    m = re.search(r"[,\s]([A-Za-z]{2})\.?(?:\s+\d{5}(?:-\d{4})?)?\s*(?:,\s*(?:USA?|United States))?\s*$", addr or "", re.I)
+    # a ZIP after the code, or a comma before it: "1325 Quincy St NE" is a street, not Nebraska
+    tail = r"\s*(?:,\s*(?:USA?|United States))?\s*$"
+    m = (re.search(r"[,\s]([A-Za-z]{2})\.?\s+\d{5}(?:-\d{4})?" + tail, addr or "", re.I)
+         or re.search(r",\s*([A-Za-z]{2})\.?" + tail, addr or "", re.I))
     c = m.group(1).lower() if m else ""
     return c if c in _US_CODES else ""
 

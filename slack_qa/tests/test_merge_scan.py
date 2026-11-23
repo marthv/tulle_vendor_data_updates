@@ -71,8 +71,20 @@ def test_dc_spellings_and_addr_state():
     assert ids([a, dict(a, id=2, Vendor_ID="V2", State="Washington DC")]) == [[1, 2]]
     for addr, want in (("776 Boylston St, Boston, MA 02199", "ma"), ("1 A, Boston, MA 02199-1234, USA", "ma"),
                        ("1 A, Boston, ma", "ma"), ("Via Roma 1, 50123 Firenze FI, Italy", ""), ("", ""),
-                       ("12 Rue de X, Paris, France", ""), ("Reception Hall Co", "co")):
+                       ("12 Rue de X, Paris, France", ""), ("1325 Quincy St NE", ""),
+                       ("500 Main St, Omaha, NE 68102", "ne"), ("500 Main St Omaha NE 68102", "ne")):
         assert dedupe.addr_state(addr) == want, addr
+
+
+@pytest.mark.parametrize("pid", ["N/A", "n/a", "NA", '"NA"', "X", "None", "Heritage Hall", "https://citycreekevents.com/",
+                                 "305 Bloomfield Ave, Nutley, NJ 07110, USA", "Place ID: ChIJH-fNkE5BjoAR0mlZD_aWU8o"])
+def test_a_placeholder_is_not_a_place_id(pid):
+    """Live 2026-11-22: 'N/A' was matched as a Place_ID and paired photographers with similar names."""
+    a = V(12037, "V12037", "Katie Salerno Photography", addr="Los Angeles", state="California", pid=pid,
+          cat="Photography", lat=34.05, lng=-118.24)
+    b = dict(a, id=12038, Vendor_ID="V12038", Name="Katie Shuler Photography")
+    assert dedupe.ratio(dedupe.norm(a["Name"]), dedupe.norm(b["Name"])) >= 80
+    assert dedupe.place_id(a) is None and ids([a, b]) == []
 
 
 def test_every_pair_in_a_group_of_three_must_match():
