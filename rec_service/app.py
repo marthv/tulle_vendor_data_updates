@@ -58,6 +58,7 @@ import agent
 import anthropic
 from chips import (STARTER_CHIPS, STARTER_CHIPS_COST_TOOLS, CHIP_TOPUPS, dedupe_chips, ensure_chips,
                    guarantee_next_step, more_chips, place_action_chip, tool_chips)
+import compare
 import config
 import cost_tools
 import free_mode
@@ -1836,7 +1837,8 @@ class ToolBody(BaseModel):
 
 # What the chat shows as the couple's side of a quick action (stored as the user turn, so the history alternates).
 TOOL_LABELS = {"estimate_cost": "Estimate my cost", "split_budget": "Split my budget",
-               "compare_venues": "Compare my venues", "budget_status": "Budget check"}
+               "compare_venues": "Compare my venues", "budget_status": "Budget check",
+               compare.TOOL: "Compare these venues"}
 
 
 @app.post("/rec/tool")
@@ -1851,8 +1853,15 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     if config.KILL_SWITCH:
         raise HTTPException(503, {"status": "killed"})
     name = (body.tool or "").strip()
-    if name not in cost_tools.TOOLS:
+    picked = name == compare.TOOL and compare.arm(user.get("id")) == "compare"
+    if name not in cost_tools.TOOLS and not picked:
         raise HTTPException(400, {"status": "unknown_tool", "tools": list(cost_tools.TOOLS)})
+    if picked:
+        ids = compare.clean_ids((body.args or {}).get("vendor_ids"))
+        if len(ids) < compare.MIN_VENUES:
+            raise HTTPException(400, {"status": "need_two_venues"})
+        if not compare.spend(user["id"], ids):
+            raise HTTPException(429, {"status": "compare_daily_cap"})
     chat = None
     if body.chat_id:
         chat = xano.get_chat(user["id"], body.chat_id)
@@ -1866,12 +1875,20 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
             "cache_write_tokens": 0, "output_tokens": 0, "tool_calls": 0, "cost_usd": 0}
     t0 = dt.datetime.now(dt.timezone.utc)
     try:
-        out = cost_tools.run_tool(name, body.args or {}, token, user, access=access, xano=xano)
+        if picked:
+            d = cost_tools.profile_defaults(user)
+            out = {"widget": compare.build(xano, token, user, ids, access=access, guests=(body.args or {}).get("guests"),
+                                           default_guests=d["guests"], budget=d["budget"])}
+        else:
+            out = cost_tools.run_tool(name, body.args or {}, token, user, access=access, xano=xano)
     except Exception as e:
         _submit_usage(dict(base, status="error", error=str(e)[:500]))
         raise HTTPException(502, {"status": "error"})
+    if picked and not out["widget"]:
+        _submit_usage(dict(base, status="error", error="compare: fewer than two venues found"))
+        raise HTTPException(404, {"status": "venues_not_found"})
     widget = out["widget"] if access else free_mode.widget(out["widget"])
-    text = cost_tools.summary_text(widget)
+    text = compare.summary_text(widget) if picked else cost_tools.summary_text(widget)
     # Next-step chips (owner 2026-10-25), computed in code like the widget - flag-independent, as /rec/tool is.
     # No chat history is read here (one more Xano call per tap); the next typed reply's de-dupe sees these chips.
     chips = tool_chips(name, free=not access, widget=widget)
@@ -3107,6 +3124,8 @@ def status(authorization: str = Header(None)):
                       "package_totals": config.PACKAGE_TOTALS, "plan_ab_pct": plan.PLAN_AB_PCT},
             # Whole-wedding proposal (2026-11-15): true = this account is assigned; the page shows "Plan my wedding".
             "whole_wedding": whole_wedding.assigned(user.get("id")), "ww_arm": whole_wedding.arm(user.get("id")),
+            # Side-by-side compare (2026-11-22): "compare" shows the button; "control" = the test's other half; "off".
+            "compare_arm": compare.arm(user.get("id")),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 

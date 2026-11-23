@@ -309,6 +309,17 @@ PLAN_NEXT_STEP = os.environ.get("REC_PLAN_NEXT_STEP", "0") == "1"
 #   charge; food = extra-guest rate x guests above the included count. Also: a ceremony the PDF marks 'included' is $0
 #   (it fell back to the market estimate). "0" = the pre-2026-11-22 formula exactly.
 PACKAGE_TOTALS = os.environ.get("REC_PACKAGE_TOTALS", "0") == "1"
+# PER-PERSON CEREMONY (2026-11-22): a ceremony fee the PDF states per guest is multiplied by the guests, as the venue page
+# does (Tavern on the Green $20 a head was added once: totals $1,188-$2,119 low on 4 of 40 sampled venues). 0 = as before.
+CEREMONY_PER_PERSON = os.environ.get("REC_CEREMONY_PER_PERSON", "0").strip() == "1"
+# SIDE-BY-SIDE COMPARE (owner 2026-11-22, compare.py): 2-3 venues the couple picked, in the chat. OFF by default: the tool
+# answers unknown_tool and /rec/status says compare "off". COMPARE_AB_PCT = share of accounts (sha256(salt:user_id));
+# 0 = only COMPARE_USER_IDS (testers). COMPARE_VENUES_PER_DAY = distinct venues per couple per day.
+COMPARE_PICK = os.environ.get("REC_COMPARE_PICK", "0").strip() == "1"
+COMPARE_AB_PCT = _pct(os.environ.get("REC_COMPARE_AB_PCT", "0"))
+COMPARE_AB_SALT = os.environ.get("REC_COMPARE_AB_SALT", "compare-2026-11")
+COMPARE_USER_IDS = _int_set(os.environ.get("REC_COMPARE_USER_IDS", ""))
+COMPARE_VENUES_PER_DAY = max(3, int(os.environ.get("REC_COMPARE_VENUES_PER_DAY", "30") or 30))
 # SOURCED ANSWERS (owner 2026-11-07: "I really really don't want to hallucinate, so I want very clear sources"): venue
 # questions beyond price are answered from venue_details (PDF facts, vibes, description, Google reviews) and, for full
 # members, the web; every answer lists its sources and a web source must be a URL the search returned this request.

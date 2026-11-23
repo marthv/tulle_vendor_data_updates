@@ -52,6 +52,7 @@ def inputs_from_panel(d):
         # fn56: ceremony fee_type 'included' = $0 from the PDF (the card adds nothing; _num(0) used to fall back to
         # the market ceremony estimate).
         "ceremony_included": (comps.get("ceremony") or {}).get("fee_type") == "included",
+        "ceremony_per_person": (comps.get("ceremony") or {}).get("fee_type") == "per_person",
         "ceremony_in_package": (comps.get("ceremony") or {}).get("source") == "package",
         "service_in_package": (comps.get("service_charge") or {}).get("source") == "package",
         "service_pct": _num((comps.get("service_charge") or {}).get("pct")),
@@ -91,7 +92,11 @@ def compute(inp, guests, override=None):
         ceremony, cs = 0, "not stated - package"
     else:
         ceremony, cs = pick(inp.get("ceremony"), "ceremony")
-    lines.append({"item": "Ceremony on site", "amount": ceremony, "source": cs})
+    cline = {"item": "Ceremony on site", "amount": ceremony, "source": cs}
+    if config.CEREMONY_PER_PERSON and inp.get("ceremony_per_person") and inp.get("ceremony"):
+        ceremony = inp["ceremony"] * g
+        cline.update(amount=ceremony, per_guest=inp["ceremony"], math="%s x %d guests = %s" % (_money(inp["ceremony"]), g, _money(ceremony)))
+    lines.append(cline)
 
     if pkg and inp.get("fee_includes_fb"):
         # Inclusive package: food is inside the rental. Never add a per-head estimate on top.

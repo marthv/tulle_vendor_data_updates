@@ -249,6 +249,11 @@ def chips(chip_list, history=(), planning=False):
 
 # ---------------------------------------------------------------- cost-tool widgets (2026-10-25)
 
+# Widget types with no vendor price in them: market averages and the couple's own numbers (2026-11-22: an allow-list -
+# before, any NEW widget type passed through to free couples unchecked).
+_FREE_WIDGETS = frozenset(("cost_estimate", "budget_split", "budget_status", "ww_context"))
+
+
 def widget(w):
     """A cost-tool widget safe for a free user. Estimate / split / budget status are market averages and the
     couple's own numbers (owner 2026-10-25: allowed). venue_compare must not show vendor PDF pricing: only the
@@ -256,8 +261,13 @@ def widget(w):
     they had a plan)."""
     if isinstance(w, dict) and w.get("type") == "wedding_proposal":
         return proposal(w)
-    if not isinstance(w, dict) or w.get("type") != "venue_compare":
+    if isinstance(w, dict) and w.get("type") == "venue_side_by_side":   # 2026-11-22: words only, rebuilt from a whitelist
+        import compare
+        return compare.lock(w)
+    if not isinstance(w, dict) or w.get("type") in _FREE_WIDGETS:
         return w
+    if w.get("type") != "venue_compare":   # a type nobody has checked for prices: nothing of it reaches a free couple
+        return {"type": w.get("type"), "locked": True}
     return dict(w, rows=[r for r in w.get("rows") or [] if r.get("source") == "manual"], unpriced=[],
                 locked=True, reason="unlock_pdf_pricing")
 
