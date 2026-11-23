@@ -105,6 +105,16 @@ def _clean_words(text, cap=90):
     return t[:cap]
 
 
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+
+
+def _months(raw):
+    """'January, February, December' -> 'Jan, Feb, Dec'; 'Not listed', 'N/A' and the like -> None."""
+    t = " ".join(str(raw or "").split())
+    hits = [m[:3] for m in _MONTHS if re.search(r"%s[a-z]*" % m[:3], t, re.I)]
+    return ", ".join(hits) or None
+
+
 def _list(v):
     if isinstance(v, str):
         v = re.split(r"[,;|]", v)
@@ -210,9 +220,11 @@ def _one(xano, token, user, vid, guests, full):
     card = _safe(xano.cached_vendor_card, vid)
     if not card or (card.get("category") or "Venue") != "Venue":
         return None
-    p = _safe(xano.cached_venue_pricing, token, vid, full, user)
-    details = _safe(xano.cached_venue_details, vid, full)
-    pdfs = _safe(lambda v: xano.pdf_summary(xano.pdf_rows(token, v)), vid) or {}
+    with ThreadPoolExecutor(max_workers=3) as pool:      # three reads at once per venue (9 s cold one after another)
+        fp = pool.submit(_safe, xano.cached_venue_pricing, token, vid, full, user)
+        fd = pool.submit(_safe, xano.cached_venue_details, vid, full)
+        fv = pool.submit(_safe, lambda v: xano.pdf_summary(xano.pdf_rows(token, v)), vid)
+        p, details, pdfs = fp.result(), fd.result(), fv.result() or {}
     inp = (p or {}).get("cost_inputs") if full else None
     e = estimate.compute(inp, guests) if inp else None
     room = (e or {}).get("space") or ""
@@ -235,7 +247,7 @@ def _one(xano, token, user, vid, guests, full):
             # An off-peak sheet that repeats the peak price is not a cheaper date: show it only when it changes the total.
             eo = estimate.compute(inp, guests, o)
             if eo and eo["total_before_tax_and_gratuity"] < e["total_before_tax_and_gratuity"]:
-                v["off_peak"] = dict(_cost(eo, inp), months=_clean_words(o.get("months"), 60) or None)
+                v["off_peak"] = dict(_cost(eo, inp), months=_months(o.get("months")))
     else:
         v["words"] = _word_rows(p)
     return v
@@ -282,7 +294,7 @@ def differences(venues, guests, full, limit=3):
         if v["fits"]["minimum"] is False:
             out.append("%s has a %d guest minimum, above your %d." % (v["name"], v["guest_minimum"], guests))
         elif v["fits"]["seats"] is False:
-            where = "%s (%s)" % (v["name"], v["room"]) if v.get("seats_is_room") and v.get("room") else v["name"]
+            where = "%s (%s)" % (v["name"], v["room"]) if v.get("seats_is_room") and v.get("room") and v["room"] != v["name"] else v["name"]
             out.append("%s lists seating for %d, below your %d." % (where, v["seats"], guests))
     off = [v for v in venues if v.get("off_peak")]
     if full and off:

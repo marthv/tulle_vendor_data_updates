@@ -6023,6 +6023,16 @@
       ],
       "source": "rec-engine",
       "ref": "branch rec-planner-compare"
+    },
+    {
+      "date": "2026-11-23",
+      "what": "rec-engine ~04:52 UTC: REC_CEREMONY_PER_PERSON=1 and REC_MIN_FOOD_ONLY=1 ON for everyone (paid Planner totals match the venue page; minimum-only food says 'may cost more'). REC_COMPARE_PICK=1 for the owner's account only (AB_PCT 0). WeWeb EDITOR (not live until publish): old /planner opening loader 685f59e1 switched off + startMessage also reads ?q=; ww-planner-chat 6a32d04 pushed (compare, saves one at a time), needs activate + publish.",
+      "affects": [
+        "planner",
+        "EXP-2026-11-planner-package-totals"
+      ],
+      "source": "railway-var",
+      "ref": "REC_MIN_FOOD_ONLY, REC_CEREMONY_PER_PERSON, REC_COMPARE_*"
     }
   ]
 }

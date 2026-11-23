@@ -82,7 +82,7 @@ def test_full_totals_equal_the_venue_page_formula():
     food = next(l for l in b["cost"]["lines"] if l["key"] == "food")
     assert food["source"] == "estimate" and "Food and drink" in b["cost"]["estimated"]
     assert a["seats"] == 120 and a["seats_is_room"] and a["room"] == "Hall"
-    assert a["off_peak"]["total"] == 31200 and a["off_peak"]["months"] == "January, February"
+    assert a["off_peak"]["total"] == 31200 and a["off_peak"]["months"] == "Jan, Feb"
     assert [v["name"] for v in w["venues"]] == ["Alpha", "Beta"]   # picked order, never a ranking
 
 
@@ -241,3 +241,15 @@ def test_minimum_only_is_said_everywhere(monkeypatch):
 def test_room_is_named_in_the_seating_line():
     d = build(FakeXano(), guests=200)["differences"]
     assert "Alpha (Hall) lists seating for 120, below your 200." in d
+
+
+def test_months():
+    assert compare._months("January, February,  December") == "Jan, Feb, Dec"
+    assert compare._months("Not listed") is None and compare._months("N/A") is None and compare._months(None) is None
+    assert compare._months("Nov - Mar") == "Mar, Nov"
+
+
+def test_room_named_like_the_venue_is_not_repeated():
+    x = FakeXano()
+    x.cards["V1"]["name"] = "Hall"
+    assert "Hall lists seating for 120, below your 200." in build(x, guests=200)["differences"]
