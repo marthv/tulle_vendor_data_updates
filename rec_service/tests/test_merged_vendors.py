@@ -95,3 +95,105 @@ def test_venue_details_reads_the_kept_vendors_pdfs_and_google(db):
 def test_canary_without_follow_merge_the_duplicate_would_show(db, monkeypatch):
     monkeypatch.setattr(xano, "follow_merge", lambda r: r)   # the test must be able to fail
     assert xano.vendor_card("V2")["vendor_id"] == "V2"
+
+
+# ---------------------------------------------------------------- agent.run (fake model): tools given an old id
+
+def _agent(monkeypatch, calls, prior=(), user=None):
+    """Run agent.run with a fake model that makes `calls` [(tool, args)], then presents; -> (tool results, result)."""
+    import json
+    import types
+
+    import agent
+    got = []
+
+    class Msg:
+        content, model, usage = [], "fake", types.SimpleNamespace(input_tokens=1, output_tokens=1)
+
+    class Runner:
+        def __init__(self, tools, **k):
+            self.tools = {(getattr(t, "name", None) or getattr(t, "__name__", None)): t for t in tools}
+
+        def __iter__(self):
+            for name, args in calls:
+                t = self.tools[name]
+                out = t.call(args) if hasattr(t, "call") else t(**args)
+                if name != "present_recommendations":
+                    got.append(json.loads(out))
+                yield Msg()
+
+    monkeypatch.setattr(agent.anthropic, "Anthropic", lambda: types.SimpleNamespace(beta=types.SimpleNamespace(
+        messages=types.SimpleNamespace(tool_runner=lambda **k: Runner(**k)))), raising=False)
+    monkeypatch.setattr(xano, "market_benchmarks", lambda *a, **k: {})
+    res, _ = agent.run("tok", user or {"id": 3, "Wedding_Location_Updated": ["Texas"], "Wedding_Guest_Count": 100,
+                                       "favorited_vendors": []}, True, [{"role": "user", "content": "hi"}],
+                       prior_vendor_ids=prior)
+    return got, res
+
+
+@pytest.fixture
+def priced(db, monkeypatch):
+    """Each vendor's peak rental is 1000 x its number; each off-peak rental 500 x its number."""
+    asked = []
+
+    def pricing(token, vid, paid):
+        asked.append(vid)
+        n = int(vid[1:])
+        return {"vendor_id": vid, "headline": "H", "guest_minimum": 0, "verdict": "", "lines": [], "source_note": "",
+                "cost_inputs": {"who": vid, "space": "Ballroom", "rental": 1000 * n}, "access_reason": "forever"}
+
+    import estimate
+    monkeypatch.setattr(xano, "venue_pricing", pricing)
+    monkeypatch.setattr(estimate, "off_peak_override", lambda d, space: {"who": d["vendor_id"]})
+    monkeypatch.setattr(estimate, "compute", lambda inp, g, o=None: {
+        "total_before_tax_and_gratuity": inp["rental"], "per_guest": 10, "guests": g, "estimated_lines": [], "peak_of": inp["who"], "off_peak_of": (o or {}).get("who")})
+    return asked
+
+
+PRESENT = ("present_recommendations", {"message": "m", "vendor_ids": [], "reasons": [], "chips": []})
+
+
+def _present(ids):
+    return ("present_recommendations", {"message": "m", "vendor_ids": ids, "reasons": [""] * len(ids), "chips": []})
+
+
+def test_estimate_cost_never_mixes_the_two_listings(priced, monkeypatch):
+    got, _ = _agent(monkeypatch, [("estimate_cost", {"vendor_id": "V2", "off_peak": True}),
+                                  ("estimate_cost", {"vendor_id": "V2"}), PRESENT], prior=["V2"])
+    assert (got[0]["peak_of"], got[0]["off_peak_of"]) == ("V1", "V1")
+    assert got[1]["peak_of"] == "V1" and "V2" not in priced
+
+
+def test_estimate_cost_stale_search_result_still_not_mixed(priced, monkeypatch):
+    # the search index still lists the duplicate (sync lag), so it is in `seen`, not `prior`
+    monkeypatch.setattr(xano, "search_venues", lambda *a, **k: {"total_matches": 1, "venues": [
+        dict(xano.card_from_row(_row(2, "Dupe Hall")), food_minimum=0, at_a_glance=None)]})
+    got, _ = _agent(monkeypatch, [("search_venues", {"states": ["Texas"]}),
+                                  ("estimate_cost", {"vendor_id": "V2", "off_peak": True}), PRESENT])
+    assert (got[-1]["peak_of"], got[-1]["off_peak_of"]) == ("V1", "V1")
+
+
+def test_estimate_cost_unmerged_unchanged(priced, monkeypatch):
+    got, _ = _agent(monkeypatch, [("estimate_cost", {"vendor_id": "V3", "off_peak": True}), PRESENT], prior=["V3"])
+    assert (got[0]["peak_of"], got[0]["off_peak_of"]) == ("V3", "V3") and set(priced) == {"V3"}
+
+
+def test_duplicate_and_kept_vendor_present_as_one_card(priced, monkeypatch):
+    # presented twice: the first is handed back as a repeat (guard), the second stands
+    for ids in (["V2", "V1", "V3"], ["V1", "V2", "V3"]):
+        _, res = _agent(monkeypatch, [_present(ids)] * 2, prior=["V1", "V2", "V3"])
+        assert sorted(c["vendor_id"] for c in res["cards"]) == ["V1", "V3"], ids
+
+
+def test_saved_list_naming_both_gives_one(priced, monkeypatch):
+    user = {"id": 3, "Wedding_Location_Updated": ["Texas"], "Wedding_Guest_Count": 100,
+            "favorited_vendors": ["V2", "V3", "V1"]}
+    got, _ = _agent(monkeypatch, [("saved_venues", {}), PRESENT], user=user)
+    assert [r["vendor_id"] for r in got[0]["saved"]] == ["V1", "V3"]
+
+
+def test_unique_cards_leaves_distinct_and_idless_cards_alone():
+    cards = [{"vendor_id": "V1"}, {"vendor_id": "V3"}, {}, {}]
+    assert xano.unique_cards(cards) == cards and xano.unique_cards(cards + [{"vendor_id": "V1", "n": 2}]) == cards
+    import cost_tools
+    assert cost_tools._unique(cards + [{"vendor_id": "V1", "n": 2}]) == cards

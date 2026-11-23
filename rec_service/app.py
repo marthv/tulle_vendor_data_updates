@@ -2456,7 +2456,7 @@ def _wedding_view(token, user, packages=None):
     pk = xano.user_packages(token, user["id"]) if packages is None else packages
     ids = xano.saved_vendor_ids(user)
     with ThreadPoolExecutor(max_workers=8) as ex:
-        cards = [c for c in ex.map(xano.cached_vendor_card, ids) if c]
+        cards = xano.unique_cards([c for c in ex.map(xano.cached_vendor_card, ids) if c])
     return wedding.view(user, pk, cards, show_prices=access)
 
 

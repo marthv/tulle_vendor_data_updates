@@ -385,7 +385,7 @@ def plan_rows(token, user, selected_only=False):
             p = dict(p, total_cost=0, Balance_Paid=0, Balance_Left=0, _mcp_hidden=True)
             hidden_ids.add(p["id"])
         safe.append(p)
-    return safe, hide, [cards[v] for v in saved if v in cards], hidden_ids
+    return safe, hide, cost_tools._unique([cards[v] for v in saved if v in cards]), hidden_ids
 
 
 # ---------------------------------------------------------------- the five tools (plain functions; build() wraps them)
@@ -452,8 +452,11 @@ def list_saved_vendors(authorization, who=None):
         cards = []
         if ids:
             with ThreadPoolExecutor(max_workers=8) as ex:
-                cards = [c for c in ex.map(lambda v: cost_tools._safe(xano.vendor_card, v), ids) if c]
-        return {"saved_count": len(ids), "vendors": [public_card(c) for c in cards], "note": PRICE_NOTE}
+                found = [c for c in ex.map(lambda v: cost_tools._safe(xano.vendor_card, v), ids) if c]
+                cards = cost_tools._unique(found)
+        else:
+            found = []
+        return {"saved_count": len(ids) - (len(found) - len(cards)), "vendors": [public_card(c) for c in cards], "note": PRICE_NOTE}
     return _run("list_saved_vendors", authorization, go, who)
 
 

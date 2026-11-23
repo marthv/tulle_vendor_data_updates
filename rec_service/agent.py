@@ -1207,6 +1207,16 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
     def fetch_pricing(vid):
         return xano.cached_venue_pricing(token, vid, paid and not light, user=user, stats=pricing_stats)
 
+    def kept_id(vid):
+        """A vendor shown in an earlier answer may have been merged since: the kept vendor's id (one cached card read).
+        Vendors from this request's own searches are used as they are."""
+        if vid in seen or vid not in prior:
+            return vid
+        try:
+            return (xano.cached_vendor_card(vid, prefetch_stats) or {}).get("vendor_id") or vid
+        except Exception:
+            return vid
+
     def raw_pricing_or_none(vid):
         if vid in pricing_cache:
             return pricing_cache[vid]
@@ -1740,11 +1750,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         Args:
             vendor_id: a vendor_id returned by search_venues.
         """
-        if vendor_id not in seen and vendor_id in prior:   # shown in an earlier answer: it may have been merged since
-            try:
-                vendor_id = (xano.cached_vendor_card(vendor_id, prefetch_stats) or {}).get("vendor_id") or vendor_id
-            except Exception:
-                pass
+        vendor_id = kept_id(vendor_id)
         p = fetch_pricing(vendor_id)
         pricing_cache[vendor_id] = p
         return _ev(dict(shape(p), headline=p.get("headline"), source_note=p.get("source_note")))
@@ -1811,14 +1817,19 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         """
         if vendor_id not in seen and vendor_id not in prior:
             return _ev({"error": "unknown vendor_id - search for the venue first"})
+        vendor_id = kept_id(vendor_id)
         p = raw_pricing_or_none(vendor_id)
+        details = xano.venue_details(vendor_id, with_amounts=True) if off_peak and (p or {}).get("cost_inputs") else None
+        kept = (details or {}).get("vendor_id") or vendor_id
+        if kept != vendor_id:   # merged (a stale search result): never one listing's peak with the other's off-peak
+            p = raw_pricing_or_none(kept)
         inp = (p or {}).get("cost_inputs")
         if not inp:
             return _ev({"error": "no pricing breakdown for this venue"})
         g = int(guests or 0) or guests_default
         override = None
         if off_peak:
-            override = estimate.off_peak_override(xano.venue_details(vendor_id, with_amounts=True), inp.get("space"))
+            override = estimate.off_peak_override(details, inp.get("space"))
             if not override:
                 return _ev({"off_peak": "this venue's PDF lists no cheapest-Saturday prices",
                                    "peak": estimate.compute(inp, g)})
@@ -2072,7 +2083,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         except Exception:
             benches = []
     try:
-        saved = saved_f.result()
+        saved = xano.unique_cards(saved_f.result())
     except Exception:
         saved = []
     saved_cards_holder["cards"] = saved

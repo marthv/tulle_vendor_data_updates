@@ -295,10 +295,19 @@ def _main_constants(path):
     for node in ast.parse(src).body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             try:
-                out[node.targets[0].id] = ast.literal_eval(node.value)
+                out[node.targets[0].id] = _const(node.value, out)
             except Exception:
                 pass
     return out
+
+
+def _const(node, names):
+    """literal_eval that also follows `"..." + NAME + "..."` (SYSTEM has spliced LADDER_RULE in since 05dcfa1)."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _const(node.left, names) + _const(node.right, names)
+    if isinstance(node, ast.Name):
+        return names[node.id]
+    return ast.literal_eval(node)
 
 
 PROMPT_EDITS_2026_10_31 = [
@@ -322,8 +331,9 @@ def test_flag_off_prompt_and_chips_identical_to_origin_main():
     for old_t, new_t in PROMPT_EDITS_2026_10_31:
         main_system = main_system.replace(old_t, new_t)
     # 2026-11-02 (owner: 'there should ALWAYS be another step'): the next-step ladder, spliced in by name.
-    main_system = main_system.replace("- Warm, specific, confident, brief.",
-                                      agent.LADDER_RULE + "- Warm, specific, confident, brief.", 1)
+    if agent.LADDER_RULE not in main_system:   # no-op once main carries it
+        main_system = main_system.replace("- Warm, specific, confident, brief.",
+                                          agent.LADDER_RULE + "- Warm, specific, confident, brief.", 1)
     assert agent.SYSTEM == main_system
     assert free_mode.RULES == f["RULES"]
     assert free_mode.STARTER_CHIPS == f["STARTER_CHIPS"] and free_mode.TOPUPS == f["TOPUPS"]

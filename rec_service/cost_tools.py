@@ -376,6 +376,7 @@ def run_tool(name, args, token, user, *, access, xano):
     quotes = xano.venue_quotes(token, (user or {}).get("email"))
     with ThreadPoolExecutor(max_workers=8) as pool:   # one table-11 read + one ep230 call per saved vendor
         cards = [c for c in pool.map(lambda v: _safe(xano.vendor_card, v), xano.saved_vendor_ids(user)) if c]
+        cards = _unique(cards)
         venues = [c for c in cards if (c.get("category") or "Venue") not in xano.PE_CATEGORIES]
         priced = []
         if access:   # free users: never fetch PDF pricing at all (free mode shows no vendor prices)
@@ -383,6 +384,14 @@ def run_tool(name, args, token, user, *, access, xano):
             priced = [(c, (p or {}).get("cost_inputs")) for c, p in zip(venues, pays)]
     return compare_venues(user, guests, priced=priced, quotes=quotes, locked=not access, budget=d["budget"],
                           saved_venue_count=len(venues))
+
+
+def _unique(cards):
+    """xano.unique_cards (xano is injected here): a merged duplicate and its kept vendor, both saved, are one venue."""
+    by_id = {}
+    for c in cards:
+        by_id.setdefault(c.get("vendor_id") or id(c), c)
+    return list(by_id.values())
 
 
 def _safe(f, *a):

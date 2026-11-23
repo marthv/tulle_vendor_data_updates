@@ -1055,6 +1055,17 @@ def follow_merge(row):
     return rows[0] if rows else row
 
 
+def unique_cards(cards):
+    """One card per vendor, first kept: a saved list naming both a merged duplicate and its kept vendor gives one."""
+    out, seen = [], set()
+    for c in cards:
+        k = c.get("vendor_id")
+        if k is None or k not in seen:
+            seen.add(k)
+            out.append(c)
+    return out
+
+
 def vendor_card(vendor_id):
     """One vendor as a card (same shape search_venues returns), looked up by Vendor_ID in table 11. A merged duplicate
     gives the KEPT vendor's card (its vendor_id / vendor_idx, not the one asked for)."""
