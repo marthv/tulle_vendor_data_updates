@@ -156,7 +156,7 @@ def test_swap_needs_an_approver_and_live_listings(world):
 def test_one_price_check_at_a_time_and_waiting_fails_to_the_alert(monkeypatch):
     running, peak, lock = [0], [0], threading.Lock()
 
-    def slow(xano, payload, hide):
+    def slow(xano, payload, hide, pv):
         with lock:
             running[0] += 1
             peak[0] = max(peak[0], running[0])
@@ -211,8 +211,11 @@ def test_preview_is_read_only_and_bad_previews_are_ignored(monkeypatch, live):  
 
 
 def test_preview_refusals_are_shown(monkeypatch):
-    monkeypatch.setattr(mc, "preview", lambda p, h: {"refusals": ["a duplicate holds the gold chip"]})
+    monkeypatch.setattr(mc, "preview", lambda p, h: {"refusals": [
+        "a duplicate (V2) holds the gold chip, which a merge never moves; pass allow_gold_loser to merge anyway",
+        "florists with 2 priced quotes after the merge are not merged yet: x", "stale card: x"]})
     monkeypatch.setattr(price_impact, "compute", lambda *a, **k: rec())
     monkeypatch.setattr(price_impact, "blocks", lambda r: {"extra_blocks": [], "confirm_text": None, "alert": False})
     got = REAL_PRICE(FakeXano({}), {"survivor": "V1", "losers": ["V2"]})
-    assert "Xano would refuse" in str(got["extra_blocks"]) and "gold chip" in str(got["extra_blocks"])
+    assert "Xano would refuse" in str(got["extra_blocks"]) and "Florists with" in str(got["extra_blocks"])
+    assert "gold chip" not in str(got["extra_blocks"])          # answered by its own button on the card

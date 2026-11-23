@@ -76,7 +76,9 @@ def test_merge_by_name_posts_the_scan_card_in_thread_dry_run():
     assert b.handle(mention("merge Smith and Co and Smith & Co Events")) == "merge:proposed"
     [p] = store.all()
     assert p["kind"] == "merge" and sorted([p["payload"]["survivor"]] + p["payload"]["losers"]) == ["V10", "V9"]
-    card = json.dumps(slack.of("chat.postMessage")[-1]["blocks"])
+    posted = json.dumps(slack.of("chat.postMessage")[-1]["blocks"])
+    assert "Asked for in Slack" in posted and "tb_approve" not in posted        # 2026-11-22: no Approve until the price is in
+    card = json.dumps(slack.of("chat.update")[-1]["blocks"])
     assert "Asked for in Slack" in card and "Dry run is on" in card and "tb_approve" in card
 
 

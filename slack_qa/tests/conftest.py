@@ -16,3 +16,11 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     for k in ("QA_ENABLED", "QA_DEFAULT_MUTED", "QA_DAILY_USD", "QA_SCAN_THRESHOLD", "QA_CHANNEL_HOURLY"):
         monkeypatch.delenv(k, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _merge_checks_inline(monkeypatch):
+    """The background price queue runs inline, and Re-check doesn't wait out the endpoint's planning time."""
+    import merge_checks
+    monkeypatch.setenv("XANO_MERGE_RECHECK_GRACE", "0")
+    monkeypatch.setattr(merge_checks, "submit", lambda fn: fn())

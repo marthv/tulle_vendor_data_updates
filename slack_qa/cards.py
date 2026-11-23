@@ -29,6 +29,7 @@ ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO, ACTION_RECHECK = "tb_approve", "tb_r
 ACTION_DETAILS = "tb_details"
 # duplicate-PDF choices on a merge card: value = "<proposal id>|<flag number>"; what it hides is read from the store
 ACTION_PDF_HIDE, ACTION_PDF_KEEP, ACTION_PDF_RECHECK = "tb_pdf_hide", "tb_pdf_keep", "tb_pdf_recheck"
+ACTION_ALLOW = "tb_allow"                                      # value = "<proposal id>|hidden / unhide / gold"
 ACTION_PRICE_RECHECK, ACTION_SWAP = "tb_price_recheck", "tb_swap"          # swap value = "<proposal id>|<duplicate n>"
 
 
@@ -115,6 +116,21 @@ def _pdf_blocks(p: dict, status: str) -> list[dict]:
     return out
 
 
+def _allow_blocks(p: dict, status: str) -> list[dict]:
+    """Things the endpoint refuses unless a person says yes on this card (hidden duplicate, unhiding, gold chip)."""
+    if status not in ("pending", "dry_run"):
+        return []
+    import listing_compare
+    pl = p.get("payload") or {}
+    have, out = pl.get("allow") or {}, []
+    for key, text, label in listing_compare.allow_needed(pl):
+        on = bool(have.get(key))
+        out.append(_section(f":hand: *Needs your OK:* {text}\n*Answer: {'yes, OK' if on else 'not answered (the merge is refused)'}*"))
+        out.append({"type": "actions", "block_id": f"tballow:{p['id']}:{key}", "elements": [
+            _btn(ACTION_ALLOW, f"{p['id']}|{key}", "Take back my OK" if on else label)]})
+    return out
+
+
 def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | None = None) -> tuple[str, list[dict]]:
     """(fallback text, blocks) for a proposal dict from proposals.Store. A merge with `plain` text gets the short card
     (3 lines + buttons, no ids or table names); the full record is behind the Details button.
@@ -159,7 +175,7 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
             blocks.append(_section("*Next steps:* " + p["next_steps"]))
     status = p.get("status", "pending")
     if kind == "merge":
-        blocks += _pdf_blocks(p, status) + extra_blocks
+        blocks += _allow_blocks(p, status) + _pdf_blocks(p, status) + extra_blocks
     ask = confirm_dialog(confirm_text) if confirm_text else None
     buttons = []
     waiting = price.get("status") == "computing"           # no Approve until the price answer is back
@@ -197,7 +213,7 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
         buttons.append(_btn(ACTION_DETAILS, p["id"], "Details"))
     if buttons:
         bid = f"tb:{p['id']}"
-        if pdf.get("flags") or price:           # what this card shows (PDF choices, price): a stale click is refused
+        if pdf.get("flags") or price or payload.get("allow"):      # what this card shows: a stale click is refused
             import pdf_dupes
             bid += ":" + pdf_dupes.version(payload) + (":" + str(price.get("stamp")) if price else "")
         blocks.append({"type": "actions", "block_id": bid, "elements": buttons})

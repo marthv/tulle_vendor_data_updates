@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from urllib.parse import parse_qs
 
 import appliers
@@ -21,7 +22,14 @@ from proposals import Store
 log = logging.getLogger("slack_qa.interactions")
 ACTIONS = (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO, cards.ACTION_RECHECK, cards.ACTION_DETAILS,
            cards.ACTION_PDF_HIDE, cards.ACTION_PDF_KEEP, cards.ACTION_PDF_RECHECK, cards.ACTION_PRICE_RECHECK,
-           cards.ACTION_SWAP)
+           cards.ACTION_SWAP, cards.ACTION_ALLOW)
+
+
+def _age(iso) -> float:
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromisoformat(str(iso))).total_seconds()
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def parse_body(body: bytes) -> dict | None:
@@ -100,6 +108,13 @@ class Interactions:
             return self._pdf_recheck(p, user, chan, thread)
         if aid == cards.ACTION_PRICE_RECHECK:
             return self._price(p["id"], user, chan, thread) if p.get("kind") == "merge" else "ignored:price"
+        if aid == cards.ACTION_ALLOW:
+            p2, why = self.store.set_allow(p["id"], flag_n, user)
+            if why:
+                self._ephemeral(chan, user, why, thread)
+                return "noop:allow"
+            self._refresh(p2)
+            return "allow:" + ("on" if p2["payload"]["allow"].get(flag_n) else "off")
         if aid == cards.ACTION_SWAP:
             return self._swap(p, flag_n, user, chan, thread)
         if aid == cards.ACTION_REJECT:
@@ -162,8 +177,8 @@ class Interactions:
             self._ephemeral(chan, user, "The price on this card was updated, so nothing happened. Check it and press "
                                         "Approve again.", thread)
             return "price:stale"
-        self._ephemeral(chan, user, "Checking the price once more before merging (up to a minute)…", thread)
-        new = merge_checks.price(self.xano, pl)
+        self._ephemeral(chan, user, "Checking the price once more, then merging (a few minutes; the card updates)…", thread)
+        new = merge_checks.price(self.xano, pl, pv=old.get("preview"))
         if not merge_checks.moved(old, new):
             return None
         p2, why = self.store.set_price(p["id"], new, only_if=lambda now: merge_checks.current(dict(now, price=new)))
@@ -235,10 +250,15 @@ class Interactions:
         shown = block_id.split(":")[2] if block_id.count(":") >= 2 else ""
         if block_id.startswith("tb:") and shown != pdf_dupes.version(pl):
             self._refresh(p)
-            self._ephemeral(chan, user, "Someone changed a PDF choice on this card, so nothing happened. Check it and "
+            self._ephemeral(chan, user, "Someone changed an answer on this card, so nothing happened. Check it and "
                                         "press Approve again.", thread)
             return "pdf:stale"
-        why = pdf_dupes.recheck_live(self.xano, pl) if "h" in pdf_dupes.version(pl) else None
+        import listing_compare
+        if listing_compare.allow_missing(pl):
+            self._ephemeral(chan, user, "Nothing was merged: this card has a *Needs your OK* question that hasn't been "
+                                        "answered.", thread)
+            return "allow:missing"
+        why = pdf_dupes.recheck_live(self.xano, pl) if pdf_dupes._chosen(pl) else None
         if why:
             self._ephemeral(chan, user, f"Nothing was merged: {why}. Choose *Keep both* for those PDFs, or try again.",
                             thread)
@@ -333,6 +353,12 @@ class Interactions:
             st = {"state": "unknown", "text": f"The check failed ({type(e).__name__})."}
         was_undo = p.get("unknown_from") == "undoing"
         state = st.get("state")
+        if state == "none" and p.get("kind") == "merge" and not was_undo and _age(p.get("decided_at")) < \
+                config.merge_recheck_grace():
+            # the endpoint plans for up to a minute before it records anything, so "none" this soon proves nothing
+            st = {"text": "No merge is recorded yet, but the request may still be starting. Press Re-check in a few "
+                          "minutes."}
+            state = "unknown"
         if state == "applied":
             to = "applied"
         elif state == "partial":
@@ -374,11 +400,16 @@ class Interactions:
         self.slack.update_message(p["channel"], p["ts"], text, blocks)
 
 
-def post_proposal(slack, store: Store, channel: str, p: dict, thread_ts: str | None = None) -> dict:
+def post_proposal(slack, store: Store, channel: str, p: dict, thread_ts: str | None = None, xano=None) -> dict:
     """Post a freshly created proposal's card and remember where it lives. A card that fails to post becomes
     post_failed: never shown, so it neither blocks a later re-proposal nor counts against a daily cap."""
     if p is None:
         return {"ok": False, "error": "duplicate"}
+    pl = p.get("payload") or {}
+    price_later = p.get("kind") == "merge" and bool(pl.get("snapshots")) and not pl.get("price")
+    if price_later:                    # the card goes up without Approve; the price (and ep578's slow preview) follow
+        import merge_checks
+        p = store.set_price(p["id"], merge_checks.computing(pl))[0] or p
     text, blocks = cards.render(p)
     problems = cards.validate(blocks)
     res = {"ok": False, "error": "invalid_blocks"} if problems else \
@@ -387,6 +418,8 @@ def post_proposal(slack, store: Store, channel: str, p: dict, thread_ts: str | N
         log.error("card %s invalid: %s", p["id"], problems)
     if res.get("ok"):
         store.set_message(p["id"], res.get("channel") or channel, res.get("ts"))
+        if price_later:
+            merge_checks.submit(lambda: merge_checks.finish(slack, store, p["id"], xano))
     else:
         store.transition(p["id"], {"pending"}, "post_failed", "bot", result_text=str(res.get("error")))
     return res

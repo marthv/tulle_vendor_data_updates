@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import appliers
 import config
@@ -20,9 +22,37 @@ import pdf_dupes
 log = logging.getLogger("slack_qa.merge_checks")
 
 SECONDS = 35.0             # price_impact's own budget for one card
-WAIT = 120.0               # how long a check waits for the one before it
-PREVIEW_TIMEOUT = 45.0     # measured 18-25+ s on 2026-11-22 (it counts every reference)
+WAIT = 240.0               # how long a check waits for the one before it
+PREVIEW_TIMEOUT = 90.0     # measured 14-65 s live on 2026-11-22 (it counts every reference)
 _ONE = threading.Semaphore(1)
+_QUEUE = ThreadPoolExecutor(1, thread_name_prefix="price-queue")
+
+
+def submit(fn) -> None:
+    """Background queue: one job at a time, with a breath between jobs so a person's click gets in between."""
+    def job():
+        try:
+            fn()
+        except Exception:  # noqa: BLE001
+            log.exception("queued price check failed")
+        time.sleep(2)
+    _QUEUE.submit(job)
+
+
+def finish(slack, store, pid: str, xano=None) -> None:
+    """Compute a posted card's price (with ep578's preview) and redraw the card."""
+    import cards
+    if xano is None:
+        from xano_ro import ReadOnlyXano
+        xano = ReadOnlyXano(cache_ttl=0)
+    p = store.get(pid)
+    if not p or p.get("status") not in ("pending", "dry_run") or current(p["payload"]):
+        return
+    ans = price(xano, p["payload"])
+    p, why = store.set_price(pid, ans, only_if=lambda now: current(dict(now, price=ans)))
+    if p and not why and p.get("channel") and p.get("ts"):
+        text, blocks = cards.render(p)
+        slack.update_message(p["channel"], p["ts"], text, blocks)
 
 
 def _failed(why: str, payload: dict, hide) -> dict:
@@ -49,28 +79,44 @@ def preview(payload: dict, hide: list[str]) -> dict | None:
     return res if res.get("ok") and res.get("status") == "preview" else None
 
 
-def _compute(xano, payload: dict, hide: list[str]) -> dict:
+def slim(pv: dict | None) -> dict | None:
+    """The parts of a preview the card keeps: what the price check needs, the endpoint's refusals and the state it saw.
+    No field values from the listings beyond current_state."""
+    if not pv:
+        return None
+    pick = lambda rows, keys: [{k: r.get(k) for k in keys} for r in rows or [] if isinstance(r, dict)]  # noqa: E731
+    return {"survivor": pv.get("survivor"), "losers": pv.get("losers"), "hide_pdf_ids": pv.get("hide_pdf_ids") or [],
+            "t10_plan": pick(pv.get("t10_plan"), ("row_id", "column", "new")),
+            "t11_plan": pick(pv.get("t11_plan"), ("column", "role")), "rebuild_plan": pv.get("rebuild_plan"),
+            "touches_pricing": pv.get("touches_pricing"), "current_state": pv.get("current_state"),
+            "refusals": [str(x) for x in pv.get("refusals") or []]}
+
+
+def _compute(xano, payload: dict, hide: list[str], pv="fetch") -> dict:
     import price_impact
-    pv = preview(payload, hide)
+    pv = slim(preview(payload, hide)) if pv == "fetch" else pv
     r = price_impact.compute(xano, payload.get("survivor"), list(payload.get("losers") or []), preview=pv,
                              hidden_pdfs=hide, deadline=SECONDS)
     b = price_impact.blocks(r)
     extra = list(b["extra_blocks"])
-    refusals = [str(x).split("; pass allow_")[0] for x in (pv or {}).get("refusals") or [] if not str(x).startswith("stale card")]
+    # refusals a person can answer on the card (hidden / gold / unhide) have their own buttons there
+    refusals = [x for x in (pv or {}).get("refusals") or []
+                if not x.startswith("stale card") and not appliers.ANSWERABLE.search(x)]
     if refusals:
         extra.insert(0, {"type": "section", "text": {"type": "mrkdwn", "text": (
             ":no_entry: *Xano would refuse this merge as it stands:* "
-            + "; ".join(pdf_dupes._esc(x) for x in refusals[:4]))[:2900]}})
+            + " ".join(appliers.plain_refusals("; ".join(refusals))))[:2900]}})
     return {"status": "ok", "alert": bool(r["alert"]), "cant": bool(r["cant"]), "stamp": str(r["stamp"]),
             "after_total": (r.get("after") or {}).get("total"), "hide": sorted(hide),
-            "survivor": payload.get("survivor"), "refusals": refusals, "seconds": r.get("seconds"),
+            "survivor": payload.get("survivor"), "refusals": refusals, "seconds": r.get("seconds"), "preview": pv,
             # belt and braces: an alert always has a confirm text
             "confirm_text": b["confirm_text"] or ("The price couples see changes. Merge anyway?" if r["alert"] else None),
             "extra_blocks": extra}
 
 
-def price(xano, payload: dict, seconds: float = SECONDS, wait: float = WAIT) -> dict:
-    """Never raises and never hangs. Always an alert when it can't be sure."""
+def price(xano, payload: dict, seconds: float = SECONDS, wait: float = WAIT, pv="fetch") -> dict:
+    """Never raises and never hangs. Always an alert when it can't be sure. pv: "fetch" asks ep578 for a preview (slow:
+    card building only); the Approve click passes the one the card was built with and re-reads the price rows."""
     try:
         hide = pdf_dupes.hide_ids(payload)
     except (ValueError, KeyError) as e:
@@ -83,7 +129,7 @@ def price(xano, payload: dict, seconds: float = SECONDS, wait: float = WAIT) -> 
 
     def run():
         try:
-            box["r"] = _compute(xano, payload, hide)
+            box["r"] = _compute(xano, payload, hide, pv)
         except Exception as e:  # noqa: BLE001
             log.warning("price check failed: %s", type(e).__name__)
             box["r"] = _failed("the check failed", payload, hide)

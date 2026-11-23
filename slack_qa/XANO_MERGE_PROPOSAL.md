@@ -215,6 +215,7 @@ the element format of `user.favorited_vendors` (Vendor_ID text assumed) on a tes
 | table | column | handling |
 |---|---|---|
 | 1 user | last_viewed_vendor_name | updated to the survivor's name when last_viewed_vendor_id is repointed |
+| 1 user | pricing_viewed_ctx.vendor_name | follows vendor_id in the same object when it equals the loser's name |
 | 90 rec_wedding_plan | vendor_name | updated with vendor_id; free-text items (vendor_id empty) are name-only |
 | 33 Packages | vendor_name | manual packages have no vendor_id: name-only, left as typed |
 | 31 Venue Calculator Entries | venue_name | updated with vendor_id when present |

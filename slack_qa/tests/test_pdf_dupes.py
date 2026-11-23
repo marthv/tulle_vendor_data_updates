@@ -493,9 +493,8 @@ def test_unsafe_hide_list_sends_nothing(live, monkeypatch):
 
 
 # --- endpoint refusals, running ---------------------------------------------------------------------------------------
-@pytest.mark.parametrize("msg,want", [("Stale card: Address changed since the card", "fresh card"),
-                                      ("A loser is hidden (Validated_Data 0)", "why it was hidden"),
-                                      ("Loser has the gold chip", "gold chip")])
+@pytest.mark.parametrize("msg,want", [("Refused: stale card: V2 Address changed since the card was made", "fresh card"),
+                                      ("Something new", "Xano refused: Something new")])
 def test_refusals_read_clearly(live, monkeypatch, msg, want):
     store, slack, it, x, p = make(EXACT_ROWS)
     Sent(monkeypatch, {"code": "ERROR_FATAL", "message": msg}, status=400)

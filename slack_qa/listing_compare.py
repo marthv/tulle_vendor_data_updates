@@ -171,6 +171,32 @@ def newer_primary(payload: dict) -> tuple[str, str] | None:
     return (str(keep) if keep else "no year", str(old)) if old and old > keep else None
 
 
+def allow_needed(payload: dict) -> list[tuple[str, str, str]]:
+    """(key, what the card says, button) for each thing the merge endpoint refuses unless a person says yes. Never on by
+    default; keys match payload["allow"] (hidden / unhide / gold)."""
+    rows = rows_of(payload)
+    if len(rows) < 2:
+        return []
+    s, losers = rows[0], rows[1:]
+    out = []
+    if visible(s) and not all(visible(r) for r in losers):
+        out.append(("hidden", "A duplicate is hidden from search, and merging would put its PDFs and prices on a visible "
+                    "page. Find out why it was hidden (wrong PDFs? the venue asked?) first.", "I checked: merge it anyway"))
+    if not visible(s) and any(visible(r) for r in losers):
+        out.append(("unhide", "The kept listing is hidden from search, and this merge would make it visible. Find out why "
+                    "it was hidden first, or keep the other listing.", "I checked: make it visible"))
+    if any(gold(r) for r in losers):
+        out.append(("gold", "The duplicate has the gold chip" + (", and so does the kept listing, so the page keeps its chip."
+                    if gold(s) else " and the kept listing doesn't. A merge never moves a gold chip, so the page would lose "
+                    "it; consider keeping the other listing."), "OK to merge the gold-chip listing"))
+    return out
+
+
+def allow_missing(payload: dict) -> list[str]:
+    have = payload.get("allow") or {}
+    return [k for k, _t, _b in allow_needed(payload) if not have.get(k)]
+
+
 def esc(t) -> str:
     return str(t if t is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -236,6 +262,17 @@ def expected_state(payload: dict) -> dict:
     {Vendor_ID: {Name, Address, Category, Place_ID, Validated_Data, pdf_ids}}, text trimmed, blank = "". pdf_ids covers
     hidden PDFs too ("#<row id>" when a row has no PDF_ID). {} when the PDF list couldn't be read: Approve then runs the
     check again instead of sending (interactions._pdf_gate), so a merge never goes out without this."""
+    mine = _shown_state(payload)
+    # the endpoint's own copy from the preview the card was built with, when it says the same as the card; if it doesn't,
+    # the card is already out of date and sending what the card showed makes the endpoint refuse
+    pv = ((payload.get("price") or {}).get("preview") or {}).get("current_state")
+    out = dict(pv) if mine and pv == mine else mine
+    if out and (payload.get("allow") or {}).get("unhide"):
+        out = dict(out, unhide_survivor=True)
+    return out
+
+
+def _shown_state(payload: dict) -> dict:
     out = {}
     snaps = payload.get("snapshots") or {}
     for vid in _order(payload):

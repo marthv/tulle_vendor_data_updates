@@ -97,6 +97,7 @@ SKIP_BY_DEFAULT = {1, 43, 72}   # users (60k+), every Planner message, the audit
 # details view and in XANO_MERGE_PROPOSAL.md; none is rewritten automatically.
 NAME_KEYED = [
     ("1 user", "last_viewed_vendor_name", "updated to the survivor's name when last_viewed_vendor_id is repointed"),
+    ("1 user", "pricing_viewed_ctx.vendor_name", "follows vendor_id in the same object when it equals the loser's name"),
     ("90 rec_wedding_plan", "vendor_name", "updated with vendor_id; free-text items (vendor_id empty) are name-only"),
     ("33 Packages", "vendor_name", "manual packages have no vendor_id: name-only, left as typed"),
     ("31 Venue Calculator Entries", "venue_name", "updated with vendor_id when present"),
@@ -765,7 +766,7 @@ def details_text(p: dict) -> list[str]:
 
 
 def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", survivor_vid: str = "",
-                   why_text: str = "", with_price: bool = True) -> dict:
+                   why_text: str = "") -> dict:
     import listing_compare
     members = listing_compare.fresh(getattr(refs, "xano", None), [byid[i] for i in group["ids"]])
     pdfs = refs.pdfs()
@@ -790,9 +791,6 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", 
     snapshots = {m.get("Vendor_ID"): safe_snapshot(m) for m in members}
     import pdf_dupes                       # read-only, time-bounded, never raises: a failure shows as "unavailable"
     pdf_check = pdf_dupes.safe_check(getattr(refs, "xano", None), sv, lv)
-    import merge_checks                    # one at a time across the process; failure = the "couldn't compute" alert
-    price = merge_checks.price(getattr(refs, "xano", None),
-                               {"survivor": sv, "losers": lv, "pdf_check": pdf_check}) if with_price else None
     nxt = "Approve to merge, or Reject if they're different businesses (I won't suggest this pair again)."
     title = f"{_esc(survivor.get('Name'))} listed {len(members)} times"
     return {"title": title[:140], "what": plain["headline"], "why": plain["why"], "touches": "",
@@ -800,8 +798,7 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", 
             "payload": {"survivor": sv, "losers": lv, "counts": counts, "total": sum(counts.values()),
                         "row_ids": {m.get("Vendor_ID"): m["id"] for m in members}, "rules": group.get("rules") or [],
                         "why_survivor": why_s, "snapshots": snapshots, "tables": tables, "counters": counters,
-                        "visibility": visibility_plan(survivor, losers), "pdf_check": pdf_check,
-                        **({"price": price} if price else {})},
+                        "visibility": visibility_plan(survivor, losers), "pdf_check": pdf_check},
             "key": group_key([sv] + lv)}
 
 
@@ -832,7 +829,7 @@ def rebuild_for_swap(xano, vids: list[str], keep: str, payload: dict, plain: dic
         raise RuntimeError("listings changed")
     byid = {r["id"]: {k: v for k, v in r.items() if k not in PERSONAL_FIELDS} for r in rows.values()}
     return build_proposal({"ids": sorted(byid, key=int), "rules": payload.get("rules") or []}, byid,
-                          _SwapRefs(xano, vids), survivor_vid=keep, why_text=plain.get("why") or "", with_price=False)
+                          _SwapRefs(xano, vids), survivor_vid=keep, why_text=plain.get("why") or "")
 
 
 # --- the scan -----------------------------------------------------------------------------------------------

@@ -57,17 +57,48 @@ def _out(ok, text, dry=False, unknown=False, result=None):
 
 # --- merge ---------------------------------------------------------------------------------------------
 RUNNING_TEXT = "The merge is running in Xano right now. Wait a minute, then press Re-check."
-REFUSALS = (          # (what the endpoint says, what the card says)
-    (re.compile(r"stale|changed since|expected_state|no longer match", re.I),
-     "One of these listings (or its PDFs) changed after this card was posted, so Xano refused. Nothing was changed. Ask "
-     "for a fresh card."),
-    (re.compile(r"hidden", re.I),
-     "One of these listings is hidden from search, so Xano refused. Nothing was changed. Find out why it was hidden "
-     "first (wrong PDFs? the venue asked?)."),
-    (re.compile(r"gold", re.I),
-     "The listing that would be hidden has the gold chip and the kept one doesn't, so Xano refused. Nothing was changed. "
-     "Ask the owner which one to keep."),
+# Every refusal ep578 v2 can give (live XanoScript read 2026-11-22) -> what the card says. tests/test_ep578_contract.py
+# holds one line per endpoint message. "Nothing was changed" is added by _refusal.
+REFUSALS = (
+    (r"stale card", "One of these listings, or its PDFs, changed after this card was posted. Ask for a fresh card."),
+    (r"a hidden listing \(", "The duplicate is hidden from search. Find out why, then answer the question on a fresh card."),
+    (r"the survivor is hidden", "The kept listing is hidden from search and the merge would make it visible. Find out why, "
+                                "then answer the question on a fresh card."),
+    (r"holds the gold chip", "The duplicate has the gold chip, and a merge never moves one. That is asked even when both "
+                             "have it. Answer the question on a fresh card, or keep the other listing."),
+    (r"florists with", "Florists with more than one price quote can't be merged yet: their summary would use only one quote."),
+    (r"hide_pdf_ids has a repeated", "The same PDF was listed twice to hide. Ask for a fresh card."),
+    (r"does not belong to the survivor", "A PDF to hide isn't on these listings any more. Ask for a fresh card."),
+    (r"on more than one row", "A PDF to hide shares its id with another file, so Xano can't tell which. Choose Keep both on "
+                              "a fresh card."),
+    (r"no visible PDF", "Hiding these PDFs would leave the listing with none. Choose Keep both on a fresh card."),
+    (r"^Drift", "Many more rows point at the duplicate than the card showed. Ask for a fresh card."),
+    (r"Every loser must have", "The listings are in different categories."),
+    (r"Survivor vendor not found", "The kept listing doesn't exist any more."),
+    (r"A loser vendor was not found", "The duplicate listing doesn't exist any more."),
+    (r"survivor was itself merged", "The kept listing was already merged into another one. Merge into that one instead."),
+    (r"A loser is already merged", "The duplicate was already merged into another listing."),
+    (r"merge chains are refused", "Another listing was already merged into the duplicate, so it can't be merged again."),
+    (r"stopped part-way; finish or undo", "Another merge of one of these listings stopped part-way. Finish or undo that "
+                                          "one first."),
+    (r"do not match the merge recorded", "Xano has a different merge recorded for this card. Ask the owner before doing "
+                                         "anything else."),
+    (r"survivor has since been merged", "The kept listing has since been merged into another one. Undo that later merge "
+                                        "first."),
+    (r"Need survivor_vendor_id", "The card is missing a listing, or has the same one twice. Ask for a fresh card."),
+    (r"proposal_id is required|mode must be", "The request was malformed. Ask the owner."),
+    (r"Invalid or missing secret", "Xano didn't accept the bot's key. Ask the owner."),
 )
+REFUSALS = tuple((re.compile(rx, re.I), text) for rx, text in REFUSALS)
+ANSWERABLE = re.compile(r"a hidden listing \(|the survivor is hidden|holds the gold chip", re.I)
+# the endpoint knows more about this merge than the card does: never report a plain failure, ask mode=status (Re-check)
+ASK_STATUS = re.compile(r"already applied|was undone \(or is mid-undo\)|already undone|changed state|No merge exists|"
+                        r"was merged while this request waited", re.I)
+
+
+def plain_refusals(said: str) -> list[str]:
+    said = re.sub(r"^Refused: ", "", said)
+    return list(dict.fromkeys(text for rx, text in REFUSALS if rx.search(said)))
 
 
 def _is_running(res: dict) -> bool:
@@ -77,20 +108,20 @@ def _is_running(res: dict) -> bool:
                                                 f"{res.get('code', '')} {res.get('error', '')}", re.I))
 
 
-def _warnings(res: dict) -> str:
+def _warnings(res: dict, undo: bool = False) -> str:
     """QA 2026-11-22: a rebuild problem or a straggler must not read as a clean "Applied"."""
     w = res.get("warnings") or []
     if not w:
         return ""
     said = "; ".join(str(x.get("detail") or x.get("code")) if isinstance(x, dict) else str(x) for x in w[:3])
-    return f" :warning: The rows moved, but Xano reported a problem: {esc(said[:300])}."
+    did = "Everything was put back" if undo else "The rows moved"
+    return f" :warning: {did}, but Xano reported a problem: {esc(said[:300])}."
 
 
 def _refusal(res: dict) -> str:
-    said = f"{res.get('code', '')} {res.get('error', '')}"
-    for rx, text in REFUSALS:
-        if rx.search(said):
-            return f"{text} (Xano: {esc(res.get('error'))})"
+    plain = plain_refusals(str(res.get("error") or ""))
+    if plain:
+        return "Xano refused, so nothing was changed. " + " ".join(plain)
     return f"Xano refused: {esc(res.get('error'))}. Nothing was changed."
 
 
@@ -125,6 +156,11 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
         state = listing_compare.expected_state(payload)
         if state:
             body["expected_state"] = state
+        allow = payload.get("allow") or {}    # only an approver's explicit OK on this card
+        if allow.get("hidden"):
+            body["allow_hidden_loser"] = True
+        if allow.get("gold"):
+            body["allow_gold_loser"] = True
     if hide:
         body["hide_pdf_ids"] = hide           # t10 PDF_IDs; the endpoint backs Show_PDF up and undo restores it
     res = _post(config.merge_url(), body, timeout=config.merge_timeout())
@@ -133,6 +169,8 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
                     unknown=True)
     if _is_running(res):                       # 'unknown' on the card = Re-check only: never Resume or Undo mid-run
         return _out(False, RUNNING_TEXT, unknown=True)
+    if not res.get("ok") and ASK_STATUS.search(str(res.get("error") or "")):
+        return _out(False, f"Xano says: {esc(res.get('error'))}", unknown=True)
     if not res.get("ok"):
         return _out(False, _refusal(res))
     if res.get("status") == "partial" and mode != "undo":
@@ -151,7 +189,7 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
     conflicts = res.get("conflicts") or res.get("undo_conflicts") or []
     note = (f" {len(conflicts)} value{'s' if len(conflicts) != 1 else ''} had been changed since and "
             "{} left as they are.".format("was" if len(conflicts) == 1 else "were")) if conflicts else ""
-    note += _warnings(res)
+    note += _warnings(res, undo=mode == "undo")
     if hide:                                  # never claim PDFs were hidden unless the endpoint says so
         done = res.get("hide_pdf_ids")
         stuck = any("Show_PDF" in str(c.get("column")) for c in conflicts if isinstance(c, dict))

@@ -216,6 +216,23 @@ class Store:
             self._save()
             return json.loads(json.dumps(self._data["proposals"][pid])), ""
 
+    def set_allow(self, pid: str, key: str, user: str) -> tuple[dict | None, str]:
+        """Toggle one explicit approver OK (hidden / unhide / gold) while the merge hasn't run. Logged."""
+        import listing_compare
+        with self._lock:
+            p = self._data["proposals"].get(pid)
+            if not p or p.get("status") not in ("pending", "dry_run"):
+                return (json.loads(json.dumps(p)) if p else None), "That card has already been decided."
+            if key not in {k for k, _t, _b in listing_compare.allow_needed(p.get("payload") or {})}:
+                return json.loads(json.dumps(p)), "That isn't needed on this card."
+            allow = p["payload"].setdefault("allow", {})
+            allow[key] = not allow.get(key)
+            on = allow[key]
+            self._save()
+            out = json.loads(json.dumps(self._data["proposals"][pid]))
+        self._log({"event": "allow", "id": pid, "user": user, "key": key, "on": on})
+        return out, ""
+
     def replace_merge(self, pid: str, pr: dict, user: str, was_survivor: str) -> tuple[dict | None, str]:
         """Swap which listing is kept: the rebuilt proposal replaces the old one. Pending cards only, and only if nobody
         swapped it meanwhile. Logged."""

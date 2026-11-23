@@ -501,7 +501,10 @@ def safe_check(xano, survivor: str, losers: list[str], drive="auto", seconds: fl
 # --- choices and the merge body ---------------------------------------------------------------------------------
 def version(payload: dict) -> str:
     """The choices as the approver sees them; goes in the buttons' block_id so a click on a stale card is refused."""
-    return "".join("h" if f.get("choice") == "hide" else "k" for f in (payload.get("pdf_check") or {}).get("flags") or [])
+    pdfs = "".join("h" if f.get("choice") == "hide" else "k"
+                   for f in (payload.get("pdf_check") or {}).get("flags") or [])
+    allow = "".join(sorted(k[0] for k, v in (payload.get("allow") or {}).items() if v))
+    return pdfs + (f".{allow}" if allow else "")
 
 
 def _chosen(payload: dict) -> list[dict]:
