@@ -1645,14 +1645,31 @@ def _page_venue(user, text, fresh):
     return pat.sub(sub, text, count=1), card
 
 
+_ob_lock = threading.Lock()
+_ob_claimed = set()   # user ids whose free question is running or answered (the usage row lands only after the answer)
+
+
 def _onboarding_free(user, body):
-    """The sign-up flow's question is free once: only while this couple has no question on record."""
+    """The sign-up flow's question is free once: only while this couple has no question on record, one at a time."""
     if not (config.ONBOARDING and body.onboarding):
         return False
+    uid = user["id"]
+    with _ob_lock:
+        if uid in _ob_claimed:
+            return False
+        _ob_claimed.add(uid)
     try:
-        return not any((r.get("kind") or "refine") == "refine" for r in xano.user_usage(user["id"]))
+        free = not any((r.get("kind") or "refine") == "refine" for r in xano.user_usage(uid))
     except Exception:
-        return False
+        free = False
+    if not free:
+        _ob_release(uid)
+    return free
+
+
+def _ob_release(uid):
+    with _ob_lock:
+        _ob_claimed.discard(uid)
 
 
 def _refine(token, user, body, background, tracker):
@@ -1697,7 +1714,7 @@ def _refine(token, user, body, background, tracker):
     # "the three venues above" with nothing above. The current page always sends its chat_id mid-conversation (also
     # after a reload, which resumes the chat), so no chat_id + no client-held history = a NEW conversation. Only the
     # legacy shape (prior turns in `messages`) still continues the recent chat.
-    chat = _recent_chat(user["id"]) if len(body.messages or []) > 1 else None
+    chat = _recent_chat(user["id"]) if len(body.messages or []) > 1 and not (config.ONBOARDING and body.onboarding) else None
     if chat:
         return _refine_in_chat(token, user, chat, text, background, tracker, quote=body.quote, fit_chip=body.ctx_arm == "context")
     # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard
@@ -1707,7 +1724,15 @@ def _refine(token, user, body, background, tracker):
     if out is None:
         if body.quote:
             msgs = msgs[:-1] + [{"role": "user", "content": text + quote_block(body.quote, str(body.quote.get("_file_name") or ""))}]
-        out = _run_guarded("refine", token, user, msgs, tracker=tracker, waive_free=_onboarding_free(user, body))
+        free = _onboarding_free(user, body)
+        try:
+            out = _run_guarded("refine", token, user, msgs, tracker=tracker, waive_free=free)
+        except BaseException:
+            if free:   # no answer: the free question is still theirs
+                _ob_release(user["id"])
+            raise
+        if free and out.get("stopped"):
+            _ob_release(user["id"])
     if out.get("stopped"):
         return out           # no chat created, nothing saved
     out["chips"] = ensure_chips(out.get("chips"))

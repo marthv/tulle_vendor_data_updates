@@ -14,6 +14,13 @@ import config  # noqa: E402
 import xano  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def fresh():
+    app._ob_claimed.clear()
+    yield
+    app._ob_claimed.clear()
+
+
 def body(**kw):
     return app.RefineBody(message="what is included?", **kw)
 
@@ -56,3 +63,30 @@ def test_the_gate_gets_it(monkeypatch):
     with pytest.raises(RuntimeError):
         app._refine("t", {"id": 5}, b, None, None)
     assert seen["waive_free"] is True and [m["role"] for m in seen["msgs"]] == ["user", "assistant", "user"]
+    assert app._ob_claimed == set()      # it failed: the free question is still theirs
+
+
+def test_parallel_calls_get_one(monkeypatch):
+    import concurrent.futures as cf
+    monkeypatch.setattr(config, "ONBOARDING", True)
+    monkeypatch.setattr(xano, "user_usage", lambda uid: [])
+    with cf.ThreadPoolExecutor(20) as ex:
+        got = list(ex.map(lambda _: app._onboarding_free({"id": 5}, body(onboarding=True)), range(20)))
+    assert got.count(True) == 1
+    assert app._onboarding_free({"id": 6}, body(onboarding=True)) is True   # per couple
+
+
+def test_a_recent_chat_does_not_take_the_question(monkeypatch):
+    monkeypatch.setattr(config, "ONBOARDING", True)
+    monkeypatch.setattr(xano, "user_usage", lambda uid: [])
+    monkeypatch.setattr(app, "_lookup_fast", lambda *a, **k: None)
+    monkeypatch.setattr(app, "_recent_chat", lambda uid: {"id": 9})
+    monkeypatch.setattr(app, "_refine_in_chat", lambda *a, **k: pytest.fail("went into the old chat"))
+
+    def guarded(kind, token, user, msgs, **kw):
+        assert kw["waive_free"] is True
+        raise RuntimeError("stop here")
+    monkeypatch.setattr(app, "_run_guarded", guarded)
+    msgs = [{"role": "user", "content": "Show me venues"}, {"role": "assistant", "content": "Alpha"}]
+    with pytest.raises(RuntimeError):
+        app._refine("t", {"id": 5}, body(onboarding=True, messages=msgs), None, None)
