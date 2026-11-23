@@ -29,7 +29,10 @@ def body(**kw):
     (True, True, [], True),
     (True, True, [{"kind": "opening"}, {"kind": "tool_estimate_cost"}], True),
     (True, True, [{"kind": "refine", "status": "ok"}], False),       # once per account
-    (True, True, [{"kind": "refine", "status": "error"}], False),
+    (True, True, [{"kind": "refine", "status": "error"}], True),        # it failed: still theirs
+    (True, True, [{"kind": "refine", "status": "error"}] * 3, False),   # 3 tries at most
+    (True, True, [{"kind": "refine", "status": "stopped"}], False),
+    (True, True, [{"kind": "refine"}], False),
     (True, False, [], False),                                         # an ordinary question is counted
     (False, True, [], False),                                         # flag off
 ])

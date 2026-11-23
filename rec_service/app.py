@@ -1650,7 +1650,8 @@ _ob_claimed = set()   # user ids whose free question is running or answered (the
 
 
 def _onboarding_free(user, body):
-    """The sign-up flow's question is free once: only while this couple has no question on record, one at a time."""
+    """The sign-up flow's question is free once: until this couple has had an answer, one at a time. A question that failed
+    doesn't use it up (3 tries at most)."""
     if not (config.ONBOARDING and body.onboarding):
         return False
     uid = user["id"]
@@ -1659,7 +1660,8 @@ def _onboarding_free(user, body):
             return False
         _ob_claimed.add(uid)
     try:
-        free = not any((r.get("kind") or "refine") == "refine" for r in xano.user_usage(uid))
+        rows = [r for r in xano.user_usage(uid) if (r.get("kind") or "refine") == "refine"]
+        free = len(rows) < 3 and all(r.get("status") == "error" for r in rows)
     except Exception:
         free = False
     if not free:
