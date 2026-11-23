@@ -5490,7 +5490,7 @@
       "bucket": "onboarding",
       "in_rotation": false,
       "tldr": "New sign-ups answer Tulle in a chat pop-up, ask it one real question about a venue and open a price sheet, instead of two question pop-ups and a tooltip tour. Question: do more open PDFs within a day and come back to the Planner, without fewer finishing?",
-      "what_changed": "DESIGN ONLY, nothing built: pop-up over the app where the Planner asks stage, source, age, states (all), guests (25-500 by 25) and budget (slider $5K + typed), shows three venues, takes one real question, then one price sheet (uses 1 of 3 free views), then closes. A 'specific venue' search with a path when Tulle doesn't have it. No comparison step (not live) and no 'tell me when you have it'. Prototype: claude.ai artifact X2wdrqCwNwy7jwUYF7zmbL.",
+      "what_changed": "BUILT, not live. Everyone who signs up (100%, owner 2026-11-23: sequential before/after, no 50/50) gets a pop-up over the app where the Planner asks stage, source (Other needs details), age, states (all 50 + DC + International + Not Sure), guests (25-500 by 25) and budget ($5K slider + typed, optional), shows three venues, takes one real question (uncounted, once per account, REC_ONBOARDING), then one price sheet (uses 1 of 3 free views), then closes. 'Specific venue' search with a path when Tulle doesn't have it. Replaces both pop-ups and the Discovery tour. ww-planner-chat prop onboardingMode (off | on | preview). Referral step built but hidden (onboardingReferral) until rewards exist (~12-10).",
       "surfaces": [
         "weweb:sign-up",
         "weweb:discovery",
@@ -5513,7 +5513,7 @@
         "mde_rel": 0.08,
         "label": "opened 1+ pricing PDF within 1 day of sign-up"
       },
-      "primary_metric": "Co-primary: 3 PDFs within 1 day (27.7%) so a forced first open alone cannot win",
+      "primary_metric": "Co-primary: 3 PDFs within 1 day (27.7%) so a forced first open alone cannot win. Pieces, each with its own bar: (a) real question: Planner question AFTER onboarding within 1 day 8.5% -> 12%+; (b) price sheet: a SECOND sheet within 1 day, above today's share with 2+; (c) 3 venues up front: saved a venue within 1 day 3.3% -> 6%+; (d) specific-venue search: share of misses who still ask or open something 50%+.",
       "guardrails": [
         {
           "key": "purchases_per_day",
@@ -5522,25 +5522,28 @@
           "max_drop_rel": 0.25
         }
       ],
-      "guardrail": "Finish rate (guests saved) 96.8%: stop if the test arm is 5+ points lower (readable in about 7 days, 337 per arm). Vendor page 1 d 94.2%; saved a venue 1 d 3.3%; Planner question 1 d 8.5%; paid 7 d 2.05% reported with an interval only.",
+      "guardrail": "Finish rate (guests saved) 96.8%: off if under 92% after 300+ sign-ups. Vendor page 1 d 94.2%; saved a venue 1 d 3.3%; Planner question AFTER onboarding 1 d 8.5%; median time to finish questions 47 s; paid 7 d 2.05% (interval only).",
       "assignment": {
-        "type": "split",
-        "rule": "hash_pct",
-        "salt": "onboarding-2026-11",
-        "pct": 50,
-        "note": "PROVISIONAL. Must be independent of even/odd user id (planner-context-first). Exposure event needed at modal open in BOTH arms (no popup-shown event exists today)."
+        "type": "pre_post",
+        "pre": [
+          "2026-10-25",
+          "2026-11-21"
+        ],
+        "post_start": "2026-12-04T15:00Z",
+        "note": "100% of new sign-ups from the publish that carries it (owner 2026-11-23). SEQUENTIAL: looked at every Monday; before/after is evidence, not proof. PROVISIONAL post_start, reset to the real publish time."
       },
       "decision_rule": {
         "ship_p": 0.9,
-        "stop_p": 0.1
+        "stop_p": 0.1,
+        "sequential": "Week 1 (about 680 sign-ups): turn OFF the same day if finish rate is under 92% after 300+ sign-ups (baseline 96.8%), or if any sign-up is reported stuck. Keep if, over 28 days, 3+ PDFs within 1 day is above 27.7% AND a second price sheet after onboarding is not lower than the old first-sheet rate on the same devices AND paid within 7 days is not below 1.5% (baseline 2.05%, 56 payers in 28 days: only a fall of roughly a third is visible)."
       },
       "start_date": null,
-      "planned_days": 33,
-      "max_days": 49,
+      "planned_days": 28,
+      "max_days": 42,
       "review_date": "2027-01-08",
       "reporting": "manual",
-      "rollback": "Set the split to 0%: everyone gets the current popup and tour (kept in place).",
-      "dates_note": "+5 points on PDF-in-1-day needs about 1,400 per arm, about 29-33 days. Collides with pdf-limit-soft-redirect (pre/post, review 12-03) and pi-card-restore: start after both are read. Payment +30% would need 154-222 days.",
+      "rollback": "WeWeb: set onboardingMode to 'off' on the floating Planner and put the two open-popup actions back (old pop-up bbdfe17d is kept), publish. Server: REC_ONBOARDING=0. About 10 minutes plus the publish.",
+      "dates_note": "Start after EXP-2026-11-pi-card-restore (7 days) and the 12-03 read of pdf-limit-soft-redirect, in a publish of its own, or the before/after can't be told apart from them. Thanksgiving 11-26 and the late-December engagement season both move sign-ups: compare rates, not counts, and report phone and desktop apart.",
       "results": [
         {
           "date": "2026-11-22",
@@ -5551,13 +5554,451 @@
       "decided_on": null,
       "outcome": null,
       "spec_gaps": [
-        "split key and exposure event not built",
+        "post_start not set until the publish is verified live",
         "who answers 'not on Tulle' requests: nobody yet, so the flow makes no promise"
       ],
       "links": [
         "tulletogether .claude/onboarding_2026-11-22/LOOMS.md",
         ".claude/planner_compare_2026-11-22/onboarding_baseline.md"
       ]
+    },
+    {
+      "id": "EXP-2026-11-search-box-fit",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "in_rotation": false,
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "reporting": "manual",
+      "results": [],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulletogether .claude/onboarding_2026-11-22/LAUNCH.md"
+      ],
+      "name": "Discovery search box: no wrapping, no browser autofill",
+      "tier": "ux",
+      "themes": [
+        "search"
+      ],
+      "bucket": "search",
+      "tldr": "Bug fix, not a feature: the desktop search box and dropdown stay on one line and the browser stops suggesting old text over our results. Question: does search keep being used as much?",
+      "what_changed": "Discovery search container no longer wraps; desktop input takes the free width; browser autocomplete off on the three search inputs (WeWeb editor 2026-11-22, live at the next publish).",
+      "surfaces": [
+        "weweb:discovery"
+      ],
+      "audience": {
+        "segment": "everyone who searches on Discovery",
+        "est_daily_exposed": 44,
+        "est_note": "621 people searched 11-09..11-22 (Mixpanel search_vendors, internal not excluded) = 44/day"
+      },
+      "hypothesis": "If the search box stops wrapping and the browser's own suggestions stop covering it, then searches per searcher fall from 6.5 (fewer retries) or stay flat while searchers per day hold at 44, because people reach the result in fewer tries.",
+      "tests": "Does tidying the search box cut repeat searching without reducing how many people search?",
+      "goal": "Cleanup (12.3): no revenue claim.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "decrease",
+        "baseline": 6.5,
+        "baseline_note": "4,043 searches by 621 people, 11-09..11-22 (Mixpanel search_vendors, internal not excluded)",
+        "mde_rel": 0.15,
+        "label": "searches per person who searched (14 days)"
+      },
+      "guardrail": "Searchers per day not under 37 (44 now)",
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-11-09",
+          "2026-11-22"
+        ],
+        "post_start": "2026-11-25T15:00Z",
+        "note": "PROVISIONAL post_start = the real publish time, reset at launch."
+      },
+      "planned_days": 14,
+      "max_days": 21,
+      "review_date": "2026-12-09",
+      "rollback": "WeWeb: restore the 5 values in weweb_discovery_search_box_pre_nowrap_autocomplete_2026-11-22.json, publish.",
+      "dates_note": "Thanksgiving 11-26 falls inside the window: read the ratio, not the count. No other change in this publish touches search."
+    },
+    {
+      "id": "EXP-2026-11-signup-ad-attribution",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "in_rotation": false,
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "reporting": "manual",
+      "results": [],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulletogether .claude/onboarding_2026-11-22/LAUNCH.md"
+      ],
+      "name": "Sign-up saves where the couple first came from (ads and tagged links)",
+      "tier": "infra",
+      "themes": [
+        "data"
+      ],
+      "bucket": "data",
+      "tldr": "Email sign-up now stores the first ad or tagged link a couple arrived on (Google sign-in too, 11-20). Question: do we then know the link for most sign-ups that came through one?",
+      "what_changed": "Sign Up v2 sends localStorage tt_attr_first to ep2; Google return sends it to ep7 (WeWeb editor 11-20/21, live at the next publish; Xano fields live since 11-20).",
+      "surfaces": [
+        "weweb:sign-up",
+        "weweb:google-return",
+        "xano:table1"
+      ],
+      "audience": {
+        "segment": "new sign-ups",
+        "est_daily_exposed": 97
+      },
+      "hypothesis": "If sign-up sends the saved first visit, then the share of new accounts with a source link stored rises from about 0% to 20%+, because about 25% of sign-ups already carry a utm on their visit.",
+      "tests": "Do we store the link for sign-ups that came through one?",
+      "goal": "So ad spend can be judged by sign-ups and payers, not by clicks.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.004,
+        "baseline_note": "Xano table 1, accounts created 11-20..11-23: 1 of 263 had any utm/fbclid/landing page (email 1 of 146, Google 0 of 117). Mixpanel 11-15..11-23: 175 of 692 sign-ups (25%) carried a utm.",
+        "mde_rel": 10.0,
+        "label": "new accounts with a stored utm, fbclid or landing page"
+      },
+      "guardrail": "Sign-ups per day not down >15%",
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-11-09",
+          "2026-11-22"
+        ],
+        "post_start": "2026-11-25T15:00Z",
+        "note": "PROVISIONAL post_start = the real publish time, reset at launch."
+      },
+      "planned_days": 7,
+      "max_days": 14,
+      "review_date": "2026-12-02",
+      "rollback": "Remove the attribution field from Sign Up v2 signUp and the attribution lines in the Google return action, publish.",
+      "dates_note": "Known limit: since 11-17 tulletogether.com tags its own links utm_source=tulletogether.com, which can replace the couple's real first source. Fix or exclude that before reading ad results."
+    },
+    {
+      "id": "EXP-2026-11-bubble-context-first",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "in_rotation": false,
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "reporting": "manual",
+      "results": [],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulletogether .claude/onboarding_2026-11-22/LAUNCH.md"
+      ],
+      "name": "Ask Tulle bubble: ask for context first (50/50)",
+      "tier": "ux",
+      "themes": [
+        "planner"
+      ],
+      "bucket": "planner_engagement",
+      "tldr": "The Planner page has been testing starter chips + preference questions first since 11-17; this turns the same 50/50 on in the Ask Tulle bubble. Question: does it help or put people off in a small pop-up?",
+      "what_changed": "contextTest=true on the floating Planner (3c0b81b1), editor 2026-11-21, live at the next publish. Same even/odd arm as EXP-2026-11-planner-context-first.",
+      "surfaces": [
+        "weweb:discovery",
+        "weweb:vendor-page",
+        "weweb:my-wedding"
+      ],
+      "audience": {
+        "segment": "couples who open the Ask Tulle bubble",
+        "est_daily_exposed": 6,
+        "est_note": "81 people opened the bubble 11-09..11-22 (Mixpanel), 44 asked"
+      },
+      "hypothesis": "If the bubble opens with context questions, then the share of openers who ask something falls below today's 54% because a small pop-up has no room for them, or rises to 65%+ because the chips tell people what to ask.",
+      "tests": "Does context-first help inside a small pop-up?",
+      "goal": "Two-sided on purpose: it can lose.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.54,
+        "baseline_note": "44 of 81 people who opened the bubble asked a question, 11-09..11-22 (Mixpanel planner_bubble_opened, rec_bubble_ask; internal not excluded). Control arm is the comparison.",
+        "mde_rel": 0.4,
+        "label": "bubble openers who ask a question"
+      },
+      "guardrail": "Thumbs-down rate",
+      "assignment": {
+        "type": "split",
+        "rule": "user_id_parity",
+        "treatment": "even",
+        "note": "same arm as planner-context-first"
+      },
+      "planned_days": 35,
+      "max_days": 35,
+      "review_date": "2026-12-30",
+      "rollback": "contextTest=false on 3c0b81b1, publish.",
+      "dates_note": "About 3 openers per arm per day, so only a very large difference can show. Read with the Dec 1 call on the Planner page; if that call is 'control wins', switch this off too."
+    },
+    {
+      "id": "EXP-2026-11-planner-links-q",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "in_rotation": false,
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "reporting": "manual",
+      "results": [],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulletogether .claude/onboarding_2026-11-22/LAUNCH.md"
+      ],
+      "name": "Planner links that carry a question now ask it",
+      "tier": "infra",
+      "themes": [
+        "planner"
+      ],
+      "bucket": "reliability",
+      "tldr": "Links to /planner?q=... (emails, blog) opened an empty Planner; now the question is asked. The old page's hidden opening requests are also switched off.",
+      "what_changed": "Planner page startMessage reads ?q= as well as ?ask= (77034263); old opening loader 685f59e1 released without calling the AI (editor 2026-11-23, live at the next publish).",
+      "surfaces": [
+        "weweb:planner"
+      ],
+      "audience": {
+        "segment": "couples arriving on the Planner page",
+        "est_daily_exposed": 26,
+        "est_note": "370 people viewed the Planner page 11-09..11-22"
+      },
+      "hypothesis": "If the link's question is asked on arrival and the unseen openings stop, then opening requests fall from 1,144 in 14 days to near 0 with no drop in people asking a question (181 in 14 days), because nobody could see those openings.",
+      "tests": "Can we stop paying for answers nobody sees without losing questions?",
+      "goal": "Cleanup: cost and a readable Planner sheet.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "decrease",
+        "baseline": 1144,
+        "baseline_note": "Planner first-message (opening) rows in Xano table 79, 11-08..11-21: 1,144; almost certainly not seen by anyone since the 11-08 blank home (corrections #16). CORRECTED before launch from Mixpanel rec_opening_loaded 648, whose sender is not confirmed.",
+        "mde_rel": 0.9,
+        "label": "opening rows in table 79 per 14 days"
+      },
+      "guardrail": "People asking a Planner question not under 150 per 14 days (181 now)",
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-11-09",
+          "2026-11-22"
+        ],
+        "post_start": "2026-11-25T15:00Z",
+        "note": "PROVISIONAL post_start = the real publish time, reset at launch."
+      },
+      "planned_days": 14,
+      "max_days": 21,
+      "review_date": "2026-12-09",
+      "rollback": "weweb_planner_old_opening_workflows_pre_removal_2026-11-23.json and weweb_planner_startMessage_pre_q_2026-11-23.json, publish.",
+      "dates_note": "Openings the chat itself shows are a different event; check the first day that the count falls and questions do not."
+    },
+    {
+      "id": "EXP-2026-12-referral-link",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "in_rotation": false,
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "reporting": "manual",
+      "results": [],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulletogether .claude/onboarding_2026-11-22/LAUNCH.md"
+      ],
+      "name": "Referral link at the end of onboarding",
+      "tier": "ux",
+      "themes": [
+        "growth"
+      ],
+      "bucket": "retention",
+      "tldr": "New couples get a link at the end of onboarding; 3 more free price sheets for each friend who joins and opens one, up to 3 friends. Question: do enough people share to bring in new couples, without costing purchases?",
+      "what_changed": "NOT BUILT on the server yet. Onboarding step exists behind onboardingReferral (off). Rewards granted when the friend opens a first price sheet (owner 2026-11-23).",
+      "surfaces": [
+        "weweb:onboarding",
+        "xano:referrals"
+      ],
+      "audience": {
+        "segment": "couples who finish onboarding",
+        "est_daily_exposed": 94
+      },
+      "hypothesis": "If finishing couples get a link worth 3 price sheets per friend, then 5%+ copy or share it and 1%+ bring a friend who opens a sheet within 14 days, because couples plan alongside friends.",
+      "tests": "Will new couples bring friends for more free price sheets?",
+      "goal": "New sign-ups at no ad cost.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.0,
+        "baseline_note": "0 credited referrals since 2026-09-28 (the link was broken); so any credited friend is new",
+        "mde_rel": null,
+        "mde_abs": 0.01,
+        "label": "onboarding finishers whose friend joined and opened a sheet within 14 days"
+      },
+      "guardrail": "Paid within 7 days not under 1.5% (2.05% now); extra free views must not replace purchases",
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-12-04",
+          "2026-12-09"
+        ],
+        "post_start": "2026-12-10T15:00Z",
+        "note": "PROVISIONAL. 100% (no split). Reset at launch."
+      },
+      "planned_days": 28,
+      "max_days": 42,
+      "review_date": "2027-01-15",
+      "rollback": "onboardingReferral=false, publish; already earned views stay.",
+      "dates_note": "Starts after the onboarding's first clean week so finish rate is known without it. Server build not started."
+    },
+    {
+      "id": "EXP-2026-11-signup-source-profile",
+      "status": "live",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "in_rotation": false,
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": "2026-11-23",
+      "reporting": "manual",
+      "results": [],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulletogether .claude/onboarding_2026-11-22/LAUNCH.md"
+      ],
+      "name": "Sign-up source on every Mixpanel profile",
+      "tier": "infra",
+      "themes": [
+        "data"
+      ],
+      "bucket": "data",
+      "tldr": "'How did you hear about us' stopped reaching Mixpanel profiles on 10-03. Old gap filled, and the save endpoint now sends it. Question: do fewer than 5% of new sign-ups have a blank source?",
+      "what_changed": "ep109 sends source, source_other, age, stage, location, guests, budget to the Mixpanel profile when saved (live 2026-11-23 05:26 UTC); 5,330 sign-ups since 10-02 backfilled from Xano.",
+      "surfaces": [
+        "xano:ep109",
+        "mixpanel"
+      ],
+      "audience": {
+        "segment": "new sign-ups",
+        "est_daily_exposed": 97
+      },
+      "hypothesis": "If the save endpoint sends the answer, then sign-ups with a blank profile source fall from 94% to under 5%, because 98% of couples answer.",
+      "tests": "Is the source there for new sign-ups without anyone running a script?",
+      "goal": "Reports by source work again and stay working.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "decrease",
+        "baseline": 0.94,
+        "baseline_note": "557 of 595 sign-ups in the week of 11-16 had no profile source (Mixpanel)",
+        "mde_rel": 0.9,
+        "label": "new sign-ups with a blank profile source"
+      },
+      "guardrail": "Onboarding save errors; step 1 to step 2 not under 97%",
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-11-16",
+          "2026-11-22"
+        ],
+        "post_start": "2026-11-23T05:26Z"
+      },
+      "planned_days": 7,
+      "max_days": 14,
+      "review_date": "2026-11-30",
+      "rollback": "ep109_user_update_attributes_pre_mixpanel_profile_2026-11-23.xs",
+      "dates_note": "Read only accounts created after 05:26 UTC 11-23; earlier ones were filled by the backfill."
     }
   ],
   "changes": [
@@ -6033,6 +6474,25 @@
       ],
       "source": "railway-var",
       "ref": "REC_MIN_FOOD_ONLY, REC_CEREMONY_PER_PERSON, REC_COMPARE_*"
+    },
+    {
+      "date": "2026-11-23",
+      "what": "Xano ~05:01 UTC: ep109 (update_user_attributes) can only LOWER a couple's free price-sheet views (a signed-in user could set their own to any number); ep137 (referrals) returns only the caller's own rows. Both tested live on the owner's account. No visible change for couples.",
+      "affects": [
+        "security"
+      ],
+      "source": "xano",
+      "ref": "ep109, ep137"
+    },
+    {
+      "date": "2026-11-23",
+      "what": "Xano ep109 05:26 UTC sends sign-up answers to the Mixpanel profile; 5,330 profiles since 10-02 backfilled. Mixpanel reports by profile source/age/location change retroactively from 10-03.",
+      "affects": [
+        "EXP-2026-11-signup-source-profile",
+        "EXP-2026-11-onboarding-try-it"
+      ],
+      "source": "xano",
+      "ref": "ep109"
     }
   ]
 }
