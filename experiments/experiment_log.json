@@ -5387,6 +5387,94 @@
         "cherry-picks 3142398 (never pushed)",
         "tulletogether .claude/inclusive_pkg_2026-11-20/fn56_v29_quickfixes.xs"
       ]
+    },
+    {
+      "id": "EXP-2026-11-planner-compare",
+      "name": "Planner: compare 2-3 venues side by side, then save to My Wedding",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "ux",
+      "themes": [
+        "planner",
+        "my-wedding"
+      ],
+      "bucket": "planner_engagement",
+      "in_rotation": false,
+      "tldr": "A 'Compare these' button under Planner venue cards opens a side by side (cost bars for members, below/typical/above words for free couples) that ends in Save to My Wedding. Question: do more couples save a venue, without fewer PDF opens?",
+      "what_changed": "rec-engine /rec/tool compare_picked (compare.py) + ww-planner-chat VenueCompare: Compare button and checkboxes on venue cards, side-by-side card, Save to My Wedding on each venue, saved strip and next-step link. Arm 'compare' only. Saves are also sent one at a time for everyone (bug fix). REC_CEREMONY_PER_PERSON=1 goes on for everyone with it (4 of 40 sampled venues had a per-person ceremony fee added once).",
+      "surfaces": [
+        "rec-engine",
+        "weweb:planner",
+        "weweb:bubble"
+      ],
+      "audience": {
+        "segment": "Planner couples (free and paid) who get an answer with 2+ venue cards",
+        "est_daily_exposed": 8,
+        "est_note": "39-70 couples/week: 141 in 14 days from the sheet (11-08..21), 102 from Mixpanel; not measured inside the new build"
+      },
+      "hypothesis": "If couples can line up 2-3 venues from a Planner answer and save from there, then the share saving a venue within 24h of seeing 2+ cards rises from 3% to 12%, because choosing between a few beats hearting one card at a time.",
+      "tests": "Does a side by side with Save on it get more Planner couples to save a venue?",
+      "goal": "Owner ask 2026-11-22: make the Planner useful for comparing and deciding, and push couples to save venues to My Wedding.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.03,
+        "baseline_note": "3% of the 141 couples who saw 2+ cards in a Planner answer saved one (sheet, 11-08..11-21; free phone 3% of 79, free desktop 0 of 29, paid phone 7% of 14, paid desktop 5% of 19)",
+        "mde_rel": 3.0,
+        "label": "saved 1+ venue within 24h of first seeing 2+ venue cards in a Planner answer"
+      },
+      "primary_metric": "Mixpanel: first rec_compare_eligible (both arms, carries arm) -> rec_vendor_saved saved=true within 24h, unique couples, internal excluded",
+      "guardrails": [
+        {
+          "key": "planner_pdf_open_rate",
+          "label": "opened a pricing PDF from the Planner",
+          "params": {},
+          "max_drop_rel": 0.35
+        },
+        {
+          "key": "planner_second_question",
+          "label": "asked a 2nd question",
+          "params": {},
+          "max_drop_rel": 0.3
+        }
+      ],
+      "guardrail": "PDF opens (27% baseline) not down 10+ points at 4 weeks; purchases watched only (too few to test)",
+      "assignment": {
+        "type": "split",
+        "rule": "hash_pct",
+        "salt": "compare-2026-11",
+        "pct": 50,
+        "note": "PROVISIONAL: mirrors compare.arm: sha256('compare-2026-11:<user_id>') first 8 hex digits % 100 < REC_COMPARE_AB_PCT; testers in REC_COMPARE_USER_IDS are internal and excluded. Independent of the parity split of planner-context-first."
+      },
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "planned_days": 35,
+      "max_days": 49,
+      "review_date": "2027-01-04",
+      "reporting": "manual",
+      "rollback": "REC_COMPARE_AB_PCT=0 or REC_COMPARE_PICK=0 on rec-engine (~2 min); the component then shows nothing.",
+      "dates_note": "About 133 couples per arm for 3% -> 12% (about 5 weeks). Kill early if, after 100 exposed test couples, under 10% open a comparison or under 10% of openers save. Best started after planner-context-first is called (12-01) and after the old page's unseen openings are removed, so the sheet is readable.",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Planned. Counter-evidence kept on record: almost nobody types a comparison (0-20 of 877 questions by strict/loose reading); Baymard 2022: 3 of 38 phone testers used compare."
+        }
+      ],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulle_vendor_data_updates branch rec-planner-compare",
+        "ww-planner-chat branch planner-compare",
+        "tulletogether .claude/planner_compare_2026-11-22/"
+      ]
     }
   ],
   "changes": [
