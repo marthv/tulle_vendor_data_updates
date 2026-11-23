@@ -5475,6 +5475,88 @@
         "ww-planner-chat branch planner-compare",
         "tulletogether .claude/planner_compare_2026-11-22/"
       ]
+    },
+    {
+      "id": "EXP-2026-11-onboarding-try-it",
+      "name": "Onboarding: try the product instead of two pop-ups and a tour",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "ux",
+      "themes": [
+        "onboarding"
+      ],
+      "bucket": "onboarding",
+      "in_rotation": false,
+      "tldr": "New sign-ups look up a venue, open its price sheet, compare two and save one inside onboarding (Wispr Flow style), instead of two question pop-ups and a tooltip tour. Question: do more open a PDF within a day, without fewer finishing?",
+      "what_changed": "DESIGN ONLY, nothing built: replaces the Onboarding Popup (bbdfe17d) and the after-onboarding tours (3ee46d5b, da263895, 33629def) for the test arm with a full-screen 'do it' flow plus a self-filling checklist. Prototype: claude.ai artifact X2wdrqCwNwy7jwUYF7zmbL.",
+      "surfaces": [
+        "weweb:sign-up",
+        "weweb:discovery",
+        "weweb:vendor-page"
+      ],
+      "audience": {
+        "segment": "new sign-ups (email and Google), phone and desktop",
+        "est_daily_exposed": 97,
+        "est_note": "Xano 2,724 sign-ups ex-internal in 28 days (10-25..11-21) = 97.3/day; Mixpanel sees 88% of them"
+      },
+      "hypothesis": "If new couples do the real thing during onboarding (look up a venue, open a price sheet, compare, save), then the share opening a PDF within 1 day rises from 63.9% to 69%+ (and 3 PDFs within 1 day from 27.7%), because today the flow ends before anyone sees a price.",
+      "tests": "Does doing the product inside onboarding get more new couples to open a pricing PDF within a day?",
+      "goal": "Owner 2026-11-22: onboarding modelled on Wispr Flow, replacing the two modals and rethinking the tour; everyone must get through onboarding as before, ideally payment rate moves too.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.639,
+        "baseline_note": "viewed_vendor_pdf within 1 day of signed_up, Mixpanel 10-25..11-21 (phone 59.2%, desktop 76.0%). The PDF opened inside onboarding counts in the test arm, so ALSO read PDFs opened after onboarding and 3 PDFs in 1 day (27.7%) - otherwise the metric is partly self-fulfilling.",
+        "mde_rel": 0.08,
+        "label": "opened 1+ pricing PDF within 1 day of sign-up"
+      },
+      "primary_metric": "Co-primary: 3 PDFs within 1 day (27.7%) so a forced first open alone cannot win",
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day (watched, cannot be read per arm in under 5 months)",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "guardrail": "Finish rate (guests saved) 96.8%: stop if the test arm is 5+ points lower (readable in about 7 days, 337 per arm). Vendor page 1 d 94.2%; saved a venue 1 d 3.3%; Planner question 1 d 8.5%; paid 7 d 2.05% reported with an interval only.",
+      "assignment": {
+        "type": "split",
+        "rule": "hash_pct",
+        "salt": "onboarding-2026-11",
+        "pct": 50,
+        "note": "PROVISIONAL. Must be independent of even/odd user id (planner-context-first). Exposure event needed at modal open in BOTH arms (no popup-shown event exists today)."
+      },
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "planned_days": 33,
+      "max_days": 49,
+      "review_date": "2027-01-08",
+      "reporting": "manual",
+      "rollback": "Set the split to 0%: everyone gets the current popup and tour (kept in place).",
+      "dates_note": "+5 points on PDF-in-1-day needs about 1,400 per arm, about 29-33 days. Collides with pdf-limit-soft-redirect (pre/post, review 12-03) and pi-card-restore: start after both are read. Payment +30% would need 154-222 days.",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Baseline measured; completion is already 96.8% in about 47 s, so it can only fall. First PDF alone did not separate payers in the baseline (2.07% vs 2.01%, small and observational); hitting the PDF limit did (7.9%)."
+        }
+      ],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [
+        "owner decisions: which questions stay, whether the practice PDF uses a free view, full screen vs modal"
+      ],
+      "links": [
+        "tulletogether .claude/onboarding_2026-11-22/LOOMS.md",
+        ".claude/planner_compare_2026-11-22/onboarding_baseline.md"
+      ]
     }
   ],
   "changes": [
