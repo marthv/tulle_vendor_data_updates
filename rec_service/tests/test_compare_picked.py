@@ -223,3 +223,21 @@ def test_stored_full_widget_for_a_member_without_entitlement(monkeypatch):
 
 def test_infinite_guests():
     assert build(FakeXano(), guests=float("inf"))["guests"] == 100
+
+
+def test_minimum_only_is_said_everywhere(monkeypatch):
+    monkeypatch.setattr(config, "MIN_FOOD_ONLY", True)
+    inp = inputs(pp_fb=None, fb_min=15000, estimates={"pp_fb": 150}, rental=3000)
+    e = estimate.compute(inp, 100)
+    assert "may cost more" in estimate.label(e, 40000) and "food_is_only_the_minimum" in estimate.summary(e)
+    plain = estimate.compute(inputs(), 100)
+    assert "may cost more" not in estimate.label(plain) and "food_is_only_the_minimum" not in estimate.summary(plain)
+    x = FakeXano()
+    x.inp = {"V1": inputs(), "V2": inp}
+    d = build(x, guests=100)["differences"]
+    assert "Alpha comes to about $14,400 more than Beta for 100 guests (food at Beta is only its minimum and may cost more)." in d
+
+
+def test_room_is_named_in_the_seating_line():
+    d = build(FakeXano(), guests=200)["differences"]
+    assert "Alpha (Hall) lists seating for 120, below your 200." in d

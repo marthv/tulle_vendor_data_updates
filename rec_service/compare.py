@@ -260,6 +260,9 @@ def differences(venues, guests, full, limit=3):
             lo, hi = min(priced, key=lambda v: v["cost"]["total"]), max(priced, key=lambda v: v["cost"]["total"])
             gap = hi["cost"]["total"] - lo["cost"]["total"]
             est = " (some lines estimated)" if lo["cost"]["estimated"] or hi["cost"]["estimated"] else ""
+            low = [v["name"] for v in (lo, hi) if any(l.get("minimum_only") for l in v["cost"]["lines"])]
+            if low:     # a total that is only a food minimum is a floor, so the gap is not a like-for-like gap
+                est = " (food at %s is only %s minimum and may cost more)" % (_and(low), "their" if len(low) > 1 else "its")
             if gap >= 500:
                 out.append("%s comes to about %s more than %s for %d guests%s."
                            % (hi["name"], _money(round(gap, -2)), lo["name"], same.pop(), est))

@@ -176,6 +176,8 @@ def label(e, budget=0):
     if not e:
         return None
     s = "About %s for %d guests before tax and gratuity" % (_money(e["total_before_tax_and_gratuity"]), e["guests"])
+    if any(l.get("minimum_only") for l in e.get("lines") or []):
+        s += ", with food at its minimum spend (it may cost more)"
     if budget:
         s += " (%d%% of your budget)" % round(100.0 * e["total_before_tax_and_gratuity"] / budget)
     return s
@@ -187,6 +189,8 @@ def summary(e, budget=0):
         return None
     out = {"total_before_tax_and_gratuity": e["total_before_tax_and_gratuity"], "per_guest": e["per_guest"],
            "guests": e["guests"], "estimated_lines": e["estimated_lines"]}
+    if any(l.get("minimum_only") for l in e.get("lines") or []):
+        out["food_is_only_the_minimum"] = "The PDF gives a food minimum and no per-guest price: say food may cost more."
     if budget:
         out["share_of_budget_pct"] = round(100.0 * e["total_before_tax_and_gratuity"] / budget)
     if e.get("priced_at_guest_minimum"):
