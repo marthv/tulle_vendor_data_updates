@@ -88,7 +88,7 @@ def saved_venue_ids(xano, user):
     recent = list(dict.fromkeys(str(v).strip() for v in reversed((user or {}).get("favorited_vendors") or []) if str(v or "").strip()))[:12]
     with ThreadPoolExecutor(max_workers=6) as pool:
         cards = list(pool.map(lambda v: _safe(xano.cached_vendor_card, v), recent))
-    return [c["vendor_id"] for c in cards if c and (c.get("category") or "Venue") == "Venue"][:MAX_VENUES]
+    return list(dict.fromkeys(c["vendor_id"] for c in cards if c and (c.get("category") or "Venue") == "Venue"))[:MAX_VENUES]
 
 
 # ---------------------------------------------------------------- one venue
@@ -220,6 +220,7 @@ def _one(xano, token, user, vid, guests, full):
     card = _safe(xano.cached_vendor_card, vid)
     if not card or (card.get("category") or "Venue") != "Venue":
         return None
+    vid = card.get("vendor_id") or vid       # a merged duplicate: the kept vendor for every read below, never a mix
     with ThreadPoolExecutor(max_workers=3) as pool:      # three reads at once per venue (9 s cold one after another)
         fp = pool.submit(_safe, xano.cached_venue_pricing, token, vid, full, user)
         fd = pool.submit(_safe, xano.cached_venue_details, vid, full)
@@ -329,6 +330,10 @@ def build(xano, token, user, vendor_ids, *, access, guests=0, default_guests=0, 
     full = bool(access and xano.pi_entitled(user))
     with ThreadPoolExecutor(max_workers=MAX_VENUES) as pool:
         venues = [v for v in pool.map(lambda i: _one(xano, token, user, i, g, full), ids) if v]
+    by_id = {}
+    for v in venues:     # a merged duplicate picked with its kept vendor is one venue
+        by_id.setdefault(v["vendor_id"] or id(v), v)
+    venues = list(by_id.values())
     if len(venues) < MIN_VENUES:
         return None
     w = {"type": TYPE, "v": V, "level": "full" if full else "words",

@@ -197,3 +197,42 @@ def test_unique_cards_leaves_distinct_and_idless_cards_alone():
     assert xano.unique_cards(cards) == cards and xano.unique_cards(cards + [{"vendor_id": "V1", "n": 2}]) == cards
     import cost_tools
     assert cost_tools._unique(cards + [{"vendor_id": "V1", "n": 2}]) == cards
+
+
+# ---------------------------------------------------------------- side-by-side compare (rebased 2026-11-23)
+
+@pytest.fixture
+def cmp_reads(priced, monkeypatch):
+    import compare
+    import estimate
+    asked = {"pricing": priced, "details": [], "pdfs": []}
+    real = xano.venue_details
+    monkeypatch.setattr(xano, "venue_details", lambda v, a: asked["details"].append(v) or real(v, a))
+    monkeypatch.setattr(xano, "pdf_rows", lambda tok, v: asked["pdfs"].append(v) or [])
+    monkeypatch.setattr(estimate, "off_peak_override", lambda d, s: None)
+    monkeypatch.setattr(compare, "_cost", lambda e, inp: {"total": e["total_before_tax_and_gratuity"], "guests": 100,
+                                                          "estimated": False, "lines": []})
+    return asked
+
+
+def test_compare_reads_only_the_kept_vendor(cmp_reads):
+    import compare
+    w = compare.build(xano, "tok", {"id": 3, "forever_access_purchased": True}, ["V2", "V3"], access=True, guests=100)
+    assert [v["vendor_id"] for v in w["venues"]] == ["V1", "V3"]
+    for k, got in cmp_reads.items():
+        assert "V2" not in got and set(got) == {"V1", "V3"}, k
+
+
+def test_compare_duplicate_with_its_kept_vendor_is_not_two_venues(cmp_reads):
+    import compare
+    u = {"id": 3, "forever_access_purchased": True}
+    assert compare.build(xano, "tok", u, ["V2", "V1"], access=True, guests=100) is None
+    for ids in (["V2", "V3", "V1"], ["V1", "V3", "V2"]):
+        assert [v["vendor_id"] for v in compare.build(xano, "tok", u, ids, access=True, guests=100)["venues"]] == ["V1", "V3"]
+    assert sorted(compare.saved_venue_ids(xano, {"favorited_vendors": ["V2", "V3", "V1"]})) == ["V1", "V3"]
+
+
+def test_compare_unmerged_unchanged(cmp_reads):
+    import compare
+    w = compare.build(xano, "tok", {"id": 3, "forever_access_purchased": True}, ["V3", "V1"], access=True, guests=100)
+    assert [v["vendor_id"] for v in w["venues"]] == ["V3", "V1"]
