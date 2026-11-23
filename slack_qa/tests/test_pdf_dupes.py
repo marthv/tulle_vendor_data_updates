@@ -308,6 +308,21 @@ def test_failures_show_unavailable(x):
     assert c["status"] == "unavailable" and "unavailable" in pd.summary_line(c) and pd.hide_ids({"pdf_check": c}) == []
 
 
+def test_prices_failing_keeps_the_file_checks_and_compares_no_prices():
+    class X(FakeXano):
+        def post(self, url, **kw):
+            if "/table/37/" in url:
+                raise requests.Timeout()
+            return super().post(url, **kw)
+    r36 = [dict(t36()[1], PDF_ID=f"P{n}", VENDOR_ID=v) for n, v in ((1, "V1"), (2, "V2"), (3, "V2"))]
+    link = "https://drive.google.com/file/d/" + "Z" * 28 + "/view"
+    x = X({10: [row(1, link=link), row(2, "V2", link=link), row(3, "V2")], 36: r36})
+    c = pd.check(x, "V1", ["V2"])
+    assert c["prices"] == "failed" and [f["type"] for f in c["flags"]] == ["EXACT"] and "prices on file" in pd.summary_line(c)
+    c = pd.check(FakeXano(x.tables), "V1", ["V2"])
+    assert c["prices"] == "checked" and {f["type"] for f in c["flags"]} == {"EXACT", "SAME_PRICES"}
+
+
 def test_time_bound():
     t = time.time()
     c = pd.safe_check(FakeXano({10: [row(1), row(2, "V2")]}, delay=5), "V1", ["V2"], drive=None, seconds=0.2)

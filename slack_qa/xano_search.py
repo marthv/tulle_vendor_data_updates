@@ -7,12 +7,14 @@ it can only build that one path: the table id must be one of TABLES and the filt
 """
 from __future__ import annotations
 
+import requests
+
 # PDF files, vendors, extracted PDF data, venue pricing, floral quotes/items, venue PDF facts, service quotes/items
 TABLES = (10, 11, 36, 37, 84, 85, 87, 92, 93)
-COLUMNS = ("Vendor_ID", "PDF_ID")
+COLUMNS = ("Vendor_ID", "VENDOR_ID", "PDF_ID")
 PER_PAGE = 250
 MAX_PAGES = 8              # 2,000 rows per table per check; more -> TooManyRows ("can't tell", never a partial compare)
-TIMEOUT = 15
+TIMEOUT = 10
 
 
 class TooManyRows(RuntimeError):
@@ -34,9 +36,16 @@ def search(xano, table_id: int, column: str, values: list[str]) -> list[dict]:
     url = f"{xano.root}/table/{int(table_id)}/content/search"
     out: list[dict] = []
     for page in range(1, MAX_PAGES + 1):
-        r = xano.http.post(url, json={"page": page, "per_page": PER_PAGE, "search": {f"{column}|in": vals}},
-                           timeout=TIMEOUT, headers={"Authorization": f"Bearer {xano.token}",
-                                                     "Accept": "application/json"})
+        r = None
+        for attempt in (1, 2):                 # Xano stalls now and then (2 of 10 checks on 11-22): one retry, it's a read
+            try:
+                r = xano.http.post(url, json={"page": page, "per_page": PER_PAGE, "search": {f"{column}|in": vals}},
+                                   timeout=TIMEOUT, headers={"Authorization": f"Bearer {xano.token}",
+                                                             "Accept": "application/json"})
+                break
+            except requests.Timeout:
+                if attempt == 2:
+                    raise
         if r.status_code != 200:
             raise RuntimeError(f"Xano search t{table_id} -> HTTP {r.status_code}")
         d = r.json()

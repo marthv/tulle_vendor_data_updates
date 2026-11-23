@@ -26,12 +26,14 @@ import threading
 import time
 import unicodedata
 
+import requests
+
 import drive_ro
 import xano_search
 
 log = logging.getLogger("slack_qa.pdf_dupes")
 
-CHECK_SECONDS = 30            # whole check; the card posts with "PDF check unavailable" after this
+CHECK_SECONDS = 40            # whole check; the card posts with "PDF check unavailable" after this
 MAX_FLAGS = 8                 # more than this on one card: the rest are listed as "not offered" (kept)
 MAX_PDFS = 24
 MIN_TOKENS, MIN_MONEY = 120, 3        # a text layer with less than this can't prove two PDFs are the same
@@ -390,13 +392,22 @@ def check(xano, survivor: str, losers: list[str], drive=None, seconds: float = C
     for p in pdfs:
         p.unique = bool(p.pid) and seen.get(p.pid) == 1
     by_pid = {p.pid: p for p in vis if p.unique}
-    for tid in PRICE_TABLES:
-        if time.time() > deadline:
-            raise TimeoutError("prices")
-        for r in xano_search.search(xano, tid, "PDF_ID", list(by_pid)):
-            p = by_pid.get(str(r.get("PDF_ID") or "").strip())
-            if p is not None:
-                p.prices.add(tid, r)
+    try:
+        for tid in PRICE_TABLES:
+            if time.time() > deadline:
+                raise TimeoutError("prices")
+            # t36 has no index on PDF_ID (8-20 s a read, measured 2026-11-22); VENDOR_ID is indexed (0.1-0.4 s)
+            col, vals = ("VENDOR_ID", vids) if tid == 36 else ("PDF_ID", list(by_pid))
+            for r in xano_search.search(xano, tid, col, vals):
+                p = by_pid.get(str(r.get("PDF_ID") or "").strip())
+                if p is not None:
+                    p.prices.add(tid, r)
+        out["prices"] = "checked"
+    except Exception as e:  # noqa: BLE001 - the file checks still run; no price is compared on a partial read
+        log.warning("pdf check: prices not read: %s", type(e).__name__)
+        out["prices"] = "failed"
+        for p in pdfs:
+            p.prices = Prices()
     if drive is not None:
         out["files"], out["text"] = _read_files(drive, vis, deadline)
     results: dict = {}
@@ -433,8 +444,8 @@ def _read_files(drive, vis: list[Pdf], deadline: float) -> tuple[str, str]:
         p.text = Text(raw, pages)
         return p.text.usable
 
-    def run(fn, items):
-        ok, ex = 0, cf.ThreadPoolExecutor(4)
+    def run(fn, items, workers):
+        ok, ex = 0, cf.ThreadPoolExecutor(workers)
         futs = [ex.submit(fn, p) for p in items]
         try:
             for f in cf.as_completed(futs, timeout=max(0.1, deadline - time.time())):
@@ -447,13 +458,13 @@ def _read_files(drive, vis: list[Pdf], deadline: float) -> tuple[str, str]:
         ex.shutdown(wait=False, cancel_futures=True)
         return ok
 
-    n = run(meta, want)
+    n = run(meta, want, 4)
     files = "checked" if n == len(vis) else "partly" if n else "failed"
     per_year = collections.Counter(p.years for p in want if p.years)
     todo = [p for p in want if p.years and per_year[p.years] > 1]
     if not todo:
         return files, "none"
-    t = run(text, todo)
+    t = run(text, todo, 2)                  # 2 at a time: a PDF can be 25 MB
     return files, "checked" if t == len(todo) else "partly" if t else "failed"
 
 
@@ -474,7 +485,8 @@ def safe_check(xano, survivor: str, losers: list[str], drive="auto", seconds: fl
             box["r"] = check(xano, survivor, losers, drive=d, seconds=seconds)
         except Exception as e:  # noqa: BLE001
             log.warning("pdf check failed: %s", type(e).__name__)
-            box["r"] = _unavailable("the check took too long" if isinstance(e, TimeoutError) else "the check failed")
+            box["r"] = _unavailable("the check took too long" if isinstance(e, (TimeoutError, cf.TimeoutError, requests.Timeout))
+                                    else "the check failed")
 
     t = threading.Thread(target=run, name="pdf-check", daemon=True)
     t.start()
@@ -560,7 +572,7 @@ def summary_line(c: dict) -> str:
     if c.get("cant"):
         bits.append(f"{c['cant']} pair{'s' if c['cant'] != 1 else ''} I couldn't tell (kept)")
     out = ":page_facing_up: *PDF check:* " + "; ".join(bits) + "."
-    nc = [w for w, key in (("file copies", "files"), ("text", "text")) if c.get(key) not in ("checked", "none")]
+    nc = [w for w, key in (("file copies", "files"), ("text", "text"), ("prices on file", "prices")) if c.get(key, "none") not in ("checked", "none")]
     if nc:
         why = " (the bot can't open Google Drive yet)" if c.get("files") == "no_access" else ""
         part = "fully " if "partly" in (c.get("files"), c.get("text")) else ""
