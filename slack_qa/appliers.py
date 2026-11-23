@@ -46,7 +46,7 @@ def _post(url: str, body: dict, headers: dict | None = None, timeout: float = TI
         return {"ok": False, "unknown": True, "error": f"HTTP {r.status_code}"}
     if r.status_code >= 300:
         msg = (data or {}).get("message") or (data or {}).get("error") or f"HTTP {r.status_code}"
-        return {"ok": False, "unknown": False, "error": str(msg)[:300],
+        return {"ok": False, "unknown": False, "error": str(msg)[:300], "http": r.status_code,
                 "code": str((data or {}).get("code") or "")[:80]}
     return {"ok": True, **data}
 
@@ -57,7 +57,7 @@ def _out(ok, text, dry=False, unknown=False, result=None):
 
 # --- merge ---------------------------------------------------------------------------------------------
 RUNNING_TEXT = "A merge or undo is running in Xano right now (one at a time). Wait a few minutes, then press Re-check."
-# Every refusal ep578 v4 can give (live XanoScript, 2026-11-23 03:52:55 UTC) -> what the card says. test_ep578_contract.py
+# Every refusal ep578 v5 can give (live XanoScript, 2026-11-23 04:48:21 UTC) -> what the card says. test_ep578_contract.py
 # holds one line per endpoint message. "Nothing was changed" is added by _refusal.
 REFUSALS = (
     (r"no visible Primary PDF", "Hiding these PDFs would leave the listing with no visible Primary. Choose Keep both on a "
@@ -162,7 +162,7 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
     if mode == "apply":                        # what the approver saw; the endpoint refuses if it changed since
         import listing_compare
         state = listing_compare.expected_state(payload)
-        if payload.get("snapshots") and not listing_compare.preview_state(payload):
+        if not listing_compare.preview_state(payload):
             return _out(False, "I don't have Xano's preview of this merge matching what the card shows, so nothing was sent. "
                                "Nothing was changed. Ask for a fresh card.")
         if state:
@@ -170,7 +170,9 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
         allow = payload.get("allow") or {}    # only an approver's explicit OK on this card
         if allow.get("hidden"):
             body["allow_hidden_loser"] = True
-        # allow_gold_loser is never sent: a merge that would retire the only gold chip is refused (Amendment 3)
+        md5 = pdf_dupes.md5_map(payload)
+        if md5:                               # lets ep578 see the same file under two Drive ids as one
+            body["pdf_md5"] = md5
     if hide:
         body["hide_pdf_ids"] = hide           # t10 PDF_IDs; the endpoint backs Show_PDF up and undo restores it
     res = _post(config.merge_url(), body, timeout=config.merge_timeout())
@@ -181,6 +183,13 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
         return _out(False, RUNNING_TEXT, unknown=True)
     if not res.get("ok") and ASK_STATUS.search(str(res.get("error") or "")):
         return _out(False, f"Xano says: {esc(res.get('error'))}", unknown=True)
+    if not res.get("ok") and not plain_refusals(str(res.get("error") or "")):
+        if res.get("http") == 429:
+            return _out(False, "Xano is turning requests away right now (too many), so nothing was sent. Try again in a few "
+                               "minutes.")
+        # QA 2026-11-23: a reply we don't recognise proves nothing about what ran
+        return _out(False, f"Xano answered something I don't recognise ({esc(res.get('error'))}), so I can't tell whether the "
+                           "merge ran.", unknown=True)
     if not res.get("ok"):
         return _out(False, _refusal(res))
     if res.get("status") == "partial" and mode != "undo":
@@ -194,8 +203,9 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
     if res.get("status") == "queued":
         return _out(False, "Xano queued the merge and is still running it.", unknown=True)
     known = ("undone", "undone_with_warnings") if mode == "undo" else ("applied", "applied_with_warnings")
-    if res.get("status") not in known + ("", None):
-        return _out(False, f"Xano replied with a status I don't know ({esc(res.get('status'))}).", unknown=True,
+    if res.get("status") not in known:
+        return _out(False, f"Xano replied with a status I don't know ({esc(res.get('status') or 'none')}), so I can't tell "
+                           "whether it ran.", unknown=True,
                     result={k: v for k, v in res.items() if k != "secret"})
     moved = res.get("repointed_total", "?")
     result = {k: v for k, v in res.items() if k != "secret"}
@@ -204,6 +214,10 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
     note = (f" {len(conflicts)} value{'s' if len(conflicts) != 1 else ''} had been changed since and "
             "{} left as they are.".format("was" if len(conflicts) == 1 else "were")) if conflicts else ""
     note += _warnings(res, undo=mode == "undo")
+    kept = res.get("kept_newer") or []
+    if mode == "undo" and kept:               # information, not a conflict: the couple moved on since
+        note += (f" {len(kept)} newer last-viewed value{'s' if len(kept) != 1 else ''} "
+                 f"{'were' if len(kept) != 1 else 'was'} left as {'they are' if len(kept) != 1 else 'it is'}.")
     if hide:                                  # never claim PDFs were hidden unless the endpoint says so
         done = res.get("hide_pdf_ids")
         stuck = any("Show_PDF" in str(c.get("column")) for c in conflicts if isinstance(c, dict))

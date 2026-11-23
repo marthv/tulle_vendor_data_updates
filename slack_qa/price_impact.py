@@ -364,6 +364,14 @@ def _years(pdf) -> int:
     return max(map(int, m)) if m else 0
 
 
+def _label_year(pdf) -> int:
+    """ep578 v5's reading of the stored year: newest stand-alone 2000-2100; a short range ("2025-26") is unreadable."""
+    s = str((pdf or {}).get("Year_of_Pricing") or "") + " "
+    if re.search(r"20[0-9][0-9] *[-/\u2013] *[0-9]{2}(?![0-9])", s):
+        return 0
+    return max((int(x) for x in re.findall(r"(?<![0-9])[0-9]{4}(?![0-9])", s) if 2000 <= int(x) <= 2100), default=0)
+
+
 def _file(pdf) -> str:
     m = re.search(r"[-A-Za-z0-9_]{25,}", str((pdf or {}).get("PDF_Link") or ""))
     return m.group(0) if m else f"row {pdf.get('id')}" if not str(pdf.get("PDF_Link") or "").strip() else str(pdf["PDF_Link"]).strip()
@@ -385,13 +393,16 @@ def assignments_after(pdfs, survivor: str, losers, given=None, hidden=()) -> dic
     def rank(p):
         vis = p.get("Show_PDF") is not False and bool(str(p.get("PDF_Link") or "").strip()) and p["PDF_ID"] not in hidden
         mine = p.get("Vendor_ID") == survivor
-        return (not vis, not mine, -_years(p), -1 if mine else list(losers).index(p["Vendor_ID"]), p["id"])
+        return (not vis, not mine, -_label_year(p), -1 if mine else list(losers).index(p["Vendor_ID"]), p["id"])
     keep = min(prim, key=rank)
-    if keep.get("Vendor_ID") == survivor and not rank(keep)[0] and _years(keep):
-        newer = [p for p in prim if p.get("Vendor_ID") != survivor and not rank(p)[0] and _years(p) > _years(keep)]
-        top = min(newer, key=rank) if newer else None
-        if top is not None and _file(top) != _file(keep):          # the same file on both listings: the kept one's stays
-            keep = top
+    own = {_file(p) for p in pdfs if p.get("Vendor_ID") == survivor and not rank(p)[0]}
+    fresh = [p for p in prim if p.get("Vendor_ID") != survivor and not rank(p)[0] and _file(p) not in own]
+    if keep.get("Vendor_ID") == survivor:
+        if not rank(keep)[0] and _label_year(keep) and fresh:      # the same file on both listings doesn't count as newer
+            top = min(fresh, key=rank)
+            keep = top if _label_year(top) > _label_year(keep) else keep
+    elif fresh:
+        keep = min(fresh, key=rank)
     for p in prim:
         if p is not keep:                                          # ep578 v4: exactly one Primary after
             out[p["id"]] = "Past Season PDF"

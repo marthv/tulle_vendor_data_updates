@@ -424,6 +424,8 @@ def test_dry_run_approval_stays_put_while_dry_run_is_on():
 
 def test_apply_for_real_after_dry_run_is_switched_off(monkeypatch):
     b, slack, store, it, p, calls, click, cards = _approved_in_dry_run()
+    from test_pdf_dupes import FakeXano
+    it._xano = FakeXano({11: [dict(r) for r in b.feedback.directory.rows()]})      # the live listings
     monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
     assert "Apply for real" in json.dumps(cards.render(store.get(p["id"]))[1])
     b.handle(mention("what's waiting for approval?"))

@@ -1,16 +1,16 @@
 # Tulle Bot merges: deploy notes (2026-11-23)
 
 Branch `merge-bot-1122`, on top of origin/main 1ac2b0f. **Nothing is pushed, deployed or set.** Every step below needs the
-owner's yes. Service: `tulle-slack-qa` in the Railway project "tulle admin dash". Xano: ep578 `POST /vendor/merge` v4 (live
-2026-11-23 03:52:55 UTC) does the writes; this bot only calls it after an approver's click.
+owner's yes. Service: `tulle-slack-qa` in the Railway project "tulle admin dash". Xano: ep578 `POST /vendor/merge` v5 (live
+2026-11-23 04:48:21 UTC) does the writes; this bot only calls it after an approver's click.
 
 ## ep578 version
-Written against ep578 **v4** (live 2026-11-23 03:52:55 UTC): newer pricing year becomes Primary. The bot compares Xano's own
+Written against ep578 **v5** (live 2026-11-23 04:48:21 UTC): newer pricing year becomes Primary. The bot compares Xano's own
 plan (`primary_choice`) with the owner's rule on every card; if they ever disagree the card says "Can't be merged as it stands"
 and Approve sends nothing.
 
 ## What is and isn't proven
-- Proven: 940 tests pass locally; filtered reads, the price check and `mode=preview` were run against live Xano (read-only).
+- Proven: 1,224 tests pass (QA's 237 included) locally; filtered reads, the price check and `mode=preview` were run against live Xano (read-only).
 - NOT proven until deployed: anything in Slack itself; the quickjs-ng install on Railway; whether the service's
   `XANO_METADATA_TOKEN` may read function source (if not, every card says "couldn't compute"); Google Drive access.
 - No apply or undo has been run by this code. The first one is the owner's click on the first pilot card.
@@ -25,17 +25,22 @@ and Approve sends nothing.
 | `QA_APPROVERS` | owner, Des, Kate (see DEPLOY_NOTES_v2.md) | already listed; check the value |
 | `XANO_MERGE_TIMEOUT` | leave unset | default 300 s |
 | `XANO_MERGE_RECHECK_GRACE` | leave unset | default 120 s |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | optional: `${{extraction-batch.GOOGLE_SERVICE_ACCOUNT_JSON}}` | turns on file md5 and text in the PDF check. Puts that key on the Slack bot; the code asks for read-only Drive |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | **already set** on the service (name seen 2026-11-23; value not read) | Drive md5 and text reading in the PDF check starts as soon as this code is deployed. The code asks for read-only Drive; whether the account can open the files is UNVERIFIED |
+| `DEDUPE_SCHEDULED_SCAN` | leave unset (off) | new: the nightly / weekly scan posts nothing on its own unless this is 1 |
+| `DEDUPE_MAX_CARDS` | `0` for the pilot | 0 = no scan cards at all, not even "scan duplicates 20"; the pilot runs by name |
 
 Already set and used as is: `XANO_METADATA_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `STATE_DIR=/data`, `QA_SCHEDULER`.
 
 ## Order
-1. Confirm `DEDUPE_DRY_RUN=1`. Do not go on until it reads 1.
+1. Confirm `DEDUPE_DRY_RUN=1`. Do not go on until it reads 1. `XANO_MERGE_URL` / `XANO_MERGE_SECRET` stay unset for the push.
+   The version running today still posts its weekly scan (Monday 08:00 UTC, up to 10 cards) while `DEDUPE_CHANNEL` is set: push
+   before then, or remove `DEDUPE_CHANNEL` until the push.
 2. Push `merge-bot-1122` to main, away from 13:30-13:45 UTC (a push to main can also redeploy batch-ingest, batch-worker-cron
    and health-report-cron). Not while a merge is running.
 3. Build log: `quickjs-ng`, `pypdf`, `google-auth` installed. `/health` answers. `@Tulle Bot PDFs for V105` answers.
 4. Set `XANO_MERGE_URL`, then `XANO_MERGE_SECRET` (dry run is still on).
-5. In #growth-strategy ask for one pilot pair: `@Tulle Bot merge V… into V…`. The card must gain Approve within about 2 minutes
+5. Merge cards made before this version can't be approved any more (the card says to ask for a fresh one) and don't block a new
+   card. In #growth-strategy ask for one pilot pair: `@Tulle Bot merge V… into V…`. The card must gain Approve within about 2 minutes
    and show today's and predicted prices. If it says "couldn't compute", the token can't read function source, quickjs is
    missing, or Xano was slow: press Check price again, then look at the logs for "price".
 6. Approve it once in dry run: it must say "dry run, nothing written". Check Xano table 72 has no new `vendor_merge` row.
@@ -52,6 +57,9 @@ Already set and used as is: `XANO_METADATA_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_SIG
   (exact copies pre-selected); price (loud only when the headline moves 10% or more, appears or disappears, or can't be computed).
 - Buttons: Approve and apply, Reject, Keep the duplicate instead, Details, sometimes Run PDF check again / Check price again.
 - On Approve: price re-checked; if anything moved the card is redrawn and nothing is sent. A merge takes up to a few minutes.
+- Approve only runs exactly the card that was clicked: if anyone changed direction, PDF choices, OKs or the price meanwhile, the
+  card is shown again and nothing is sent. Suggested pairs must still pass the scan's rules on live rows; pairs asked for by name
+  must pass state, distance, Google listing, hidden (with an OK) and gold.
 - After: Applied (Undo merge), "Merged, but something needs a look", part-way (Resume / Undo), or "couldn't confirm" (Re-check
   only). Undo that couldn't put everything back offers Undo again.
 - The gold-chip listing is always the one kept when only one has it. "merge A into B" or Keep the duplicate instead that would
@@ -68,8 +76,10 @@ Already set and used as is: `XANO_METADATA_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_SIG
 - **Cut the bot off from ep578:** remove `XANO_MERGE_SECRET`. `QA_ENABLED=0` stops the whole bot.
 - **Code:** redeploy the previous Railway deployment (1ac2b0f). Cards made by this version stay in `/data/proposals.json`; the
   old code ignores the new fields, but its Approve would send no `expected_state`, which ep578 refuses.
-- Don't deploy, restart or change variables while a merge is running: Railway drains 180 s, a merge can take 300 s. If it
-  happens, the card may sit on "Applying…": ep578 mode=status is the truth; start-up recovers cards stuck over 15 minutes.
+- Don't deploy, restart or change variables while a merge is running. **Raise the service's draining time from 180 s to at least
+  360 s** (a merge can take 300 s) before the first live merge. If a restart still catches one, the card sits on "Applying…" and
+  becomes "Re-check" after 10 minutes on its own (checked at start-up and every minute, or on the next click): press Re-check,
+  which asks Xano what really happened. Queued price checks are dropped at shutdown; those cards keep "Check price again".
 
 ## Known limits
 - Without Drive access only same-link PDFs are found as duplicates; other types show as not checked. With it, recall on

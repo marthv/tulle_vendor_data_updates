@@ -40,12 +40,28 @@ async def lifespan(_app):
         # thread or the scheduler can race to build a second one (QA 11-22 blocker: two Bots = two proposal stores).
         bot = get_bot()
         threading.Thread(target=bot.warm, name="warm", daemon=True).start()
+    stop_sweep = threading.Event()
+
+    def sweeper():
+        """Cards stuck on "Applying…" by a restart: at start-up and every minute, off the request threads."""
+        while not stop_sweep.is_set():
+            try:
+                get_interactions().sweep()
+            except Exception:  # noqa: BLE001
+                log.exception("stuck-card sweep failed")
+            stop_sweep.wait(60)
+    if os.environ.get("QA_SWEEP_ON_START", "1").strip().lower() not in ("0", "false", "no", "off"):
+        get_bot()                                  # one store per process: built here, not in a race
+        threading.Thread(target=sweeper, name="sweep", daemon=True).start()
     if config.scheduler_enabled():
         from scheduler import Scheduler
         _scheduler = Scheduler(get_bot())
         _scheduler.start()
         log.info("scheduler started")
     yield
+    stop_sweep.set()
+    import merge_checks
+    merge_checks.stop()                            # queued price checks are dropped, so a restart isn't held up
     if _scheduler is not None:
         _scheduler.stop()
 
@@ -80,7 +96,7 @@ def get_interactions():
     if _interactions is None:
         from interactions import Interactions
         b = get_bot()
-        _interactions = Interactions(slack=b.slack, store=b.store)
+        _interactions = Interactions(slack=b.slack, store=b.store, sweep=False)     # the lifespan thread sweeps
     return _interactions
 
 

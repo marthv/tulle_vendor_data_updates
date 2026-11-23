@@ -319,7 +319,8 @@ def test_partial_status_mapping(monkeypatch):
         assert appliers.merge_status({"survivor": "V1", "losers": ["V2"]}, "p")["state"] == want, st
     monkeypatch.setenv("DEDUPE_DRY_RUN", "0")
     monkeypatch.setattr(requests, "post", lambda *a, **k: R({"status": "partial", "repointed_total": 4}))
-    r = appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p", dry_run=False)
+    from test_v2 import ready_payload
+    r = appliers.merge(ready_payload(), OWNER, "p", dry_run=False)
     assert r.get("partial") and "part-way" in r["text"]
     monkeypatch.setattr(requests, "post", lambda *a, **k: R({"status": "partial_undo"}))
     r = appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p", mode="undo", dry_run=False)

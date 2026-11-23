@@ -57,6 +57,16 @@ def merge_proposal(store, **kw):
                         touches="• PDF files (table 10): 3 rows → V105", key="merge:V105|V13433", **kw)
 
 
+def ready_payload():
+    """A merge payload that may be sent: the card's records, the PDF list, and Xano's matching preview."""
+    import listing_compare
+    snap = {"Name": "Oak Barn", "Address": "2 B Ln", "Category": "Venue", "Place_ID": "G1", "Validated_Data": "1"}
+    pl = {"survivor": "V1", "losers": ["V2"], "counts": {}, "snapshots": {v: dict(snap, Vendor_ID=v) for v in ("V1", "V2")},
+          "pdf_check": {"status": "ok", "pdfs": [], "flags": []}}
+    pl["price"] = {"preview": {"current_state": listing_compare._shown_state(pl)}}
+    return pl
+
+
 def click(action, pid, user=OWNER, ts=None, team="T05U8AWH14Z"):
     return {"type": "block_actions", "team": {"id": team}, "user": {"id": user},
             "channel": {"id": "CDEDUPE"}, "message": {"ts": ts},
@@ -485,6 +495,8 @@ def test_scheduler_runs_once_per_day_and_never_without_channel(monkeypatch):
     s = scheduler.Scheduler(B(), clock=lambda: datetime(2026, 11, 23, 9, tzinfo=timezone.utc))
     assert s.tick() == []                                      # nothing configured -> nothing runs
     monkeypatch.setenv("DEDUPE_CHANNEL", "CDEDUPE")
+    assert s.tick() == []                                      # 2026-11-23: the scheduled scan is off unless asked for
+    monkeypatch.setenv("DEDUPE_SCHEDULED_SCAN", "1")
     ran = []
     monkeypatch.setattr(scheduler, "run_dedupe", lambda bot, now=None, mode=None: ran.append(now) or "dedupe:x")
     assert s.tick() == ["dedupe:x"] and s.tick() == []

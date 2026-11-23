@@ -15,7 +15,7 @@ import dedupe
 import feedback_watch
 import interactions
 from proposals import Store
-from test_v2 import (FIX, OWNER, FakeDir, RecSlack, V, click, fb_event, merge_proposal, posted, watcher)
+from test_v2 import (ready_payload, FIX, OWNER, FakeDir, RecSlack, V, click, fb_event, merge_proposal, posted, watcher)
 
 
 @pytest.fixture(autouse=True)
@@ -122,22 +122,23 @@ def test_4_proposal_doc_has_visibility_rule():
 def test_5_merge_timeout_or_5xx_is_unknown(monkeypatch, make):
     live_merge_env(monkeypatch)
     monkeypatch.setattr(requests, "post", lambda *a, **k: make())
-    r = appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p1", dry_run=False)
+    r = appliers.merge(ready_payload(), OWNER, "p1", dry_run=False)
     assert r["unknown"] and not r["ok"] and "Nothing was changed" not in r["text"]
 
 
 def test_5_merge_4xx_is_a_clear_refusal(monkeypatch):
     live_merge_env(monkeypatch)
-    monkeypatch.setattr(requests, "post", lambda *a, **k: Resp(400, {"message": "survivor already merged"}))
-    r = appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p1", dry_run=False)
-    assert not r["unknown"] and "survivor already merged" in r["text"]
+    monkeypatch.setattr(requests, "post", lambda *a, **k: Resp(400, {
+        "message": "A loser is already merged into a record."}))
+    r = appliers.merge(ready_payload(), OWNER, "p1", dry_run=False)
+    assert not r["unknown"] and "already merged into another" in r["text"] and "nothing was changed" in r["text"]
 
 
 def test_5_merge_uses_long_timeout(monkeypatch):
     live_merge_env(monkeypatch)
     seen = {}
     monkeypatch.setattr(requests, "post", lambda *a, **k: seen.update(k) or Resp(200, {"repointed_total": 3}))
-    appliers.merge({"survivor": "V1", "losers": ["V2"], "counts": {}}, OWNER, "p1", dry_run=False)
+    appliers.merge(ready_payload(), OWNER, "p1", dry_run=False)
     assert seen["timeout"] >= 120
 
 
@@ -397,8 +398,8 @@ def test_11_on_demand_scan_cooldown(monkeypatch):
     b = Bot(slack=RecSlack(), claude=FakeClaude(), state=State(), limiter=RateLimiter(), github=object(),
             xano=object())
     ev = {"channel": "C1", "ts": "1.1", "user": OWNER}
-    assert b.capabilities("scan duplicates", ev) == "dedupe:ran"
-    assert b.capabilities("scan duplicates", ev) == "dedupe:cooldown"
+    assert b.capabilities("scan duplicates 10", ev) == "dedupe:ran"
+    assert b.capabilities("scan duplicates 10", ev) == "dedupe:cooldown"
 
 
 # (12) escaping / scrubbing -------------------------------------------------------------------------------------------

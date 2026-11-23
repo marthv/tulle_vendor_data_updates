@@ -41,7 +41,7 @@ def test_price_impact_uses_the_same_rule():
         after = pi.assignments_after(pdfs, "V1", ["V2", "V3"])
         prim = [p["id"] for p in pdfs if after[p["id"]] == "Primary"]
         want = pd.primary_rule([pd.prim_item(pd.Pdf(p).public()) for p in pdfs if p["Current_Assignment"] == "Primary"],
-                               ["V1", "V2", "V3"])
+                               ["V1", "V2", "V3"], [pd.prim_item(pd.Pdf(p).public()) for p in pdfs if p["Vendor_ID"] == "V1"])
         assert prim == ([want] if want else [])                        # exactly one Primary after, and the same one
 
 

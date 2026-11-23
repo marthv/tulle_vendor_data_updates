@@ -1,4 +1,4 @@
-"""ep578 v4 (live XanoScript, updated 2026-11-23 03:52:55 UTC): every status and refusal VERBATIM (only the ids are samples), and
+"""ep578 v5 (live XanoScript, updated 2026-11-23 04:48:21 UTC): every status and refusal VERBATIM (only the ids are samples), and
 what the card says for each."""
 import re
 
@@ -46,8 +46,8 @@ REFUSED = [
      "is hidden", "failed", "duplicate is hidden"),
     ("Refused: the survivor is hidden and this merge would unhide it; expected_state.unhide_survivor must be true", "failed",
      "kept listing is hidden"),
-    ("Refused: a duplicate (V2) holds the gold chip and the survivor does not; a merge never moves it. Swap the survivor, or "
-     "pass allow_gold_loser", "failed", "Keep the gold-chip listing instead"),
+    ("Refused: a duplicate (V2) holds the gold chip and the survivor does not; a merge never moves it. Make the gold listing "
+     "the survivor", "failed", "Keep the gold-chip listing instead"),
     ("Refused: florists with 2 priced quotes after the merge are not merged yet: the florals summary would silently use only "
      "the last one", "failed", "Florists with more than one"),
     ("Refused: hiding these would leave no visible Primary PDF", "failed", "no visible Primary"),
@@ -82,7 +82,7 @@ def test_every_refusal(world, monkeypatch, msg, want, text):                    
 
 def test_two_refusals_are_both_said():
     said = appliers._refusal({"error": "Refused: a duplicate (V2) holds the gold chip and the survivor does not; a merge never "
-                                       "moves it. Swap the survivor, or pass allow_gold_loser; stale card: V2 Name changed since the card was made"})
+                                       "moves it. Make the gold listing the survivor; stale card: V2 Name changed since the card was made"})
     assert "gold chip" in said and "changed after this card" in said
 
 
@@ -155,6 +155,8 @@ def test_timeout_goes_to_status_never_resends(world, monkeypatch):              
 def _with(world, a=None, b=None):
     pl = world.store._data["proposals"][world.p["id"]]["payload"]
     pl["snapshots"] = {"V1": dict(A, **(a or {})), "V2": dict(B, **(b or {}))}
+    pl["origin"] = "named"                        # a suggested pair with a hidden member is held outright
+    world.x.tables[11] = [dict(pl["snapshots"]["V1"]), dict(pl["snapshots"]["V2"])]
     pl["price"]["preview"]["current_state"] = lc._shown_state(pl)
     return world.get()
 

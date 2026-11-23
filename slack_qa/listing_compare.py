@@ -170,7 +170,9 @@ def primary_after(payload: dict) -> dict:
     pdfs.sort(key=lambda p: (order.index(p["vendor_id"]) if p.get("vendor_id") in order else 9, p.get("row_id") or 0))
     hidden = {f["hide_pdf_id"] for f in (payload.get("pdf_check") or {}).get("flags") or [] if f.get("choice") == "hide"}
     exp = pdf_dupes.primary_rule([pdf_dupes.prim_item(p) for p in pdfs if _is_primary(p.get("label")) and p.get("visible")
-                                  and p.get("pdf_id") not in hidden], order)
+                                  and p.get("pdf_id") not in hidden], order,
+                                 [pdf_dupes.prim_item(p) for p in pdfs if order and p.get("vendor_id") == order[0]
+                                  and p.get("visible") and p.get("pdf_id") not in hidden])
     pv = (payload.get("price") or {}).get("preview") or {}
     labels = {c["row_id"]: c.get("new") for c in pv.get("t10_plan") or [] if c.get("column") == "Current_Assignment"}
     planned: object = "unknown"

@@ -119,14 +119,15 @@ def open_card(store, kind: str, vendor_id: str, field: str | None = None) -> dic
 def ready_to_apply(store) -> list[dict]:
     """Cards approved while their kind was in dry run, now that dry run is OFF for that kind (owner 2026-11-22):
     they show an 'Apply for real' button once their card is refreshed."""
-    from proposals import default_dry_run
+    from proposals import default_dry_run, is_void
     return [p for p in store.all() if p.get("status") == "dry_run" and p.get("kind") == "merge"
-            and not default_dry_run("merge")]
+            and not default_dry_run("merge") and not is_void(p)]
 
 
 def list_pending(store) -> str:
     ready = ready_to_apply(store)
-    rows = [p for p in store.all() if p.get("status") in ("pending", "unknown", "partial")] + ready
+    from proposals import is_void
+    rows = [p for p in store.all() if p.get("status") in ("pending", "unknown", "partial") and not is_void(p)] + ready
     if not rows:
         return "Nothing is waiting for approval."
     rows.sort(key=lambda p: p.get("created_at", ""))

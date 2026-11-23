@@ -160,8 +160,12 @@ def dedupe_channel() -> str:           # DEDUPE_CHANNEL: where merge suggestions
     return _s("DEDUPE_CHANNEL")
 
 
-def dedupe_max_cards() -> int:         # DEDUPE_MAX_CARDS: suggestions per post (hard max 10)
-    return max(1, min(10, int(_f("DEDUPE_MAX_CARDS", 10))))
+def dedupe_max_cards() -> int:         # DEDUPE_MAX_CARDS: suggestions per post (hard max 10). 0 = no scan cards at all
+    return max(0, min(10, int(_f("DEDUPE_MAX_CARDS", 10))))
+
+
+def dedupe_scheduled_scan() -> bool:   # DEDUPE_SCHEDULED_SCAN=1 -> the nightly / weekly scan posts cards on its own. Off by default
+    return _flag("DEDUPE_SCHEDULED_SCAN", False)
 
 
 def dedupe_max_pages() -> int:         # DEDUPE_MAX_PAGES: Xano read budget (500-row pages) per scan for reference counts
@@ -257,7 +261,8 @@ def ondemand_scan_cooldown_min() -> int:
 
 
 def stale_apply_min() -> int:          # an apply/undo still "in progress" after this long is marked unknown at start-up
-    return int(_f("QA_STALE_APPLY_MIN", 15))
+    # never shorter than a merge can take (its 300 s timeout) plus two minutes
+    return max(int(_f("QA_STALE_APPLY_MIN", 10)), int(merge_timeout() // 60) + 2)
 
 
 def merge_timeout() -> float:

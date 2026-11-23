@@ -3,7 +3,7 @@ rather than as a Railway cron service because the jobs need the same volume (pro
 find its proposal) and the same Slack/Xano clients; a separate cron service would need its own copy of both. The
 service runs one uvicorn worker, and "done for <day>" markers on the volume stop a restart from running a job twice.
 
-  dedupe   daily at DEDUPE_HOUR_UTC: weekly full scan on DEDUPE_WEEKLY_DOW, otherwise the nightly pass over vendors
+  dedupe   (only with DEDUPE_SCHEDULED_SCAN=1) daily at DEDUPE_HOUR_UTC: weekly full scan on DEDUPE_WEEKLY_DOW, otherwise the nightly pass over vendors
            added since the last scan. Posts up to DEDUPE_MAX_CARDS cards to DEDUPE_CHANNEL (never posts if unset).
   rollup   daily at ROLLUP_HOUR_UTC (ROLLUP_ENABLED=1 + FEEDBACK_CHANNEL).
   trends   weekly on TREND_DIGEST_DOW at TREND_DIGEST_HOUR_UTC: read-only #feedback trend digest to
@@ -41,11 +41,16 @@ def run_dedupe(bot, now: datetime | None = None, mode: str | None = None, max_ca
     if not getattr(bot.xano, "enabled", False):
         return "dedupe:no-xano"
     mode = mode or ("weekly" if now.weekday() == config.dedupe_weekly_dow() else "nightly")
-    res = dedupe.scan(bot.xano, bot.store, mode=mode, max_cards=max_cards or config.dedupe_max_cards(),
+    limit = config.dedupe_max_cards() if max_cards is None else max_cards
+    if max_cards is None and limit == 0:              # DEDUPE_MAX_CARDS=0: no scan cards at all
+        return "dedupe:off"
+    res = dedupe.scan(bot.xano, bot.store, mode=mode, max_cards=limit,
                       max_pages=config.dedupe_max_pages(), page_delay=config.dedupe_page_delay())
     props = res["proposals"]
     if res.get("busy"):
         return f"dedupe:{mode}:busy"
+    if limit == 0:                                    # 'scan duplicates' without a number: count only
+        return f"dedupe:{mode}:count:{res.get('fresh', 0)}"
     if not props:
         log.info("dedupe %s: %s", mode, res["note"])
         return f"dedupe:{mode}:0"
@@ -68,7 +73,7 @@ class Scheduler:
         out = []
         now = self.clock()
         store = self.bot.store
-        if config.dedupe_channel() and due(store, "dedupe", config.dedupe_hour_utc(), now):
+        if config.dedupe_scheduled_scan() and config.dedupe_channel() and due(store, "dedupe", config.dedupe_hour_utc(), now):
             mark(store, "dedupe", now)            # mark first: a crash mid-scan must not loop every 5 minutes
             try:
                 out.append(run_dedupe(self.bot, now))

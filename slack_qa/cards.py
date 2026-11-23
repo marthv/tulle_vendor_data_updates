@@ -181,7 +181,13 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
         blocks += _allow_blocks(p, status) + _pdf_blocks(p, status) + extra_blocks
     ask = confirm_dialog(confirm_text) if confirm_text else None
     buttons = []
-    waiting = price.get("status") == "computing"           # no Approve until the price answer is back
+    from proposals import is_void
+    void = is_void(p)
+    waiting = price.get("status") == "computing" or void   # no Approve until the price answer is back, or on an old card
+    if void:
+        blocks.append(_context("This card was made before the current merge checks, so it can't be approved. Ask for a fresh "
+                               "card: `@Tulle Bot merge " + " and ".join(
+                                   str(x) for x in [payload.get("survivor")] + list(payload.get("losers") or [])) + "`."))
     if status == "pending":
         if dry_run_for(p):
             blocks.append(_context(":test_tube: Dry run is on: approving records the decision and shows what would "
@@ -220,7 +226,8 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
         bid = f"tb:{p['id']}"
         if pdf.get("flags") or price or payload.get("allow"):      # what this card shows: a stale click is refused
             import pdf_dupes
-            bid += ":" + pdf_dupes.version(payload) + (":" + str(price.get("stamp")) if price else "")
+            from proposals import short_fingerprint
+            bid += ":" + pdf_dupes.version(payload) + (f":{price.get('stamp')}:{short_fingerprint(payload)}" if price else "")
         blocks.append({"type": "actions", "block_id": bid, "elements": buttons})
     blocks.append(_context(FOOTER))             # owner 2026-11-20: never name people on the card
     label = plain["headline"].replace("*", "") if plain else f"{KIND_LABEL.get(kind, kind)} - {p.get('title', '')}"

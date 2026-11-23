@@ -11,9 +11,8 @@ wait their turn), and price_impact reads a few things at a time.
 from __future__ import annotations
 
 import logging
+import queue
 import threading
-import time
-from concurrent.futures import ThreadPoolExecutor
 
 import appliers
 import config
@@ -25,18 +24,46 @@ SECONDS = 35.0             # price_impact's own budget for one card
 WAIT = 240.0               # how long a check waits for the one before it
 PREVIEW_TIMEOUT = 90.0     # measured 14-65 s live on 2026-11-22 (it counts every reference)
 _ONE = threading.Semaphore(1)
-_QUEUE = ThreadPoolExecutor(1, thread_name_prefix="price-queue")
+_JOBS: queue.Queue = queue.Queue()
+_STOP = threading.Event()
+_WORKER: list = []
+_WLOCK = threading.Lock()
 
 
-def submit(fn) -> None:
-    """Background queue: one job at a time, with a breath between jobs so a person's click gets in between."""
-    def job():
+def _work() -> None:
+    while not _STOP.is_set():
+        try:
+            fn = _JOBS.get(timeout=1)
+        except queue.Empty:
+            continue
+        if _STOP.is_set():
+            return
         try:
             fn()
         except Exception:  # noqa: BLE001
             log.exception("queued price check failed")
-        time.sleep(2)
-    _QUEUE.submit(job)
+        _STOP.wait(2)                       # a breath between jobs, so a person's click gets in between
+
+
+def submit(fn) -> None:
+    """Background queue: one job at a time, on a daemon thread. stop() drops what is queued (those cards keep their
+    "Check price again" button), so a shutdown never waits for it."""
+    if _STOP.is_set():
+        return
+    with _WLOCK:
+        if not _WORKER or not _WORKER[0].is_alive():
+            _WORKER[:] = [threading.Thread(target=_work, name="price-queue", daemon=True)]
+            _WORKER[0].start()
+    _JOBS.put(fn)
+
+
+def stop() -> None:
+    _STOP.set()
+    while True:
+        try:
+            _JOBS.get_nowait()
+        except queue.Empty:
+            return
 
 
 def touching(store, pid: str, payload: dict) -> list[str]:
@@ -80,6 +107,9 @@ def preview(payload: dict, hide: list[str]) -> dict | None:
             "loser_vendor_ids": payload.get("losers"), "secret": config.merge_secret()}
     if hide:
         body["hide_pdf_ids"] = hide
+    md5 = pdf_dupes.md5_map(payload)
+    if md5:
+        body["pdf_md5"] = md5
     res = appliers._post(config.merge_url(), body, timeout=PREVIEW_TIMEOUT)
     return res if res.get("ok") and res.get("status") == "preview" else None
 

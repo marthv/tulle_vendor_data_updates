@@ -38,6 +38,31 @@ def _never(kind: str) -> set[str]:
     return NEVER_AGAIN | {"undone"} if kind == "merge" else NEVER_AGAIN
 
 
+# Merge cards carry the build that made them. A pending / approved-in-dry-run card from an older build was made under older
+# rules: it can't be approved any more (QA 2026-11-23) and doesn't block a fresh card for the same listings.
+BUILD = MIN_MERGE_BUILD = "2026-11-23.1"
+
+
+def is_void(p: dict) -> bool:
+    return (p.get("kind") == "merge" and p.get("status") in ("pending", "dry_run")
+            and str(p.get("build") or "") < MIN_MERGE_BUILD)
+
+
+def fingerprint(payload: dict) -> dict:
+    """Everything an approver decides on: direction, PDF choices, explicit OKs, and the price answer shown."""
+    price = payload.get("price") or {}
+    return {"survivor": payload.get("survivor"), "losers": list(payload.get("losers") or []),
+            "pdfs": [[f.get("hide_pdf_id"), f.get("keep_pdf_id"), f.get("choice")]
+                     for f in (payload.get("pdf_check") or {}).get("flags") or []],
+            "allow": sorted(k for k, v in (payload.get("allow") or {}).items() if v),
+            "price": [price.get("status"), price.get("stamp"), price.get("survivor"), price.get("hide")]}
+
+
+def short_fingerprint(payload: dict) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(fingerprint(payload), sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -84,8 +109,10 @@ class Store:
              "status": "pending", "created_at": _now(), "status_at": _now()}
         if plain:
             p["plain"] = plain
+        if kind == "merge":
+            p["build"] = BUILD
         with self._lock:
-            if key and any(q.get("key") == key and q.get("status") in _never(q.get("kind"))
+            if key and any(q.get("key") == key and q.get("status") in _never(q.get("kind")) and not is_void(q)
                            for q in self._data["proposals"].values()):
                 return None
             self._data["proposals"][pid] = p
@@ -128,7 +155,8 @@ class Store:
         with self._lock:
             out = set()
             for p in self._data["proposals"].values():
-                if p.get("kind") == kind and p.get("key") and p.get("status") in (_never(kind) | {"dry_run"}):
+                if p.get("kind") == kind and p.get("key") and p.get("status") in (_never(kind) | {"dry_run"}) \
+                        and not is_void(p):
                     out.add(str(p["key"]).split(":asked:")[0])
             return out
 
@@ -161,8 +189,12 @@ class Store:
             return m[k]
 
     # --- transitions --------------------------------------------------------------------------------
-    def transition(self, pid: str, frm: set[str], to: str, user: str, **fields) -> tuple[dict | None, str]:
-        """Compare-and-set. Returns (proposal, "") on success or (proposal|None, reason) when refused."""
+    CHANGED = "The card changed while you were clicking."
+
+    def transition(self, pid: str, frm: set[str], to: str, user: str, expect: dict | None = None,
+                   **fields) -> tuple[dict | None, str]:
+        """Compare-and-set. Returns (proposal, "") on success or (proposal|None, reason) when refused. `expect` (merges
+        about to run): the fingerprint of the card the approver clicked; anything different is refused, under the lock."""
         with self._lock:
             p = self._data["proposals"].get(pid)
             if not p:
@@ -170,6 +202,8 @@ class Store:
             if p.get("status") not in frm:
                 who = f" by <@{p['decided_by']}>" if p.get("decided_by") else ""
                 return dict(p), f"That one is already {p.get('status')}{who}."
+            if expect is not None and fingerprint(p.get("payload") or {}) != expect:
+                return json.loads(json.dumps(p)), self.CHANGED
             p["status"], p["status_at"] = to, _now()
             if to in ("applying", "rejected"):
                 p["decided_by"], p["decided_at"] = user, _now()

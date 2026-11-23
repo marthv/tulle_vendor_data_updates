@@ -60,8 +60,15 @@ class Interactions:
         self.apply_fns = apply_fns or appliers.APPLIERS
         self.status_fns = status_fns or _status_fns()
         if sweep:
-            for pid in self.store.sweep_stale(config.stale_apply_min()):
-                self._refresh(self.store.get(pid))
+            self.sweep()
+
+    def sweep(self) -> list[str]:
+        """Cards left applying / undoing by a restart become 'unknown' (Re-check). app.py runs this in the background at
+        start-up and every minute, never on the request that has to answer Slack within 3 s."""
+        hit = self.store.sweep_stale(config.stale_apply_min())
+        for pid in hit:
+            self._refresh(self.store.get(pid))
+        return hit
 
     def handle_safe(self, payload: dict) -> str:
         try:
@@ -69,6 +76,12 @@ class Interactions:
         except Exception:  # noqa: BLE001 - background task
             log.exception("interaction failed")
             out = "error"
+            try:
+                self._ephemeral((payload.get("channel") or {}).get("id"), (payload.get("user") or {}).get("id") or "",
+                                "Something went wrong handling that click. Look at the card before trying again.",
+                                (payload.get("message") or {}).get("thread_ts"))
+            except Exception:  # noqa: BLE001
+                log.exception("could not tell the approver")
         log.info("interaction -> %s", out)
         return out
 
@@ -102,6 +115,9 @@ class Interactions:
             return "missing"
         if p.get("ts") and msg_ts and p.get("ts") != msg_ts:     # a card's id can't be replayed from another message
             return "ignored:message-mismatch"
+        if p.get("status") in ("applying", "undoing") and _age(p.get("status_at")) > config.stale_apply_min() * 60:
+            self.sweep()                                          # a click always recovers a stuck card
+            p = self.store.get(pid)
         if aid in (cards.ACTION_PDF_HIDE, cards.ACTION_PDF_KEEP):
             return self._pdf_choice(p, flag_n, "hide" if aid == cards.ACTION_PDF_HIDE else "keep", user, chan, thread)
         if aid == cards.ACTION_PDF_RECHECK:
@@ -160,6 +176,36 @@ class Interactions:
         self._refresh(p)
         return "price:" + ("alert" if ans.get("alert") else "ok")
 
+    def _rules(self, pl) -> str:
+        """The scan's rules again, on what the card shows AND on rows read live just now ("" = fine). A suggested pair (scan,
+        'find duplicates', #feedback) must pass all of them; a pair someone named must pass the hard ones (state, place,
+        hidden without an OK, gold)."""
+        import dedupe
+        import xano_search
+        snaps = pl.get("snapshots") or {}
+        vids = [str(v) for v in [pl.get("survivor")] + list(pl.get("losers") or []) if v]
+        if not snaps:
+            return ""                                  # appliers.merge refuses a card without its records
+        try:
+            rows = {str(r.get("Vendor_ID")): r for r in xano_search.search(self.xano, 11, "Vendor_ID", vids)}
+        except Exception as e:  # noqa: BLE001
+            log.warning("live listings not read: %s", type(e).__name__)
+            return "I couldn't re-read the listings just now. Try again in a few minutes."
+        if set(rows) != set(vids):
+            return "one of these listings doesn't exist any more. Ask for a fresh card."
+        refs = type("R", (), {"xano": self.xano, "pdf_names": {}})()
+        for members in ([snaps[v] for v in vids if v in snaps], [rows[v] for v in vids]):
+            why = dedupe.hard_conflict(members, vids[0], pl.get("allow") or {})
+            if why:
+                return why
+            if pl.get("origin") != "named":
+                try:
+                    dedupe.check_suggestion(members, refs)
+                except dedupe.Held as e:
+                    return (f"this pair no longer passes the scan's checks ({e}). If they really are the same, ask for it by "
+                            "name: that makes a card with the warnings on it.")
+        return ""
+
     def _price_gate(self, p, user, chan, thread, block_id) -> str | None:
         """The approver must have seen the current price answer, and it must still be true right now."""
         import listing_compare
@@ -196,6 +242,11 @@ class Interactions:
             self._ephemeral(chan, user, "The price on this card was updated, so nothing happened. Check it and press "
                                         "Approve again.", thread)
             return "price:stale"
+        from proposals import short_fingerprint
+        if block_id.count(":") >= 4 and block_id.split(":")[4] != short_fingerprint(pl):
+            self._refresh(p)
+            self._ephemeral(chan, user, "This card was changed, so nothing happened. Check it and press Approve again.", thread)
+            return "stale:changed"
         self._ephemeral(chan, user, "Checking the price once more, then merging (a few minutes; the card updates)…", thread)
         new = merge_checks.price(self.xano, pl, pv=old.get("preview"))
         new["touching"] = hit
@@ -284,6 +335,10 @@ class Interactions:
             self._ephemeral(chan, user, "Nothing was merged: this card has a *Needs your OK* question that hasn't been "
                                         "answered.", thread)
             return "allow:missing"
+        why = self._rules(pl)
+        if why:
+            self._ephemeral(chan, user, f"Nothing was merged: {why}", thread)
+            return "rules:refused"
         why = pdf_dupes.recheck_live(self.xano, pl) if pdf_dupes._chosen(pl) else None
         if why:
             self._ephemeral(chan, user, f"Nothing was merged: {why}. Choose *Keep both* for those PDFs, or try again.",
@@ -310,7 +365,22 @@ class Interactions:
 
     def _approve(self, p, user, chan, thread, block_id: str = "") -> str:
         was = p.get("status")
-        stop = self._pdf_gate(p, user, chan, thread, block_id)
+        from proposals import fingerprint, is_void
+        if is_void(p):
+            p2, why = self.store.transition(p["id"], {"pending", "dry_run"}, "failed", user, result_text=(
+                "This card was made before the current merge checks, so it can't be approved. Ask for a fresh card. Nothing "
+                "was changed."))
+            self._refresh(p2)
+            self._ephemeral(chan, user, why or "That card is from before the current checks. Ask for a fresh one.", thread)
+            return "void"
+        expect = fingerprint(p.get("payload") or {}) if p.get("kind") == "merge" and was in ("pending", "dry_run") else None
+        try:
+            stop = self._pdf_gate(p, user, chan, thread, block_id)
+        except Exception:  # noqa: BLE001 - a check that breaks must be visible, and nothing is sent
+            log.exception("approve checks failed")
+            self._ephemeral(chan, user, "Could not check this merge, so nothing was sent. Try again in a few minutes; if it "
+                                        "keeps happening, tell the owner.", thread)
+            return "gate:error"
         if stop:
             return stop
         from proposals import default_dry_run
@@ -321,12 +391,17 @@ class Interactions:
                 self._ephemeral(chan, user, "This was approved while changes are in dry run. It can be applied for "
                                             "real once dry run is switched off.", thread)
                 return "noop:dry_run"
-            p, why = self.store.transition(p["id"], {"dry_run"}, "applying", user, dry_run=False)
+            p, why = self.store.transition(p["id"], {"dry_run"}, "applying", user, expect=expect, dry_run=False)
         elif was == "dry_run":                 # only merges re-read live data at apply time (QA 11-22)
             self._ephemeral(chan, user, "This was approved during the dry run. Ask again to make a fresh card.", thread)
             return "noop:dry_run"
         else:
-            p, why = self.store.transition(p["id"], {"pending", "partial"}, "applying", user)
+            p, why = self.store.transition(p["id"], {"pending", "partial"}, "applying", user, expect=expect)
+        if why == self.store.CHANGED:
+            self._refresh(p)
+            self._ephemeral(chan, user, "Nothing was sent: someone changed this card while your click was being checked. Look "
+                                        "at it again, then press Approve.", thread)
+            return "stale:changed"
         if why:
             self._ephemeral(chan, user, why, thread)
             return "noop:" + (p or {}).get("status", "missing")

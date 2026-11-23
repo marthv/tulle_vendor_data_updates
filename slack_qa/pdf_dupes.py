@@ -310,6 +310,7 @@ class Pdf:
         return {"pdf_id": self.pid, "vendor_id": self.vid, "row_id": self.rid, "link": self.link,
                 "label": self.assignment or "PDF", "year": str(self.row.get("Year_of_Pricing") or ""),
                 # years printed in the PDF's text; None = the PDF wasn't read (a label can be wrong)
+                "md5": self.md5,
                 "printed_years": sorted(self.text.years) if self.text is not None and self.text.toks else None,
                 "visible": self.visible}
 
@@ -437,11 +438,12 @@ def _room_diff(a: Pdf, b: Pdf) -> str:
 
 # --- which copy stays --------------------------------------------------------------------------------------------
 def label_year(v) -> int:
-    """The pricing year of a stored label, read the way ep578 v4 reads it (newest year named; 0 = none)."""
-    ys = str(v or "")
-    if re.search(r"2,0|20,2", ys):
-        ys = ys.replace(",", "")
-    return max((int(x) for x in re.findall(r"20[0-9][0-9]", ys)), default=0)
+    """The pricing year of a stored label, read the way ep578 v5 reads it: the newest stand-alone 2000-2100; a short range
+    ("2025-26") or anything else is unreadable (0)."""
+    s = str(v if v is not None else "") + " "
+    if re.search(r"20[0-9][0-9] *[-/\u2013] *[0-9]{2}(?![0-9])", s):
+        return 0
+    return max((int(x) for x in re.findall(r"(?<![0-9])[0-9]{4}(?![0-9])", s) if 2000 <= int(x) <= 2100), default=0)
 
 
 def file_key(link) -> str:
@@ -450,36 +452,56 @@ def file_key(link) -> str:
     return m.group(0) if m else str(link or "").strip()
 
 
-def primary_rule(prims: list[dict], order: list[str]):
-    """The owner's rule (PASS_BAR Amendment 3), as ep578 v4 applies it, over today's VISIBLE Primary PDFs ({"key", "vid",
-    "year", "file"}; kept listing first in `order`): the kept listing's newest Primary stays, unless the duplicates' newest
-    one has a strictly newer year. Same file, equal, missing or unreadable years: the kept listing's stays."""
+def exact_items(a: dict, b: dict) -> bool:
+    return bool((a.get("file") and a.get("file") == b.get("file"))
+                or (a.get("md5") and a.get("md5") == b.get("md5") and a["md5"] != EMPTY_MD5))
+
+
+def primary_rule(prims: list[dict], order: list[str], own: list[dict] | None = None):
+    """The owner's rule (PASS_BAR Amendment 3), as ep578 v5 applies it, over today's VISIBLE Primary PDFs ({"key", "vid",
+    "year", "file", "md5"}; kept listing first in `order`): the kept listing's newest Primary stays, unless the duplicates'
+    newest one has a strictly newer year. A duplicate's Primary that is the same file as ANY visible PDF of the kept listing
+    (`own`) doesn't count. Equal, missing or unreadable years: the kept listing's stays."""
     at = lambda p: order.index(p["vid"]) if p["vid"] in order else len(order)  # noqa: E731
     best = lambda ps: min(ps, key=lambda p: (-p["year"], at(p), p["key"])) if ps else None  # noqa: E731
     mine = best([p for p in prims if order and p["vid"] == order[0]])
-    theirs = best([p for p in prims if not order or p["vid"] != order[0]])
+    dups = [p for p in prims if not order or p["vid"] != order[0]]
+    own = own if own is not None else [p for p in prims if order and p["vid"] == order[0]]
+    fresh = [p for p in dups if not any(exact_items(p, q) for q in own)]
+    theirs = best(fresh) or best(dups)
     if mine is None or theirs is None:
         keep = mine or theirs
         return keep["key"] if keep else None
-    same = bool(mine.get("file")) and mine.get("file") == theirs.get("file")
-    newer = bool(mine["year"]) and bool(theirs["year"]) and theirs["year"] > mine["year"]
-    return theirs["key"] if newer and not same else mine["key"]
+    newer = bool(fresh) and bool(mine["year"]) and bool(theirs["year"]) and theirs["year"] > mine["year"]
+    return theirs["key"] if newer else mine["key"]
 
 
 def prim_item(row: dict) -> dict:
     """A Primary PDF as primary_rule wants it, from a public() record."""
-    return {"key": row["row_id"], "vid": row["vendor_id"], "year": label_year(row.get("year")), "file": file_key(row.get("link"))}
+    return {"key": row["row_id"], "vid": row["vendor_id"], "year": label_year(row.get("year")),
+            "file": file_key(row.get("link")), "md5": row.get("md5") or ""}
+
+
+def md5_map(payload: dict) -> dict:
+    """{PDF_ID: md5} read from Drive for this card (optional input of ep578 v5); {} without Drive."""
+    out: dict = {}
+    for p in (payload.get("pdf_check") or {}).get("pdfs") or []:
+        m = str(p.get("md5") or "").lower()
+        if p.get("pdf_id") and re.fullmatch(r"[0-9a-f]{32}", m) and m != EMPTY_MD5:
+            out[p["pdf_id"]] = m
+    return out
 
 
 def post_merge_primary(pdfs: list[Pdf], survivor: str, losers: list[str] | None = None, results: dict | None = None) -> str:
     """PDF_ID that is the visible Primary once merged. A duplicate's Primary that is an exact copy of the kept listing's
     never takes over (it is the same file, whatever its year label says)."""
     prim = sorted((p for p in pdfs if p.visible and p.is_primary), key=lambda p: p.rid)
-    own = [p for p in prim if p.vid == survivor]
-    if results:
+    own = [p for p in pdfs if p.visible and p.vid == survivor]
+    if results and any(p.vid == survivor for p in prim):
         prim = [p for p in prim if p.vid == survivor
                 or not any((results.get(frozenset((p.rid, o.rid))) or {}).get("type") == "EXACT" for o in own)]
-    rid = primary_rule([prim_item(p.public()) for p in prim], [survivor] + list(losers or []))
+    rid = primary_rule([prim_item(p.public()) for p in prim], [survivor] + list(losers or []),
+                       [prim_item(p.public()) for p in pdfs if p.visible and p.vid == survivor])
     return next((p.pid for p in prim if p.rid == rid), "")
 
 

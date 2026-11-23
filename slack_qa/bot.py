@@ -414,7 +414,8 @@ class Bot:
                 return "merge:gold-refused"
             key = dedupe.group_key(vids)
             # the plain key AND any 'asked again' keys (QA 11-22: otherwise every re-ask made another card)
-            prior = [p for p in self.store.all() if p.get("kind") == "merge"
+            from proposals import is_void
+            prior = [p for p in self.store.all() if p.get("kind") == "merge" and not is_void(p)
                      and (p.get("key") == key or str(p.get("key", "")).startswith(key + ":asked:"))]
             open_p = next((p for p in prior if p.get("status") in ("pending", "applying", "unknown", "partial")), None)
             if open_p:
@@ -525,7 +526,8 @@ class Bot:
             gkeys.append(dedupe.group_key(sorted(vids)))
         existing = []
         for k in dict.fromkeys(gkeys):
-            ps = [p for p in self.store.all() if p.get("kind") == "merge"
+            from proposals import is_void
+            ps = [p for p in self.store.all() if p.get("kind") == "merge" and not is_void(p)
                   and (p.get("key") == k or str(p.get("key", "")).startswith(k + ":asked:"))]
             if ps:
                 # the card that explains the group best: open > approved in dry run > merged > rejected > others
@@ -771,24 +773,34 @@ class Bot:
                 self.post(channel, "The duplicate scan isn't switched on yet (DEDUPE_CHANNEL isn't set).", reply_ts,
                           footer=False)
                 return "dedupe:no-channel"
+            # 'scan duplicates 20' posts up to 20 cards (max 25); without a number it only counts (QA 2026-11-23)
+            n = re.search(r"\bduplicates?\s+(\d{1,3})\b|\b(\d{1,3})\s+(?:more\s+)?duplicates?\b", question, re.I)
+            n = (n.group(1) or n.group(2)) if n else None
+            n = min(25, int(n)) if n else 0
+            if n and config.dedupe_max_cards() == 0:
+                self.post(channel, "Scan cards are switched off (DEDUPE_MAX_CARDS=0). Name the listings instead: `@Tulle Bot "
+                                   "merge V1 and V2`.", reply_ts, footer=False)
+                return "dedupe:off"
             import time as _t
             last = float(self.store.meta("dedupe_ondemand_at", 0) or 0)
             wait = config.ondemand_scan_cooldown_min() * 60 - (_t.time() - last)
-            if wait > 0:
+            if wait > 0 and n:
                 self.post(channel, f"A scan ran a few minutes ago; try again in {int(wait // 60) + 1} min.", reply_ts,
                           footer=False)
                 return "dedupe:cooldown"
-            self.store.set_meta("dedupe_ondemand_at", _t.time())
-            self.post(channel, f"Starting a duplicate scan; suggestions will land in <#{config.dedupe_channel()}>.",
-                      reply_ts, footer=False)
+            if n:
+                self.store.set_meta("dedupe_ondemand_at", _t.time())
+            self.post(channel, f"Starting a duplicate scan; suggestions will land in <#{config.dedupe_channel()}>." if n else
+                      "Counting possible duplicates (no cards will be posted)…", reply_ts, footer=False)
             from scheduler import run_dedupe
             # owner 2026-11-22: an on-demand scan looks at EVERY vendor (the nightly job's "only vendors added since
             # the last scan" mode found 0 and said nothing). 'scan new duplicates' keeps the nightly behaviour.
             mode = "nightly" if re.search(r"\b(new|recent|latest)\b", question, re.I) else "weekly"
-            # 'scan duplicates 20' (max 25; default 10)
-            n = re.search(r"\bduplicates?\s+(\d{1,3})\b|\b(\d{1,3})\s+(?:more\s+)?duplicates?\b", question, re.I)
-            n = (n.group(1) or n.group(2)) if n else None
-            out = run_dedupe(self, mode=mode, max_cards=max(1, min(25, int(n))) if n else None)
+            out = run_dedupe(self, mode=mode, max_cards=n)
+            if ":count:" in out:
+                self.post(channel, f"{out.rsplit(':', 1)[1]} possible duplicate groups don't have a card yet. Say `@Tulle Bot "
+                                   "scan duplicates 10` to post 10 of them (max 25).", reply_ts, footer=False)
+                return out
             if out.endswith(":0") or out.endswith(":busy"):     # never leave the asker with silence
                 self.post(channel, "A scan is already running; its cards will appear when it finishes."
                           if out.endswith(":busy") else

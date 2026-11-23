@@ -392,7 +392,7 @@ def preview_for(pl):
 
 
 def make(pdf_rows, a=A, b=B, reply=None, drive=None, monkeypatch=None):
-    x = FakeXano({10: pdf_rows})
+    x = FakeXano({10: pdf_rows, 11: [dict(a), dict(b)]})
     c = pd.check(x, "V1", ["V2"], drive=drive)
     store, slack = Store(), RecSlack()
     p = store.create("merge", "t", "w", "why", "n", {"survivor": "V1", "losers": ["V2"], "counts": {"t10": 1},
@@ -480,7 +480,7 @@ def test_changed_pdf_stops_the_merge(live, monkeypatch, change):
         x.status = 500
     else:
         x.tables[10][1].update(change)
-    assert press(it, p, cards.ACTION_APPROVE, block_id=approve_block(p)) == "pdf:changed"
+    assert press(it, p, cards.ACTION_APPROVE, block_id=approve_block(p)) in ("pdf:changed", "rules:refused")
     assert sent.body is None and store.get(p["id"])["status"] == "pending"
 
 
@@ -511,7 +511,7 @@ def test_unsafe_hide_list_sends_nothing(live, monkeypatch):
 
 # --- endpoint refusals, running ---------------------------------------------------------------------------------------
 @pytest.mark.parametrize("msg,want", [("Refused: stale card: V2 Address changed since the card was made", "fresh card"),
-                                      ("Something new", "Xano refused: Something new")])
+                                      ("Every loser must have the survivor's Category.", "different categories")])
 def test_refusals_read_clearly(live, monkeypatch, msg, want):
     store, slack, it, x, p = make(EXACT_ROWS)
     Sent(monkeypatch, {"code": "ERROR_FATAL", "message": msg}, status=400)

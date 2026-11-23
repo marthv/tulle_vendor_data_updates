@@ -1034,6 +1034,29 @@ def details_text(p: dict) -> list[str]:
     return [c[:2900] for c in chunks]
 
 
+def hard_conflict(members: list[dict], survivor: str, allow: dict) -> str:
+    """Why these can't be merged even when a person named them; "" = fine. Different states, far apart, different Google
+    listings, a hidden record without the explicit OK, or a survivor that would retire the only gold chip."""
+    if any(str(m.get("merged_into") or "").strip() for m in members):
+        return "one of these listings was already merged. Ask for a fresh card."
+    ps = prepare(members)
+    text = {"state": "they are in different states", "distance": f"they are more than {MAX_KM:.0f} km apart",
+            "place_id": "they are linked to different Google listings"}
+    for i, a in enumerate(ps):
+        for b in ps[i + 1:]:
+            why = pair_conflict(a, b)
+            if why in text:
+                return (f"{text[why]}. If that is a mistake in our data, fix the listing first, then ask for a fresh card.")
+    s = next((m for m in members if str(m.get("Vendor_ID")) == str(survivor)), None)
+    if s is not None:
+        others = [m for m in members if m is not s]
+        if is_hidden(s) and any(not is_hidden(m) for m in others) and not allow.get("unhide"):
+            return "the kept listing is hidden from search and nobody has answered why."
+        if not is_hidden(s) and any(is_hidden(m) for m in others) and not allow.get("hidden"):
+            return "a duplicate is hidden from search and nobody has answered why."
+    return gold_refusal(members, survivor)
+
+
 class Held(Exception):
     """A suggestion that must not become a card (conflict, hidden, already merged, PDFs naming two venues)."""
 
@@ -1103,7 +1126,8 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", 
             "payload": {"survivor": sv, "losers": lv, "counts": counts, "total": sum(counts.values()),
                         "row_ids": {m.get("Vendor_ID"): m["id"] for m in members}, "rules": group.get("rules") or [],
                         "why_survivor": why_s, "snapshots": snapshots, "tables": tables, "counters": counters,
-                        "visibility": visibility_plan(survivor, losers), "pdf_check": pdf_check},
+                        "visibility": visibility_plan(survivor, losers), "pdf_check": pdf_check,
+                        "origin": "suggested" if suggested else "named"},
             "key": group_key([sv] + lv)}
 
 
@@ -1136,8 +1160,10 @@ def rebuild_for_swap(xano, vids: list[str], keep: str, payload: dict, plain: dic
     if no:
         raise Held(no)
     byid = {r["id"]: {k: v for k, v in r.items() if k not in PERSONAL_FIELDS} for r in rows.values()}
-    return build_proposal({"ids": sorted(byid, key=int), "rules": payload.get("rules") or []}, byid,
-                          _SwapRefs(xano, vids), survivor_vid=keep, why_text=plain.get("why") or "")
+    pr = build_proposal({"ids": sorted(byid, key=int), "rules": payload.get("rules") or []}, byid,
+                        _SwapRefs(xano, vids), survivor_vid=keep, why_text=plain.get("why") or "")
+    pr["payload"]["origin"] = payload.get("origin") or "suggested"        # a swap never makes a suggestion a named request
+    return pr
 
 
 # --- the scan -----------------------------------------------------------------------------------------------
@@ -1169,8 +1195,11 @@ def _scan(xano, store, mode, max_cards, max_pages, page_delay, vendor_rows) -> d
     if mode == "nightly" and last_max:
         groups = [g for g in groups if any(int(i) > last_max for i in g["ids"])]
     skip = store.handled_keys("merge")      # incl. approved-in-dry-run (owner 2026-11-22)
-    fresh = [g for g in groups
-             if group_key([str(byid[i].get("Vendor_ID")) for i in g["ids"]]) not in skip][:max_cards]
+    fresh = [g for g in groups if group_key([str(byid[i].get("Vendor_ID")) for i in g["ids"]]) not in skip]
+    n_fresh, fresh = len(fresh), fresh[:max_cards]
+    if max_cards <= 0:                                   # a count only: nothing is proposed or remembered
+        return {"proposals": [], "groups": len(groups), "fresh": n_fresh, "pages": 0,
+                "note": f"{n_fresh} groups without a card ({mode})"}
     created = []
     if fresh:
         wanted = {str(byid[i].get("Vendor_ID")) for g in fresh for i in g["ids"]}
