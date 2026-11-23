@@ -662,6 +662,9 @@ def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIn
     else:
         best = next((r for r in ("A", "B", "C") if r in rules), None)
         why = WHY_PLAIN.get(best, "Same name and place.")
+        if best == "A":          # QA 2026-11-22: a shared Google listing alone isn't evidence (it can be on the wrong row)
+            import listing_compare
+            why = listing_compare.evidence(survivor, losers)
     pdfs = sum(refs.counts.get(10, {}).get(v, 0) for v in lv)
     saved = sum(refs.counts.get(1, {}).get(v, 0) for v in lv) if 1 in refs.counts else None
     plans = sum(refs.counts.get(90, {}).get(v, 0) for v in lv) if 90 in refs.counts else 0
@@ -754,6 +757,8 @@ def details_text(p: dict) -> list[str]:
                   ". *Owner-only, never auto-written*: gold_chip " +
                   ", ".join(f"{vid}={_fmt((snaps.get(vid) or {}).get('gold_chip'), 5)}" for vid in order) +
                   ". Couples' emails and the raw Google cache are never stored here.")
+    import pdf_dupes
+    chunks.append(pdf_dupes.details_lines(pl))
     chunks.append("*Stored by name, not id (not rewritten automatically)*\n" +
                   "\n".join(f"• {t} · {f}: {why}" for t, f, why in NAME_KEYED))
     return [c[:2900] for c in chunks]
@@ -761,7 +766,8 @@ def details_text(p: dict) -> list[str]:
 
 def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", survivor_vid: str = "",
                    why_text: str = "") -> dict:
-    members = [byid[i] for i in group["ids"]]
+    import listing_compare
+    members = listing_compare.fresh(getattr(refs, "xano", None), [byid[i] for i in group["ids"]])
     pdfs = refs.pdfs()
     forced = next((m for m in members if survivor_vid and str(m.get("Vendor_ID")) == survivor_vid), None)
     survivor, why_s = (forced, "you asked to keep it") if forced else choose_survivor(members, pdfs)
@@ -782,6 +788,8 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", 
     plain = plain_card(survivor, losers, group.get("rules") or [], refs, why_s, reported=reported, why_text=why_text)
     counters = counter_plan(survivor, losers)
     snapshots = {m.get("Vendor_ID"): safe_snapshot(m) for m in members}
+    import pdf_dupes                       # read-only, time-bounded, never raises: a failure shows as "unavailable"
+    pdf_check = pdf_dupes.safe_check(getattr(refs, "xano", None), sv, lv)
     nxt = "Approve to merge, or Reject if they're different businesses (I won't suggest this pair again)."
     title = f"{_esc(survivor.get('Name'))} listed {len(members)} times"
     return {"title": title[:140], "what": plain["headline"], "why": plain["why"], "touches": "",
@@ -789,7 +797,7 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", 
             "payload": {"survivor": sv, "losers": lv, "counts": counts, "total": sum(counts.values()),
                         "row_ids": {m.get("Vendor_ID"): m["id"] for m in members}, "rules": group.get("rules") or [],
                         "why_survivor": why_s, "snapshots": snapshots, "tables": tables, "counters": counters,
-                        "visibility": visibility_plan(survivor, losers)},
+                        "visibility": visibility_plan(survivor, losers), "pdf_check": pdf_check},
             "key": group_key([sv] + lv)}
 
 

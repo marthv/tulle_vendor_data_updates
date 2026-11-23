@@ -56,9 +56,12 @@ def test_main_card_is_plain_english():
     text, blocks = cards.render(p)
     assert cards.validate(blocks) == []
     main = card_text(blocks)
-    assert sum(1 for b in blocks if b["type"] == "section") == 3
+    # QA 2026-11-22: the card also carries a side-by-side section, mismatch banner and the PDF check line; the plain
+    # lines themselves stay free of ids and table names
+    assert any(b.get("fields") for b in blocks)
     assert main.startswith("These look like the same venue: *The Plaza* (New York) listed twice.")
-    assert "Same Google listing." in main
+    assert "Same Google listing." not in main         # QA 2026-11-22: never the only evidence
+    assert "same street address" in main and "linked to the same Google listing" in main
     assert "We'll keep the visible listing, move its 3 PDFs" in main and "1 couple' plans" not in main
     assert "The duplicate is hidden from search, not deleted." in main and "add up its clicks" in main
     assert "undo" not in main.lower()                 # dry-run card: there will be nothing to undo
@@ -67,7 +70,7 @@ def test_main_card_is_plain_english():
     for bad in (r"\bV\d+", r"\btable\b", "Place ID", "row", "Vendor_ID", "repoint"):
         assert not re.search(bad, main, re.I), bad
     labels = [e["text"]["text"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
-    assert labels == ["Approve and apply", "Reject", "Details"]
+    assert labels == ["Approve and apply", "Reject", "Run PDF check again", "Details"]      # FakeX: PDFs unreadable
 
 
 def test_why_line_matches_strongest_rule():

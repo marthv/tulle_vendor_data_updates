@@ -46,7 +46,8 @@ def _post(url: str, body: dict, headers: dict | None = None, timeout: float = TI
         return {"ok": False, "unknown": True, "error": f"HTTP {r.status_code}"}
     if r.status_code >= 300:
         msg = (data or {}).get("message") or (data or {}).get("error") or f"HTTP {r.status_code}"
-        return {"ok": False, "unknown": False, "error": str(msg)[:300]}
+        return {"ok": False, "unknown": False, "error": str(msg)[:300],
+                "code": str((data or {}).get("code") or "")[:80]}
     return {"ok": True, **data}
 
 
@@ -55,8 +56,43 @@ def _out(ok, text, dry=False, unknown=False, result=None):
 
 
 # --- merge ---------------------------------------------------------------------------------------------
+RUNNING_TEXT = "The merge is running in Xano right now. Wait a minute, then press Re-check."
+REFUSALS = (          # (what the endpoint says, what the card says)
+    (re.compile(r"stale|changed since|expected_state|no longer match", re.I),
+     "One of these listings (or its PDFs) changed after this card was posted, so Xano refused. Nothing was changed. Ask "
+     "for a fresh card."),
+    (re.compile(r"hidden", re.I),
+     "One of these listings is hidden from search, so Xano refused. Nothing was changed. Find out why it was hidden "
+     "first (wrong PDFs? the venue asked?)."),
+    (re.compile(r"gold", re.I),
+     "The listing that would be hidden has the gold chip and the kept one doesn't, so Xano refused. Nothing was changed. "
+     "Ask the owner which one to keep."),
+)
+
+
+def _is_running(res: dict) -> bool:
+    if str(res.get("status") or "").lower() == "running":
+        return True
+    return not res.get("ok") and bool(re.search(r"\b(running|in progress|locked)\b",
+                                                f"{res.get('code', '')} {res.get('error', '')}", re.I))
+
+
+def _refusal(res: dict) -> str:
+    said = f"{res.get('code', '')} {res.get('error', '')}"
+    for rx, text in REFUSALS:
+        if rx.search(said):
+            return f"{text} (Xano: {esc(res.get('error'))})"
+    return f"Xano refused: {esc(res.get('error'))}. Nothing was changed."
+
+
 def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_run: bool = True) -> dict:
     """payload = {"survivor": "V12", "losers": ["V34"], "counts": {...}}. mode = apply | undo."""
+    import pdf_dupes
+    try:
+        hide = [] if mode == "undo" else pdf_dupes.hide_ids(payload)       # undo restores PDFs from the backup
+    except ValueError as e:
+        return _out(False, f"I stopped before sending anything: {esc(e)}. Nothing was changed.")
+    n_hide = f"{len(hide)} duplicate PDF{'s' if len(hide) != 1 else ''}"
     counts = payload.get("counts") or {}
     total = sum(v for v in counts.values() if isinstance(v, int))
     if dry_run or config.merge_dry_run():
@@ -64,8 +100,9 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
         log.info("DRY RUN merge %s %s <- %s by %s (%s)", mode, payload.get("survivor"), payload.get("losers"), user,
                  proposal_id)
         return _out(True, f"Dry run: {verb} about {total} rows across {len([v for v in counts.values() if v])} "
-                          f"tables into {payload.get('survivor')}. Nothing was written.", dry=True,
-                    result={"counts": counts})
+                          f"tables into {payload.get('survivor')}."
+                          + (f" Would hide {n_hide}." if hide else "") + " Nothing was written.", dry=True,
+                    result={"counts": counts, **({"hide_pdf_ids": hide} if hide else {})})
     if not config.merge_url() or not config.merge_secret():
         return _out(False, "The merge endpoint isn't configured (XANO_MERGE_URL / XANO_MERGE_SECRET), so nothing "
                            "was sent.")
@@ -74,12 +111,21 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
             # no snapshots/counters: the endpoint recomputes both from the LIVE rows at apply time; the bot's
             # scan-time values are display-only (QA round 3)
             "secret": config.merge_secret()}
+    if mode == "apply":                        # what the approver saw; the endpoint refuses if it changed since
+        import listing_compare
+        state = listing_compare.expected_state(payload)
+        if state:
+            body["expected_state"] = state
+    if hide:
+        body["hide_pdf_ids"] = hide           # t10 PDF_IDs; the endpoint backs Show_PDF up and undo restores it
     res = _post(config.merge_url(), body, timeout=config.merge_timeout())
     if res.get("unknown"):
         return _out(False, f"I sent it but got {esc(res['error'])}, so I can't tell whether the merge ran.",
                     unknown=True)
+    if _is_running(res):                       # 'unknown' on the card = Re-check only: never Resume or Undo mid-run
+        return _out(False, RUNNING_TEXT, unknown=True)
     if not res.get("ok"):
-        return _out(False, f"Xano refused: {esc(res.get('error'))}. Nothing was changed.")
+        return _out(False, _refusal(res))
     if res.get("status") == "partial" and mode != "undo":
         out = _out(False, f"Xano says the merge stopped part-way ({esc(res.get('repointed_total', '?'))} rows moved, "
                           "all backed up).", result={k: v for k, v in res.items() if k != "secret"})
@@ -96,6 +142,14 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
     conflicts = res.get("conflicts") or res.get("undo_conflicts") or []
     note = (f" {len(conflicts)} value{'s' if len(conflicts) != 1 else ''} had been changed since and "
             "{} left as they are.".format("was" if len(conflicts) == 1 else "were")) if conflicts else ""
+    warn = res.get("rebuild_warnings") or res.get("warnings") or res.get("rebuild_errors")
+    if warn:                                  # QA 2026-11-22: a rebuild problem must not read as a clean "Applied"
+        note += (" :warning: The rows moved, but rebuilding this venue's prices or search entry reported a problem: "
+                 f"{esc(str(warn)[:200])}.")
+    if hide:                                  # never claim PDFs were hidden unless the endpoint says so
+        done = res.get("hidden_pdf_ids")
+        note += (f" Hid {n_hide}." if isinstance(done, list) and set(hide) <= {str(x) for x in done} else
+                 f" I asked Xano to hide {n_hide} but it didn't confirm that: check the listing.")
     if mode == "undo":
         restored = res.get("restored_total", moved)            # ep578 reports restored_total on undo
         return _out(True, f"Restored {esc(restored)} values from backup {esc(res.get('backup_id', '?'))}.{note}",
@@ -112,6 +166,8 @@ def merge_status(payload: dict, proposal_id: str) -> dict:
     res = _post(config.merge_url(), {"mode": "status", "proposal_id": proposal_id,
                                      "survivor_vendor_id": payload.get("survivor"),
                                      "loser_vendor_ids": payload.get("losers"), "secret": config.merge_secret()})
+    if _is_running(res):
+        return {"state": "unknown", "text": RUNNING_TEXT}
     if not res.get("ok"):
         return {"state": "unknown", "text": f"The status check didn't answer ({esc(res.get('error'))})."}
     st = str(res.get("status") or "none")

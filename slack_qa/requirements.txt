@@ -5,3 +5,5 @@ requests>=2.31
 pydantic>=2.6
 # tests only: pytest, httpx (fastapi TestClient)
 rapidfuzz>=3.0
+pypdf>=5.0        # duplicate-PDF check: text layer of a PDF (drive_ro.py)
+google-auth>=2.28 # duplicate-PDF check: only used when GOOGLE_SERVICE_ACCOUNT_JSON is set

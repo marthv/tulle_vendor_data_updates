@@ -19,7 +19,8 @@ import config
 from proposals import Store
 
 log = logging.getLogger("slack_qa.interactions")
-ACTIONS = (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO, cards.ACTION_RECHECK, cards.ACTION_DETAILS)
+ACTIONS = (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO, cards.ACTION_RECHECK, cards.ACTION_DETAILS,
+           cards.ACTION_PDF_HIDE, cards.ACTION_PDF_KEEP, cards.ACTION_PDF_RECHECK)
 
 
 def parse_body(body: bytes) -> dict | None:
@@ -40,11 +41,12 @@ def _status_fns():
 
 class Interactions:
     def __init__(self, slack=None, store: Store | None = None, apply_fns: dict | None = None,
-                 status_fns: dict | None = None, sweep: bool = True):
+                 status_fns: dict | None = None, sweep: bool = True, xano=None):
         if slack is None:
             from slack_api import Slack
             slack = Slack()
         self.slack = slack
+        self._xano = xano
         self.store = store or Store()
         self.apply_fns = apply_fns or appliers.APPLIERS
         self.status_fns = status_fns or _status_fns()
@@ -72,6 +74,7 @@ class Interactions:
             return "ignored:no-action"
         act = acts[0]
         aid, pid = act.get("action_id"), act.get("value") or ""
+        pid, _, flag_n = pid.partition("|")             # "<id>|<n>" only on the duplicate-PDF buttons
         if aid not in ACTIONS:
             return f"ignored:action:{aid}"
         user = (payload.get("user") or {}).get("id") or ""
@@ -90,13 +93,75 @@ class Interactions:
             return "missing"
         if p.get("ts") and msg_ts and p.get("ts") != msg_ts:     # a card's id can't be replayed from another message
             return "ignored:message-mismatch"
+        if aid in (cards.ACTION_PDF_HIDE, cards.ACTION_PDF_KEEP):
+            return self._pdf_choice(p, flag_n, "hide" if aid == cards.ACTION_PDF_HIDE else "keep", user, chan, thread)
+        if aid == cards.ACTION_PDF_RECHECK:
+            return self._pdf_recheck(p, user, chan, thread)
         if aid == cards.ACTION_REJECT:
             return self._reject(p, user, chan, thread)
         if aid == cards.ACTION_UNDO:
             return self._undo(p, user, chan, thread)
         if aid == cards.ACTION_RECHECK:
             return self._recheck(p, user, chan, thread)
-        return self._approve(p, user, chan, thread)
+        return self._approve(p, user, chan, thread, act.get("block_id") or "")
+
+    # --- duplicate PDFs --------------------------------------------------------------------------------------
+    @property
+    def xano(self):
+        if self._xano is None:
+            from xano_ro import ReadOnlyXano
+            self._xano = ReadOnlyXano(cache_ttl=0)
+        return self._xano
+
+    def _pdf_choice(self, p, flag_n, choice, user, chan, thread) -> str:
+        p2, why = self.store.set_pdf_choice(p["id"], int(flag_n) if flag_n.isdigit() else -1, choice, user)
+        if why:
+            self._ephemeral(chan, user, why, thread)
+            return "noop:pdf"
+        self._refresh(p2)
+        return f"pdf:{choice}"
+
+    def _pdf_recheck(self, p, user, chan, thread) -> str:
+        import pdf_dupes
+        pl = p.get("payload") or {}
+        if p.get("kind") != "merge" or (pl.get("pdf_check") or {}).get("status") == "ok":
+            return "noop:pdf-recheck"          # a finished check (and its choices) is never replaced by a click
+        p2, why = self.store.set_pdf_check(p["id"], pdf_dupes.safe_check(self.xano, pl.get("survivor"),
+                                                                         pl.get("losers") or []))
+        if why:
+            self._ephemeral(chan, user, why, thread)
+            return "noop:pdf"
+        self._refresh(p2)
+        return "pdf:rechecked"
+
+    def _pdf_gate(self, p, user, chan, thread, block_id) -> str | None:
+        """Before a merge runs: the approver must have seen the PDF result and the current choices, and the PDFs to hide
+        must still be as shown. None = go ahead."""
+        if p.get("kind") != "merge" or p.get("status") not in ("pending", "dry_run"):
+            return None                        # Resume: the choices were fixed when it was first approved
+        import pdf_dupes
+        from proposals import default_dry_run
+        pl = p.get("payload") or {}
+        live = not default_dry_run("merge") and (p.get("status") == "dry_run" or not p.get("dry_run", True))
+        if not live:
+            return None                        # a dry run hides nothing
+        if pl.get("pdf_check") is None and pl.get("snapshots"):      # a card from before this check existed
+            self._pdf_recheck(p, user, chan, thread)
+            self._ephemeral(chan, user, "I've added the duplicate-PDF check to this card. Have a look, then press "
+                                        "Approve again.", thread)
+            return "pdf:shown-first"
+        shown = block_id.split(":")[2] if block_id.count(":") >= 2 else ""
+        if block_id.startswith("tb:") and shown != pdf_dupes.version(pl):
+            self._refresh(p)
+            self._ephemeral(chan, user, "Someone changed a PDF choice on this card, so nothing happened. Check it and "
+                                        "press Approve again.", thread)
+            return "pdf:stale"
+        why = pdf_dupes.recheck_live(self.xano, pl) if "h" in pdf_dupes.version(pl) else None
+        if why:
+            self._ephemeral(chan, user, f"Nothing was merged: {why}. Choose *Keep both* for those PDFs, or try again.",
+                            thread)
+            return "pdf:changed"
+        return None
 
     # --- actions -------------------------------------------------------------------------------------------
     def _reject(self, p, user, chan, thread) -> str:
@@ -115,8 +180,11 @@ class Interactions:
             return {"ok": False, "dry_run": False, "unknown": True,
                     "text": f"Something broke mid-way ({type(e).__name__}), so I can't tell whether it applied."}
 
-    def _approve(self, p, user, chan, thread) -> str:
+    def _approve(self, p, user, chan, thread, block_id: str = "") -> str:
         was = p.get("status")
+        stop = self._pdf_gate(p, user, chan, thread, block_id)
+        if stop:
+            return stop
         from proposals import default_dry_run
         if was == "dry_run" and p.get("kind") == "merge":
             # owner 2026-11-22: a card approved while dry run was on can be applied for real once dry run is off

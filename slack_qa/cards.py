@@ -27,6 +27,8 @@ KIND_LABEL = {"merge": "Merge duplicate vendors", "vendor_edit": "Vendor data fi
               "visibility": "Hide or show a vendor"}
 ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO, ACTION_RECHECK = "tb_approve", "tb_reject", "tb_undo", "tb_recheck"
 ACTION_DETAILS = "tb_details"
+# duplicate-PDF choices on a merge card: value = "<proposal id>|<flag number>"; what it hides is read from the store
+ACTION_PDF_HIDE, ACTION_PDF_KEEP, ACTION_PDF_RECHECK = "tb_pdf_hide", "tb_pdf_keep", "tb_pdf_recheck"
 
 
 def esc(text) -> str:
@@ -84,10 +86,48 @@ UNDO_CONFIRM = {"title": {"type": "plain_text", "text": "Undo this merge?"},
                 "confirm": {"type": "plain_text", "text": "Undo"}, "deny": {"type": "plain_text", "text": "Cancel"}}
 
 
-def render(p: dict) -> tuple[str, list[dict]]:
+def confirm_dialog(text: str, base: dict | None = None) -> dict:
+    """A Slack confirm dialog that asks `text` first (Block Kit limit: 300 characters), then `base`'s own text."""
+    text = f"{text} {base['text']['text']}" if base else text
+    return {"title": base["title"] if base else {"type": "plain_text", "text": "Are you sure?"},
+            "text": {"type": "mrkdwn", "text": clip(text, 300)},
+            "confirm": base["confirm"] if base else {"type": "plain_text", "text": "Yes, approve"},
+            "deny": {"type": "plain_text", "text": "Cancel"}}
+
+
+def _pdf_blocks(p: dict, status: str) -> list[dict]:
+    """The duplicate-PDF result: always on a merge card that has one (so it's seen before Approve), with one choice per
+    flag while the merge hasn't run and just the outcome afterwards."""
+    import pdf_dupes
+    pl = p.get("payload") or {}
+    c = pl.get("pdf_check")
+    if c is None:
+        return []
+    out = [_section(pdf_dupes.summary_line(c))]
+    for f in c.get("flags") or []:
+        out.append(_section(pdf_dupes.flag_text(f, pl.get("survivor") or "")))
+        if status in ("pending", "dry_run"):
+            val = f"{p['id']}|{f['n']}"
+            out.append({"type": "actions", "block_id": f"tbpdf:{p['id']}:{f['n']}", "elements": [
+                _btn(ACTION_PDF_KEEP, val, "Keep both") if f.get("choice") == "hide"
+                else _btn(ACTION_PDF_HIDE, val, "Hide the duplicate")]})
+    return out
+
+
+def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | None = None) -> tuple[str, list[dict]]:
     """(fallback text, blocks) for a proposal dict from proposals.Store. A merge with `plain` text gets the short card
-    (3 lines + buttons, no ids or table names); the full record is behind the Details button."""
+    (3 lines + buttons, no ids or table names); the full record is behind the Details button.
+
+    Extension point (merge cards only): `extra_blocks` are shown just above the buttons and `confirm_text` makes every
+    button that runs the merge ask first. Pass them here, or store them as payload["extra_blocks"] /
+    payload["confirm_text"] so every re-draw of the card keeps them (an argument wins over the stored value)."""
     kind = p.get("kind", "task")
+    payload = p.get("payload") or {}
+    if kind == "merge":
+        extra_blocks = list(payload.get("extra_blocks") or []) if extra_blocks is None else extra_blocks
+        confirm_text = payload.get("confirm_text") if confirm_text is None else confirm_text
+    else:
+        extra_blocks, confirm_text = [], None
     plain = p.get("plain")
     if plain:
         happens = plain["happens"]
@@ -100,7 +140,11 @@ def render(p: dict) -> tuple[str, list[dict]]:
             happens += " " + plain["hidden"] + (", and you can undo this from the card." if can_undo else ".")
         elif can_undo:                              # a card proposed before 2026-11-20
             happens += " You can undo this from the card."            # only when an undo is actually possible
-        blocks: list[dict] = [_section(plain["headline"]), _section(plain["why"]), _section(happens)]
+        blocks: list[dict] = [_section(plain["headline"])]
+        if kind == "merge" and status0 in ("pending", "dry_run"):    # side by side + mismatch banner (QA 2026-11-22)
+            import listing_compare
+            blocks += listing_compare.blocks(payload)
+        blocks += [_section(plain["why"]), _section(happens)]
     else:
         head = f"*Proposed change* · {KIND_LABEL.get(kind, kind)} · {p.get('title', '')}"
         blocks = [_section(clip(head, 600)), _section(p.get("what") or "")]
@@ -111,12 +155,15 @@ def render(p: dict) -> tuple[str, list[dict]]:
         if p.get("next_steps"):
             blocks.append(_section("*Next steps:* " + p["next_steps"]))
     status = p.get("status", "pending")
+    if kind == "merge":
+        blocks += _pdf_blocks(p, status) + extra_blocks
+    ask = confirm_dialog(confirm_text) if confirm_text else None
     buttons = []
     if status == "pending":
         if dry_run_for(p):
             blocks.append(_context(":test_tube: Dry run is on: approving records the decision and shows what would "
                                    "happen. Nothing is written until dry run is switched off."))
-        buttons = [_btn(ACTION_APPROVE, p["id"], "Approve and apply", "primary"),
+        buttons = [_btn(ACTION_APPROVE, p["id"], "Approve and apply", "primary", confirm=ask),
                    _btn(ACTION_REJECT, p["id"], "Reject", "danger")]
     else:
         blocks.append(_context(outcome_line(p)))
@@ -127,15 +174,23 @@ def render(p: dict) -> tuple[str, list[dict]]:
             # apply time; other kinds don't, so they get a fresh card instead - QA 11-22)
             from proposals import default_dry_run
             if not default_dry_run(kind):
-                buttons.append(_btn(ACTION_APPROVE, p["id"], "Apply for real", "primary", confirm=APPLY_CONFIRM))
+                buttons.append(_btn(ACTION_APPROVE, p["id"], "Apply for real", "primary",
+                                    confirm=confirm_dialog(confirm_text, APPLY_CONFIRM) if ask else APPLY_CONFIRM))
         if status == "partial" and kind == "merge":
-            buttons.append(_btn(ACTION_APPROVE, p["id"], "Resume merge", "primary"))
+            buttons.append(_btn(ACTION_APPROVE, p["id"], "Resume merge", "primary", confirm=ask))
         if status in ("applied", "partial") and kind == "merge" and p.get("undoable", True):
             buttons.append(_btn(ACTION_UNDO, p["id"], "Undo merge", confirm=UNDO_CONFIRM))
-    if kind == "merge" and (p.get("payload") or {}).get("snapshots"):
+    pdf = (payload.get("pdf_check") or {}) if kind == "merge" else {}
+    if pdf.get("status") == "unavailable" and status in ("pending", "dry_run"):
+        buttons.append(_btn(ACTION_PDF_RECHECK, p["id"], "Run PDF check again"))
+    if kind == "merge" and payload.get("snapshots"):
         buttons.append(_btn(ACTION_DETAILS, p["id"], "Details"))
     if buttons:
-        blocks.append({"type": "actions", "block_id": f"tb:{p['id']}", "elements": buttons})
+        bid = f"tb:{p['id']}"
+        if pdf.get("flags"):                    # the PDF choices this card shows: a click on a stale card is refused
+            import pdf_dupes
+            bid += ":" + pdf_dupes.version(payload)
+        blocks.append({"type": "actions", "block_id": bid, "elements": buttons})
     blocks.append(_context(FOOTER))             # owner 2026-11-20: never name people on the card
     label = plain["headline"].replace("*", "") if plain else f"{KIND_LABEL.get(kind, kind)} - {p.get('title', '')}"
     fallback = clip(f"Proposed change: {label}", MAX_FALLBACK)
@@ -192,6 +247,9 @@ def validate(blocks: list[dict]) -> list[str]:
             errs.append(f"block {i}: type {t}")
         if t == "section" and len(b["text"]["text"]) > MAX_SECTION:
             errs.append(f"block {i}: section text > {MAX_SECTION}")
+        if t == "section" and "fields" in b and (not 1 <= len(b["fields"]) <= 10
+                                                 or any(len(f["text"]) > 2000 for f in b["fields"])):
+            errs.append(f"block {i}: section fields")
         if t == "header" and len(b["text"]["text"]) > MAX_HEADER:
             errs.append(f"block {i}: header > {MAX_HEADER}")
         if t == "context":

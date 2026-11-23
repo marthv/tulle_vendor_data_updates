@@ -175,6 +175,34 @@ class Store:
         self._log({"event": to, "id": pid, "user": user, **{k: v for k, v in fields.items() if k != "payload"}})
         return out, ""
 
+    def set_pdf_check(self, pid: str, result: dict) -> tuple[dict | None, str]:
+        """Attach / replace the duplicate-PDF result, only while the merge hasn't run."""
+        with self._lock:
+            p = self._data["proposals"].get(pid)
+            if not p or p.get("status") not in ("pending", "dry_run"):
+                return (json.loads(json.dumps(p)) if p else None), "That card has already been decided."
+            p["payload"]["pdf_check"] = result
+            self._save()
+            return json.loads(json.dumps(self._data["proposals"][pid])), ""
+
+    def set_pdf_choice(self, pid: str, n: int, choice: str, user: str) -> tuple[dict | None, str]:
+        """hide / keep for one duplicate-PDF flag, only while the merge hasn't run. Logged."""
+        with self._lock:
+            p = self._data["proposals"].get(pid)
+            if not p or p.get("status") not in ("pending", "dry_run"):
+                return (json.loads(json.dumps(p)) if p else None), "That card has already been decided."
+            flag = next((f for f in ((p.get("payload") or {}).get("pdf_check") or {}).get("flags") or []
+                         if f.get("n") == n), None)
+            if flag is None or choice not in ("hide", "keep"):
+                return json.loads(json.dumps(p)), "I can't find that PDF on the card any more."
+            flag["choice"], flag["choice_by"] = choice, user
+            rec = {"event": "pdf_choice", "id": pid, "user": user, "choice": choice, "type": flag.get("type"),
+                   "keep_pdf_id": flag.get("keep_pdf_id"), "hide_pdf_id": flag.get("hide_pdf_id")}
+            self._save()
+            out = json.loads(json.dumps(self._data["proposals"][pid]))
+        self._log(rec)
+        return out, ""
+
     def claim_details(self, pid: str) -> bool:
         """True once per proposal (the caller then posts the Details reply)."""
         with self._lock:
