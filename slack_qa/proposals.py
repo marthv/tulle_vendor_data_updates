@@ -203,6 +203,35 @@ class Store:
         self._log(rec)
         return out, ""
 
+    def set_price(self, pid: str, result: dict, only_if=None) -> tuple[dict | None, str]:
+        """Attach the price answer while the merge hasn't run. `only_if(payload)` is checked under the lock, so an answer
+        for an older choice never overwrites a newer one."""
+        with self._lock:
+            p = self._data["proposals"].get(pid)
+            if not p or p.get("status") not in ("pending", "dry_run"):
+                return (json.loads(json.dumps(p)) if p else None), "That card has already been decided."
+            if only_if is not None and not only_if(p["payload"]):
+                return json.loads(json.dumps(p)), "superseded"
+            p["payload"]["price"] = result
+            self._save()
+            return json.loads(json.dumps(self._data["proposals"][pid])), ""
+
+    def replace_merge(self, pid: str, pr: dict, user: str, was_survivor: str) -> tuple[dict | None, str]:
+        """Swap which listing is kept: the rebuilt proposal replaces the old one. Pending cards only, and only if nobody
+        swapped it meanwhile. Logged."""
+        with self._lock:
+            p = self._data["proposals"].get(pid)
+            if not p or p.get("status") != "pending" or (p.get("payload") or {}).get("survivor") != was_survivor:
+                return (json.loads(json.dumps(p)) if p else None), "That card changed or was already decided."
+            for k in ("title", "what", "why", "touches", "next_steps", "payload", "plain"):
+                if k in pr:
+                    p[k] = pr[k]
+            p.pop("details_ts", None)                   # the old Details reply describes the other survivor
+            self._save()
+            out = json.loads(json.dumps(self._data["proposals"][pid]))
+        self._log({"event": "swapped", "id": pid, "user": user, "from": was_survivor, "to": pr["payload"].get("survivor")})
+        return out, ""
+
     def claim_details(self, pid: str) -> bool:
         """True once per proposal (the caller then posts the Details reply)."""
         with self._lock:

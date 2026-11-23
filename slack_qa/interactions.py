@@ -20,7 +20,8 @@ from proposals import Store
 
 log = logging.getLogger("slack_qa.interactions")
 ACTIONS = (cards.ACTION_APPROVE, cards.ACTION_REJECT, cards.ACTION_UNDO, cards.ACTION_RECHECK, cards.ACTION_DETAILS,
-           cards.ACTION_PDF_HIDE, cards.ACTION_PDF_KEEP, cards.ACTION_PDF_RECHECK)
+           cards.ACTION_PDF_HIDE, cards.ACTION_PDF_KEEP, cards.ACTION_PDF_RECHECK, cards.ACTION_PRICE_RECHECK,
+           cards.ACTION_SWAP)
 
 
 def parse_body(body: bytes) -> dict | None:
@@ -97,6 +98,10 @@ class Interactions:
             return self._pdf_choice(p, flag_n, "hide" if aid == cards.ACTION_PDF_HIDE else "keep", user, chan, thread)
         if aid == cards.ACTION_PDF_RECHECK:
             return self._pdf_recheck(p, user, chan, thread)
+        if aid == cards.ACTION_PRICE_RECHECK:
+            return self._price(p["id"], user, chan, thread) if p.get("kind") == "merge" else "ignored:price"
+        if aid == cards.ACTION_SWAP:
+            return self._swap(p, flag_n, user, chan, thread)
         if aid == cards.ACTION_REJECT:
             return self._reject(p, user, chan, thread)
         if aid == cards.ACTION_UNDO:
@@ -118,8 +123,77 @@ class Interactions:
         if why:
             self._ephemeral(chan, user, why, thread)
             return "noop:pdf"
-        self._refresh(p2)
+        self._price(p["id"], user, chan, thread)        # hiding can change which PDF stays Primary, so the price too
         return f"pdf:{choice}"
+
+    # --- price -------------------------------------------------------------------------------------------------
+    def _price(self, pid, user, chan, thread) -> str:
+        """Recompute the price and redraw. While it runs the card has no Approve button."""
+        import merge_checks
+        p = self.store.get(pid)
+        p, why = self.store.set_price(pid, merge_checks.computing((p or {}).get("payload") or {}))
+        if why:
+            self._ephemeral(chan, user, why, thread)
+            return "noop:price"
+        self._refresh(p)
+        pl = p["payload"]
+        ans = merge_checks.price(self.xano, pl)
+        p, why = self.store.set_price(pid, ans, only_if=lambda now: merge_checks.current(dict(now, price=ans)))
+        if why:                                 # another click changed the choices: its own recompute redraws the card
+            return "price:superseded"
+        self._refresh(p)
+        return "price:" + ("alert" if ans.get("alert") else "ok")
+
+    def _price_gate(self, p, user, chan, thread, block_id) -> str | None:
+        """The approver must have seen the current price answer, and it must still be true right now."""
+        import merge_checks
+        pl = p.get("payload") or {}
+        if not pl.get("snapshots"):
+            return None
+        if not merge_checks.current(pl):
+            self._price(p["id"], user, chan, thread)
+            self._ephemeral(chan, user, "I've worked out the price couples would see and added it to this card. Have a "
+                                        "look, then press Approve again.", thread)
+            return "price:shown-first"
+        old = pl["price"]
+        shown = block_id.split(":")[3] if block_id.count(":") >= 3 else ""
+        if block_id.startswith("tb:") and shown != str(old.get("stamp")):
+            self._refresh(p)
+            self._ephemeral(chan, user, "The price on this card was updated, so nothing happened. Check it and press "
+                                        "Approve again.", thread)
+            return "price:stale"
+        self._ephemeral(chan, user, "Checking the price once more before merging (up to a minute)…", thread)
+        new = merge_checks.price(self.xano, pl)
+        if not merge_checks.moved(old, new):
+            return None
+        p2, why = self.store.set_price(p["id"], new, only_if=lambda now: merge_checks.current(dict(now, price=new)))
+        self._refresh(p2)
+        self._ephemeral(chan, user, "Nothing was merged: the price couples would see changed since this card was shown. "
+                                    "Check it and press Approve again.", thread)
+        return "price:moved"
+
+    # --- swap which listing is kept --------------------------------------------------------------------------------
+    def _swap(self, p, n, user, chan, thread) -> str:
+        import dedupe
+        pl = p.get("payload") or {}
+        losers = list(pl.get("losers") or [])
+        if p.get("kind") != "merge" or p.get("status") != "pending" or not n.isdigit() or not 1 <= int(n) <= len(losers):
+            self._ephemeral(chan, user, "That can't be swapped any more.", thread)
+            return "noop:swap"
+        keep, vids = losers[int(n) - 1], [pl.get("survivor")] + losers
+        try:
+            pr = dedupe.rebuild_for_swap(self.xano, vids, keep, pl, p.get("plain") or {})
+        except Exception as e:  # noqa: BLE001 - nothing has changed yet
+            log.warning("swap failed: %s", type(e).__name__)
+            self._ephemeral(chan, user, "I couldn't re-read the listings just now, so nothing changed. Try again in a "
+                                        "few minutes.", thread)
+            return "swap:failed"
+        p2, why = self.store.replace_merge(p["id"], pr, user, pl.get("survivor"))
+        if why:
+            self._ephemeral(chan, user, why, thread)
+            return "noop:swap"
+        self._price(p["id"], user, chan, thread)
+        return "swapped"
 
     def _pdf_recheck(self, p, user, chan, thread) -> str:
         import pdf_dupes
@@ -131,7 +205,10 @@ class Interactions:
         if why:
             self._ephemeral(chan, user, why, thread)
             return "noop:pdf"
-        self._refresh(p2)
+        if pl.get("snapshots"):
+            self._price(p["id"], user, chan, thread)      # the new check may pre-select a PDF to hide
+        else:
+            self._refresh(p2)
         return "pdf:rechecked"
 
     def _pdf_gate(self, p, user, chan, thread, block_id) -> str | None:
@@ -166,7 +243,7 @@ class Interactions:
             self._ephemeral(chan, user, f"Nothing was merged: {why}. Choose *Keep both* for those PDFs, or try again.",
                             thread)
             return "pdf:changed"
-        return None
+        return self._price_gate(p, user, chan, thread, block_id)
 
     # --- actions -------------------------------------------------------------------------------------------
     def _reject(self, p, user, chan, thread) -> str:

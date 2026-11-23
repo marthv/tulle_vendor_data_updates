@@ -29,6 +29,7 @@ ACTION_APPROVE, ACTION_REJECT, ACTION_UNDO, ACTION_RECHECK = "tb_approve", "tb_r
 ACTION_DETAILS = "tb_details"
 # duplicate-PDF choices on a merge card: value = "<proposal id>|<flag number>"; what it hides is read from the store
 ACTION_PDF_HIDE, ACTION_PDF_KEEP, ACTION_PDF_RECHECK = "tb_pdf_hide", "tb_pdf_keep", "tb_pdf_recheck"
+ACTION_PRICE_RECHECK, ACTION_SWAP = "tb_price_recheck", "tb_swap"          # swap value = "<proposal id>|<duplicate n>"
 
 
 def esc(text) -> str:
@@ -123,9 +124,11 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
     payload["confirm_text"] so every re-draw of the card keeps them (an argument wins over the stored value)."""
     kind = p.get("kind", "task")
     payload = p.get("payload") or {}
+    price = (payload.get("price") or {}) if kind == "merge" else {}
     if kind == "merge":
-        extra_blocks = list(payload.get("extra_blocks") or []) if extra_blocks is None else extra_blocks
-        confirm_text = payload.get("confirm_text") if confirm_text is None else confirm_text
+        extra_blocks = (list(price.get("extra_blocks") or []) + list(payload.get("extra_blocks") or [])
+                        if extra_blocks is None else extra_blocks)
+        confirm_text = (price.get("confirm_text") or payload.get("confirm_text")) if confirm_text is None else confirm_text
     else:
         extra_blocks, confirm_text = [], None
     plain = p.get("plain")
@@ -159,12 +162,17 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
         blocks += _pdf_blocks(p, status) + extra_blocks
     ask = confirm_dialog(confirm_text) if confirm_text else None
     buttons = []
+    waiting = price.get("status") == "computing"           # no Approve until the price answer is back
     if status == "pending":
         if dry_run_for(p):
             blocks.append(_context(":test_tube: Dry run is on: approving records the decision and shows what would "
                                    "happen. Nothing is written until dry run is switched off."))
         buttons = [_btn(ACTION_APPROVE, p["id"], "Approve and apply", "primary", confirm=ask),
-                   _btn(ACTION_REJECT, p["id"], "Reject", "danger")]
+                   _btn(ACTION_REJECT, p["id"], "Reject", "danger")][1 if waiting else 0:]
+        losers = list(payload.get("losers") or [])
+        if kind == "merge" and payload.get("snapshots") and not waiting:
+            buttons += [_btn(ACTION_SWAP, f"{p['id']}|{n}", "Keep the duplicate instead" if len(losers) == 1 else
+                             f"Keep duplicate {n} instead") for n in range(1, min(len(losers), 3) + 1)]
     else:
         blocks.append(_context(outcome_line(p)))
         if status == "unknown":
@@ -173,7 +181,7 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
             # dry run is off now: a merge approved during the dry run can run (merges re-read the live rows at
             # apply time; other kinds don't, so they get a fresh card instead - QA 11-22)
             from proposals import default_dry_run
-            if not default_dry_run(kind):
+            if not default_dry_run(kind) and not waiting:
                 buttons.append(_btn(ACTION_APPROVE, p["id"], "Apply for real", "primary",
                                     confirm=confirm_dialog(confirm_text, APPLY_CONFIRM) if ask else APPLY_CONFIRM))
         if status == "partial" and kind == "merge":
@@ -183,13 +191,15 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
     pdf = (payload.get("pdf_check") or {}) if kind == "merge" else {}
     if pdf.get("status") == "unavailable" and status in ("pending", "dry_run"):
         buttons.append(_btn(ACTION_PDF_RECHECK, p["id"], "Run PDF check again"))
+    if price and (waiting or price.get("cant")) and status in ("pending", "dry_run"):
+        buttons.append(_btn(ACTION_PRICE_RECHECK, p["id"], "Check price again"))
     if kind == "merge" and payload.get("snapshots"):
         buttons.append(_btn(ACTION_DETAILS, p["id"], "Details"))
     if buttons:
         bid = f"tb:{p['id']}"
-        if pdf.get("flags"):                    # the PDF choices this card shows: a click on a stale card is refused
+        if pdf.get("flags") or price:           # what this card shows (PDF choices, price): a stale click is refused
             import pdf_dupes
-            bid += ":" + pdf_dupes.version(payload)
+            bid += ":" + pdf_dupes.version(payload) + (":" + str(price.get("stamp")) if price else "")
         blocks.append({"type": "actions", "block_id": bid, "elements": buttons})
     blocks.append(_context(FOOTER))             # owner 2026-11-20: never name people on the card
     label = plain["headline"].replace("*", "") if plain else f"{KIND_LABEL.get(kind, kind)} - {p.get('title', '')}"

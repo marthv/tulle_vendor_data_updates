@@ -13,6 +13,7 @@ import cards
 import drive_ro
 import interactions
 import listing_compare as lc
+import merge_checks
 import pdf_dupes as pd
 import xano_search
 from proposals import Store
@@ -382,7 +383,17 @@ def make(pdf_rows, a=A, b=B, reply=None, drive=None, monkeypatch=None):
                      key="k", plain={"headline": "h", "why": "y", "happens": "z."})
     interactions.post_proposal(slack, store, "C1", p)
     it = interactions.Interactions(slack=slack, store=store, xano=x)
+    pl = store._data["proposals"][p["id"]]["payload"]
+    pl["price"] = merge_checks.price(x, pl)
     return store, slack, it, x, store.get(p["id"])
+
+
+@pytest.fixture(autouse=True)
+def _price_stub(monkeypatch):
+    """A price answer that never moves; the real check is tested in test_merge_checks.py."""
+    monkeypatch.setattr(merge_checks, "price", lambda xano, payload, **k: {
+        "status": "ok", "alert": False, "cant": False, "stamp": "s1", "after_total": 1, "refusals": [], "extra_blocks": [],
+        "confirm_text": None, "survivor": payload.get("survivor"), "hide": sorted(pd.hide_ids(payload))})
 
 
 def press(it, p, action, value=None, block_id=""):

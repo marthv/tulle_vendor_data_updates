@@ -35,7 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 log = logging.getLogger("slack_qa.price_impact")
 
 ALERT_PCT = 10.0
-WORKERS = 4                # reads in flight at once per card: gentle on the production database
+WORKERS = 2                # reads in flight at once per card (4 brought brief 502s 2026-11-22; merge_checks also runs one card at a time)
 DEADLINE = 25.0            # seconds for one card, everything included
 GUESTS = (100, 50, 150, 200)   # 100 = what the page opens on (the fn56 default); the others catch hidden changes
 ORDERS = 5                 # row orders tried for the after-price
@@ -180,8 +180,7 @@ def live_code(reader: Reader) -> dict:
     with _CODE_LOCK:
         if _CODE and _CODE["at"] > time.monotonic() - CODE_TTL:
             return _CODE["val"]
-    with ThreadPoolExecutor(3) as ex:
-        got = dict(zip(FUNCTIONS, ex.map(reader.source, FUNCTIONS)))
+    got = {fid: reader.source(fid) for fid in FUNCTIONS}      # one at a time, then cached 10 minutes
     for fid, g in got.items():
         g["pin_ok"] = fingerprint(g["code"], fid) == PINNED[fid]
     with _CODE_LOCK:

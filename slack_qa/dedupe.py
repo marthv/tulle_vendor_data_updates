@@ -765,7 +765,7 @@ def details_text(p: dict) -> list[str]:
 
 
 def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", survivor_vid: str = "",
-                   why_text: str = "") -> dict:
+                   why_text: str = "", with_price: bool = True) -> dict:
     import listing_compare
     members = listing_compare.fresh(getattr(refs, "xano", None), [byid[i] for i in group["ids"]])
     pdfs = refs.pdfs()
@@ -790,6 +790,9 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", 
     snapshots = {m.get("Vendor_ID"): safe_snapshot(m) for m in members}
     import pdf_dupes                       # read-only, time-bounded, never raises: a failure shows as "unavailable"
     pdf_check = pdf_dupes.safe_check(getattr(refs, "xano", None), sv, lv)
+    import merge_checks                    # one at a time across the process; failure = the "couldn't compute" alert
+    price = merge_checks.price(getattr(refs, "xano", None),
+                               {"survivor": sv, "losers": lv, "pdf_check": pdf_check}) if with_price else None
     nxt = "Approve to merge, or Reject if they're different businesses (I won't suggest this pair again)."
     title = f"{_esc(survivor.get('Name'))} listed {len(members)} times"
     return {"title": title[:140], "what": plain["headline"], "why": plain["why"], "touches": "",
@@ -797,8 +800,39 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", 
             "payload": {"survivor": sv, "losers": lv, "counts": counts, "total": sum(counts.values()),
                         "row_ids": {m.get("Vendor_ID"): m["id"] for m in members}, "rules": group.get("rules") or [],
                         "why_survivor": why_s, "snapshots": snapshots, "tables": tables, "counters": counters,
-                        "visibility": visibility_plan(survivor, losers), "pdf_check": pdf_check},
+                        "visibility": visibility_plan(survivor, losers), "pdf_check": pdf_check,
+                        **({"price": price} if price else {})},
             "key": group_key([sv] + lv)}
+
+
+class _SwapRefs:
+    """Reference counts for a swap, from filtered reads (the full-table counter would take minutes). Only the tables the
+    card's sentence uses; the rest are counted by the merge endpoint at apply time."""
+
+    def __init__(self, xano, vids: list[str]):
+        import xano_search
+        self.xano, self.counts, self.rows = xano, {}, {}
+        for tid, col in ((10, "Vendor_ID"), (36, "VENDOR_ID"), (37, "Vendor_ID")):
+            c, rws = collections.Counter(), collections.defaultdict(list)
+            for r in xano_search.search(xano, tid, col, vids):
+                c[str(r.get(col))] += 1
+                rws[str(r.get(col))].append([r.get("id"), col])
+            self.counts[tid], self.rows[tid] = c, {v: x[:RefIndex.MAX_ROW_IDS] for v, x in rws.items()}
+        self.not_counted = {t for t, *_ in REF_TABLES} - set(self.counts)
+
+    def pdfs(self) -> dict[str, int]:
+        return dict(self.counts[10])
+
+
+def rebuild_for_swap(xano, vids: list[str], keep: str, payload: dict, plain: dict) -> dict:
+    """The same merge with another listing kept: re-reads everything. Raises when a listing can't be read live."""
+    import xano_search
+    rows = {str(r.get("Vendor_ID")): r for r in xano_search.search(xano, 11, "Vendor_ID", vids)}
+    if set(rows) != set(vids) or any(r.get("merged_into") for r in rows.values()):
+        raise RuntimeError("listings changed")
+    byid = {r["id"]: {k: v for k, v in r.items() if k not in PERSONAL_FIELDS} for r in rows.values()}
+    return build_proposal({"ids": sorted(byid, key=int), "rules": payload.get("rules") or []}, byid,
+                          _SwapRefs(xano, vids), survivor_vid=keep, why_text=plain.get("why") or "", with_price=False)
 
 
 # --- the scan -----------------------------------------------------------------------------------------------

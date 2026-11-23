@@ -70,7 +70,8 @@ def test_main_card_is_plain_english():
     for bad in (r"\bV\d+", r"\btable\b", "Place ID", "row", "Vendor_ID", "repoint"):
         assert not re.search(bad, main, re.I), bad
     labels = [e["text"]["text"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
-    assert labels == ["Approve and apply", "Reject", "Run PDF check again", "Details"]      # FakeX: PDFs unreadable
+    assert labels == ["Approve and apply", "Reject", "Keep the duplicate instead", "Run PDF check again",
+                      "Check price again", "Details"]                      # FakeX: PDFs and prices unreadable
 
 
 def test_why_line_matches_strongest_rule():
