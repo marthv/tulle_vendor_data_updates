@@ -431,9 +431,10 @@ class Bot:
             refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
             pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
                                        survivor_vid=vids[-1] if req["into"] else "",
-                                       why_text="Asked for in Slack.")
-            # a person asking again after an earlier Reject is a new decision: give it its own key
-            k = pr["key"] + (f":asked:{ev.get('ts')}" if any(p.get("status") == "rejected" for p in prior) else "")
+                                       why_text=mr.asked_why(vendors))
+            # a person asking again after an earlier Reject or Undo is a new decision: give it its own key
+            k = pr["key"] + (f":asked:{ev.get('ts')}"
+                             if any(p.get("status") in ("rejected", "undone") for p in prior) else "")
             p = self.store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
                                   key=k, source=f"mention:{channel}:{ev.get('ts')}", plain=pr["plain"])
             if p is None:
@@ -486,7 +487,8 @@ class Bot:
             key = dedupe.group_key(sorted(vids))
             # and in the same PLACE (same city, or within 2 km): a chain like "Hilton Garden Inn" x3 in one state
             # is three hotels, not one (QA 11-22)
-            if len(states) == 1 and len(cats) == 1 and key not in skip and mr.same_place(seeds):
+            if len(states) == 1 and len(cats) == 1 and key not in skip and mr.same_place(seeds) \
+                    and not mr.warnings(seeds):
                 fresh = [{"ids": sorted((s["id"] for s in seeds), key=int), "rules": []}]
                 where = esc_text(seeds[0].get("State")) or "the same state"
                 both = "both" if len(seeds) == 2 else f"all {len(seeds)}"
@@ -522,7 +524,9 @@ class Bot:
                 when = str(p.get("status_at") or p.get("created_at") or "")[:10]
                 state = {"pending": "waiting for approval", "unknown": "needs a Re-check on the card",
                          "partial": "stopped part-way (Resume or Undo on the card)",
-                         "applied": "already merged", "undone": "merged, then undone",
+                         "applied": "already merged",
+                         "undone": (f"merged, then undone. If it should be merged after all, `@Tulle Bot merge "
+                                    f"{' and '.join(ids)}` makes a new card"),
                          "dry_run": f"approved on {when} while merges are in dry run, so nothing has moved yet",
                          "applying": "being applied right now", "undoing": "being undone right now",
                          "failed": "approved but it didn't apply (see the card)",
@@ -533,6 +537,16 @@ class Bot:
             say("\n".join(lines))
             return "merge:dupes-existing"
         if not fresh:
+            held = mr.held_hidden(rows, vids)
+            if held:                            # 2026-11-22: hidden can mean a takedown or wrong PDFs; a person decides
+                lines = [f"*{name}* ({vid}) looks the same as these, but at least one of the listings is hidden from "
+                         "couples, so I don't suggest the merge on my own:"]
+                lines += [f"• {esc_text(o.get('Name'))} ({o.get('Vendor_ID')})"
+                          + (", hidden" if dedupe.is_hidden(o) else "") for o in held[:8]]
+                lines.append("Once you've checked why it is hidden, say `@Tulle Bot merge "
+                             + " and ".join(sorted(vids | {str(o.get('Vendor_ID')) for o in held})) + "`.")
+                say("\n".join(lines))
+                return "merge:dupes-hidden"
             lines = [f"No new duplicates of *{name}* ({vid}) by the scan's rules (same Google listing, or same name in "
                      "the same place, or a near-identical name with the same website nearby)."]
             if others:
@@ -553,7 +567,14 @@ class Bot:
             "Nothing changes until someone approves a card.")
         posted = 0
         for g in fresh:
-            pr = dedupe.build_proposal(g, byid, refs, why_text=why_text)
+            try:
+                pr = dedupe.build_proposal(g, byid, refs, why_text=why_text, suggested=True)
+            except dedupe.Held as e:
+                log.info("find duplicates: held on live rows: %s", e)
+                ids = " and ".join(str(byid[i].get("Vendor_ID")) for i in g["ids"])
+                say(f"I held back one group ({ids}): when I re-read the listings just now they no longer pass my checks "
+                    f"({esc_text(str(e))}). If they really are the same, `@Tulle Bot merge {ids}` makes a card.")
+                continue
             p = self.store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
                                   key=pr["key"], source=f"mention:{channel}", plain=pr["plain"])
             if p is not None and post_proposal(self.slack, self.store, channel, p, thread_ts=reply_ts).get("ok"):

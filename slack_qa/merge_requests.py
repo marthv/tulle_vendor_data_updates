@@ -135,11 +135,45 @@ def check_group(vendors: list[dict]) -> str | None:
     return None
 
 
+CONFLICT_TEXT = {"state": "they are in different states", "distance": "they are more than 10 km apart",
+                 "place_id": "they have different Google Place IDs",
+                 "name": "their names look like two different venues"}
+
+
+def warnings(vendors: list[dict]) -> list[str]:
+    """Reasons the scan would never suggest these, in plain words. A person may still ask for the merge by name."""
+    ps = dedupe.prepare(vendors)
+    out = []
+    for i, a in enumerate(ps):
+        for b in ps[i + 1:]:
+            why = dedupe.pair_conflict(a, b)
+            if why:
+                out.append(CONFLICT_TEXT[why])
+    if any(dedupe.is_hidden(v) for v in vendors):
+        out.append("one of them is hidden from couples, so check why before merging")
+    return list(dict.fromkeys(out))
+
+
+def asked_why(vendors: list[dict]) -> str:
+    w = warnings(vendors)
+    return "Asked for in Slack." + (" *Check first*: " + "; ".join(w) + "." if w else "")
+
+
 def dupes_of(rows: list[dict], vendor_ids: set[str]) -> list[dict]:
     """The scan's duplicate groups that include any of vendor_ids (same rules as the nightly scan)."""
     byvid = {str(r.get("Vendor_ID")): r["id"] for r in rows}
     want = {byvid[v] for v in vendor_ids if v in byvid}
     return [g for g in dedupe.find_groups(rows) if want & set(g["ids"])]
+
+
+def held_hidden(rows: list[dict], vendor_ids: set[str]) -> list[dict]:
+    """Rows the scan would group with vendor_ids but holds back because one listing is hidden (they share a held group)."""
+    byid = {r["id"]: r for r in rows}
+    byvid = {str(r.get("Vendor_ID")): r["id"] for r in rows}
+    want = {byvid[v] for v in vendor_ids if v in byvid}
+    ids = {i for h in dedupe.find_groups_held(rows)[1] if h["reason"] == "hidden" and want & set(h["ids"])
+           for i in h["ids"]}
+    return [byid[i] for i in sorted(ids - want, key=int)]
 
 
 def _num(v):

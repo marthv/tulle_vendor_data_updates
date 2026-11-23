@@ -18,6 +18,13 @@ PROBES = ["bride@gmail.com", "name at gmail dot com", "info(at)hall.com", "x [at
           "kate＠hall．com", "Sales {at} plaza.com", "events @ theplaza . com"]
 
 
+@pytest.fixture(autouse=True)
+def _allow_hidden_members(monkeypatch):
+    """The shared fixture pair has a hidden member on purpose (visibility plan, undo, cards). The scan holds such pairs
+    since 2026-11-22 (tested in test_merge_scan.py); these tests are about what a card does once it exists."""
+    monkeypatch.setattr(dedupe, "HOLD_HIDDEN", False)
+
+
 @pytest.mark.parametrize("probe", PROBES)
 def test_sanitizer_catches_each_probe(probe):
     out = sanitize.scrub_text(f"call {probe} today")
