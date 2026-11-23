@@ -454,8 +454,8 @@ class Bot:
             timer.cancel()
 
     def _others_note(self, mr, vids) -> str:
-        """Another listing the scan would group with these: say so now, because a later merge into the same listing is
-        refused until this one is undone (ep578 v3), so all the duplicates should go in one merge."""
+        """Another listing the scan would group with these: say so now, so all the duplicates go in one merge (one card, one
+        undo). A later merge into the same listing also works (ep578 v4)."""
         try:
             rows = self.feedback.directory.rows()
             byid = {r["id"]: r for r in rows}
@@ -465,8 +465,8 @@ class Bot:
             return ""
         if not more:
             return ""
-        return (f" *Also looks the same*: {', '.join(more)}. Merge them together in one request (up to 3 duplicates): a later "
-                "merge into this listing is refused until this one is undone.")
+        return (f" *Also looks the same*: {', '.join(more)}. You can merge them together in one request (up to 3 "
+                "duplicates).")
 
     def _dupes_of(self, target, channel, reply_ts, say, resolve) -> str:
         import dedupe

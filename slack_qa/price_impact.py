@@ -364,6 +364,11 @@ def _years(pdf) -> int:
     return max(map(int, m)) if m else 0
 
 
+def _file(pdf) -> str:
+    m = re.search(r"[-A-Za-z0-9_]{25,}", str((pdf or {}).get("PDF_Link") or ""))
+    return m.group(0) if m else f"row {pdf.get('id')}" if not str(pdf.get("PDF_Link") or "").strip() else str(pdf["PDF_Link"]).strip()
+
+
 def assignments_after(pdfs, survivor: str, losers, given=None, hidden=()) -> dict:
     """{t10 row id: Current_Assignment after the merge}. `given` = ep578's own planned changes (preview t10_plan).
     Without it, the owner's rule (PASS_BAR Amendment 3, 2026-11-22): one Primary stays - visible first, then the kept
@@ -380,15 +385,16 @@ def assignments_after(pdfs, survivor: str, losers, given=None, hidden=()) -> dic
     def rank(p):
         vis = p.get("Show_PDF") is not False and bool(str(p.get("PDF_Link") or "").strip()) and p["PDF_ID"] not in hidden
         mine = p.get("Vendor_ID") == survivor
-        return (not vis, not mine, -1 if mine else list(losers).index(p["Vendor_ID"]), -_years(p), p["id"])
+        return (not vis, not mine, -_years(p), -1 if mine else list(losers).index(p["Vendor_ID"]), p["id"])
     keep = min(prim, key=rank)
     if keep.get("Vendor_ID") == survivor and not rank(keep)[0] and _years(keep):
         newer = [p for p in prim if p.get("Vendor_ID") != survivor and not rank(p)[0] and _years(p) > _years(keep)]
-        keep = min(newer, key=lambda p: (-_years(p), rank(p))) if newer else keep
+        top = min(newer, key=rank) if newer else None
+        if top is not None and _file(top) != _file(keep):          # the same file on both listings: the kept one's stays
+            keep = top
     for p in prim:
-        if p is keep or (p.get("Vendor_ID") == survivor and keep.get("Vendor_ID") == survivor):
-            continue
-        out[p["id"]] = "Past Season PDF"
+        if p is not keep:                                          # ep578 v4: exactly one Primary after
+            out[p["id"]] = "Past Season PDF"
     return out
 
 

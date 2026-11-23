@@ -16,14 +16,15 @@ from test_merge_requests import bot, mention  # noqa: F401
 
 def rule(*prims):
     """prims = (vid, year); returns the index that is Primary after, kept listing V1, duplicates V2, V3."""
-    return pd.primary_rule([{"key": i, "vid": v, "year": y} for i, (v, y) in enumerate(prims)], ["V1", "V2", "V3"])
+    return pd.primary_rule([{"key": i, "vid": v, "year": y, "file": f"f{i}"} for i, (v, y) in enumerate(prims)],
+                           ["V1", "V2", "V3"])
 
 
 @pytest.mark.parametrize("prims,want", [
     ((("V1", 2023), ("V2", 2026)), 1), ((("V1", 2026), ("V2", 2023)), 0), ((("V1", 2026), ("V2", 2026)), 0),
     ((("V1", 0), ("V2", 2026)), 0), ((("V1", 2023), ("V2", 0)), 0), ((("V1", 0), ("V2", 0)), 0),
     ((("V1", 2023), ("V2", 2025), ("V3", 2027)), 2), ((("V1", 2023), ("V2", 2026), ("V3", 2026)), 1),
-    ((("V2", 2023), ("V3", 2026)), 0), ((("V2", 2026),), 0), ((), None)])
+    ((("V2", 2023), ("V3", 2026)), 1), ((("V2", 2026),), 0), ((("V1", 2023), ("V1", 2025), ("V2", 2024)), 1), ((), None)])
 def test_primary_rule(prims, want):
     assert rule(*prims) == want
 
@@ -33,16 +34,38 @@ def test_price_impact_uses_the_same_rule():
     for _ in range(3000):
         pdfs = []
         for i in range(rnd.randint(1, 5)):
-            pdfs.append({"id": i + 1, "PDF_ID": f"P{i + 1}", "Vendor_ID": rnd.choice(["V1", "V2", "V3"]), "PDF_Link": "x",
+            pdfs.append({"id": i + 1, "PDF_ID": f"P{i + 1}", "Vendor_ID": rnd.choice(["V1", "V2", "V3"]),
+                         "PDF_Link": "https://drive.google.com/file/d/" + rnd.choice("ABCDEF") * 28 + "/view",
                          "Current_Assignment": rnd.choice(["Primary", "Primary", "Supplemental 1"]), "Show_PDF": True,
                          "Year_of_Pricing": rnd.choice(["2023", "2025", "2026", "", "No date listed", "2025-2026"])})
         after = pi.assignments_after(pdfs, "V1", ["V2", "V3"])
         prim = [p["id"] for p in pdfs if after[p["id"]] == "Primary"]
-        want = pd.primary_rule([{"key": p["id"], "vid": p["Vendor_ID"], "year": pd.top_year(pd.years(p["Year_of_Pricing"]))}
-                                for p in pdfs if p["Current_Assignment"] == "Primary"], ["V1", "V2", "V3"])
-        assert (want in prim) if want else prim == []
-        if want and next(p for p in pdfs if p["id"] == want)["Vendor_ID"] != "V1":
-            assert prim == [want]                                      # exactly one Primary when a duplicate's takes over
+        want = pd.primary_rule([pd.prim_item(pd.Pdf(p).public()) for p in pdfs if p["Current_Assignment"] == "Primary"],
+                               ["V1", "V2", "V3"])
+        assert prim == ([want] if want else [])                        # exactly one Primary after, and the same one
+
+
+def test_same_file_on_both_listings_keeps_the_kept_listings_primary():
+    link = "https://drive.google.com/file/d/" + "Z" * 28 + "/view"
+    rows = [row(1, year="2023", link=link), row(2, "V2", year="2026", link=link)]
+    r = lc.primary_after(pl(rows))
+    assert r["expected"]["row_id"] == 1
+
+
+def test_previously_blocked_newer_year_card_now_works(world):                                       # noqa: F811
+    """ep578 v4's own preview shape (primary_choice + t10_plan)."""
+    q = world.store._data["proposals"][world.p["id"]]["payload"]
+    for p, y in zip(q["pdf_check"]["pdfs"], ("2023", "2026", "2026")):
+        p["year"], p["link"] = y, "https://drive.google.com/file/d/" + str(p["row_id"]) * 28 + "/view"
+    q["pdf_check"]["flags"] = []
+    q["price"] = dict(q["price"], hide=[], preview=dict(
+        q["price"]["preview"], hide_pdf_ids=[], current_state=lc._shown_state(q),
+        t10_plan=[{"row_id": 1, "column": "Current_Assignment", "new": "Past Season PDF 1"}],
+        primary_choice={"becomes_primary": {"pdf_id": "P2", "row_id": 2, "vendor_id": "V2", "year": 2026, "visible": True},
+                        "changed": True, "why": "the duplicate's Primary is newer"}))
+    said = str(cards.render(world.get())[1])
+    assert "the duplicate's, labelled 2026" in said and "becomes Past Season PDF 1" in said and ":no_entry:" not in said
+    assert world.approve() == "approved:applied" and world.sent.body["mode"] == "apply"
 
 
 def test_exact_copy_never_takes_over_whatever_its_label():
@@ -84,7 +107,7 @@ def test_engine_that_disagrees_with_the_rule_is_stopped(world):                 
     assert lc.primary_mismatch(pl(NEW)) == ""                                # no preview yet: the preview gate stops it
     q = world.store._data["proposals"][world.p["id"]]["payload"]
     for p, y in zip(q["pdf_check"]["pdfs"], ("2023", "2026", "2026")):
-        p["year"] = y
+        p["year"], p["link"] = y, "https://drive.google.com/file/d/" + str(p["row_id"]) * 28 + "/view"
     q["pdf_check"]["flags"] = []
     q["price"] = dict(q["price"], hide=[], preview=dict(q["price"]["preview"], hide_pdf_ids=[], current_state=lc._shown_state(q),
                                                           t10_plan=[{"row_id": 2, "column": "Current_Assignment",

@@ -210,16 +210,19 @@ class Store:
         return out, ""
 
     def merges_touching(self, vids, exclude: str = "") -> list[str]:
-        """Other merges of this bot that ran (or may have) with one of these listings: ep578 refuses a new merge on any of
-        them until that one is undone."""
-        want, say = {str(v) for v in vids if v}, {"applied": "already merged", "partial": "a merge stopped part-way",
-                                                  "unknown": "a merge whose outcome isn't known",
-                                                  "applying": "a merge is running", "undoing": "an undo is running"}
+        """Unfinished merges of this bot with one of these listings: ep578 v4 refuses a new merge on them until they are
+        finished or cleanly undone. A finished merge never blocks a later one into the same listing."""
+        want, say = {str(v) for v in vids if v}, {"partial": "a merge stopped part-way",
+                                                  "unknown": "a merge whose outcome isn't known (Re-check it)",
+                                                  "applying": "a merge is running", "undoing": "an undo is running",
+                                                  "undone": "a merge that couldn't be fully undone"}
         out = []
         with self._lock:
             for q in self._data["proposals"].values():
                 pl = q.get("payload") or {}
                 ids = {str(x) for x in [pl.get("survivor")] + list(pl.get("losers") or []) if x}
+                if q.get("status") == "undone" and not (q.get("result") or {}).get("warnings"):
+                    continue
                 if q.get("kind") == "merge" and q.get("id") != exclude and q.get("status") in say and want & ids:
                     out.append(f"{', '.join(sorted(want & ids))}: {say[q['status']]} ({' + '.join(sorted(ids))})")
         return out

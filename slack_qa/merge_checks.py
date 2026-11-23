@@ -93,6 +93,7 @@ def slim(pv: dict | None) -> dict | None:
     return {"survivor": pv.get("survivor"), "losers": pv.get("losers"), "hide_pdf_ids": pv.get("hide_pdf_ids") or [],
             "t10_plan": pick(pv.get("t10_plan"), ("row_id", "column", "new")),
             "t11_plan": pick(pv.get("t11_plan"), ("column", "role")), "rebuild_plan": pv.get("rebuild_plan"),
+            "primary_choice": pv.get("primary_choice"),
             "touches_pricing": pv.get("touches_pricing"), "current_state": pv.get("current_state"),
             "refusals": [str(x) for x in pv.get("refusals") or []]}
 

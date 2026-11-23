@@ -187,8 +187,7 @@ class Interactions:
             return "primary:mismatch"
         hit = merge_checks.touching(self.store, p["id"], pl)
         if hit:
-            self._ephemeral(chan, user, "Nothing was merged: " + "; ".join(hit) + ". A listing can only be in one merge at a "
-                                        "time. Undo the earlier merge and merge them all in one go (up to 3 duplicates).", thread)
+            self._ephemeral(chan, user, "Nothing was merged: " + "; ".join(hit) + ". Finish or undo that merge first.", thread)
             return "price:touching"
         old = pl["price"]
         shown = block_id.split(":")[3] if block_id.count(":") >= 3 else ""

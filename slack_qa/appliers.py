@@ -57,7 +57,7 @@ def _out(ok, text, dry=False, unknown=False, result=None):
 
 # --- merge ---------------------------------------------------------------------------------------------
 RUNNING_TEXT = "A merge or undo is running in Xano right now (one at a time). Wait a few minutes, then press Re-check."
-# Every refusal ep578 v3 can give (live XanoScript, 2026-11-23 03:37:42 UTC) -> what the card says. test_ep578_contract.py
+# Every refusal ep578 v4 can give (live XanoScript, 2026-11-23 03:52:55 UTC) -> what the card says. test_ep578_contract.py
 # holds one line per endpoint message. "Nothing was changed" is added by _refusal.
 REFUSALS = (
     (r"no visible Primary PDF", "Hiding these PDFs would leave the listing with no visible Primary. Choose Keep both on a "
@@ -65,14 +65,16 @@ REFUSALS = (
     (r"expected_state is missing", "The card has no record of what it showed. Ask for a fresh card."),
     (r"^Stale plan", "One of these listings, or its PDFs, changed while the merge was starting. Ask for a fresh card."),
     (r"Another merge already involves one of these records",
-     "An earlier merge already used one of these listings, and a listing can only be in one merge at a time. To add another "
-     "duplicate to it, undo the earlier merge and merge them all in one go (up to 3 duplicates)."),
+     "An earlier merge of one of these listings isn't finished (stopped part-way, being undone, or undone with problems). "
+     "Finish or undo that one first."),
+    (r"A later merge involves one of these records",
+     "A later merge used one of these listings. Undo that one first (newest first)."),
     (r"stale card", "One of these listings, or its PDFs, changed after this card was posted. Ask for a fresh card."),
     (r"a hidden listing \(", "The duplicate is hidden from search. Find out why, then answer the question on a fresh card."),
     (r"the survivor is hidden", "The kept listing is hidden from search and the merge would make it visible. Find out why, "
                                 "then answer the question on a fresh card."),
-    (r"holds the gold chip", "The duplicate has the gold chip, and a merge never moves one. That is asked even when both "
-                             "have it. Answer the question on a fresh card, or keep the other listing."),
+    (r"holds the gold chip and the survivor does not", "The duplicate has the gold chip and the kept listing doesn't, and a "
+                                                        "merge never moves one. Keep the gold-chip listing instead."),
     (r"florists with", "Florists with more than one price quote can't be merged yet: their summary would use only one quote."),
     (r"hide_pdf_ids has a repeated", "The same PDF was listed twice to hide. Ask for a fresh card."),
     (r"does not belong to the survivor", "A PDF to hide isn't on these listings any more. Ask for a fresh card."),
@@ -95,7 +97,7 @@ REFUSALS = (
     (r"Invalid or missing secret", "Xano didn't accept the bot's key. Ask the owner."),
 )
 REFUSALS = tuple((re.compile(rx, re.I), text) for rx, text in REFUSALS)
-ANSWERABLE = re.compile(r"a hidden listing \(|the survivor is hidden|holds the gold chip", re.I)
+ANSWERABLE = re.compile(r"a hidden listing \(|the survivor is hidden", re.I)
 # the endpoint knows more about this merge than the card does: never report a plain failure, ask mode=status (Re-check)
 ASK_STATUS = re.compile(r"already applied|was undone \(or is mid-undo\)|already undone|No merge exists", re.I)
 
@@ -168,8 +170,7 @@ def merge(payload: dict, user: str, proposal_id: str, mode: str = "apply", dry_r
         allow = payload.get("allow") or {}    # only an approver's explicit OK on this card
         if allow.get("hidden"):
             body["allow_hidden_loser"] = True
-        if allow.get("gold"):
-            body["allow_gold_loser"] = True
+        # allow_gold_loser is never sent: a merge that would retire the only gold chip is refused (Amendment 3)
     if hide:
         body["hide_pdf_ids"] = hide           # t10 PDF_IDs; the endpoint backs Show_PDF up and undo restores it
     res = _post(config.merge_url(), body, timeout=config.merge_timeout())

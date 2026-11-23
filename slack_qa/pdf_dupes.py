@@ -436,24 +436,39 @@ def _room_diff(a: Pdf, b: Pdf) -> str:
 
 
 # --- which copy stays --------------------------------------------------------------------------------------------
-def top_year(ys) -> int:
-    return max((int(y) for y in ys), default=0)
+def label_year(v) -> int:
+    """The pricing year of a stored label, read the way ep578 v4 reads it (newest year named; 0 = none)."""
+    ys = str(v or "")
+    if re.search(r"2,0|20,2", ys):
+        ys = ys.replace(",", "")
+    return max((int(x) for x in re.findall(r"20[0-9][0-9]", ys)), default=0)
+
+
+def file_key(link) -> str:
+    """ep578 v4's "same file" key: the long id in the link, else the link."""
+    m = re.search(r"[-A-Za-z0-9_]{25,}", str(link or ""))
+    return m.group(0) if m else str(link or "").strip()
 
 
 def primary_rule(prims: list[dict], order: list[str]):
-    """The owner's rule (PASS_BAR Amendment 3) over today's VISIBLE Primary PDFs ({"key", "vid", "year"}), kept listing first
-    in `order`: the kept listing's Primary stays, unless a duplicate's Primary has a strictly newer year (both years known).
-    Equal or missing years: the kept listing's stays. No Primary on the kept listing: the first duplicate's, newest year."""
+    """The owner's rule (PASS_BAR Amendment 3), as ep578 v4 applies it, over today's VISIBLE Primary PDFs ({"key", "vid",
+    "year", "file"}; kept listing first in `order`): the kept listing's newest Primary stays, unless the duplicates' newest
+    one has a strictly newer year. Same file, equal, missing or unreadable years: the kept listing's stays."""
     at = lambda p: order.index(p["vid"]) if p["vid"] in order else len(order)  # noqa: E731
-    ranked = sorted(prims, key=lambda p: (at(p), -p["year"]))
-    if not ranked:
-        return None
-    keep = ranked[0]
-    if order and keep["vid"] == order[0] and keep["year"]:
-        newer = [p for p in ranked if p["vid"] != order[0] and p["year"] > keep["year"]]
-        if newer:
-            keep = min(newer, key=lambda p: (-p["year"], at(p)))
-    return keep["key"]
+    best = lambda ps: min(ps, key=lambda p: (-p["year"], at(p), p["key"])) if ps else None  # noqa: E731
+    mine = best([p for p in prims if order and p["vid"] == order[0]])
+    theirs = best([p for p in prims if not order or p["vid"] != order[0]])
+    if mine is None or theirs is None:
+        keep = mine or theirs
+        return keep["key"] if keep else None
+    same = bool(mine.get("file")) and mine.get("file") == theirs.get("file")
+    newer = bool(mine["year"]) and bool(theirs["year"]) and theirs["year"] > mine["year"]
+    return theirs["key"] if newer and not same else mine["key"]
+
+
+def prim_item(row: dict) -> dict:
+    """A Primary PDF as primary_rule wants it, from a public() record."""
+    return {"key": row["row_id"], "vid": row["vendor_id"], "year": label_year(row.get("year")), "file": file_key(row.get("link"))}
 
 
 def post_merge_primary(pdfs: list[Pdf], survivor: str, losers: list[str] | None = None, results: dict | None = None) -> str:
@@ -464,7 +479,7 @@ def post_merge_primary(pdfs: list[Pdf], survivor: str, losers: list[str] | None 
     if results:
         prim = [p for p in prim if p.vid == survivor
                 or not any((results.get(frozenset((p.rid, o.rid))) or {}).get("type") == "EXACT" for o in own)]
-    rid = primary_rule([{"key": p.rid, "vid": p.vid, "year": top_year(p.years)} for p in prim], [survivor] + list(losers or []))
+    rid = primary_rule([prim_item(p.public()) for p in prim], [survivor] + list(losers or []))
     return next((p.pid for p in prim if p.rid == rid), "")
 
 

@@ -1,16 +1,16 @@
 # Tulle Bot merges: deploy notes (2026-11-23)
 
 Branch `merge-bot-1122`, on top of origin/main 1ac2b0f. **Nothing is pushed, deployed or set.** Every step below needs the
-owner's yes. Service: `tulle-slack-qa` in the Railway project "tulle admin dash". Xano: ep578 `POST /vendor/merge` v3 (live
-2026-11-23 03:37:42 UTC) does the writes; this bot only calls it after an approver's click.
+owner's yes. Service: `tulle-slack-qa` in the Railway project "tulle admin dash". Xano: ep578 `POST /vendor/merge` v4 (live
+2026-11-23 03:52:55 UTC) does the writes; this bot only calls it after an approver's click.
 
-## Before go-live: ep578 must have the newer-Primary rule (PASS_BAR Amendment 3)
-ep578 v3 (checked live 2026-11-23, updated 03:37:42 UTC) still keeps the surviving listing's Primary. Until the version with
-"newer pricing year becomes Primary" is live, every card where a duplicate's Primary is newer shows "Can't be merged as it
-stands" and Approve sends nothing. That is on purpose: the bot compares Xano's own plan with the owner's rule.
+## ep578 version
+Written against ep578 **v4** (live 2026-11-23 03:52:55 UTC): newer pricing year becomes Primary. The bot compares Xano's own
+plan (`primary_choice`) with the owner's rule on every card; if they ever disagree the card says "Can't be merged as it stands"
+and Approve sends nothing.
 
 ## What is and isn't proven
-- Proven: 936 tests pass locally; filtered reads, the price check and `mode=preview` were run against live Xano (read-only).
+- Proven: 940 tests pass locally; filtered reads, the price check and `mode=preview` were run against live Xano (read-only).
 - NOT proven until deployed: anything in Slack itself; the quickjs-ng install on Railway; whether the service's
   `XANO_METADATA_TOKEN` may read function source (if not, every card says "couldn't compute"); Google Drive access.
 - No apply or undo has been run by this code. The first one is the owner's click on the first pilot card.
@@ -48,7 +48,7 @@ Already set and used as is: `XANO_METADATA_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_SIG
   20 cards fills in one by one, estimate 10-25 minutes).
 - Top to bottom: headline; red banner on any mismatch; "Can't be merged" stops; which PDF becomes the main one, with both
   years; the listings side by side with links; why; what
-  happens; "Needs your OK" questions (hidden duplicate, unhiding, both listings gold); PDF check with a choice per duplicate
+  happens; "Needs your OK" questions (hidden duplicate, unhiding); PDF check with a choice per duplicate
   (exact copies pre-selected); price (loud only when the headline moves 10% or more, appears or disappears, or can't be computed).
 - Buttons: Approve and apply, Reject, Keep the duplicate instead, Details, sometimes Run PDF check again / Check price again.
 - On Approve: price re-checked; if anything moved the card is redrawn and nothing is sent. A merge takes up to a few minutes.
@@ -57,8 +57,8 @@ Already set and used as is: `XANO_METADATA_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_SIG
 - The gold-chip listing is always the one kept when only one has it. "merge A into B" or Keep the duplicate instead that would
   retire it is refused in plain words.
 - The main-PDF line uses our stored year labels; it says what years are printed in the PDF, or that it wasn't read.
-- A listing can be in one merge at a time: a later merge into the same listing is refused until the earlier one is undone, so a
-  group of 2-3 duplicates must go as one merge. The card and the reply say so.
+- A later merge into the same listing works once the earlier one finished. Undo goes newest first: an older merge can't be
+  undone while a later one shares a listing. Asking for two of a bigger group suggests merging them all in one request (max 3).
 - Every message for every Xano reply: `merge_bot_2026-11-22/pdfdup/CARD_TEXTS.txt` (tulletogether/.claude).
 
 ## Roll back
@@ -67,7 +67,7 @@ Already set and used as is: `XANO_METADATA_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_SIG
 - **Undo one merge:** Undo merge on its card (exact, from Xano's backup in table 72). Conflicts are listed and left alone.
 - **Cut the bot off from ep578:** remove `XANO_MERGE_SECRET`. `QA_ENABLED=0` stops the whole bot.
 - **Code:** redeploy the previous Railway deployment (1ac2b0f). Cards made by this version stay in `/data/proposals.json`; the
-  old code ignores the new fields, but its Approve would send no `expected_state`, which ep578 v3 refuses.
+  old code ignores the new fields, but its Approve would send no `expected_state`, which ep578 refuses.
 - Don't deploy, restart or change variables while a merge is running: Railway drains 180 s, a merge can take 300 s. If it
   happens, the card may sit on "Applying…": ep578 mode=status is the truth; start-up recovers cards stuck over 15 minutes.
 

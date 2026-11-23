@@ -1,4 +1,4 @@
-"""ep578 v3 (live XanoScript, updated 2026-11-23 03:37:42 UTC): every status and refusal VERBATIM (only the ids are samples), and
+"""ep578 v4 (live XanoScript, updated 2026-11-23 03:52:55 UTC): every status and refusal VERBATIM (only the ids are samples), and
 what the card says for each."""
 import re
 
@@ -30,8 +30,10 @@ REFUSED = [
     ("The survivor was itself merged into another record; merge into the final record instead.", "failed", "Merge into that"),
     ("A loser is already merged into a record.", "failed", "already merged into another"),
     ("Another record is already merged into one of the losers; merge chains are refused.", "failed", "can't be merged again"),
-    ("Another merge already involves one of these records: me1 (applied). Finish or undo that one first.", "failed",
-     "merge them all in one go (up to 3 duplicates)"),
+    ("Another merge already involves one of these records: me1 (partial). Finish or undo that one first.", "failed",
+     "isn't finished"),
+    ("A later merge involves one of these records (me2). Undo that one first; a merge undone with warnings cannot be undone "
+     "again after it.", "failed", "newest first"),
     ("Stale plan, nothing was written: V2 Address changed; the PDFs changed. Press Re-check and approve again.", "failed",
      "changed while the merge was starting"),
     ("The survivor has since been merged into another record; undo that later merge first.", "failed", "later merge first"),
@@ -44,8 +46,8 @@ REFUSED = [
      "is hidden", "failed", "duplicate is hidden"),
     ("Refused: the survivor is hidden and this merge would unhide it; expected_state.unhide_survivor must be true", "failed",
      "kept listing is hidden"),
-    ("Refused: a duplicate (V2) holds the gold chip, which a merge never moves; pass allow_gold_loser to merge anyway",
-     "failed", "even when both have it"),
+    ("Refused: a duplicate (V2) holds the gold chip and the survivor does not; a merge never moves it. Swap the survivor, or "
+     "pass allow_gold_loser", "failed", "Keep the gold-chip listing instead"),
     ("Refused: florists with 2 priced quotes after the merge are not merged yet: the florals summary would silently use only "
      "the last one", "failed", "Florists with more than one"),
     ("Refused: hiding these would leave no visible Primary PDF", "failed", "no visible Primary"),
@@ -79,8 +81,8 @@ def test_every_refusal(world, monkeypatch, msg, want, text):                    
 
 
 def test_two_refusals_are_both_said():
-    said = appliers._refusal({"error": "Refused: a duplicate (V2) holds the gold chip, which a merge never moves; pass "
-                                       "allow_gold_loser to merge anyway; stale card: V2 Name changed since the card was made"})
+    said = appliers._refusal({"error": "Refused: a duplicate (V2) holds the gold chip and the survivor does not; a merge never "
+                                       "moves it. Swap the survivor, or pass allow_gold_loser; stale card: V2 Name changed since the card was made"})
     assert "gold chip" in said and "changed after this card" in said
 
 
@@ -158,7 +160,6 @@ def _with(world, a=None, b=None):
 
 
 @pytest.mark.parametrize("a,b,key,field", [({}, {"Validated_Data": "0"}, "hidden", "allow_hidden_loser"),
-                                           ({"gold_chip": True}, {"gold_chip": True}, "gold", "allow_gold_loser"),
                                            ({"Validated_Data": "0"}, {}, "unhide", "unhide_survivor")])
 def test_ok_is_asked_and_only_sent_after_a_click(world, a, b, key, field):                          # noqa: F811
     q = _with(world, a, b)
@@ -179,16 +180,16 @@ def test_ok_is_asked_and_only_sent_after_a_click(world, a, b, key, field):      
 def test_ok_can_be_taken_back_and_unneeded_ok_is_refused(world):                                    # noqa: F811
     q = world.get()
     assert press(world.it, q, cards.ACTION_ALLOW, f"{q['id']}|gold") == "noop:allow"                 # nobody has gold
-    _with(world, a={"gold_chip": True}, b={"gold_chip": True})
-    assert press(world.it, q, cards.ACTION_ALLOW, f"{q['id']}|gold") == "allow:on"
-    assert press(world.it, q, cards.ACTION_ALLOW, f"{q['id']}|gold") == "allow:off"
+    _with(world, b={"Validated_Data": "0"})
+    assert press(world.it, q, cards.ACTION_ALLOW, f"{q['id']}|hidden") == "allow:on"
+    assert press(world.it, q, cards.ACTION_ALLOW, f"{q['id']}|hidden") == "allow:off"
     assert world.approve() == "allow:missing"
 
 
-def test_both_gold_wording():
-    t = dict((k, t) for k, t, _l in lc.allow_needed({"survivor": "V1", "losers": ["V2"], "snapshots": {
-        "V1": dict(A, gold_chip=True), "V2": dict(B, gold_chip=True)}}))["gold"]
-    assert "so does the kept listing" in t and "would lose" not in t
+def test_both_gold_needs_no_question_and_is_sent_without_any_override(world):                       # noqa: F811
+    q = _with(world, {"gold_chip": True}, {"gold_chip": True})
+    assert lc.allow_needed(q["payload"]) == [] and lc.gold_block(q["payload"]) == ""
+    assert world.approve() == "approved:applied" and "allow_gold_loser" not in world.sent.body
 
 
 def test_expected_state_comes_from_the_preview_only_when_it_matches_the_card():
@@ -246,16 +247,18 @@ def test_undone_with_warnings_can_be_undone_again(world, monkeypatch):          
     assert press(world.it, q, cards.ACTION_UNDO).startswith("noop") and sent.body is None      # clean undo: nothing to repeat
 
 
-def test_second_merge_into_the_same_listing_is_stopped_before_it_is_sent(world, monkeypatch):       # noqa: F811
-    for st, blocked in (("applied", True), ("partial", True), ("unknown", True), ("undone", False), ("rejected", False)):
+def test_only_an_unfinished_merge_of_the_same_listing_stops_a_new_one(world, monkeypatch):           # noqa: F811
+    for st, blocked in (("applied", False), ("partial", True), ("unknown", True), ("undoing", True), ("undone", False),
+                        ("undone_warn", True), ("rejected", False)):
         other = world.store.create("merge", "t", "w", "y", "n", {"survivor": "V1", "losers": ["V77"]}, key=f"x{st}")
-        world.store._data["proposals"][other["id"]]["status"] = st
+        world.store._data["proposals"][other["id"]].update(
+            {"status": "undone", "result": {"warnings": [{"detail": "x"}]}} if st == "undone_warn" else {"status": st})
         press(world.it, world.get(), cards.ACTION_PRICE_RECHECK)
         shown = "Xano will refuse this one" in str(cards.render(world.get())[1])
         assert shown is blocked
         if blocked:
             assert world.approve() == "price:touching" and world.sent.body is None
-            assert "up to 3 duplicates" in str(cards.render(world.get())[1])
+            assert "Finish or undo that merge first" in str(cards.render(world.get())[1])
         world.store._data["proposals"].pop(other["id"])
     press(world.it, world.get(), cards.ACTION_PRICE_RECHECK)
     assert world.approve() == "approved:applied"
@@ -291,3 +294,13 @@ def test_dry_run_is_on_unless_explicitly_off(monkeypatch):
         if v is not None:
             monkeypatch.setenv("DEDUPE_DRY_RUN", v)
         assert config.merge_dry_run() is dry
+
+
+def test_undo_refused_because_of_a_later_merge_leaves_the_card_as_it_was(world, monkeypatch):       # noqa: F811
+    world.store._data["proposals"][world.p["id"]]["status"] = "applied"
+    Sent(monkeypatch, {"message": "A later merge involves one of these records (me2). Undo that one first; a merge undone "
+                                  "with warnings cannot be undone again after it."}, status=400)
+    assert press(world.it, world.get(), cards.ACTION_UNDO) == "undo:failed"
+    q = world.get()
+    assert q["status"] == "applied" and "newest first" in q["result_text"]
+    assert "Undo merge" in [e["text"]["text"] for b in cards.render(q)[1] if b["type"] == "actions" for e in b["elements"]]

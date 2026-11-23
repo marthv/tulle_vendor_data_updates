@@ -176,9 +176,8 @@ def render(p: dict, extra_blocks: list[dict] | None = None, confirm_text: str | 
     status = p.get("status", "pending")
     if kind == "merge":
         if price.get("touching") and status in ("pending", "dry_run"):
-            blocks.append(_section(":no_entry: *Xano will refuse this one:* " + esc("; ".join(price["touching"])) + ". A listing "
-                                   "can only be in one merge at a time. To add another duplicate, undo the earlier merge and "
-                                   "merge them all in one go (up to 3 duplicates)."))
+            blocks.append(_section(":no_entry: *Xano will refuse this one:* " + esc("; ".join(price["touching"]))
+                                   + ". Finish or undo that merge first."))
         blocks += _allow_blocks(p, status) + _pdf_blocks(p, status) + extra_blocks
     ask = confirm_dialog(confirm_text) if confirm_text else None
     buttons = []

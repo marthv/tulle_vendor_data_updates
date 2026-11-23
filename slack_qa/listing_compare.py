@@ -169,9 +169,8 @@ def primary_after(payload: dict) -> dict:
     order = _order(payload)
     pdfs.sort(key=lambda p: (order.index(p["vendor_id"]) if p.get("vendor_id") in order else 9, p.get("row_id") or 0))
     hidden = {f["hide_pdf_id"] for f in (payload.get("pdf_check") or {}).get("flags") or [] if f.get("choice") == "hide"}
-    exp = pdf_dupes.primary_rule([
-        {"key": p["row_id"], "vid": p["vendor_id"], "year": pdf_dupes.top_year(pdf_dupes.years(p.get("year")))}
-        for p in pdfs if _is_primary(p.get("label")) and p.get("visible") and p.get("pdf_id") not in hidden], order)
+    exp = pdf_dupes.primary_rule([pdf_dupes.prim_item(p) for p in pdfs if _is_primary(p.get("label")) and p.get("visible")
+                                  and p.get("pdf_id") not in hidden], order)
     pv = (payload.get("price") or {}).get("preview") or {}
     labels = {c["row_id"]: c.get("new") for c in pv.get("t10_plan") or [] if c.get("column") == "Current_Assignment"}
     planned: object = "unknown"
@@ -179,6 +178,10 @@ def primary_after(payload: dict) -> dict:
         left = [p for p in pdfs if _is_primary(labels.get(p["row_id"], p.get("label"))) and p.get("visible")
                 and p.get("pdf_id") not in hidden]
         planned = left[0] if left else None
+        choice = pv.get("primary_choice")
+        if isinstance(choice, dict):            # ep578 v4 says it outright
+            rid = (choice.get("becomes_primary") or {}).get("row_id")
+            planned = next((p for p in pdfs if p["row_id"] == rid and p.get("visible") and p.get("pdf_id") not in hidden), None)
         for p in left:                      # a kept listing may already have had two Primaries; ep578 leaves those alone
             if p["row_id"] == exp and all(q["vendor_id"] == p["vendor_id"] for q in left):
                 planned = p
@@ -231,7 +234,8 @@ def gold_block(payload: dict) -> str:
 
 def allow_needed(payload: dict) -> list[tuple[str, str, str]]:
     """(key, what the card says, button) for each thing the merge endpoint refuses unless a person says yes. Never on by
-    default; keys match payload["allow"] (hidden / unhide / gold)."""
+    default; keys match payload["allow"] (hidden / unhide). Gold is never a question: both gold is fine (ep578 v4), only
+    the duplicate gold is refused (gold_block)."""
     rows = rows_of(payload)
     if len(rows) < 2:
         return []
@@ -243,9 +247,6 @@ def allow_needed(payload: dict) -> list[tuple[str, str, str]]:
     if not visible(s) and any(visible(r) for r in losers):
         out.append(("unhide", "The kept listing is hidden from search, and this merge would make it visible. Find out why "
                     "it was hidden first, or keep the other listing.", "I checked: make it visible"))
-    if gold(s) and any(gold(r) for r in losers):       # only the duplicate has it = gold_block, not a question
-        out.append(("gold", "The duplicate has the gold chip, and so does the kept listing, so the page keeps its chip.",
-                    "OK to merge the gold-chip listing"))
     return out
 
 
