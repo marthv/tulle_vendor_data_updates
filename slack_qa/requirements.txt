@@ -3,6 +3,7 @@ uvicorn[standard]>=0.30
 anthropic>=1.11   # output_config + server-side fallbacks params verified on 1.11.0 (2026-11-18)
 requests>=2.31
 pydantic>=2.6
+quickjs-ng==0.18.0.2   # price_impact.py: runs the live pricing lambdas offline (no network, time+memory limited)
 # tests only: pytest, httpx (fastapi TestClient)
 rapidfuzz>=3.0
 pypdf>=5.0        # duplicate-PDF check: text layer of a PDF (drive_ro.py)
