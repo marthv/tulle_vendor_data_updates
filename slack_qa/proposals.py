@@ -32,6 +32,12 @@ ACTIVE = {"pending", "applying", "applied", "undoing", "unknown", "partial"}    
 NEVER_AGAIN = ACTIVE | {"rejected"}
 
 
+def _never(kind: str) -> set[str]:
+    """Statuses that block the same key being proposed again. A merge a human UNDID was wrong, so it is as final as a
+    Reject (2026-11-22); a person asking for it by name gets a new ':asked:' key (bot.merge_request)."""
+    return NEVER_AGAIN | {"undone"} if kind == "merge" else NEVER_AGAIN
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -79,7 +85,7 @@ class Store:
         if plain:
             p["plain"] = plain
         with self._lock:
-            if key and any(q.get("key") == key and q.get("status") in NEVER_AGAIN
+            if key and any(q.get("key") == key and q.get("status") in _never(q.get("kind"))
                            for q in self._data["proposals"].values()):
                 return None
             self._data["proposals"][pid] = p
@@ -107,22 +113,22 @@ class Store:
     def by_key(self, key: str, active_only: bool = False) -> list[dict]:
         with self._lock:
             return [dict(p) for p in self._data["proposals"].values() if p.get("key") == key
-                    and (not active_only or p.get("status") in NEVER_AGAIN)]
+                    and (not active_only or p.get("status") in _never(p.get("kind")))]
 
     def open_or_rejected_keys(self, kind: str) -> set[str]:
         """Keys never to propose again: on screen, in flight, applied, or rejected (a human said no)."""
         with self._lock:
             return {p["key"] for p in self._data["proposals"].values()
-                    if p.get("kind") == kind and p.get("key") and p.get("status") in NEVER_AGAIN}
+                    if p.get("kind") == kind and p.get("key") and p.get("status") in _never(kind)}
 
     def handled_keys(self, kind: str) -> set[str]:
-        """Keys a scan or 'find duplicates' must not suggest again: open, in flight, applied, rejected, or approved
-        while dry run was on (owner 2026-11-22: Kate's hand-check approves cards in dry run; re-posting them every
+        """Keys a scan or 'find duplicates' must not suggest again: open, in flight, applied, rejected, undone (merges), or
+        approved while dry run was on (owner 2026-11-22: Kate's hand-check approves cards in dry run; re-posting them every
         scan would bury her). 'asked again' keys count for their group."""
         with self._lock:
             out = set()
             for p in self._data["proposals"].values():
-                if p.get("kind") == kind and p.get("key") and p.get("status") in (NEVER_AGAIN | {"dry_run"}):
+                if p.get("kind") == kind and p.get("key") and p.get("status") in (_never(kind) | {"dry_run"}):
                     out.add(str(p["key"]).split(":asked:")[0])
             return out
 

@@ -25,6 +25,13 @@ ROWS[1].update({"gold_chip": True, "Collection": ["Hotel", "Ballroom"], "Max_Cap
                 "google_data_cache": {"rating": 4.6}})
 
 
+@pytest.fixture(autouse=True)
+def _allow_hidden_members(monkeypatch):
+    """The shared fixture pair has a hidden member on purpose (visibility plan, undo, cards). The scan holds such pairs
+    since 2026-11-22 (tested in test_merge_scan.py); these tests are about what a card does once it exists."""
+    monkeypatch.setattr(dedupe, "HOLD_HIDDEN", False)
+
+
 class FakeX:
     def __init__(self):
         self.tables = {

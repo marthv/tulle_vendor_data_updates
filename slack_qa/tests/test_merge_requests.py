@@ -119,7 +119,8 @@ def test_second_request_points_at_open_card_and_rejected_can_be_asked_again():
 
 
 def test_find_duplicates_of_a_vendor_posts_its_groups():
-    b, slack, store = bot()
+    b, slack, store = make_bot(rows=[dict(r, Validated_Data="1") for r in ROWS])     # hidden members: test_merge_scan
+    b.xano = RowsXano()
     assert b.handle(mention("find duplicates of V105")) == "merge:dupes:1"
     p = store.all()[0]
     assert sorted([p["payload"]["survivor"]] + p["payload"]["losers"]) == ["V105", "V13433"]
@@ -442,7 +443,7 @@ def test_scan_skips_dry_run_approved_groups():
     st.transition(q["id"], {"pending"}, "applying", "U")
     st.transition(q["id"], {"applying"}, "undone", "U")
     keys = st.handled_keys("merge")
-    assert "merge:V1|V2" in keys and "merge:V3|V4" not in keys              # undone can be suggested again
+    assert "merge:V1|V2" in keys and "merge:V3|V4" in keys     # undone = as final as a reject (2026-11-22)
 
 
 def test_apply_for_real_is_merge_only_and_asks_to_confirm(monkeypatch):

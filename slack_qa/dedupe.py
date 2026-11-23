@@ -1,12 +1,16 @@
 """Duplicate-vendor scan for table 11 (WPTP Updated Mappings) -> merge proposals.
 
-Matching (ported from the 2026-11-20 analysis, HIGH tier only; ~815 groups / ~973 extra rows on 20,718 vendors):
+Matching (HIGH tier only; on 20,718 vendors, 2026-11-22: 521 groups before the conflict rules below, see the branch
+commit for the count after):
   A  same Google Place_ID AND similar names (token-sort >= 80)  (place id alone mislabels both ways)
   B  same normalised name + same city + same state
   C  near-identical names (token-sort >= 90) within 1 km AND (same non-generic website domain OR same Place_ID)
-Never on website domain alone: chains share one (Marriott 255 rows, Hilton 116). Also skipped: groups that mix
-categories (a venue and its in-house caterer), groups bigger than 4 (needs a human), and anything already
-proposed, applied or rejected (a human said no; we don't ask twice).
+Never on website domain alone: chains share one (Marriott 255 rows, Hilton 116).
+Never a pair, whatever else matches (2026-11-22, see pair_conflict): different states, more than 10 km apart, or two
+different Place_IDs. In a group of 3+, EVERY pair must match on its own (no A~B~C chains).
+Also skipped: groups that mix categories (a venue and its in-house caterer), groups bigger than 4 (needs a human),
+groups with a hidden member (held until a human has checked why it was hidden), and anything already proposed, applied,
+undone or rejected (a human said no; we don't ask twice).
 
 Survivor = visible (Validated_Data "1") first, then most PDFs, most clicks, has a Place_ID, oldest id.
 The losers are RETIRED (t11.merged_into = survivor) and HIDDEN (Validated_Data "0"; owner exception 2026-11-20), never
@@ -52,6 +56,8 @@ GENERIC = {"facebook.com", "instagram.com", "google.com", "weddingwire.com", "th
 CHAIN_DOMAIN_MIN = 6        # a domain on this many vendors is a chain / platform: never evidence on its own
 BRAND_NAME_MIN = 3          # a normalised name on this many vendors is a brand ("hilton garden inn", "first baptist church")
 MAX_GROUP = 4
+MAX_KM = 10.0               # two records further apart than this are never one business, whatever else matches
+HOLD_HIDDEN = True          # groups with a hidden member are not suggested (a person can still ask for them by name)
 
 # Every place a vendor is referenced (workspace 1, all 58 tables' schemas read 2026-11-20, read-only).
 # Column kinds: id = text Vendor_ID ("V123"); ids = text[] of Vendor_IDs; json = JSON/JSON-string that embeds Vendor_IDs
@@ -382,16 +388,79 @@ def prepare(rows: list[dict]) -> list[dict]:
     return out
 
 
+US_STATES = {
+    "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar", "california": "ca", "colorado": "co",
+    "connecticut": "ct", "delaware": "de", "florida": "fl", "georgia": "ga", "hawaii": "hi", "idaho": "id",
+    "illinois": "il", "indiana": "in", "iowa": "ia", "kansas": "ks", "kentucky": "ky", "louisiana": "la", "maine": "me",
+    "maryland": "md", "massachusetts": "ma", "michigan": "mi", "minnesota": "mn", "mississippi": "ms", "missouri": "mo",
+    "montana": "mt", "nebraska": "ne", "nevada": "nv", "new hampshire": "nh", "new jersey": "nj", "new mexico": "nm",
+    "new york": "ny", "north carolina": "nc", "north dakota": "nd", "ohio": "oh", "oklahoma": "ok", "oregon": "or",
+    "pennsylvania": "pa", "rhode island": "ri", "south carolina": "sc", "south dakota": "sd", "tennessee": "tn",
+    "texas": "tx", "utah": "ut", "vermont": "vt", "virginia": "va", "washington": "wa", "west virginia": "wv",
+    "wisconsin": "wi", "wyoming": "wy", "district of columbia": "dc", "washington dc": "dc", "washington d.c.": "dc",
+    "washington, d.c.": "dc"}
+_US_CODES = frozenset(US_STATES.values())
+
+
+def state_keys(v) -> frozenset:
+    """State field -> comparable keys: US states as two-letter codes, anything else lower-cased as written."""
+    return frozenset(US_STATES.get(x, x) for x in _states(v))
+
+
+def addr_state(addr: str) -> str:
+    """US state code at the end of an address ("..., Boston, MA 02199, USA" -> "ma"); "" when it isn't clearly one."""
+    m = re.search(r"[,\s]([A-Za-z]{2})\.?(?:\s+\d{5}(?:-\d{4})?)?\s*(?:,\s*(?:USA?|United States))?\s*$", addr or "", re.I)
+    c = m.group(1).lower() if m else ""
+    return c if c in _US_CODES else ""
+
+
+def pair_conflict(a: dict, b: dict) -> str | None:
+    """Why two PREPARED records can't be one business ("state" | "distance" | "place_id"), or None. Blank values never
+    conflict. Added 2026-11-22: rule A (same Place_ID + similar name) paired Mandarin Oriental Boston (V1913, carrying
+    New York's Place_ID) with Mandarin Oriental NYC (V9876)."""
+    sa, sb = state_keys(a.get("State")), state_keys(b.get("State"))
+    if sa and sb and not sa & sb:
+        return "state"
+    xa, xb = addr_state(str(a.get("Address") or "")), addr_state(str(b.get("Address") or ""))
+    if xa and xb and xa != xb:
+        return "state"
+    if a["_lat"] is not None and b["_lat"] is not None and _km(a, b) > MAX_KM:
+        return "distance"
+    pa, pb = place_id(a), place_id(b)
+    if pa and pb and pa != pb:
+        return "place_id"
+    return None
+
+
+def is_hidden(r: dict) -> bool:
+    """Not visible to couples: their search only shows Validated_Data "1"."""
+    return str(r.get(VISIBILITY_COL) or "").strip() != VISIBLE
+
+
 def find_groups(rows: list[dict]) -> list[dict]:
-    """High-tier duplicate groups -> [{"ids": [row ids], "rules": {"A","B","C"}}], biggest impact first."""
+    """High-tier duplicate groups -> [{"ids": [row ids], "rules": ["A","B","C"]}], biggest impact first."""
+    return find_groups_held(rows)[0]
+
+
+def find_groups_held(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(groups, held): `held` = what matched but was NOT suggested, [{"ids", "reason"}]. Pair reasons: state, distance,
+    place_id. Group reasons: too_big, mixed_category, bad_ids, not_all_match, hidden."""
     V = prepare(rows)
     byid = {r["id"]: r for r in V}
     dom_count = collections.Counter(r["_d"] for r in V if r["_d"])
     pairs: dict[frozenset, set] = collections.defaultdict(set)
 
+    conflicts: dict[frozenset, str] = {}
+
     def add(a, b, rule):
-        if a != b:
-            pairs[frozenset((a, b))].add(rule)
+        if a == b:
+            return
+        key = frozenset((a, b))
+        why = conflicts.get(key) or pair_conflict(byid[a], byid[b])
+        if why:
+            conflicts[key] = why
+        else:
+            pairs[key].add(rule)
 
     # A: same place id + similar names
     by_pid = collections.defaultdict(list)
@@ -447,14 +516,30 @@ def find_groups(rows: list[dict]) -> list[dict]:
     for x in uf.p:
         groups[uf.f(x)].append(x)
     out = []
+    held = [{"ids": sorted(k, key=int), "reason": why} for k, why in conflicts.items()]
+
+    def hold(ids, reason):
+        held.append({"ids": sorted(ids, key=int), "reason": reason})
+
     for ids in groups.values():
-        if len(ids) < 2 or len(ids) > MAX_GROUP:
+        if len(ids) < 2:
+            continue
+        if len(ids) > MAX_GROUP:
+            hold(ids, "too_big")
             continue
         cats = {str(byid[i].get("Category") or "").strip().lower() for i in ids}
         if len(cats) > 1:
+            hold(ids, "mixed_category")
             continue
         vids = [str(byid[i].get("Vendor_ID") or "").strip() for i in ids]
         if not all(vids) or len(set(vids)) != len(vids):      # a merge needs distinct, real Vendor_IDs
+            hold(ids, "bad_ids")
+            continue
+        if any(frozenset((a, b)) not in pairs for i, a in enumerate(ids) for b in ids[i + 1:]):
+            hold(ids, "not_all_match")            # A~B and B~C says nothing about A~C
+            continue
+        if HOLD_HIDDEN and any(is_hidden(byid[i]) for i in ids):
+            hold(ids, "hidden")
             continue
         rules = set()
         for i, a in enumerate(ids):
@@ -464,7 +549,7 @@ def find_groups(rows: list[dict]) -> list[dict]:
         clicks = sum(int(byid[i].get("Clicks_on_Venue") or 0) for i in ids)
         out.append({"ids": ids, "rules": sorted(rules), "clicks": clicks})
     out.sort(key=lambda g: (-g["clicks"], g["ids"][0]))
-    return out
+    return out, held
 
 
 def group_key(vendor_ids: list) -> str:
