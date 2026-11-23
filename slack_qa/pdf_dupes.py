@@ -15,7 +15,8 @@ text: a stored price the text doesn't show came from a picture, which is never c
 (same link) can be found; same stored prices alone are "not checked" (QA 2026-11-22: 1 of 10 such flags was wrong, V7122).
 Empty or blank files are left out of everything.
 
-Which copy stays: the PDF that will be the listing's Primary after the merge (the kept listing's own), then newer year,
+Which copy stays: the PDF that will be the listing's Primary after the merge (the kept listing's own, unless a duplicate's
+Primary has a strictly newer pricing year and isn't the same file: owner 2026-11-22), then newer year,
 more pages, more extracted rows, older row. A copy that stays is never itself on the hide list, so at least one always
 stays visible; hide_ids() re-checks that at approve time, recheck_live() re-reads the rows just before the merge.
 """
@@ -308,6 +309,8 @@ class Pdf:
     def public(self) -> dict:
         return {"pdf_id": self.pid, "vendor_id": self.vid, "row_id": self.rid, "link": self.link,
                 "label": self.assignment or "PDF", "year": str(self.row.get("Year_of_Pricing") or ""),
+                # years printed in the PDF's text; None = the PDF wasn't read (a label can be wrong)
+                "printed_years": sorted(self.text.years) if self.text is not None and self.text.toks else None,
                 "visible": self.visible}
 
 
@@ -433,14 +436,36 @@ def _room_diff(a: Pdf, b: Pdf) -> str:
 
 
 # --- which copy stays --------------------------------------------------------------------------------------------
-def post_merge_primary(pdfs: list[Pdf], survivor: str, losers: list[str] | None = None) -> str:
-    """PDF_ID that is the visible Primary once merged, by ep578 v2's own rule: the kept listing's, else the first
-    duplicate's (card order), then newer year, then older row."""
-    order = [survivor] + list(losers or [])
-    prim = [p for p in pdfs if p.visible and p.is_primary]
-    prim.sort(key=lambda p: (order.index(p.vid) if p.vid in order else len(order),
-                             -max((int(y) for y in p.years), default=0), p.rid))
-    return prim[0].pid if prim else ""
+def top_year(ys) -> int:
+    return max((int(y) for y in ys), default=0)
+
+
+def primary_rule(prims: list[dict], order: list[str]):
+    """The owner's rule (PASS_BAR Amendment 3) over today's VISIBLE Primary PDFs ({"key", "vid", "year"}), kept listing first
+    in `order`: the kept listing's Primary stays, unless a duplicate's Primary has a strictly newer year (both years known).
+    Equal or missing years: the kept listing's stays. No Primary on the kept listing: the first duplicate's, newest year."""
+    at = lambda p: order.index(p["vid"]) if p["vid"] in order else len(order)  # noqa: E731
+    ranked = sorted(prims, key=lambda p: (at(p), -p["year"]))
+    if not ranked:
+        return None
+    keep = ranked[0]
+    if order and keep["vid"] == order[0] and keep["year"]:
+        newer = [p for p in ranked if p["vid"] != order[0] and p["year"] > keep["year"]]
+        if newer:
+            keep = min(newer, key=lambda p: (-p["year"], at(p)))
+    return keep["key"]
+
+
+def post_merge_primary(pdfs: list[Pdf], survivor: str, losers: list[str] | None = None, results: dict | None = None) -> str:
+    """PDF_ID that is the visible Primary once merged. A duplicate's Primary that is an exact copy of the kept listing's
+    never takes over (it is the same file, whatever its year label says)."""
+    prim = sorted((p for p in pdfs if p.visible and p.is_primary), key=lambda p: p.rid)
+    own = [p for p in prim if p.vid == survivor]
+    if results:
+        prim = [p for p in prim if p.vid == survivor
+                or not any((results.get(frozenset((p.rid, o.rid))) or {}).get("type") == "EXACT" for o in own)]
+    rid = primary_rule([{"key": p.rid, "vid": p.vid, "year": top_year(p.years)} for p in prim], [survivor] + list(losers or []))
+    return next((p.pid for p in prim if p.rid == rid), "")
 
 
 def keep_key(p: Pdf, primary: str):
@@ -451,7 +476,7 @@ def keep_key(p: Pdf, primary: str):
 def decide(pdfs: list[Pdf], survivor: str, results: dict, losers: list[str] | None = None) -> tuple[list[dict], list[str]]:
     """Flags from the pair verdicts. Each flag's keep copy is never hidden by any other flag."""
     notes: list[str] = []
-    primary = post_merge_primary(pdfs, survivor, losers)
+    primary = post_merge_primary(pdfs, survivor, losers, results)
     kept: list[Pdf] = []
     flags: list[dict] = []
 
@@ -536,6 +561,7 @@ def check(xano, survivor: str, losers: list[str], drive=None, seconds: float = C
             p.prices = Prices()
     if drive is not None:
         out["files"], out["text"] = _read_files(drive, vis, deadline)
+        out["pdfs"] = [p.public() for p in pdfs]
     results: dict = {}
     for i, a in enumerate(vis):
         for b in vis[i + 1:]:
@@ -595,7 +621,8 @@ def _read_files(drive, vis: list[Pdf], deadline: float) -> tuple[str, str]:
     n = run(meta, want, 4)
     files = "checked" if n == len(vis) else "partly" if n else "failed"
     per_year = collections.Counter(p.years for p in want if p.years)
-    todo = [p for p in want if p.size != 0 and ((p.years and per_year[p.years] > 1)
+    two = len({p.vid for p in vis if p.is_primary}) > 1          # the Primaries' printed years are shown on the card
+    todo = [p for p in want if p.size != 0 and ((p.years and per_year[p.years] > 1) or (two and p.is_primary)
                                                 or (p.size is not None and p.size < SMALL_FILE))]
     if not todo:
         return files, "none"

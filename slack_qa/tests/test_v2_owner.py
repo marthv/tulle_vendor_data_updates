@@ -18,9 +18,9 @@ ROWS = [V(1, "V105", "The Plaza", addr="768 5th Ave, New York, NY 10019", state=
           web="theplaza.com", lat=40.7646, lng=-73.9744),
         V(2, "V13433", "The Plaza", addr="768 5th Ave, New York, NY 10019", state="New York", pid="P1", clicks=40,
           vis="0", lat=40.7646, lng=-73.9744)]
-ROWS[0].update({"gold_chip": False, "Collection": ["Hotel"], "Max_Capacity_Seated": 500, "Description": "",
+ROWS[0].update({"gold_chip": True, "Collection": ["Hotel"], "Max_Capacity_Seated": 500, "Description": "",
                 "Time_of_Submission": "2025-03-01", "Flags": "x"})
-ROWS[1].update({"gold_chip": True, "Collection": ["Hotel", "Ballroom"], "Max_Capacity_Seated": 650,
+ROWS[1].update({"gold_chip": False, "Collection": ["Hotel", "Ballroom"], "Max_Capacity_Seated": 650,
                 "Description": "Iconic hotel", "Time_of_Submission": "2024-06-01", "Flags": "y; x",
                 "google_data_cache": {"rating": 4.6}})
 
@@ -69,7 +69,7 @@ def test_main_card_is_plain_english():
     assert main.startswith("These look like the same venue: *The Plaza* (New York) listed twice.")
     assert "Same Google listing." not in main         # QA 2026-11-22: never the only evidence
     assert "same street address" in main and "linked to the same Google listing" in main
-    assert "We'll keep the visible listing, move its 3 PDFs" in main and "1 couple' plans" not in main
+    assert "We'll keep the gold-chip listing, move its 3 PDFs" in main and "1 couple' plans" not in main
     assert "The duplicate is hidden from search, not deleted." in main and "add up its clicks" in main
     assert "undo" not in main.lower()                 # dry-run card: there will be nothing to undo
     ctx = " ".join(b["elements"][0]["text"] for b in blocks if b["type"] == "context")
@@ -77,7 +77,7 @@ def test_main_card_is_plain_english():
     for bad in (r"\bV\d+", r"\btable\b", "Place ID", "row", "Vendor_ID", "repoint"):
         assert not re.search(bad, main, re.I), bad
     labels = [e["text"]["text"] for b in blocks if b["type"] == "actions" for e in b["elements"]]
-    assert labels.pop(0) == "I checked: merge it anyway" and labels.pop(0) == "OK to merge the gold-chip listing"
+    assert labels.pop(0) == "I checked: merge it anyway"
     assert labels == ["Approve and apply", "Reject", "Keep the duplicate instead", "Run PDF check again",
                       "Details"]                                           # FakeX: PDFs unreadable
 

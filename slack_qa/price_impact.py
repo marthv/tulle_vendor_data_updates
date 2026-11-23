@@ -366,8 +366,9 @@ def _years(pdf) -> int:
 
 def assignments_after(pdfs, survivor: str, losers, given=None, hidden=()) -> dict:
     """{t10 row id: Current_Assignment after the merge}. `given` = ep578's own planned changes (preview t10_plan).
-    Without it, ep578 v2's rule (read 2026-11-22): one Primary stays - visible first, then the kept listing's, then the
-    losers in order, then the newest year - and every other Primary becomes a Past Season PDF."""
+    Without it, the owner's rule (PASS_BAR Amendment 3, 2026-11-22): one Primary stays - visible first, then the kept
+    listing's, then the losers in order, then the newest year - but a loser's visible Primary with a strictly newer year
+    than the kept listing's takes over; every other Primary becomes a Past Season PDF."""
     out = {p["id"]: p.get("Current_Assignment") for p in pdfs}
     if given is not None:
         out.update({int(k): v for k, v in given.items()})
@@ -381,6 +382,9 @@ def assignments_after(pdfs, survivor: str, losers, given=None, hidden=()) -> dic
         mine = p.get("Vendor_ID") == survivor
         return (not vis, not mine, -1 if mine else list(losers).index(p["Vendor_ID"]), -_years(p), p["id"])
     keep = min(prim, key=rank)
+    if keep.get("Vendor_ID") == survivor and not rank(keep)[0] and _years(keep):
+        newer = [p for p in prim if p.get("Vendor_ID") != survivor and not rank(p)[0] and _years(p) > _years(keep)]
+        keep = min(newer, key=lambda p: (-_years(p), rank(p))) if newer else keep
     for p in prim:
         if p is keep or (p.get("Vendor_ID") == survivor and keep.get("Vendor_ID") == survivor):
             continue
@@ -496,8 +500,8 @@ def _compute(reader, out, survivor, losers, preview, hidden, live_check):
         cap = [float(vend[v].get("Max_Capacity_Seated") or 0) for v in ids]
         rebuilt = moves or relabel or max(cap) > cap[0]
         if relabel:
-            out["assumptions"].append("Assumes the merge keeps one Primary PDF (the kept listing's when it is visible); other "
-                                      "Primary PDFs become Past Season")
+            out["assumptions"].append("Assumes one Primary PDF after the merge (the kept listing's, unless a duplicate's has a "
+                                      "newer year); other Primary PDFs become Past Season")
     plan = {"assign": assign, "rebuilt": rebuilt}
     _filters(out, code, T, vend, survivor, plan)
     if any("venue" not in c.lower() for c in cats.values()):

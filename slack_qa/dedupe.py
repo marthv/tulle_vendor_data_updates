@@ -14,7 +14,9 @@ Also skipped: groups that mix categories (a venue and its in-house caterer), gro
 groups with a hidden member (held until a human has checked why it was hidden), and anything already proposed, applied,
 undone or rejected (a human said no; we don't ask twice).
 
-Survivor = visible (Validated_Data "1") first, then most PDFs, most clicks, has a Place_ID, oldest id.
+Survivor = the gold-chip listing when some but not all of the group hold it (owner 2026-11-22, PASS_BAR Amendment 3), then
+visible (Validated_Data "1") first, then most PDFs, most clicks, has a Place_ID, oldest id. A swap or a "merge A into B"
+that would retire the only gold-chip listing is refused.
 The losers are RETIRED (t11.merged_into = survivor) and HIDDEN (Validated_Data "0"; owner exception 2026-11-20), never
 deleted, and every repointed row and every changed column is backed up first, so a merge can be undone (see XANO_MERGE_PROPOSAL.md). Reference counts below are read-only GETs within a page budget.
 """
@@ -708,9 +710,34 @@ def group_key(vendor_ids: list) -> str:
     return "merge:" + "|".join(sorted(str(v or "").strip() for v in vendor_ids))
 
 
+WHY_GOLD = "it has the gold chip"
+
+
+def has_gold(r: dict) -> bool:
+    return str(r.get("gold_chip") or "").strip().lower() in ("1", "true", "yes")
+
+
+def gold_only(members: list[dict]) -> list[dict]:
+    """The members that hold the gold chip when some but not all do (one of them must be kept); else []."""
+    g = [m for m in members if has_gold(m)]
+    return g if len(g) < len(members) else []
+
+
+def gold_refusal(members: list[dict], keep_vid: str) -> str:
+    """Plain wording when keeping `keep_vid` would retire a gold-chip listing while the kept one has none; else ""."""
+    g = gold_only(members)
+    if not g or any(str(m.get("Vendor_ID")) == str(keep_vid) for m in g):
+        return ""
+    return (f"{_esc(g[0].get('Name'))} ({g[0].get('Vendor_ID')}) has the gold chip and {keep_vid} doesn't, so the gold-chip "
+            "listing is the one we keep. A merge never moves a gold chip.")
+
+
 def choose_survivor(members: list[dict], pdf_counts: dict[str, int]) -> tuple[dict, str]:
-    """Visible first (couples' search only shows Validated_Data "1"; keeping a hidden record would hide the venue),
-    then most PDFs, most clicks, has a Place ID, oldest."""
+    """The gold-chip listing first, when some but not all hold it. Then visible (couples' search only shows Validated_Data
+    "1"; keeping a hidden record would hide the venue), then most PDFs, most clicks, has a Place ID, oldest."""
+    g = gold_only(members)
+    if g:
+        return (g[0] if len(g) == 1 else choose_survivor(g, pdf_counts)[0]), WHY_GOLD
     def score(r):
         return (str(r.get("Validated_Data")) == "1", pdf_counts.get(r.get("Vendor_ID"), 0),
                 int(r.get("Clicks_on_Venue") or 0), bool(place_id(r)), -int(r["id"]))
@@ -922,7 +949,7 @@ def plain_card(survivor: dict, losers: list[dict], rules: list[str], refs: RefIn
     keep = {"it's the one couples can see": "the visible listing", "it has more PDFs": "the listing with more PDFs",
             "couples click it more": "the listing couples click most",
             "it has the Google Place ID": "the listing linked to Google",
-            "you asked to keep it": "the listing you named to keep"}.get(why_s, "the original listing")
+            "you asked to keep it": "the listing you named to keep", WHY_GOLD: "the gold-chip listing"}.get(why_s, "the original listing")
     moves = ", ".join(moving[:-1]) + f" and {moving[-1]}" if len(moving) > 1 else moving[0]
     dup = "duplicate is" if len(losers) == 1 else "duplicates are"
     happens = f"We'll keep {keep}, move {moves} onto it, and add up its clicks."
@@ -1047,6 +1074,8 @@ def build_proposal(group: dict, byid: dict, refs: RefIndex, reported: str = "", 
         check_suggestion(members, refs)
     pdfs = refs.pdfs()
     forced = next((m for m in members if survivor_vid and str(m.get("Vendor_ID")) == survivor_vid), None)
+    if forced is not None and gold_refusal(members, survivor_vid):
+        forced = None                                   # the gold-chip rule wins over "into" (the callers say so first)
     survivor, why_s = (forced, "you asked to keep it") if forced else choose_survivor(members, pdfs)
     losers = [m for m in members if m is not survivor]
     sv, lv = survivor.get("Vendor_ID"), [m.get("Vendor_ID") for m in losers]
@@ -1103,6 +1132,9 @@ def rebuild_for_swap(xano, vids: list[str], keep: str, payload: dict, plain: dic
     rows = {str(r.get("Vendor_ID")): r for r in xano_search.search(xano, 11, "Vendor_ID", vids)}
     if set(rows) != set(vids) or any(r.get("merged_into") for r in rows.values()):
         raise RuntimeError("listings changed")
+    no = gold_refusal(list(rows.values()), keep)
+    if no:
+        raise Held(no)
     byid = {r["id"]: {k: v for k, v in r.items() if k not in PERSONAL_FIELDS} for r in rows.values()}
     return build_proposal({"ids": sorted(byid, key=int), "rules": payload.get("rules") or []}, byid,
                           _SwapRefs(xano, vids), survivor_vid=keep, why_text=plain.get("why") or "")

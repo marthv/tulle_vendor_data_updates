@@ -181,6 +181,10 @@ class Interactions:
                             "Nothing was merged: I didn't have Xano's preview of this merge. I've asked for it again; have a "
                             "look at the card, then press Approve again.", thread)
             return "price:no-preview"
+        wrong = listing_compare.primary_mismatch(pl)
+        if wrong:
+            self._ephemeral(chan, user, f"Nothing was merged: {wrong}", thread)
+            return "primary:mismatch"
         hit = merge_checks.touching(self.store, p["id"], pl)
         if hit:
             self._ephemeral(chan, user, "Nothing was merged: " + "; ".join(hit) + ". A listing can only be in one merge at a "
@@ -215,6 +219,9 @@ class Interactions:
         keep, vids = losers[int(n) - 1], [pl.get("survivor")] + losers
         try:
             pr = dedupe.rebuild_for_swap(self.xano, vids, keep, pl, p.get("plain") or {})
+        except dedupe.Held as e:                # the gold-chip listing can't be the one that's retired
+            self._ephemeral(chan, user, f"I can't swap these: {e}", thread)
+            return "swap:refused"
         except Exception as e:  # noqa: BLE001 - nothing has changed yet
             log.warning("swap failed: %s", type(e).__name__)
             self._ephemeral(chan, user, "I couldn't re-read the listings just now, so nothing changed. Try again in a "
@@ -271,6 +278,9 @@ class Interactions:
                                         "press Approve again.", thread)
             return "pdf:stale"
         import listing_compare
+        if listing_compare.gold_block(pl):
+            self._ephemeral(chan, user, f"Nothing was merged: {listing_compare.gold_block(pl)}", thread)
+            return "gold:refused"
         if listing_compare.allow_missing(pl):
             self._ephemeral(chan, user, "Nothing was merged: this card has a *Needs your OK* question that hasn't been "
                                         "answered.", thread)

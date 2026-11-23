@@ -158,7 +158,6 @@ def _with(world, a=None, b=None):
 
 
 @pytest.mark.parametrize("a,b,key,field", [({}, {"Validated_Data": "0"}, "hidden", "allow_hidden_loser"),
-                                           ({}, {"gold_chip": True}, "gold", "allow_gold_loser"),
                                            ({"gold_chip": True}, {"gold_chip": True}, "gold", "allow_gold_loser"),
                                            ({"Validated_Data": "0"}, {}, "unhide", "unhide_survivor")])
 def test_ok_is_asked_and_only_sent_after_a_click(world, a, b, key, field):                          # noqa: F811
@@ -180,7 +179,7 @@ def test_ok_is_asked_and_only_sent_after_a_click(world, a, b, key, field):      
 def test_ok_can_be_taken_back_and_unneeded_ok_is_refused(world):                                    # noqa: F811
     q = world.get()
     assert press(world.it, q, cards.ACTION_ALLOW, f"{q['id']}|gold") == "noop:allow"                 # nobody has gold
-    _with(world, b={"gold_chip": True})
+    _with(world, a={"gold_chip": True}, b={"gold_chip": True})
     assert press(world.it, q, cards.ACTION_ALLOW, f"{q['id']}|gold") == "allow:on"
     assert press(world.it, q, cards.ACTION_ALLOW, f"{q['id']}|gold") == "allow:off"
     assert world.approve() == "allow:missing"

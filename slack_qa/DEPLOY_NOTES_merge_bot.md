@@ -4,8 +4,13 @@ Branch `merge-bot-1122`, on top of origin/main 1ac2b0f. **Nothing is pushed, dep
 owner's yes. Service: `tulle-slack-qa` in the Railway project "tulle admin dash". Xano: ep578 `POST /vendor/merge` v3 (live
 2026-11-23 03:37:42 UTC) does the writes; this bot only calls it after an approver's click.
 
+## Before go-live: ep578 must have the newer-Primary rule (PASS_BAR Amendment 3)
+ep578 v3 (checked live 2026-11-23, updated 03:37:42 UTC) still keeps the surviving listing's Primary. Until the version with
+"newer pricing year becomes Primary" is live, every card where a duplicate's Primary is newer shows "Can't be merged as it
+stands" and Approve sends nothing. That is on purpose: the bot compares Xano's own plan with the owner's rule.
+
 ## What is and isn't proven
-- Proven: 912 tests pass locally; filtered reads, the price check and `mode=preview` were run against live Xano (read-only).
+- Proven: 936 tests pass locally; filtered reads, the price check and `mode=preview` were run against live Xano (read-only).
 - NOT proven until deployed: anything in Slack itself; the quickjs-ng install on Railway; whether the service's
   `XANO_METADATA_TOKEN` may read function source (if not, every card says "couldn't compute"); Google Drive access.
 - No apply or undo has been run by this code. The first one is the owner's click on the first pilot card.
@@ -41,13 +46,17 @@ Already set and used as is: `XANO_METADATA_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_SIG
 ## What the owner sees in Slack
 - Card appears without Approve and says it is working out the price; Approve comes when it is done (about 1-2 minutes; a scan of
   20 cards fills in one by one, estimate 10-25 minutes).
-- Top to bottom: headline; red banner on any mismatch; newer-PDF alert; the listings side by side with links; why; what
-  happens; "Needs your OK" questions (hidden duplicate, unhiding, gold chip); PDF check with a choice per duplicate
+- Top to bottom: headline; red banner on any mismatch; "Can't be merged" stops; which PDF becomes the main one, with both
+  years; the listings side by side with links; why; what
+  happens; "Needs your OK" questions (hidden duplicate, unhiding, both listings gold); PDF check with a choice per duplicate
   (exact copies pre-selected); price (loud only when the headline moves 10% or more, appears or disappears, or can't be computed).
 - Buttons: Approve and apply, Reject, Keep the duplicate instead, Details, sometimes Run PDF check again / Check price again.
 - On Approve: price re-checked; if anything moved the card is redrawn and nothing is sent. A merge takes up to a few minutes.
 - After: Applied (Undo merge), "Merged, but something needs a look", part-way (Resume / Undo), or "couldn't confirm" (Re-check
   only). Undo that couldn't put everything back offers Undo again.
+- The gold-chip listing is always the one kept when only one has it. "merge A into B" or Keep the duplicate instead that would
+  retire it is refused in plain words.
+- The main-PDF line uses our stored year labels; it says what years are printed in the PDF, or that it wasn't read.
 - A listing can be in one merge at a time: a later merge into the same listing is refused until the earlier one is undone, so a
   group of 2-3 duplicates must go as one merge. The card and the reply say so.
 - Every message for every Xano reply: `merge_bot_2026-11-22/pdfdup/CARD_TEXTS.txt` (tulletogether/.claude).

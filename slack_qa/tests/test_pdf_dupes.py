@@ -620,8 +620,12 @@ def test_room_hidden_gold_and_newer_pdf():
     m = " ".join(lc.mismatches(payload(hotel, room)))
     assert "room or space" in m and "hidden from search" in m and "gold chip" in m
     p = payload(A, B, [row(1, year="2023"), row(2, "V2", year="2026")])
-    assert lc.newer_primary(p) == ("2023", "2026") and "Newer PDF" in str(lc.blocks(p))
-    assert lc.newer_primary(payload(A, B, [row(1, year="2026"), row(2, "V2", year="2023")])) is None
+    said = lc.primary_statement(p)
+    assert "the duplicate's, labelled 2026" in said and "the kept listing's, labelled 2023" in said.lower()
+    assert "Newer PDF" not in str(lc.blocks(p)) and said in str(lc.blocks(p))
+    said = lc.primary_statement(payload(A, B, [row(1, year="2026"), row(2, "V2", year="2023")]))
+    assert "the kept listing's, labelled 2026" in said
+    assert lc.primary_statement(payload(A, B, [row(1, year="2026")])) == ""           # only one Primary: nothing to say
 
 
 def test_fresh_reads_live_rows_and_drops_personal_fields():

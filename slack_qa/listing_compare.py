@@ -72,7 +72,7 @@ def visible(r: dict) -> bool:
 
 
 def gold(r: dict) -> bool:
-    return str(r.get("gold_chip") or "").strip().lower() in ("1", "true", "yes")
+    return dedupe.has_gold(r)
 
 
 def room_label(r: dict, others: list[dict]) -> str:
@@ -157,18 +157,76 @@ def mismatches(payload: dict) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-def newer_primary(payload: dict) -> tuple[str, str] | None:
-    """(year of the kept listing's Primary, newer year on a retiring listing's Primary), or None."""
-    vids = _order(payload)
-    pdfs = (payload.get("pdf_check") or {}).get("pdfs") or []
+def _is_primary(label) -> bool:
+    return str(label or "").strip().lower() == "primary"
 
-    def best(group):
-        ys = [int(y) for p in pdfs if p.get("vendor_id") in group and p.get("visible")
-              and str(p.get("label") or "").strip().lower() == "primary" for y in pdf_dupes.years(p.get("year"))]
-        return max(ys, default=0)
 
-    keep, old = best(vids[:1]), best(vids[1:])
-    return (str(keep) if keep else "no year", str(old)) if old and old > keep else None
+def primary_after(payload: dict) -> dict:
+    """Which PDF is Primary after the merge. {"expected": PDF or None by the owner's rule (newer year wins), "planned": PDF,
+    None, or "unknown" (no preview yet) by ep578's own plan, "labels": {row_id: planned new label}, "primaries": [PDFs that
+    are Primary today, kept listing first]}."""
+    pdfs = list((payload.get("pdf_check") or {}).get("pdfs") or [])
+    order = _order(payload)
+    pdfs.sort(key=lambda p: (order.index(p["vendor_id"]) if p.get("vendor_id") in order else 9, p.get("row_id") or 0))
+    hidden = {f["hide_pdf_id"] for f in (payload.get("pdf_check") or {}).get("flags") or [] if f.get("choice") == "hide"}
+    exp = pdf_dupes.primary_rule([
+        {"key": p["row_id"], "vid": p["vendor_id"], "year": pdf_dupes.top_year(pdf_dupes.years(p.get("year")))}
+        for p in pdfs if _is_primary(p.get("label")) and p.get("visible") and p.get("pdf_id") not in hidden], order)
+    pv = (payload.get("price") or {}).get("preview") or {}
+    labels = {c["row_id"]: c.get("new") for c in pv.get("t10_plan") or [] if c.get("column") == "Current_Assignment"}
+    planned: object = "unknown"
+    if pv.get("current_state") is not None and sorted(pv.get("hide_pdf_ids") or []) == sorted(hidden):
+        left = [p for p in pdfs if _is_primary(labels.get(p["row_id"], p.get("label"))) and p.get("visible")
+                and p.get("pdf_id") not in hidden]
+        planned = left[0] if left else None
+        for p in left:                      # a kept listing may already have had two Primaries; ep578 leaves those alone
+            if p["row_id"] == exp and all(q["vendor_id"] == p["vendor_id"] for q in left):
+                planned = p
+    return {"expected": next((p for p in pdfs if p["row_id"] == exp), None), "planned": planned, "labels": labels,
+            "primaries": [p for p in pdfs if _is_primary(p.get("label")) and p.get("visible")]}
+
+
+def _year_words(p: dict) -> str:
+    y = "-".join(sorted(pdf_dupes.years(p.get("year")))) or "no year"
+    printed = p.get("printed_years")
+    seen = ("printed in it: " + ", ".join(printed) if printed else "no year printed in its text") \
+        if printed is not None else "PDF not read, so the label isn't checked"
+    return f"{y} ({seen})"
+
+
+def primary_statement(payload: dict) -> str:
+    """One plain sentence when more than one listing has a Primary PDF; "" otherwise."""
+    r = primary_after(payload)
+    if len({p["vendor_id"] for p in r["primaries"]}) < 2:
+        return ""
+    to = r["planned"] if r["planned"] not in ("unknown", None) else r["expected"]
+    if to is None:
+        return ""
+    order = _order(payload)
+    who = lambda p: "kept listing" if p["vendor_id"] == order[0] else "duplicate"  # noqa: E731
+    out = (f":page_with_curl: *Main PDF after the merge:* the {who(to)}'s, labelled {_year_words(to)}. ")
+    rest = [f"the {who(p)}'s, labelled {_year_words(p)}, " + (
+        f"becomes {r['labels'][p['row_id']]}" if r["labels"].get(p["row_id"]) else "stays listed, but not as the main PDF")
+        for p in r["primaries"] if p["row_id"] != to["row_id"]]
+    return out + "; ".join(rest)[:1].upper() + "; ".join(rest)[1:] + "."
+
+
+def primary_mismatch(payload: dict) -> str:
+    """Why the card's Primary statement can't be trusted: ep578's plan differs from the owner's rule. "" = fine."""
+    r = primary_after(payload)
+    if r["planned"] == "unknown" or len({p["vendor_id"] for p in r["primaries"]}) < 2:
+        return ""
+    a, b = (r["planned"] or {}).get("row_id"), (r["expected"] or {}).get("row_id")
+    if a == b:
+        return ""
+    say = lambda p: f"{'-'.join(sorted(pdf_dupes.years(p.get('year')))) or 'no year'} PDF" if p else "no PDF"  # noqa: E731
+    return (f"Xano's plan would make the {say(r['planned'])} the main PDF, but the rule (newer pricing year wins) says the "
+            f"{say(r['expected'])}. Ask the owner; don't approve this one.")
+
+
+def gold_block(payload: dict) -> str:
+    """A merge that would retire a gold-chip listing while the kept one has none is never sent."""
+    return dedupe.gold_refusal(rows_of(payload), _order(payload)[0]) if rows_of(payload) else ""
 
 
 def allow_needed(payload: dict) -> list[tuple[str, str, str]]:
@@ -185,10 +243,9 @@ def allow_needed(payload: dict) -> list[tuple[str, str, str]]:
     if not visible(s) and any(visible(r) for r in losers):
         out.append(("unhide", "The kept listing is hidden from search, and this merge would make it visible. Find out why "
                     "it was hidden first, or keep the other listing.", "I checked: make it visible"))
-    if any(gold(r) for r in losers):
-        out.append(("gold", "The duplicate has the gold chip" + (", and so does the kept listing, so the page keeps its chip."
-                    if gold(s) else " and the kept listing doesn't. A merge never moves a gold chip, so the page would lose "
-                    "it; consider keeping the other listing."), "OK to merge the gold-chip listing"))
+    if gold(s) and any(gold(r) for r in losers):       # only the duplicate has it = gold_block, not a question
+        out.append(("gold", "The duplicate has the gold chip, and so does the kept listing, so the page keeps its chip.",
+                    "OK to merge the gold-chip listing"))
     return out
 
 
@@ -247,11 +304,12 @@ def blocks(payload: dict) -> list[dict]:
     if bad:
         out.append({"type": "section", "text": {"type": "mrkdwn", "text": (
             ":rotating_light: *Check before approving:* " + "; ".join(esc(b) for b in bad) + ".")[:2990]}})
-    n = newer_primary(payload)
-    if n:
-        out.append({"type": "section", "text": {"type": "mrkdwn", "text": (
-            f":calendar: *Newer PDF on the duplicate:* its main PDF is {n[1]}, the kept listing's is {n[0]}. After the "
-            f"merge couples would still see the {n[0]} one first.")}})
+    stop = gold_block(payload) or primary_mismatch(payload)
+    if stop:
+        out.append({"type": "section", "text": {"type": "mrkdwn", "text": (":no_entry: *Can't be merged as it stands:* " + stop)}})
+    st = primary_statement(payload)
+    if st:
+        out.append({"type": "section", "text": {"type": "mrkdwn", "text": st[:2990]}})
     out.append({"type": "section", "text": {"type": "mrkdwn", "text": "*Side by side*"},
                 "fields": [{"type": "mrkdwn", "text": _field(payload, i, r, rows)} for i, r in enumerate(rows[:4])]})
     return out

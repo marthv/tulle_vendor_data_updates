@@ -408,6 +408,10 @@ class Bot:
                 say(why_not)
                 return "merge:refused"
             vids = [str(v.get("Vendor_ID")) for v in vendors]
+            no = dedupe.gold_refusal(vendors, vids[-1]) if req["into"] else ""
+            if no:
+                say(f"{no} Ask `@Tulle Bot merge {' and '.join(vids)}` and I'll keep that one.")
+                return "merge:gold-refused"
             key = dedupe.group_key(vids)
             # the plain key AND any 'asked again' keys (QA 11-22: otherwise every re-ask made another card)
             prior = [p for p in self.store.all() if p.get("kind") == "merge"
