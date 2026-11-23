@@ -283,6 +283,7 @@ class RefineBody(BaseModel):
     ctx_arm: str = Field("", max_length=16)   # 11-14 context-first test: "context" | "control" | "" (test off)
     ww: Optional[dict] = None     # 11-15 whole-wedding flow (whole_wedding.py): sent only by a page that can draw its
                                   # cards. {v, action?, category?, answers?, skip?, active?}. None = flow never runs.
+    onboarding: bool = False      # 11-23: the sign-up flow's one question (REC_ONBOARDING): not counted as a free question
 
 
 QUOTE_KEYS = ("document_type", "summary", "vendor_name", "category", "total_cost", "package_name", "deposit_or_paid",
@@ -581,7 +582,7 @@ def _miss_help(cards, guests, user, figures):
         except Exception as e:
             print("miss_help benchmark failed:", repr(e)[:120])
     if _can_attach(user):
-        out += " If you have their price sheet or a quote, attach it here and I'll check it against similar venues."
+        out += " If you have their pricing PDF or a quote, attach it here and I'll check it against similar venues."
     return out
 
 
@@ -1644,6 +1645,35 @@ def _page_venue(user, text, fresh):
     return pat.sub(sub, text, count=1), card
 
 
+_ob_lock = threading.Lock()
+_ob_claimed = set()   # user ids whose free question is running or answered (the usage row lands only after the answer)
+
+
+def _onboarding_free(user, body):
+    """The sign-up flow's question is free once: until this couple has had an answer, one at a time. A question that failed
+    doesn't use it up (3 tries at most)."""
+    if not (config.ONBOARDING and body.onboarding):
+        return False
+    uid = user["id"]
+    with _ob_lock:
+        if uid in _ob_claimed:
+            return False
+        _ob_claimed.add(uid)
+    try:
+        rows = [r for r in xano.user_usage(uid) if (r.get("kind") or "refine") == "refine"]
+        free = len(rows) < 3 and all(r.get("status") == "error" for r in rows)
+    except Exception:
+        free = False
+    if not free:
+        _ob_release(uid)
+    return free
+
+
+def _ob_release(uid):
+    with _ob_lock:
+        _ob_claimed.discard(uid)
+
+
 def _refine(token, user, body, background, tracker):
     if body.ww is not None and body.quote is None and whole_wedding.assigned(user.get("id")):   # flag off -> never assigned
         out = _ww_refine(token, user, body, background, tracker)
@@ -1686,7 +1716,7 @@ def _refine(token, user, body, background, tracker):
     # "the three venues above" with nothing above. The current page always sends its chat_id mid-conversation (also
     # after a reload, which resumes the chat), so no chat_id + no client-held history = a NEW conversation. Only the
     # legacy shape (prior turns in `messages`) still continues the recent chat.
-    chat = _recent_chat(user["id"]) if len(body.messages or []) > 1 else None
+    chat = _recent_chat(user["id"]) if len(body.messages or []) > 1 and not (config.ONBOARDING and body.onboarding) else None
     if chat:
         return _refine_in_chat(token, user, chat, text, background, tracker, quote=body.quote, fit_chip=body.ctx_arm == "context")
     # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard
@@ -1696,7 +1726,15 @@ def _refine(token, user, body, background, tracker):
     if out is None:
         if body.quote:
             msgs = msgs[:-1] + [{"role": "user", "content": text + quote_block(body.quote, str(body.quote.get("_file_name") or ""))}]
-        out = _run_guarded("refine", token, user, msgs, tracker=tracker)
+        free = _onboarding_free(user, body)
+        try:
+            out = _run_guarded("refine", token, user, msgs, tracker=tracker, waive_free=free)
+        except BaseException:
+            if free:   # no answer: the free question is still theirs
+                _ob_release(user["id"])
+            raise
+        if free and out.get("stopped"):
+            _ob_release(user["id"])
     if out.get("stopped"):
         return out           # no chat created, nothing saved
     out["chips"] = ensure_chips(out.get("chips"))
