@@ -1228,6 +1228,23 @@ def venue_details(vendor_id, with_amounts):
     return out
 
 
+DETAILS_CACHE = _TTLCache(config.PRICING_CACHE_S, 1000)
+
+
+def cached_venue_details(vendor_id, with_amounts):
+    """venue_details through a TTL cache, keyed by (vendor, amounts): no token and no user in it. For the side-by-side
+    compare (2026-11-22), where a guest-count what-if re-reads the same venues."""
+    key = (str(vendor_id or "").strip(), bool(with_amounts))
+    if DETAILS_CACHE.ttl > 0:
+        hit = DETAILS_CACHE.get(key)
+        if hit is not None:
+            return hit
+    d = venue_details(vendor_id, with_amounts)   # module lookup on purpose: tests monkeypatch it
+    if DETAILS_CACHE.ttl > 0 and d and (d.get("spaces") or d.get("google")):
+        DETAILS_CACHE.put(key, d)
+    return d
+
+
 # ---------------------------------------------------------------- conversations (tables 42/43) + memory (80)
 # Written by the SERVICE with the metadata token, never by the browser, and every read checks ownership,
 # so one couple can never load another couple's chat by guessing an id.

@@ -52,6 +52,7 @@ def inputs_from_panel(d):
         # fn56: ceremony fee_type 'included' = $0 from the PDF (the card adds nothing; _num(0) used to fall back to
         # the market ceremony estimate).
         "ceremony_included": (comps.get("ceremony") or {}).get("fee_type") == "included",
+        "ceremony_per_person": (comps.get("ceremony") or {}).get("fee_type") == "per_person",
         "ceremony_in_package": (comps.get("ceremony") or {}).get("source") == "package",
         "service_in_package": (comps.get("service_charge") or {}).get("source") == "package",
         "service_pct": _num((comps.get("service_charge") or {}).get("pct")),
@@ -91,7 +92,11 @@ def compute(inp, guests, override=None):
         ceremony, cs = 0, "not stated - package"
     else:
         ceremony, cs = pick(inp.get("ceremony"), "ceremony")
-    lines.append({"item": "Ceremony on site", "amount": ceremony, "source": cs})
+    cline = {"item": "Ceremony on site", "amount": ceremony, "source": cs}
+    if config.CEREMONY_PER_PERSON and inp.get("ceremony_per_person") and inp.get("ceremony"):
+        ceremony = inp["ceremony"] * g
+        cline.update(amount=ceremony, per_guest=inp["ceremony"], math="%s x %d guests = %s" % (_money(inp["ceremony"]), g, _money(ceremony)))
+    lines.append(cline)
 
     if pkg and inp.get("fee_includes_fb"):
         # Inclusive package: food is inside the rental. Never add a per-head estimate on top.
@@ -112,6 +117,9 @@ def compute(inp, guests, override=None):
 
     pp, ps = pick(inp.get("pp_fb"), "pp_fb")
     fb_min = inp.get("fb_min") or 0
+    min_only = bool(config.MIN_FOOD_ONLY and fb_min and not inp.get("pp_fb"))
+    if min_only:
+        pp, ps = 0, "this venue's PDF"
     food = pp * g
     food_line = {"item": "Food and drink", "per_guest": pp, "guests": g, "amount": food, "source": ps,
                  "math": "%s x %d guests = %s" % (_money(pp), g, _money(food))}
@@ -121,7 +129,10 @@ def compute(inp, guests, override=None):
         if floor > food:
             food = floor
             food_line.update(amount=floor, minimum_applies=True,
-                             math="%s minimum (above %s x %d guests)" % (_money(floor), _money(pp), g))
+                             math=("%s minimum; food may cost more" % _money(floor)) if min_only else
+                             "%s minimum (above %s x %d guests)" % (_money(floor), _money(pp), g))
+            if min_only:
+                food_line["minimum_only"] = True
     lines.append(food_line)
     return _finish(inp, lines, rental, ceremony, food, g, asked)
 
@@ -165,6 +176,8 @@ def label(e, budget=0):
     if not e:
         return None
     s = "About %s for %d guests before tax and gratuity" % (_money(e["total_before_tax_and_gratuity"]), e["guests"])
+    if any(l.get("minimum_only") for l in e.get("lines") or []):
+        s += ", with food at its minimum spend (it may cost more)"
     if budget:
         s += " (%d%% of your budget)" % round(100.0 * e["total_before_tax_and_gratuity"] / budget)
     return s
@@ -176,6 +189,8 @@ def summary(e, budget=0):
         return None
     out = {"total_before_tax_and_gratuity": e["total_before_tax_and_gratuity"], "per_guest": e["per_guest"],
            "guests": e["guests"], "estimated_lines": e["estimated_lines"]}
+    if any(l.get("minimum_only") for l in e.get("lines") or []):
+        out["food_is_only_the_minimum"] = "The PDF gives a food minimum and no per-guest price: say food may cost more."
     if budget:
         out["share_of_budget_pct"] = round(100.0 * e["total_before_tax_and_gratuity"] / budget)
     if e.get("priced_at_guest_minimum"):

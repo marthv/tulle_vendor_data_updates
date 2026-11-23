@@ -311,7 +311,7 @@ def test_missing_venue_is_honest_and_requested(env, monkeypatch):
     monkeypatch.setattr(config, "VENUE_LOG", False)   # on: a one-word name is not posted (lookup.slack_worthy)
     j = ask("Do you have Cresthollow in Long Island, NY?")
     assert env["model"] == 0
-    assert j["lookup"]["status"] == "not_found" and j["text"].startswith("We don't have Cresthollow in Tulle yet")
+    assert j["lookup"]["status"] == "not_found" and j["text"].startswith("We don't have Cresthollow yet")
     assert j["venue_request"] == {"name": "Cresthollow", "location": "Long Island, NY"}
     assert [c["vendor_id"] for c in j["cards"]] == ["V50", "V51"]    # real venues in New York
     settle(env, "slack")
@@ -366,7 +366,7 @@ def test_a_missing_us_venue_with_no_area_shows_the_profile_state(env, monkeypatc
     monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Location_Updated": ["New York"]})
     j = ask("The Orchards of Molino")
     assert j["lookup"]["status"] == "not_found"
-    assert j["text"].startswith("We don't have The Orchards of Molino in Tulle yet")
+    assert j["text"].startswith("We don't have The Orchards of Molino yet")
     assert "venues we do have in New York" in j["text"] and [c["vendor_id"] for c in j["cards"]] == ["V50", "V51"]
     assert "More venues in New York" in j["chips"]
 
@@ -376,7 +376,7 @@ def test_repeating_the_same_missing_name_is_answered_differently(env, monkeypatc
     env["history"] = [{"role": "user", "text": "The Orchards of Molino"},
                       {"role": "assistant", "text": "We don't have The Orchards of Molino in Tulle yet - ..."}]
     j = ask("the orchards of molino")
-    assert j["text"].startswith("Still nothing for") and "already on our list" in j["text"]
+    assert j["text"].startswith("We still don't have") and "our list" not in j["text"] and "our team" not in j["text"]
     assert "style you're after" in j["text"]
 
 
@@ -417,3 +417,22 @@ def test_control_arm_and_no_arm_keep_todays_chips(env, monkeypatch):
         r = TestClient(app.app).post("/rec/refine", json={"chat_id": 9, "message": "oheka castle", "ctx_arm": arm})
         chips = r.json()["chips"]
         assert not any(ch.startswith("Does ") for ch in chips), chips
+
+
+def test_a_miss_makes_no_promise_and_gives_the_yardstick(env, monkeypatch):
+    """Owner 2026-11-23: nobody works a request list, so no 'passed it to our team'. Instead the state's typical all-in and the quote check."""
+    monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Location_Updated": ["New York"], "Wedding_Guest_Count": 130})
+    monkeypatch.setattr(xano, "cached_market_benchmarks", lambda s, g=0, stats=None: {"metrics": {
+        "all_in_pg_125": {"median": 391.4, "n_spaces": 40, "scope": "New York venues that seat 76-150"}}})
+    t = ask("The Orchards of Molino")["text"]
+    assert "our team" not in t and "to add" not in t
+    assert "New York venues that seat 76-150 is about $391 a guest" in t and "attach it here" in t
+
+
+def test_the_yardstick_never_reaches_a_price_free_couple(monkeypatch):
+    monkeypatch.setattr(xano, "cached_market_benchmarks", lambda s, g=0, stats=None: {"metrics": {"all_in_pg_125": {"median": 391, "n_spaces": 40}}})
+    card = [{"state": "New York"}]
+    assert "$" not in app._miss_help(card, 120, {"id": 1}, figures=False)
+    assert "$391" in app._miss_help(card, 120, {"id": 1}, figures=True)
+    monkeypatch.setattr(xano, "cached_market_benchmarks", lambda s, g=0, stats=None: {"metrics": {"all_in_pg_125": {"median": 391, "n_spaces": 3}}})
+    assert "$" not in app._miss_help(card, 120, {"id": 1}, figures=True)     # too few spaces to call typical

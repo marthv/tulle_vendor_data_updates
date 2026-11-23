@@ -58,6 +58,7 @@ import agent
 import anthropic
 from chips import (STARTER_CHIPS, STARTER_CHIPS_COST_TOOLS, CHIP_TOPUPS, dedupe_chips, ensure_chips,
                    guarantee_next_step, more_chips, place_action_chip, tool_chips)
+import compare
 import config
 import cost_tools
 import free_mode
@@ -562,6 +563,26 @@ def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_lef
             "free_phase": (guards.free_phase(rows) if (rows is not None and not paid) else None),
             "free_initial_limit": config.FREE_INITIAL_REFINES if config.FREE_DAILY_MODE else None,
             "free_feedback_required": bool(free_fb), "free_feedback_bonus": config.FREE_FEEDBACK_BONUS}
+
+
+def _miss_help(cards, guests, user, figures):
+    """What Tulle can still do about a venue it doesn't hold (owner 2026-11-23, instead of "passed it to our team"): the
+    state's typical all-in as a yardstick (one state-level figure, allowed at LIGHT; never at free) and the quote check."""
+    out = ""
+    state = _state1(cards[0]["state"]) if cards and cards[0].get("state") else ""
+    if figures and state:
+        try:
+            g = int(guests or 0)
+            m = (xano.cached_market_benchmarks(state, g).get("metrics") or {}).get(
+                "all_in_pg_%d" % min((75, 125, 200), key=lambda n: abs(n - (g or 125)))) or {}
+            if m.get("median") and (m.get("n_spaces") or 0) >= xano.MIN_BAND_SPACES:
+                out += " As a yardstick, the typical all-in for %s is about $%s a guest, before tax and gratuity." % (
+                    m.get("scope") or state, format(int(round(m["median"])), ","))
+        except Exception as e:
+            print("miss_help benchmark failed:", repr(e)[:120])
+    if _can_attach(user):
+        out += " If you have their price sheet or a quote, attach it here and I'll check it against similar venues."
+    return out
 
 
 def _detail(paid, access):
@@ -1165,14 +1186,16 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
                         "If you're also weighing a US option, tell me the area and I'll show you venues we do have there."
                         % (name, dest.title()))
         elif repeat:
-            text_out = "Still nothing for %s - it's already on our list to add." % name
-        else:
-            text_out = "We don't have %s in Tulle yet - I've passed it to our team to add." % name
+            text_out = "We still don't have %s." % name
+        else:     # owner 2026-11-23: no promise to add it - nobody is working a request list
+            text_out = "We don't have %s yet." % name
         if cards:
             text_out += " Here are %d venues we do have %s, each with real pricing from couples." % (len(cards), where)
         elif not dest:
             text_out += (" Tell me a city or area, or a style you're after, and I'll search what we do have."
                          if repeat else " Tell me the city or area and I'll show you venues we do have there.")
+        if not dest and not hint_other and not repeat:
+            text_out += _miss_help(cards, guests, user, figures=_detail(paid, access) != "free")
         venue_request = {"name": name, "location": loc}
         chips = (["More venues %s" % where] if where else []) + ["Find a photographer"]
         if cards and cards[0].get("state"):
@@ -1734,7 +1757,12 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
         for t in turns:                  # a whole-wedding card: its PDF sentences for this reader (free views left or not)
             if any(isinstance(w, dict) and w.get("type") == whole_wedding.PROPOSAL for w in t.get("widgets") or []):
                 t["widgets"] = [free_mode.proposal_wording(w, _ww_reader(user)) for w in t["widgets"]]
-    elif _detail(xano.beta_member(user), True) != "full":
+    elif not xano.pi_entitled(user):       # a plan without exact-price entitlement: a stored side by side is words only
+        for t in turns:
+            if any(isinstance(w, dict) and w.get("type") == compare.TYPE for w in t.get("widgets") or []):
+                t["widgets"] = [compare.lock(dict(w, reason="member")) if isinstance(w, dict) and w.get("type") == compare.TYPE
+                                else w for w in t["widgets"]]
+    if xano.has_paid_access(user) and _detail(xano.beta_member(user), True) != "full":
         # A plan without full figures reopening a whole-wedding proposal made with them (2026-11-16): that card and
         # the sentences around it are re-locked. A chat with no such card is returned exactly as before.
         for t in turns:
@@ -1836,7 +1864,8 @@ class ToolBody(BaseModel):
 
 # What the chat shows as the couple's side of a quick action (stored as the user turn, so the history alternates).
 TOOL_LABELS = {"estimate_cost": "Estimate my cost", "split_budget": "Split my budget",
-               "compare_venues": "Compare my venues", "budget_status": "Budget check"}
+               "compare_venues": "Compare my venues", "budget_status": "Budget check",
+               compare.TOOL: "Compare these venues"}
 
 
 @app.post("/rec/tool")
@@ -1851,8 +1880,16 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     if config.KILL_SWITCH:
         raise HTTPException(503, {"status": "killed"})
     name = (body.tool or "").strip()
-    if name not in cost_tools.TOOLS:
+    picked = name == compare.TOOL and compare.arm(user.get("id")) == "compare"
+    if name not in cost_tools.TOOLS and not picked:
         raise HTTPException(400, {"status": "unknown_tool", "tools": list(cost_tools.TOOLS)})
+    if picked:
+        ids = (compare.saved_venue_ids(xano, user) if (body.args or {}).get("saved") else
+               compare.clean_ids((body.args or {}).get("vendor_ids")))
+        if len(ids) < compare.MIN_VENUES:
+            raise HTTPException(400, {"status": "need_two_venues"})
+        if not compare.spend(user["id"], ids):
+            raise HTTPException(429, {"status": "compare_daily_cap"})
     chat = None
     if body.chat_id:
         chat = xano.get_chat(user["id"], body.chat_id)
@@ -1866,12 +1903,20 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
             "cache_write_tokens": 0, "output_tokens": 0, "tool_calls": 0, "cost_usd": 0}
     t0 = dt.datetime.now(dt.timezone.utc)
     try:
-        out = cost_tools.run_tool(name, body.args or {}, token, user, access=access, xano=xano)
+        if picked:
+            d = cost_tools.profile_defaults(user)
+            out = {"widget": compare.build(xano, token, user, ids, access=access, guests=(body.args or {}).get("guests"),
+                                           default_guests=d["guests"], budget=d["budget"])}
+        else:
+            out = cost_tools.run_tool(name, body.args or {}, token, user, access=access, xano=xano)
     except Exception as e:
         _submit_usage(dict(base, status="error", error=str(e)[:500]))
         raise HTTPException(502, {"status": "error"})
+    if picked and not out["widget"]:
+        _submit_usage(dict(base, status="error", error="compare: fewer than two venues found"))
+        raise HTTPException(404, {"status": "venues_not_found"})
     widget = out["widget"] if access else free_mode.widget(out["widget"])
-    text = cost_tools.summary_text(widget)
+    text = compare.summary_text(widget) if picked else cost_tools.summary_text(widget)
     # Next-step chips (owner 2026-10-25), computed in code like the widget - flag-independent, as /rec/tool is.
     # No chat history is read here (one more Xano call per tap); the next typed reply's de-dupe sees these chips.
     chips = tool_chips(name, free=not access, widget=widget)
@@ -3107,6 +3152,8 @@ def status(authorization: str = Header(None)):
                       "package_totals": config.PACKAGE_TOTALS, "plan_ab_pct": plan.PLAN_AB_PCT},
             # Whole-wedding proposal (2026-11-15): true = this account is assigned; the page shows "Plan my wedding".
             "whole_wedding": whole_wedding.assigned(user.get("id")), "ww_arm": whole_wedding.arm(user.get("id")),
+            # Side-by-side compare (2026-11-22): "compare" shows the button; "control" = the test's other half; "off".
+            "compare_arm": compare.arm(user.get("id")),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 

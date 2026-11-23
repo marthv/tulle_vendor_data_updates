@@ -5387,6 +5387,177 @@
         "cherry-picks 3142398 (never pushed)",
         "tulletogether .claude/inclusive_pkg_2026-11-20/fn56_v29_quickfixes.xs"
       ]
+    },
+    {
+      "id": "EXP-2026-11-planner-compare",
+      "name": "Planner: compare 2-3 venues side by side, then save to My Wedding",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "ux",
+      "themes": [
+        "planner",
+        "my-wedding"
+      ],
+      "bucket": "planner_engagement",
+      "in_rotation": false,
+      "tldr": "A 'Compare these' button under Planner venue cards opens a side by side (cost bars for members, below/typical/above words for free couples) that ends in Save to My Wedding. Question: do more couples save a venue, without fewer PDF opens?",
+      "what_changed": "rec-engine /rec/tool compare_picked (compare.py) + ww-planner-chat VenueCompare: Compare button and checkboxes on venue cards, side-by-side card, Save to My Wedding on each venue, saved strip and next-step link. Arm 'compare' only. Saves are also sent one at a time for everyone (bug fix). REC_CEREMONY_PER_PERSON=1 goes on for everyone with it (4 of 40 sampled venues had a per-person ceremony fee added once).",
+      "surfaces": [
+        "rec-engine",
+        "weweb:planner",
+        "weweb:bubble"
+      ],
+      "audience": {
+        "segment": "Planner couples (free and paid) who get an answer with 2+ venue cards",
+        "est_daily_exposed": 8,
+        "est_note": "39-70 couples/week: 141 in 14 days from the sheet (11-08..21), 102 from Mixpanel; not measured inside the new build"
+      },
+      "hypothesis": "If couples can line up 2-3 venues from a Planner answer and save from there, then the share saving a venue within 24h of seeing 2+ cards rises from 3% to 12%, because choosing between a few beats hearting one card at a time.",
+      "tests": "Does a side by side with Save on it get more Planner couples to save a venue?",
+      "goal": "Owner ask 2026-11-22: make the Planner useful for comparing and deciding, and push couples to save venues to My Wedding.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.03,
+        "baseline_note": "3% of the 141 couples who saw 2+ cards in a Planner answer saved one (sheet, 11-08..11-21; free phone 3% of 79, free desktop 0 of 29, paid phone 7% of 14, paid desktop 5% of 19)",
+        "mde_rel": 3.0,
+        "label": "saved 1+ venue within 24h of first seeing 2+ venue cards in a Planner answer"
+      },
+      "primary_metric": "Mixpanel: first rec_compare_eligible (both arms, carries arm) -> rec_vendor_saved saved=true within 24h, unique couples, internal excluded",
+      "guardrails": [
+        {
+          "key": "planner_pdf_open_rate",
+          "label": "opened a pricing PDF from the Planner",
+          "params": {},
+          "max_drop_rel": 0.35
+        },
+        {
+          "key": "planner_second_question",
+          "label": "asked a 2nd question",
+          "params": {},
+          "max_drop_rel": 0.3
+        }
+      ],
+      "guardrail": "PDF opens (27% baseline) not down 10+ points at 4 weeks; purchases watched only (too few to test)",
+      "assignment": {
+        "type": "split",
+        "rule": "hash_pct",
+        "salt": "compare-2026-11",
+        "pct": 50,
+        "note": "PROVISIONAL: mirrors compare.arm: sha256('compare-2026-11:<user_id>') first 8 hex digits % 100 < REC_COMPARE_AB_PCT; testers in REC_COMPARE_USER_IDS are internal and excluded. Independent of the parity split of planner-context-first."
+      },
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "planned_days": 35,
+      "max_days": 49,
+      "review_date": "2027-01-04",
+      "reporting": "manual",
+      "rollback": "REC_COMPARE_AB_PCT=0 or REC_COMPARE_PICK=0 on rec-engine (~2 min); the component then shows nothing.",
+      "dates_note": "About 133 couples per arm for 3% -> 12% (about 5 weeks). Kill early if, after 100 exposed test couples, under 10% open a comparison or under 10% of openers save. Best started after planner-context-first is called (12-01) and after the old page's unseen openings are removed, so the sheet is readable.",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Planned. Counter-evidence kept on record: almost nobody types a comparison (0-20 of 877 questions by strict/loose reading); Baymard 2022: 3 of 38 phone testers used compare."
+        }
+      ],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulle_vendor_data_updates branch rec-planner-compare",
+        "ww-planner-chat branch planner-compare",
+        "tulletogether .claude/planner_compare_2026-11-22/"
+      ]
+    },
+    {
+      "id": "EXP-2026-11-onboarding-try-it",
+      "name": "Onboarding: the Planner runs it, instead of two pop-ups and a tour",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "ux",
+      "themes": [
+        "onboarding"
+      ],
+      "bucket": "onboarding",
+      "in_rotation": false,
+      "tldr": "New sign-ups answer Tulle in a chat pop-up, ask it one real question about a venue and open a price sheet, instead of two question pop-ups and a tooltip tour. Question: do more open PDFs within a day and come back to the Planner, without fewer finishing?",
+      "what_changed": "DESIGN ONLY, nothing built: pop-up over the app where the Planner asks stage, source, age, states (all), guests (25-500 by 25) and budget (slider $5K + typed), shows three venues, takes one real question, then one price sheet (uses 1 of 3 free views), then closes. A 'specific venue' search with a path when Tulle doesn't have it. No comparison step (not live) and no 'tell me when you have it'. Prototype: claude.ai artifact X2wdrqCwNwy7jwUYF7zmbL.",
+      "surfaces": [
+        "weweb:sign-up",
+        "weweb:discovery",
+        "weweb:vendor-page"
+      ],
+      "audience": {
+        "segment": "new sign-ups (email and Google), phone and desktop",
+        "est_daily_exposed": 97,
+        "est_note": "Xano 2,724 sign-ups ex-internal in 28 days (10-25..11-21) = 97.3/day; Mixpanel sees 88% of them"
+      },
+      "hypothesis": "If new couples use the Planner and open a price sheet during onboarding, then first PDF within 1 day rises from 63.9% to 69%+ and 3 PDFs within 1 day from 27.7%, because today the flow ends before anyone sees a price.",
+      "tests": "Does doing the product inside onboarding get more new couples to open a pricing PDF within a day?",
+      "goal": "Owner 2026-11-22: onboarding modelled on Wispr Flow, replacing the two modals and rethinking the tour; everyone must get through onboarding as before, ideally payment rate moves too.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.639,
+        "baseline_note": "viewed_vendor_pdf within 1 day of signed_up, Mixpanel 10-25..11-21 (phone 59.2%, desktop 76.0%). The onboarding PDF counts in the test arm, so read it WITH 3 PDFs in 1 day (27.7%) and a second Planner question after onboarding; first PDF alone is partly self-fulfilling. Pass needs both up.",
+        "mde_rel": 0.08,
+        "label": "opened 1+ pricing PDF within 1 day of sign-up"
+      },
+      "primary_metric": "Co-primary: 3 PDFs within 1 day (27.7%) so a forced first open alone cannot win",
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day (watched, cannot be read per arm in under 5 months)",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "guardrail": "Finish rate (guests saved) 96.8%: stop if the test arm is 5+ points lower (readable in about 7 days, 337 per arm). Vendor page 1 d 94.2%; saved a venue 1 d 3.3%; Planner question 1 d 8.5%; paid 7 d 2.05% reported with an interval only.",
+      "assignment": {
+        "type": "split",
+        "rule": "hash_pct",
+        "salt": "onboarding-2026-11",
+        "pct": 50,
+        "note": "PROVISIONAL. Must be independent of even/odd user id (planner-context-first). Exposure event needed at modal open in BOTH arms (no popup-shown event exists today)."
+      },
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "planned_days": 33,
+      "max_days": 49,
+      "review_date": "2027-01-08",
+      "reporting": "manual",
+      "rollback": "Set the split to 0%: everyone gets the current popup and tour (kept in place).",
+      "dates_note": "+5 points on PDF-in-1-day needs about 1,400 per arm, about 29-33 days. Collides with pdf-limit-soft-redirect (pre/post, review 12-03) and pi-card-restore: start after both are read. Payment +30% would need 154-222 days.",
+      "results": [
+        {
+          "date": "2026-11-22",
+          "note": "Baseline measured; completion is already 96.8% in about 47 s, so it can only fall. First PDF alone did not separate payers in the baseline (2.07% vs 2.01%, small and observational); hitting the PDF limit did (7.9%)."
+        }
+      ],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [
+        "split key and exposure event not built",
+        "who answers 'not on Tulle' requests: nobody yet, so the flow makes no promise"
+      ],
+      "links": [
+        "tulletogether .claude/onboarding_2026-11-22/LOOMS.md",
+        ".claude/planner_compare_2026-11-22/onboarding_baseline.md"
+      ]
     }
   ],
   "changes": [
@@ -5843,6 +6014,25 @@
       ],
       "source": "rec-engine Railway variables",
       "ref": "019dfe9"
+    },
+    {
+      "date": "2026-11-23",
+      "what": "Planner: 'We don't have X' no longer says 'passed it to our team to add'; it gives the state's typical all-in per guest (not to price-free couples) and the quote check (owner yes). Same push carries side-by-side compare and per-person-ceremony / minimum-only-food totals, all behind flags that start OFF.",
+      "affects": [
+        "planner"
+      ],
+      "source": "rec-engine",
+      "ref": "branch rec-planner-compare"
+    },
+    {
+      "date": "2026-11-23",
+      "what": "rec-engine ~04:52 UTC: REC_CEREMONY_PER_PERSON=1 and REC_MIN_FOOD_ONLY=1 ON for everyone (paid Planner totals match the venue page; minimum-only food says 'may cost more'). REC_COMPARE_PICK=1 for the owner's account only (AB_PCT 0). WeWeb EDITOR (not live until publish): old /planner opening loader 685f59e1 switched off + startMessage also reads ?q=; ww-planner-chat 6a32d04 pushed (compare, saves one at a time), needs activate + publish.",
+      "affects": [
+        "planner",
+        "EXP-2026-11-planner-package-totals"
+      ],
+      "source": "railway-var",
+      "ref": "REC_MIN_FOOD_ONLY, REC_CEREMONY_PER_PERSON, REC_COMPARE_*"
     }
   ]
 }
