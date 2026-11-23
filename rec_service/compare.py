@@ -143,9 +143,11 @@ def _facts(card, details, space_label=""):
     room_seats = _int((sp or {}).get("Max_Capacity_Seated"))
     seats = room_seats or _int(card.get("max_capacity_seated"))
     types = _list(about.get("venue_type") or card.get("venue_type"))
+    models = [x for x in types if "inclusive" in x.lower() or "catering" in x.lower() or "raw space" in x.lower()]
+    types = [x for x in types if x not in models]      # a pricing style in the type field is not a setting
     out = {"setting": types[:2], "style": _list(about.get("vibes"))[:3],
            "seats": seats or None, "seats_is_room": bool(room_seats and space_label),
-           "offering": _clean_words(about.get("offering"), 60) or None,
+           "offering": _clean_words(about.get("offering"), 60) or (models or [None])[0],
            "rating": g.get("rating"), "reviews": _int(g.get("review_count")) or None}
     return out
 
