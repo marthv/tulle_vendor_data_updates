@@ -111,7 +111,7 @@ _MONTHS = ("January", "February", "March", "April", "May", "June", "July", "Augu
 def _months(raw):
     """'January, February, December' -> 'Jan, Feb, Dec'; 'Not listed', 'N/A' and the like -> None."""
     t = " ".join(str(raw or "").split())
-    hits = [m[:3] for m in _MONTHS if re.search(r"%s[a-z]*" % m[:3], t, re.I)]
+    hits = [m[:3] for m in _MONTHS if re.search(r"\b%s[a-z]*\b" % m[:3], t, re.I)]
     return ", ".join(hits) or None
 
 
