@@ -169,3 +169,116 @@ def test_find_duplicates_names_the_hidden_one_without_a_card():
     assert b.handle(mention("find duplicates of V1")) == "merge:dupes-hidden"
     txt = slack.of("chat.postMessage")[-1]["text"]
     assert "(V2), hidden" in txt and "merge V1 and V2" in txt and store.all() == []
+
+
+# --- names, operator offices, PDF names (2026-11-22, blind judge 59/60) -------------------------------------------
+OFFICE = dict(addr="7619 Huntington Park Dr, Columbus, OH 43235", state="Ohio", pid="ChIJ808MIULzOIgRik-vbXmoiVc",
+              lat=40.116971, lng=-83.014)
+CM = " by Cameron Mitchell Premier Events"
+IVORY = V(8947, "V8947", "The Ivory Room" + CM + "\t", web="http://www.cameronmitchellpremierevents.com\t", **OFFICE)
+TERRACE = V(9064, "V9064", "The Terrace" + CM, web="https://cameronmitchellpremierevents.com/venues/the-terrace/", **OFFICE)
+STACK = V(9049, "V9049", "The Stack at Municipal Light Plant" + CM, web="https://cameronmitchellpremierevents.com/v/",
+          **OFFICE)
+
+
+def test_held_out_miss_ivory_room_vs_the_terrace(monkeypatch):
+    assert ids([IVORY, TERRACE]) == [] and ids([IVORY, TERRACE, STACK]) == []
+    assert ((8947, 9064), "name") in reasons([IVORY, TERRACE])
+    monkeypatch.setattr(dedupe, "name_conflict", lambda a, b: False)
+    assert ids([IVORY, TERRACE]) == [[8947, 9064]]                  # proves the test can fail
+
+
+@pytest.mark.parametrize("a,b", [
+    ("The Ivory Room" + CM, "The Terrace" + CM),
+    ("The Peak at Edison", "Menlo at Edison"),
+    ("Hyatt Regency Boston / Cambridge", "Hyatt Regency Boston Harbor"),
+    ("Andre's West Banquets & Catering", "Andre's Sunset Hills Banquets & Catering"),
+    ("Katie Salerno Photography", "Katie Shuler Photography"),
+    ("Flowers by Joan", "Flowers by Jane"),
+    ("The Terrace" + CM, "The Ballroom" + CM),                      # nothing but generic words before "by"
+    ("Barn by Hilltop", "Chapel by Hilltop"),
+])
+def test_names_that_conflict(a, b):
+    assert dedupe.name_conflict(a, b) and dedupe.name_conflict(b, a)
+
+
+@pytest.mark.parametrize("a,b", [
+    ("Mandarin Oriental", "Mandarin Oriental NYC"), ("Manzos Banquets", "Manzo's Banquets"),
+    ("Pasea Hotel and Spa", "Paséa Hotel & Spa"), ("12 Oaks Hill Country Venue", "Twelve Oaks Hill Country Venue"),
+    ("Terre di Nano", "Terre di Mano"), ("The Union Station", "Union Station Hotel"),
+    ("Riverwood Manor by Wedgewood Weddings", "Riverwood Manor"), ("The Stack" + CM, "Stack" + CM + "\t"),
+    ("The Pavillion at Angus Barn", "The Angus Barn Pavilion"), ("Fox Barn", "FoxBarn at Twenty9"),
+    ("Flowers by Joan", "Flowers By Joan LLC"), ("Desert Foothills Event Center", "Desert Foothills Events"),
+    ("Grand Ballroom", "The Hall"), ("", "Rose Hall"), (None, "Rose Hall"),
+])
+def test_names_that_do_not_conflict(a, b):
+    assert not dedupe.name_conflict(a, b) and not dedupe.name_conflict(b, a)
+
+
+def test_office_shared_by_three_names_is_no_evidence():
+    same = dict(STACK, id=9050, Vendor_ID="V9050")
+    assert ids([STACK, same]) == [[9049, 9050]]                     # no office: an ordinary duplicate
+    assert ids([STACK, same, IVORY, TERRACE]) == []                 # 3 different names there: the office proves nothing
+    assert ((9049, 9050), "office") in reasons([STACK, same, IVORY, TERRACE])
+    two = [V(1, "V1", "Rose Hall", pid="P1"), V(2, "V2", "Rose Hall", pid="P1"), V(3, "V3", "Lily Barn", pid="P1")]
+    assert ids(two) == [[1, 2]]                                     # two names only: not an office
+
+
+def test_office_address_still_allows_a_venues_own_place_id():
+    rows = [dict(STACK, Place_ID="Pstack"), dict(STACK, id=9050, Vendor_ID="V9050", Place_ID="Pstack"), IVORY, TERRACE]
+    assert ids(rows) == [[9049, 9050]]
+
+
+DUNHAM, BENEDICT = ["Dunham Tavern Museum & Gardens"], ["Sarah Benedict House / Cleveland Restoration Society"]
+
+
+@pytest.mark.parametrize("a,b,want", [
+    (DUNHAM, BENEDICT, True), (DUNHAM, [], False), ([], [], False), (["Rose Hall"], ["The Rose Hall Venue"], False),
+    (["The Mansion at ColoVista", "Villa Antiche Mura"], ["The Mansion at ColoVista"], False),
+    (["Philly Seaport"], ["Independence Seaport Museum"], False), (["Wedding Packages"], ["Dunham Tavern"], False),
+])
+def test_pdf_name_conflict(a, b, want):
+    assert dedupe.pdf_name_conflict(a, b) is want and dedupe.pdf_name_conflict(b, a) is want
+
+
+def test_scan_drops_v11220_v11221_whose_pdfs_name_two_venues():
+    from proposals import Store
+    import tempfile
+    from pathlib import Path
+    kw = dict(addr="3751 Prospect Ave E, Cleveland, OH 44115", state="Ohio", pid="ChIJm4UQkFn6MIgRZgeccBrgeyU",
+              web="https://clevelandrestoration.org/", lat=41.5022278, lng=-81.66)
+    rows = [V(11220, "V11220", "Cleveland Restoration Society\t", **kw),
+            V(11221, "V11221", "Cleveland Restoration Society\t", **kw)]
+
+    def scan(names):
+        class X:
+            def get(self, path, params=None):
+                it = [{"id": n, "VENDOR_ID": v, "VENUE_NAME": x} for n, (v, x) in enumerate(names.items())]
+                return {"items": it if path == "/table/36/content" else [], "nextPage": None}
+        return dedupe.scan(X(), Store(Path(tempfile.mkdtemp()) / "p.json"), mode="weekly", vendor_rows=rows)["proposals"]
+    assert scan({"V11220": DUNHAM[0], "V11221": BENEDICT[0]}) == []
+    assert len(scan({"V11220": DUNHAM[0], "V11221": DUNHAM[0]})) == 1        # proves the test can fail
+
+
+@pytest.mark.parametrize("a,b,names,want", [
+    (BOSTON, NYC, {}, "feedback:duplicate:conflict:state"),
+    (IVORY, TERRACE, {}, "feedback:duplicate:conflict:name"),
+    (V(1, "V1", "Rose Hall", vis="0"), V(2, "V2", "Rose Hall"), {}, "feedback:duplicate:hidden"),
+    (V(1, "V1", "Rose Hall"), V(2, "V2", "Rose Hall"), {"V1": DUNHAM[0], "V2": BENEDICT[0]},
+     "feedback:duplicate:conflict:pdf_name"),
+    (V(1, "V1", "Rose Hall"), V(2, "V2", "Rose Hall"), {}, dict),
+])
+def test_feedback_reports_use_the_same_conflict_rules(a, b, names, want):
+    import feedback_watch
+    from types import SimpleNamespace
+    by = {a["Vendor_ID"]: a, b["Vendor_ID"]: b}
+
+    class X:
+        def get(self, path, params=None):
+            it = [{"id": n, "VENDOR_ID": v, "VENUE_NAME": x} for n, (v, x) in enumerate(names.items())]
+            return {"items": it if path == "/table/36/content" else [], "nextPage": None}
+    me = SimpleNamespace(directory=SimpleNamespace(resolve=lambda vid, *_: [by[vid]]), xano=X(),
+                         store=SimpleNamespace(handled_keys=lambda k: set()))
+    cls = next(c for c in vars(feedback_watch).values() if isinstance(c, type) and hasattr(c, "_duplicate"))
+    out = cls._duplicate(me, {"vendor_id": a["Vendor_ID"], "other_vendor_id": b["Vendor_ID"]}, "same place")
+    assert isinstance(out, dict) if want is dict else out == want

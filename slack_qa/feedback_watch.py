@@ -323,10 +323,20 @@ class FeedbackWatcher:
             return "feedback:duplicate:different-categories"
         if dedupe.group_key([va, vb]) in self.store.handled_keys("merge"):   # before any Xano reads
             return "feedback:duplicate:already-proposed"
+        pa, pb = dedupe.prepare([a[0], b[0]]) if not (a[0].get("merged_into") or b[0].get("merged_into")) else (None, None)
+        if pa is None:
+            return "feedback:duplicate:already-merged"
+        why_not = dedupe.pair_conflict(pa, pb)               # same rules as the scan (2026-11-22)
+        if why_not:
+            return f"feedback:duplicate:conflict:{why_not}"
+        if dedupe.HOLD_HIDDEN and (dedupe.is_hidden(a[0]) or dedupe.is_hidden(b[0])):
+            return "feedback:duplicate:hidden"
         byid = {a[0]["id"]: a[0], b[0]["id"]: b[0]}
         refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
                                page_delay=config.dedupe_page_delay(), only={10, 36})
         refs.build({va, vb}, rowids={int(a[0]["id"]): va, int(b[0]["id"]): vb})
+        if dedupe.pdf_name_conflict(refs.pdf_names.get(va, ()), refs.pdf_names.get(vb, ())):
+            return "feedback:duplicate:conflict:pdf_name"
         pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
                                    reported=f"{evidence} (anonymous feedback form post)")
         pr["kind"] = "merge"

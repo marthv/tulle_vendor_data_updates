@@ -136,7 +136,8 @@ def check_group(vendors: list[dict]) -> str | None:
 
 
 CONFLICT_TEXT = {"state": "they are in different states", "distance": "they are more than 10 km apart",
-                 "place_id": "they have different Google Place IDs"}
+                 "place_id": "they have different Google Place IDs",
+                 "name": "their names look like two different venues"}
 
 
 def warnings(vendors: list[dict]) -> list[str]:
