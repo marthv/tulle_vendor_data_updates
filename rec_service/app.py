@@ -582,7 +582,7 @@ def _miss_help(cards, guests, user, figures):
         except Exception as e:
             print("miss_help benchmark failed:", repr(e)[:120])
     if _can_attach(user):
-        out += " If you have their price sheet or a quote, attach it here and I'll check it against similar venues."
+        out += " If you have their pricing PDF or a quote, attach it here and I'll check it against similar venues."
     return out
 
 
