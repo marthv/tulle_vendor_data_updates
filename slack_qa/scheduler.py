@@ -3,7 +3,7 @@ rather than as a Railway cron service because the jobs need the same volume (pro
 find its proposal) and the same Slack/Xano clients; a separate cron service would need its own copy of both. The
 service runs one uvicorn worker, and "done for <day>" markers on the volume stop a restart from running a job twice.
 
-  dedupe   (only with DEDUPE_SCHEDULED_SCAN=1) daily at DEDUPE_HOUR_UTC: weekly full scan on DEDUPE_WEEKLY_DOW, otherwise the nightly pass over vendors
+  dedupe   (unless DEDUPE_SCHEDULED_SCAN=0) daily at DEDUPE_HOUR_UTC: weekly full scan on DEDUPE_WEEKLY_DOW, otherwise the nightly pass over vendors
            added since the last scan. Posts up to DEDUPE_MAX_CARDS cards to DEDUPE_CHANNEL (never posts if unset).
   rollup   daily at ROLLUP_HOUR_UTC (ROLLUP_ENABLED=1 + FEEDBACK_CHANNEL).
   trends   weekly on TREND_DIGEST_DOW at TREND_DIGEST_HOUR_UTC: read-only #feedback trend digest to

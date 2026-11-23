@@ -26,15 +26,15 @@ and Approve sends nothing.
 | `XANO_MERGE_TIMEOUT` | leave unset | default 300 s |
 | `XANO_MERGE_RECHECK_GRACE` | leave unset | default 120 s |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | **already set** on the service (name seen 2026-11-23; value not read) | Drive md5 and text reading in the PDF check starts as soon as this code is deployed. The code asks for read-only Drive; whether the account can open the files is UNVERIFIED |
-| `DEDUPE_SCHEDULED_SCAN` | leave unset (off) | new: the nightly / weekly scan posts nothing on its own unless this is 1 |
-| `DEDUPE_MAX_CARDS` | `0` for the pilot | 0 = no scan cards at all, not even "scan duplicates 20"; the pilot runs by name |
+| `DEDUPE_SCHEDULED_SCAN` | leave unset (on) | owner 2026-11-23: the scheduled scan stays on, as today; `0` switches it off |
+| `DEDUPE_MAX_CARDS` | leave unset (10) | cards per scan, as today; `0` = no scan cards at all. The pilot itself runs by name |
 
 Already set and used as is: `XANO_METADATA_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `STATE_DIR=/data`, `QA_SCHEDULER`.
 
 ## Order
 1. Confirm `DEDUPE_DRY_RUN=1`. Do not go on until it reads 1. `XANO_MERGE_URL` / `XANO_MERGE_SECRET` stay unset for the push.
-   The version running today still posts its weekly scan (Monday 08:00 UTC, up to 10 cards) while `DEDUPE_CHANNEL` is set: push
-   before then, or remove `DEDUPE_CHANNEL` until the push.
+   The scheduled scan stays on (owner): the weekly one posts up to 10 cards Monday 08:00 UTC. Cards the old version posts (or has
+   posted) are voided when someone presses Approve on this version.
 2. Push `merge-bot-1122` to main, away from 13:30-13:45 UTC (a push to main can also redeploy batch-ingest, batch-worker-cron
    and health-report-cron). Not while a merge is running.
 3. Build log: `quickjs-ng`, `pypdf`, `google-auth` installed. `/health` answers. `@Tulle Bot PDFs for V105` answers.

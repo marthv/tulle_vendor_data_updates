@@ -495,8 +495,9 @@ def test_scheduler_runs_once_per_day_and_never_without_channel(monkeypatch):
     s = scheduler.Scheduler(B(), clock=lambda: datetime(2026, 11, 23, 9, tzinfo=timezone.utc))
     assert s.tick() == []                                      # nothing configured -> nothing runs
     monkeypatch.setenv("DEDUPE_CHANNEL", "CDEDUPE")
-    assert s.tick() == []                                      # 2026-11-23: the scheduled scan is off unless asked for
-    monkeypatch.setenv("DEDUPE_SCHEDULED_SCAN", "1")
+    monkeypatch.setenv("DEDUPE_SCHEDULED_SCAN", "0")
+    assert s.tick() == []                                      # 2026-11-23: it can be switched off; it is on by default
+    monkeypatch.delenv("DEDUPE_SCHEDULED_SCAN")
     ran = []
     monkeypatch.setattr(scheduler, "run_dedupe", lambda bot, now=None, mode=None: ran.append(now) or "dedupe:x")
     assert s.tick() == ["dedupe:x"] and s.tick() == []

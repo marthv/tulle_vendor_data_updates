@@ -236,8 +236,19 @@ def test_max_cards_zero_means_none(monkeypatch):
     assert "switched off" in slack.of("chat.postMessage")[-1]["text"]
 
 
-def test_scheduled_scan_is_off_by_default(monkeypatch):
+def test_scheduled_scan_stays_on_by_default_and_capped(monkeypatch):
+    """Owner 2026-11-23: keep the scheduled scan on; cards stay capped by DEDUPE_MAX_CARDS."""
+    assert config.dedupe_scheduled_scan() is True and config.dedupe_max_cards() == 10
+    monkeypatch.setenv("DEDUPE_SCHEDULED_SCAN", "0")
     assert config.dedupe_scheduled_scan() is False
+    import dedupe
+    asked = []
+    monkeypatch.setenv("DEDUPE_CHANNEL", "C1")
+    monkeypatch.setenv("DEDUPE_MAX_CARDS", "4")
+    monkeypatch.setattr(dedupe, "scan", lambda *a, **k: asked.append(k["max_cards"]) or {
+        "proposals": [], "groups": 0, "pages": 0, "note": ""})
+    scheduler.run_dedupe(ScanBot())
+    assert asked == [4]
 
 
 def test_scan_without_a_number_only_counts(monkeypatch):

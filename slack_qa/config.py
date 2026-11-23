@@ -164,8 +164,8 @@ def dedupe_max_cards() -> int:         # DEDUPE_MAX_CARDS: suggestions per post 
     return max(0, min(10, int(_f("DEDUPE_MAX_CARDS", 10))))
 
 
-def dedupe_scheduled_scan() -> bool:   # DEDUPE_SCHEDULED_SCAN=1 -> the nightly / weekly scan posts cards on its own. Off by default
-    return _flag("DEDUPE_SCHEDULED_SCAN", False)
+def dedupe_scheduled_scan() -> bool:   # DEDUPE_SCHEDULED_SCAN=0 -> no nightly / weekly scan. ON by default (owner 2026-11-23)
+    return _flag("DEDUPE_SCHEDULED_SCAN", True)
 
 
 def dedupe_max_pages() -> int:         # DEDUPE_MAX_PAGES: Xano read budget (500-row pages) per scan for reference counts
