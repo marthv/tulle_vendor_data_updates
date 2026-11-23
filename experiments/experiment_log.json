@@ -5402,8 +5402,8 @@
       ],
       "bucket": "planner_engagement",
       "in_rotation": false,
-      "tldr": "A 'Compare these' button under Planner venue cards opens a side by side (cost bars for members, below/typical/above words for free couples) that ends in Save to My Wedding. Question: do more couples save a venue, without fewer PDF opens?",
-      "what_changed": "rec-engine /rec/tool compare_picked (compare.py) + ww-planner-chat VenueCompare: Compare button and checkboxes on venue cards, side-by-side card, Save to My Wedding on each venue, saved strip and next-step link. Arm 'compare' only. Saves are also sent one at a time for everyone (bug fix). REC_CEREMONY_PER_PERSON=1 goes on for everyone with it (4 of 40 sampled venues had a per-person ceremony fee added once).",
+      "tldr": "'Compare these' under Planner venue cards opens a side by side (members: totals; free couples: Below/Typical/Above words). Redesigned 11-23 on the Hotels.com phone shape: two venues plus a sliver, photo, total, seats, Open pricing PDF, the venue cards' own heart; details folded. Question: do more couples save a venue, without fewer PDF opens?",
+      "what_changed": "rec-engine /rec/tool compare_picked + ww-planner-chat VenueCompare v3: Compare button and checkboxes on venue cards, 'Compare with another venue' under a single result, add or swap any venue by name, hearts on the photos (same as venue cards), 'N saved in My wedding' link, itemised details folded. Arm 'compare' only.",
       "surfaces": [
         "rec-engine",
         "weweb:planner",
@@ -6493,6 +6493,17 @@
       ],
       "source": "xano",
       "ref": "ep109"
+    },
+    {
+      "date": "2026-11-23",
+      "what": "Pushed ~08:10 UTC, nothing turned on for couples: ww-planner-chat e873384 (Compare redesign, owner account only; sign-up onboarding, prop onboardingMode off) needs activate + publish; rec-engine: 'pricing PDF or a quote' wording (live for everyone), onboarding's one uncounted question behind REC_ONBOARDING (off).",
+      "affects": [
+        "planner",
+        "EXP-2026-11-planner-compare",
+        "EXP-2026-11-onboarding-try-it"
+      ],
+      "source": "github",
+      "ref": "ww-planner-chat e873384"
     }
   ]
 }
