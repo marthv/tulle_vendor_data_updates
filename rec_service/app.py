@@ -565,6 +565,26 @@ def _tier_fields(paid, access, feedback_given, beta_left, forever_left, free_lef
             "free_feedback_required": bool(free_fb), "free_feedback_bonus": config.FREE_FEEDBACK_BONUS}
 
 
+def _miss_help(cards, guests, user, figures):
+    """What Tulle can still do about a venue it doesn't hold (owner 2026-11-23, instead of "passed it to our team"): the
+    state's typical all-in as a yardstick (one state-level figure, allowed at LIGHT; never at free) and the quote check."""
+    out = ""
+    state = _state1(cards[0]["state"]) if cards and cards[0].get("state") else ""
+    if figures and state:
+        try:
+            g = int(guests or 0)
+            m = (xano.cached_market_benchmarks(state, g).get("metrics") or {}).get(
+                "all_in_pg_%d" % min((75, 125, 200), key=lambda n: abs(n - (g or 125)))) or {}
+            if m.get("median") and (m.get("n_spaces") or 0) >= xano.MIN_BAND_SPACES:
+                out += " As a yardstick, the typical all-in for %s is about $%s a guest, before tax and gratuity." % (
+                    m.get("scope") or state, format(int(round(m["median"])), ","))
+        except Exception as e:
+            print("miss_help benchmark failed:", repr(e)[:120])
+    if _can_attach(user):
+        out += " If you have their price sheet or a quote, attach it here and I'll check it against similar venues."
+    return out
+
+
 def _detail(paid, access):
     """What the model may see: "full" (full members) / "light" (a plan without full figures - and, since the open
     planner of 2026-10-31 with REC_FREE_PRICING=light, no plan at all) / "free" (no plan, price-free free_mode)."""
@@ -1166,14 +1186,16 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
                         "If you're also weighing a US option, tell me the area and I'll show you venues we do have there."
                         % (name, dest.title()))
         elif repeat:
-            text_out = "Still nothing for %s - it's already on our list to add." % name
-        else:
-            text_out = "We don't have %s in Tulle yet - I've passed it to our team to add." % name
+            text_out = "We still don't have %s." % name
+        else:     # owner 2026-11-23: no promise to add it - nobody is working a request list
+            text_out = "We don't have %s yet." % name
         if cards:
             text_out += " Here are %d venues we do have %s, each with real pricing from couples." % (len(cards), where)
         elif not dest:
             text_out += (" Tell me a city or area, or a style you're after, and I'll search what we do have."
                          if repeat else " Tell me the city or area and I'll show you venues we do have there.")
+        if not dest and not hint_other and not repeat:
+            text_out += _miss_help(cards, guests, user, figures=_detail(paid, access) != "free")
         venue_request = {"name": name, "location": loc}
         chips = (["More venues %s" % where] if where else []) + ["Find a photographer"]
         if cards and cards[0].get("state"):

@@ -401,7 +401,7 @@ def test_lookup_writes_one_row(table, vlog):
 def test_not_found_row_keeps_place_hints(table, vlog):
     ask("Do you have Cresthollow in Long Island, NY?")
     settle({"w": vlog}, "w")
-    r = vlog[0][2]
+    r = next(x[2] for x in vlog if isinstance(x[2], dict) and "outcome" in x[2])   # the miss text also reads benchmarks
     assert r["outcome"] == "not_found" and r["state_hint"] == "New York" and r["city_hint"] == "Long Island"
 
 

@@ -6014,6 +6014,15 @@
       ],
       "source": "rec-engine Railway variables",
       "ref": "019dfe9"
+    },
+    {
+      "date": "2026-11-23",
+      "what": "Planner: 'We don't have X' no longer says 'passed it to our team to add'; it gives the state's typical all-in per guest (not to price-free couples) and the quote check (owner yes). Same push carries side-by-side compare and per-person-ceremony / minimum-only-food totals, all behind flags that start OFF.",
+      "affects": [
+        "planner"
+      ],
+      "source": "rec-engine",
+      "ref": "branch rec-planner-compare"
     }
   ]
 }
