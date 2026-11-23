@@ -169,7 +169,7 @@ _DAYS = ("mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|monday|tuesday|wednesday|t
          "fall|autumn|winter|peak|off-peak")
 # what a couple pays, in reading order: money with its sign, percentages, guest and hour counts, days / months / seasons
 _HEAD = re.compile(r"(?P<cur>[" + CUR + r"])\s?(?P<amt>\d[\d,]*(?:\.\d+)?)|(?P<pct>\d+(?:\.\d+)?)\s?%|"
-                   r"(?P<cnt>\d[\d,]*|(?:" + "|".join(_WORDNUM) + r"))\s*[-+]?\s*(?P<unit>guests?|people|persons?|pax|ppl|hours?|hrs?)\b|"
+                   r"(?P<cnt>\d[\d,]*|\b(?:" + "|".join(_WORDNUM) + r"))\s*[-+]?\s*(?P<unit>guests?|people|persons?|pax|ppl|hours?|hrs?)\b|"
                    r"(?P<bare>\d[\d,]*(?:\.\d+)?)\s?(?:usd|dollars|per person|/person|pp)\b|\b(?P<day>" + _DAYS + r")s?\b",
                    re.I)
 # words that change what a price means: if one of these is only on one side, it isn't "the same text"

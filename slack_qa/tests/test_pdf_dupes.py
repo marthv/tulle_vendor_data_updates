@@ -179,7 +179,7 @@ def test_subset_flagged_and_changed_excerpt_is_not():
 
 def test_same_prices_new_design():
     new = doc(filler="Totally different words about our lovely estate, its views and its people. " * 2 +
-              "Come for a tasting for four guests before the big day")
+              "Come for a walk and a tasting for four guests before the big day")
     r = pd.compare(pdf(1, BASE), pdf(2, new))
     assert (r["type"], r["confidence"]) == ("SAME_PRICES", "high") and "pictures weren't compared" in r["differed"]
     r = pd.compare(pdf(1, prices=[t36()]), pdf(2, prices=[t36()]))               # QA: V7122 - never without the text

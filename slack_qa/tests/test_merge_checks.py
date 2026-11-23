@@ -38,7 +38,7 @@ def world(monkeypatch, live):                                            # noqa:
     monkeypatch.setattr(price_impact, "compute", compute)
     monkeypatch.setattr(price_impact, "blocks", lambda r: {
         "alert": r["alert"], "confirm_text": "Price moves. Merge anyway?" if r["alert"] else None,
-        "extra_blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": f"AFTER {(r['after'] or {}).get('total')}"}}]})
+        "extra_blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": f"• `V1` predicted AFTER {(r['after'] or {}).get('total')}"}}]})
     monkeypatch.setattr(mc, "preview", lambda payload, hide: {
         "status": "preview", "survivor": payload["survivor"], "losers": payload["losers"], "hide_pdf_ids": hide, "refusals": [],
         "current_state": lc._shown_state(payload) if w.preview_ok else None})
