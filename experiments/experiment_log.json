@@ -5489,8 +5489,8 @@
       ],
       "bucket": "onboarding",
       "in_rotation": false,
-      "tldr": "New sign-ups answer Tulle in a chat pop-up, ask it one real question about a venue and open a price sheet, instead of two question pop-ups and a tooltip tour. Question: do more open PDFs within a day and come back to the Planner, without fewer finishing?",
-      "what_changed": "BUILT, not live. Everyone who signs up (100%, owner 2026-11-23: sequential before/after, no 50/50) gets a pop-up over the app where the Planner asks stage, source (Other needs details), age, states (all 50 + DC + International + Not Sure), guests (25-500 by 25) and budget ($5K slider + typed, optional), shows three venues, takes one real question (uncounted, once per account, REC_ONBOARDING), then one price sheet (uses 1 of 3 free views), then closes. 'Specific venue' search with a path when Tulle doesn't have it. Replaces both pop-ups and the Discovery tour. ww-planner-chat prop onboardingMode (off | on | preview). Referral step built but hidden (onboardingReferral) until rewards exist (~12-10).",
+      "tldr": "New sign-ups answer Tulle in a chat pop-up, ask it one real question about a venue, instead of two question pop-ups and a tooltip tour. Question: do more open PDFs within a day and come back to the Planner, without fewer finishing?",
+      "what_changed": "BUILT, not live. Everyone who signs up (100%, owner 2026-11-23: sequential before/after, no 50/50) gets a pop-up over the app where the Planner asks stage, source (Other needs details), age, states (all 50 + DC + International + Not Sure), guests (25-500 by 25) and budget ($5K slider + typed, optional), shows three venues, takes one real question (uncounted, once per account, REC_ONBOARDING), then closes. No PDF step (owner 2026-11-24): opening a pricing PDF from a venue card is optional. 'Specific venue' search with a path when Tulle doesn't have it. Replaces both pop-ups and the Discovery tour. ww-planner-chat prop onboardingMode (off | on | preview). Referral step on at launch (owner 2026-11-24); ep270 already credits +3 at the friend's sign-up.",
       "surfaces": [
         "weweb:sign-up",
         "weweb:discovery",
@@ -5548,6 +5548,10 @@
         {
           "date": "2026-11-22",
           "note": "Baseline measured; completion is already 96.8% in about 47 s, so it can only fall. First PDF alone did not separate payers in the baseline (2.07% vs 2.01%, small and observational); hitting the PDF limit did (7.9%)."
+        },
+        {
+          "date": "2026-11-24",
+          "note": "Before launch: forced PDF step removed (owner). The hypothesis, co-primary (b) and the second-sheet keep rule were written for a forced first open; bars NOT changed yet, owner to confirm new ones before launch. Read onboarding_answered@ask with asked=true; count distinct venues in onboarding_pdf_opened."
         }
       ],
       "decision": "",
@@ -6504,6 +6508,16 @@
       ],
       "source": "github",
       "ref": "ww-planner-chat e873384"
+    },
+    {
+      "date": "2026-11-24",
+      "what": "Pushed ~16:00 UTC, not published: ww-planner-chat 7e18016 (onboarding without the PDF step, end choices on one line, centred buttons).",
+      "affects": [
+        "planner",
+        "EXP-2026-11-onboarding-try-it"
+      ],
+      "source": "github",
+      "ref": "ww-planner-chat 7e18016"
     }
   ]
 }
