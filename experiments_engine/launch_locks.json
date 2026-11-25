@@ -1,0 +1,4 @@
+{
+ "_about": "Launch locks recorded at launch (validate.py --lock <id> --write). Never edit by hand.",
+ "locks": {}
+}

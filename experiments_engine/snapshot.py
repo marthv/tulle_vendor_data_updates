@@ -175,9 +175,10 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                 decided.append(_decided_row(e))
                 if v2on and e.get("family"):
                     decided[-1]["family"] = e["family"]
-                if v2on and readlock.hidden(e, today_d, lock):
+                if v2on and (readlock.hidden(raw, today_d, lock) or split and metric_runner is None and
+                             not readlock.text_open(raw, today_d)):
                     from . import v2
-                    v2.lock_decided(decided[-1], e, lock)
+                    v2.lock_decided(decided[-1], raw, lock, today_d)
                 continue
             row = {"id": eid, "name": e.get("name"), "status": e.get("status"),
                    "lifecycle": e["_lifecycle"], "tier": e.get("tier"),
@@ -255,10 +256,11 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                             row[k] = h[k]
                 elif readlock.hidden(e, today_d, lock):   # planned, or a status the engine doesn't score: still locked
                     row.update(result_hidden=True, result_text=readlock.hidden_text(e, lock))
-                if split and metric_runner is None and row.get("lifecycle") not in ("planned", "draft") and \
-                        not readlock.has_lock(e) and lock is None and not row.get("result_hidden"):
-                    # registry-only view: no engine copy and no launch_lock to check against, so nothing is opened
-                    row.update(result_hidden=True, result_text="Result: hidden (no launch_lock in the registry)", read=None)
+                if split and metric_runner is None and not row.get("result_hidden") and not readlock.text_open(raw, today_d):
+                    # registry-only view: it can't see the engine's copy of the lock, so it needs a recorded one
+                    row.update(result_hidden=True, result_text="Result: not shown without the engine", read=None,
+                               health="needs_call", flags=[], reason="Read date reached; open the engine's view",
+                               action="Owner call due")
             row.update(calendar_fields(e))
             row["verdict"] = _verdict.build_verdict(row, today_d)
             experiments.append(row)
@@ -315,9 +317,15 @@ def _v2_evaluate(e, readout, hist, changes, today_d, issues, store, errors, lock
     read = look = None
     try:
         if store is not None and hasattr(store, "load_lock"):
-            if lock is None and e["_lifecycle"] == "live":
-                lock = v2.launch_lock(e, today_d)
-                store.save_lock(eid, lock)
+            if e["_lifecycle"] == "live":
+                good = readlock.lock_problem(e) is None
+                new = dict(e["launch_lock"] if good else v2.launch_lock(e, today_d), from_registry=good)
+                if lock is None:
+                    lock = new
+                    store.save_lock(eid, lock)
+                elif good and not lock.get("from_registry") and v2.same_core(lock, new):
+                    lock = new                   # first seen without a lock; now properly locked with the same test
+                    store.save_lock(eid, lock, replace=True)
             read = store.load_read(eid)
             look = store.load_look(eid)
     except Exception as exc:
@@ -326,7 +334,7 @@ def _v2_evaluate(e, readout, hist, changes, today_d, issues, store, errors, lock
                          look=look)
     try:
         lk = h.get("look") or {}
-        if store is not None and hasattr(store, "save_look") and (lk.get("checked") or lk.get("fired")):
+        if store is not None and hasattr(store, "save_look") and lk.get("measures"):
             store.save_look(eid, lk)
         r = h.get("read") or {}
         if r.get("call") and read is None and store is not None and hasattr(store, "save_read"):

@@ -142,7 +142,7 @@ def read_events(entry, events, payments, now_ms=None, days=7, internal=(), who=N
             "mixing": {"exposed": len(pool), "both_arms": len(both) + across, "repeat_accounts": len(repeat),
                        "late_id": len(late_hit), "excluded": len(bad), "other_version_recorded": mismatch,
                        "share": round(len(bad) / len(pool), 6) if pool else 0.0,
-                       "checked": len(who) if who is not None else 0,
+                       "checked": sum(1 for u in pool if (who or {}).get(u)),
                        "arm_recorded": sum(1 for u in pool if recorded.get(u))},
             "members_left_out": len(members), "settled": settled, "error": None, "source": "events",
             "last_exposure_at": _m._dt.datetime.fromtimestamp(last / 1000, _m._dt.timezone.utc).isoformat() if last else None,
@@ -155,11 +155,7 @@ def exposure_log(ro, read=False):
     out = [{"date": d, **v} for d, v in ro["exposure_by_day"].items()]
     if out:
         m = ro["mixing"]
-        out[-1].update(late_id=m["late_id"])
-        if m.get("arm_recorded"):
-            out[-1]["both_arms"] = m["both_arms"]
-        if m.get("checked"):
-            out[-1]["repeat_accounts"] = m["repeat_accounts"]
+        out[-1].update({k: m[k] for k in ("late_id", "both_arms", "repeat_accounts", "arm_recorded", "checked")})
         if read:
             out[-1]["settled"] = ro["settled"]
     return out

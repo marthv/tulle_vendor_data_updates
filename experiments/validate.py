@@ -136,15 +136,32 @@ def exposure_issues(entry, e, strict):
             elif readlock.enabled():
                 add("warn", "launch_lock", msg)
         else:
-            diff = v2.settings_changes(entry)[0]
-            if diff:
-                add("error", "launch_lock", "RED: settings changed after launch: " + ", ".join(diff))
+            why = readlock.lock_problem(entry)
+            if why:
+                add("error", "launch_lock", "RED: launch lock " + why)
     return out
 
 
-def print_lock(entry):
+def print_lock(entry, write=False):
+    """The launch_lock to paste into the entry; with --write also record it in experiments_engine/launch_locks.json."""
     from experiments_engine import v2
-    _out(json.dumps({"launch_lock": v2.launch_lock(entry)}, indent=2, ensure_ascii=False))
+    lock = v2.launch_lock(entry)
+    _out(json.dumps({"launch_lock": lock}, indent=2, ensure_ascii=False))
+    if not write:
+        return 0
+    with open(readlock.LEDGER, encoding="utf-8") as f:
+        data = json.load(f)
+    locks = data.setdefault("locks", {})
+    if entry["id"] in locks and locks[entry["id"]].get("hash") != lock["hash"]:
+        _out(f"ERROR: {entry['id']} already has a different recorded lock; a recorded lock is never replaced")
+        return 1
+    locks.setdefault(entry["id"], {"hash": lock["hash"], "read_date": lock["settings"]["read_date"],
+                                   "name": readlock.fingerprint(entry), "locked_on": lock["locked_on"]})
+    with open(readlock.LEDGER, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(data, f, indent=1, ensure_ascii=False)
+        f.write("\n")
+    _out(f"recorded in {readlock.LEDGER}")
+    return 0
 
 
 def main(argv=None):
@@ -155,6 +172,7 @@ def main(argv=None):
                     help="validate one entry strictly (spec_gaps not excused); use before a launch")
     ap.add_argument("--lock", dest="lock_id", default=None,
                     help="print the launch_lock object (hash of the launch settings) to paste into the entry at launch")
+    ap.add_argument("--write", action="store_true", help="with --lock: also record it in experiments_engine/launch_locks.json")
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -173,8 +191,7 @@ def main(argv=None):
         if not hit:
             _out(f"ERROR: no entry with id {args.lock_id}")
             return 1
-        print_lock(hit[0])
-        return 0
+        return print_lock(hit[0], args.write)
     failures = []
     dupes = [i for i, c in Counter(x.get("id") for x in exps).items() if c > 1]
     strict = args.only_id is not None

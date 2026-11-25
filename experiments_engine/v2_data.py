@@ -57,15 +57,16 @@ def _planner_surfaces(entry):
     return out or None
 
 
-_SOURCE = re.compile(r"^(xano:table(1|79)|mixpanel:(?P<event>[a-z0-9][a-z0-9 _.\-]{2,}))$")
-_PLACEHOLDER = re.compile(r"\b(todo|tbd|tbc|none|n/?a|null|unknown|event|everyone|everybody|all|any|default|placeholder|"
-                          r"fixme|xxx|test|later)\b")
+_SOURCE = re.compile(r"^(xano:table(1|79)|(mixpanel|brevo):(?P<event>[a-z0-9]+(?:[_.\-][a-z0-9]+)+))$")
+_PLACEHOLDER = re.compile(r"\b(todo|tbd|tbc|none|na|null|unknown|event|everyone|everybody|all|any|default|placeholder|fixme|xxx|"
+                          r"test|later|nothing|yet|pending|missing|soon|no|not|never|undecided|coming|here|something)\b")
 
 
 def valid_source(source):
-    """A real record of who saw the test: xano:table1 (sign-ups), xano:table79 (Planner use) or mixpanel:<event name>."""
+    """A real record of who saw the test: xano:table1 (sign-ups), xano:table79 (Planner use), or a named event,
+    mixpanel:<event_name> / brevo:<event_name> (one token of two words or more, no placeholder words)."""
     g = _SOURCE.match(str(source or "").strip().lower())
-    return bool(g) and not (g.group("event") and _PLACEHOLDER.search(g.group("event").replace("_", " ").replace("-", " ")))
+    return bool(g) and not (g.group("event") and _PLACEHOLDER.search(re.sub(r"[_.\-]", " ", g.group("event"))))
 
 
 def explicit_source(entry):

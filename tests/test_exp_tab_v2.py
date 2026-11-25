@@ -27,7 +27,15 @@ UTC = dt.timezone.utc
 
 @pytest.fixture(autouse=True)
 def _switch(monkeypatch):
+    """Switch on; and leave no slack_qa / rec_service module or path behind (test_metrics imports its own ``config``)."""
     monkeypatch.setenv("EXP_TAB_V2", "1")
+    path, before = list(sys.path), set(sys.modules)
+    yield
+    sys.path[:] = path
+    for name in set(sys.modules) - before:
+        f = str(getattr(sys.modules[name], "__file__", "") or "").replace("\\", "/")
+        if "/slack_qa/" in f or "/rec_service/" in f or f.endswith("/ab_report.py"):
+            del sys.modules[name]
 
 
 def entry(**over):
@@ -41,6 +49,8 @@ def entry(**over):
          "start_date": "2026-11-10", "planned_days": 14, "review_date": "2026-11-24", "max_days": 42,
          "reporting": "auto", "rollback": "off", "links": ["x"], "results": [], "framework_version": 2}
     e.update(over)
+    if "launch_lock" not in over:               # launch_lock=None plants a missing lock
+        e["launch_lock"] = v2.launch_lock(e)
     return e
 
 
@@ -144,7 +154,7 @@ def _cn(c, t):
 
 def test_manual_split_interim_counts_hidden_first_entry_on_the_date_is_the_read():
     e = entry(reporting="manual", metric={"key": "manual", "direction": "increase", "baseline": .1, "mde_rel": .5, "label": "x"},
-              exposure={"source": "mixpanel:seen"}, exposure_log=expo(),
+              exposure={"source": "mixpanel:card_seen"}, exposure_log=expo(),
               results=[{"date": "2026-11-15", "counts": _cn(43, 97)}, {"date": "2026-11-24", "counts": _cn(50, 60)},
                        {"date": "2026-11-26", "counts": _cn(10, 99)}])
     assert not FORBIDDEN.search(json.dumps(row_for(e, None, "2026-11-20")))
@@ -426,7 +436,7 @@ def test_repeat_accounts_found_counted_excluded_and_red():
     assert r["mixing"]["repeat_accounts"] == 10 and r["mixing"]["excluded"] == 10
     assert r["arms"]["control"]["n"] + r["arms"]["treatment"]["n"] == 290 and sum(r["exposed"].values()) == 300
     chk = v2.check_mixing(entry(**CF), r)
-    assert chk["colour"] == "red" and "10 repeat accounts" in chk["text"]
+    assert chk["colour"] == "red" and "10 repeat accounts" in chk["text"].lower()
     ok = run_x(entry(**CF), tables(300, dup=1))
     chk = v2.check_mixing(entry(**CF), ok)                    # no version is stored: never "0 in both versions"
     assert ok["mixing"]["repeat_accounts"] == 2 and chk["colour"] == "amber" and "can't be checked" in chk["text"]
@@ -512,7 +522,7 @@ def test_writing_a_default_out_is_not_a_change():
     same = entry(read_date="2026-11-24", name="Renamed", tldr="new text")
     same["assignment"] = dict(same["assignment"], salt="t1:", pct=50.0, note="x")
     same["metric"] = dict(same["metric"], baseline=.11)
-    assert v2.check_settings(dict(same, launch_lock=lk), lk)["colour"] == "green"
+    assert v2.check_settings(dict(same, launch_lock=lk), lk)["colour"] == "green" and readlock.lock_problem(dict(same, launch_lock=lk)) is None
 
 
 # --------------------------------------------------------------------------------------- 6 exposure
@@ -602,7 +612,7 @@ def test_payments_by_arm_never_before_after():
     assert {k: v["payers"] for k, v in r["payments"]["arms"].items()} == {"treatment": 3, "control": 3}   # exposed only
     assert all("count" not in g for g in r["guardrails"])
     manual = entry(reporting="manual", metric={"key": "manual", "label": "tapped"}, guardrails=e["guardrails"], review_date="2026-12-01",
-                   exposure={"source": "mixpanel:seen"}, assignment=e["assignment"])
+                   exposure={"source": "mixpanel:card_seen"}, assignment=e["assignment"])
     m = run_x(manual, tb)
     assert m["payments"]["basis"] == "assigned"
     assert {k: v["payers"] for k, v in m["payments"]["arms"].items()} == {"treatment": 3, "control": 4}
@@ -744,7 +754,7 @@ def ev(event, uid, when, **kw):
 def test_event_read_rules():
     e = entry(id="EXP-2026-11-price-report-v2", start_date="2026-12-01", review_date="2026-12-29", reporting="manual",
               assignment={"type": "split", "rule": "hash_pct", "salt": "price-report-v2", "pct": 50},
-              metric={"key": "manual", "label": "tapped"}, exposure={"source": "mixpanel:card-seen"})
+              metric={"key": "manual", "label": "tapped"}, exposure={"source": "mixpanel:card_seen"})
     T = [u for u in range(1000, 1400) if metrics.split_arm(u, e["assignment"]) == "treatment"][:20]
     C = [u for u in range(1000, 1400) if metrics.split_arm(u, e["assignment"]) == "control"][:20]
     evs = []
@@ -824,6 +834,12 @@ LOCKED = v2.launch_lock(entry())
 
 
 @pytest.mark.parametrize("over", [
+    {"launch_lock": None}, {"launch_lock": None, "status": "shipped", "review_date": None, "planned_days": None},
+    {"launch_lock": None, "status": "concluded", "decided_on": "2026-11-16", "review_date": "2026-11-12"},
+    {"status": "shipped", "review_date": None, "planned_days": None, "start_date": None, "launch_lock": LOCKED},
+    {"id": "EXP-2026-11-renamed", "launch_lock": LOCKED, "review_date": "2026-11-12"}, {"id": "EXP-2026-11-renamed", "launch_lock": None},
+    {"launch_lock": {"hash": LOCKED["hash"], "settings": dict(LOCKED["settings"], read_date="2026-11-11")}, "review_date": "2026-11-11", "planned_days": 1},
+    {"launch_lock": {"hash": "x" * 16, "settings": LOCKED["settings"]}}, {"launch_lock": "yes"},
     {"status": "shipped", "decided_on": "2026-11-15"}, {"status": "inconclusive"}, {"status": "concluded"}, {"status": "reverted", "end_date": "2026-11-14"},
     {"assignment": {"type": "pre_post", "pre": ["2026-11-01", "2026-11-09"], "post_start": "2026-11-10"}, "launch_lock": LOCKED},
     {"assignment": {"type": "pre_post", "rule": "hash_pct", "salt": "t1", "pct": 50}}, {"assignment": {"type": "rollout"}, "launch_lock": LOCKED},
@@ -834,6 +850,55 @@ def test_no_surface_opens_before_the_read_date(over, tmp_path, monkeypatch):
     for i, t in enumerate(every_surface(leaky(**over), "2026-11-17", tmp_path, monkeypatch)):
         assert not LEAK.search(t), (i, LEAK.search(t).group(0), t[:200])
         assert not FORBIDDEN.search(t), (i, FORBIDDEN.search(t).group(0))
+
+
+@pytest.mark.parametrize("over", [{"launch_lock": None}, {"launch_lock": {"hash": "0" * 16, "settings": {}}}, {"launch_lock": dict(LOCKED, hash="1" * 16)},
+                                  {"id": "EXP-2026-11-renamed", "launch_lock": LOCKED}, {"launch_lock": LOCKED, "review_date": "2026-11-20"},
+                                  {"launch_lock": LOCKED, "assignment": {"type": "split", "rule": "hash_pct", "salt": "q", "pct": 50}},
+                                  {"launch_lock": None, "status": "shipped", "decided_on": "2026-11-28"},
+                                  {"launch_lock": LOCKED, "status": "shipped", "decided_on": "2026-11-28", "review_date": None, "planned_days": None}])
+def test_only_a_lock_that_validates_opens_after_the_date(over, tmp_path, monkeypatch):
+    for i, t in enumerate(every_surface(leaky(**over), "2026-12-15", tmp_path, monkeypatch)):
+        assert not LEAK.search(t) and not FORBIDDEN.search(t), (i, t[:300])
+
+
+def test_replaced_lock_is_caught_by_the_engine_and_the_recorded_locks(tmp_path, monkeypatch):
+    st = history.HistoryStore(str(tmp_path))
+    row_for(entry(), ro(), "2026-11-12", st)
+    early = entry(review_date="2026-11-13", planned_days=3)                     # a valid lock, but not the one made at launch
+    assert readlock.lock_problem(early) is None
+    row = row_for(early, ro(), "2026-11-14", st)
+    assert row["result_hidden"] and not FORBIDDEN.search(json.dumps(row))
+    # text surfaces: a lock nobody recorded never opens; a recorded one opens on its date and can't be swapped or renamed
+    assert "result" in readlock.redact_entry(entry(), "2026-12-15")
+    led = tmp_path / "locks.json"
+    led.write_text(json.dumps({"locks": {"EXP-2026-11-t": {"hash": LOCKED["hash"], "name": readlock.fingerprint(entry())}}}))
+    monkeypatch.setattr(readlock, "LEDGER", str(led))
+    from experiments_ui import render
+    reg = lambda e: {"experiments": [e], "changes": []}  # noqa: E731
+    assert "result" in readlock.redact_entry(entry(), "2026-11-23") and "result" not in readlock.redact_entry(entry(), "2026-11-24")
+    assert render.degraded_snapshot(reg(entry()), "2026-11-24")["experiments"][0]["result_hidden"] is False
+    for bad in (early, entry(launch_lock=None), entry(id="EXP-2026-11-new"), entry(assignment={"type": "rollout"}, launch_lock=None),
+                entry(id="EXP-2026-11-new", assignment={"type": "rollout"}, launch_lock=None, status="shipped")):
+        assert "result" in readlock.redact_entry(bad, "2027-01-01"), bad["id"]
+        d = render.degraded_snapshot(reg(bad), "2027-01-01")
+        assert (d["experiments"] + d["decided"])[0]["result_hidden"]
+
+
+def test_lock_write_records_once(tmp_path):
+    led = tmp_path / "locks.json"
+    led.write_text('{"locks": {}}')
+    code = ("import sys;sys.path.insert(0,%r);sys.argv=['v']+sys.argv[1:];from experiments_engine import readlock;readlock.LEDGER=%r;"
+            "sys.path.insert(0,%r);import validate;sys.exit(validate.main(sys.argv[1:]))" % (ROOT, str(led), os.path.join(ROOT, "experiments")))
+
+    def run(e):
+        p = tmp_path / "r.json"
+        p.write_text(json.dumps({"experiments": [e], "changes": []}), encoding="utf-8")
+        return subprocess.run([sys.executable, "-c", code, "--registry", str(p), "--lock", e["id"], "--write"], capture_output=True, text=True)
+    assert run(entry()).returncode == 0
+    assert json.loads(led.read_text())["locks"]["EXP-2026-11-t"]["hash"] == LOCKED["hash"]
+    assert run(entry(review_date="2026-11-13", planned_days=3)).returncode == 1
+    assert json.loads(led.read_text())["locks"]["EXP-2026-11-t"]["hash"] == LOCKED["hash"]
 
 
 def test_stopped_early_stays_unread_and_says_so(tmp_path, monkeypatch):
@@ -854,8 +919,9 @@ def test_type_change_is_red_and_never_read(tmp_path):
     assert (row["read"] or {}).get("call") is None and row["light"] == "red"
 
 
-def test_changed_settings_show_red_on_the_bot_and_in_the_registry_view():
+def test_changed_settings_show_red_on_the_bot_and_in_the_registry_view(monkeypatch):
     e = entry(launch_lock=LOCKED, review_date="2026-11-12")
+    monkeypatch.setattr(readlock, "utc_today", lambda: dt.date(2026, 11, 17))
     out = readlock.redact_entry(e, "2026-11-17")
     assert out["setup"].startswith("RED") and "read date" in out["setup"] and "2026-11-24" in out["result"]
     moved = entry(launch_lock=LOCKED, assignment={"type": "split", "rule": "hash_pct", "salt": "zz", "pct": 50})
@@ -865,18 +931,16 @@ def test_changed_settings_show_red_on_the_bot_and_in_the_registry_view():
     assert v2.check_settings(entry(launch_lock=edited), None)["colour"] == "red"
 
 
-def test_one_read_date_source():
+def test_one_read_date_source(tmp_path, monkeypatch):
     from experiments_ui import render
-    e = entry(launch_lock=LOCKED)
-    reg = {"experiments": [e], "changes": []}
+    led = tmp_path / "locks.json"
+    led.write_text(json.dumps({"locks": {"EXP-2026-11-t": {"hash": LOCKED["hash"], "name": readlock.fingerprint(entry())}}}))
+    monkeypatch.setattr(readlock, "LEDGER", str(led))
+    reg = {"experiments": [entry()], "changes": []}
     for d, hid in (("2026-11-23", True), ("2026-11-24", False)):
-        assert readlock.hidden(e, d) is hid
-        assert bool(row_for(e, ro(), d)["result_hidden"]) is hid
+        assert readlock.hidden(entry(), d) is hid and bool(row_for(entry(), ro(), d)["result_hidden"]) is hid
         assert bool(render.degraded_snapshot(reg, d)["experiments"][0]["result_hidden"]) is hid
-        assert ("result" in readlock.redact_entry(e, d)) is hid
-    # without a launch_lock the text surfaces and the registry-only tab never open it
-    assert "result" in readlock.redact_entry(entry(), "2027-01-01")
-    assert render.degraded_snapshot({"experiments": [entry()], "changes": []}, "2027-01-01")["experiments"][0]["result_hidden"]
+        assert ("result" in readlock.redact_entry(entry(), d)) is hid
 
 
 def test_harm_is_never_green_when_not_checked():
@@ -892,17 +956,51 @@ def test_harm_is_never_green_when_not_checked():
     assert ok["colour"] == "green" and "did the thing" in ok["text"]
 
 
-def test_one_harm_look_a_day_and_a_fired_stop_stays(tmp_path):
+def test_one_harm_look_a_day_and_a_fired_stop_clears_with_corrected_data(tmp_path):
     st = history.HistoryStore(str(tmp_path))
-    assert row_for(entry(), ro(c=(400, 43), t=(400, 44)), "2026-11-16", st)["health"] != "guardrail_breach"
-    bad = ro(c=(400, 120), t=(400, 40))
+    ok, bad = ro(c=(400, 43), t=(400, 44)), ro(c=(400, 120), t=(400, 40))
+    assert row_for(entry(), ok, "2026-11-16", st)["health"] != "guardrail_breach"
     assert row_for(entry(), bad, "2026-11-16", st)["health"] != "guardrail_breach"       # today's look is taken
     assert row_for(entry(), bad, "2026-11-17", st)["health"] == "guardrail_breach"
-    assert row_for(entry(), ro(c=(400, 43), t=(400, 44)), "2026-11-18", st)["health"] == "guardrail_breach"
+    assert row_for(entry(), {"error": "down"}, "2026-11-18", st)["health"] == "guardrail_breach"   # can't be re-checked: stays
+    row = row_for(entry(), ok, "2026-11-18", st)                                         # corrected data clears it at once
+    assert row["health"] != "guardrail_breach" and colour(row, "harm") == "green"
+
+
+@pytest.mark.parametrize("first", [{"error": "metric failed"}, {"exposure_by_day": expo(), "guardrails": []}, ro(c=(20, 5), t=(20, 5)), None])
+@pytest.mark.parametrize("drop", [0.40, 0.25])
+def test_drop_is_caught_the_same_day_when_the_first_look_could_not_read_it(first, drop, tmp_path):
+    st = history.HistoryStore(str(tmp_path))
+    e = entry(guardrails=[{"key": "planner_return_within_days", "max_drop_rel": .25, "label": "came back"}])
+    g = [{"key": "planner_return_within_days", "arms": {"control": {"n": 400, "conv": 120}, "treatment": {"n": 400, "conv": 121}}}]
+    f = dict(first, guardrails=g) if isinstance(first, dict) and "error" not in first else (first or {"error": "x"})
+    assert row_for(e, f, "2026-11-17", st)["health"] != "guardrail_breach"
+    row = row_for(e, ro(c=(400, 80), t=(400, int(80 * drop)), guardrails=g), "2026-11-17", st)
+    assert row["health"] == "guardrail_breach" and "did the thing" in row["reason"]
+
+
+def test_ship_it_never_stands_beside_clear_harm():
+    e = entry(guardrails=[{"key": "planner_return_within_days", "max_drop_rel": .25, "label": "came back"}])
+    g = [{"key": "planner_return_within_days", "arms": {"control": {"n": 400, "conv": 200}, "treatment": {"n": 400, "conv": 60}}}]
+    from experiments_ui import cards
+    s = snap_for(e, ro(guardrails=g), "2026-11-24")
+    row = s["experiments"][0]
+    page = cards.build_html(s).split("</style>")[1]
+    assert row["health"] == "guardrail_breach" and "Clear harm" in page and "Stop the test" in page
+    assert "Ship it" not in page and "Ship it" not in json.dumps(row) and "New version is better" not in page
+
+
+def test_amber_when_only_a_few_couples_are_checkable():
+    def c(**m):
+        return v2.check_mixing(entry(), {"mixing": dict({"exposed": 200, "both_arms": 0, "repeat_accounts": 0, "excluded": 0, "share": 0}, **m)})
+    few = c(arm_recorded=3, checked=200)
+    assert few["colour"] == "amber" and "3 of 200" in few["text"] and "90% needed" in few["text"]
+    assert c(arm_recorded=200, checked=12)["colour"] == "amber" and c(arm_recorded=179, checked=200)["colour"] == "amber"
+    assert c(arm_recorded=180, checked=180)["colour"] == "green"
 
 
 @pytest.mark.parametrize("env", ["", "0", "1"])
-@pytest.mark.parametrize("source", [None, "none", "todo", "everyone by default", "mixpanel:todo", "mixpanel:<event>", "manual", "xano"])
+@pytest.mark.parametrize("source", [None, "none", "todo", "everyone by default", "mixpanel:todo", "mixpanel:nothing yet", "mixpanel:nothing_yet", "mixpanel:<event>", "manual", "xano"])
 def test_validate_refuses_whatever_the_switch(env, source, tmp_path):
     e = entry(**({"exposure": {"source": source}} if source else {}))
     e["launch_lock"] = v2.launch_lock(e)
@@ -936,7 +1034,7 @@ def test_sample_pace_counts_finished_couples_only():
     assert "945" in txt                                        # 360 / 8 finished days * (28 - 7) days, not 640 / 15 * 28
 
 
-@pytest.mark.parametrize("label", ["upgraded within 7 days", "subscribed", "picked a plan", "tapping upgrade", "bought"])
+@pytest.mark.parametrize("label", ["became a member", "converted", "upgraded within 7 days", "subscribed", "picked a plan", "tapping upgrade", "bought"])
 def test_money_like_labels_hide_payments_by_version(label):
     assert v2.is_money_metric(entry(metric={"key": "manual", "label": label}))
     assert not v2.is_money_metric(entry(metric={"key": "manual", "label": "asked the Planner a question"}))

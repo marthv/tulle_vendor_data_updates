@@ -7,15 +7,18 @@ Switch: ``EXP_TAB_V2`` = 1 / on / true / yes. Unset, empty, 0, or anything else 
 
 * Once a split, always a split: ``launch_lock.settings.type`` (or a left-over split rule, salt or percent) counts, so
   editing ``assignment.type`` later opens nothing.
+* Only a ``launch_lock`` that validates opens anything: present, its hash matches its settings, made for this id, the
+  entry still matches it, and not replaced (engine's stored copy, ``launch_locks.json``). Anything else stays hidden.
 * Read date = ``launch_lock.settings.read_date``; a later date on the entry also counts, an earlier one never does.
-  Without a lock: the latest of (``read_date``, else ``review_date``) and, when ``read_date`` is not set,
-  ``start_date`` + ``planned_days``.
-* Hidden while not started, while running before the read date, and after being closed before the read date
-  ("Stopped early, result not read"). A running split with no read date stays hidden.
+* Hidden while not started, before the read date, and after being closed before the read date ("Stopped early, result
+  not read"). Text surfaces (Bot prompt, registry-only tab) also need the lock to be in ``launch_locks.json``, because
+  they can't see the engine's copy. Splits decided before locks existed (LEGACY) stay as they were.
 """
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
+import json
 import os
 
 _ON = ("1", "on", "true", "yes")
@@ -23,6 +26,9 @@ DECIDED = ("shipped", "reverted", "shelved", "inconclusive", "concluded", "ended
 NOT_STARTED = ("draft", "planned")
 SPLIT_RULES = ("user_id_parity", "hash_pct")
 STOPPED_EARLY = "Stopped early, result not read"
+LEDGER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "launch_locks.json")
+# splits decided before launch locks existed: id -> fingerprint of the name
+LEGACY = {"EXP-2026-10-pricing-phase2": "7a87b6acd38d", "EXP-2026-10-search-railway": "240471954fa5"}
 
 # The only fields of a hidden split that may leave through a text surface: the design, fixed at launch. Everything
 # else (results, notes, decision text, audit notes, ...) could carry a result.
@@ -66,6 +72,70 @@ def lock_settings(entry, stored=None):
     return {}
 
 
+def fingerprint(entry):
+    return hashlib.sha256(" ".join(str((entry or {}).get("name") or "").lower().split()).encode()).hexdigest()[:12]
+
+
+_ledger_cache = {"key": None, "data": {}}
+
+
+def ledger():
+    """{id: {"hash", "read_date", "name"}} of locks recorded at launch (validate.py --lock <id> --write). Beside the
+    engine code, apart from the registry, so an edited entry can't rewrite it."""
+    try:
+        key = (LEDGER, os.stat(LEDGER).st_mtime_ns)
+    except OSError:
+        return {}
+    if _ledger_cache["key"] != key:
+        try:
+            with open(LEDGER, encoding="utf-8") as f:
+                d = json.load(f).get("locks")
+        except (OSError, ValueError, AttributeError):
+            d = {}
+        _ledger_cache.update(key=key, data=d if isinstance(d, dict) else {})
+    return _ledger_cache["data"]
+
+
+def _ledger_row(entry):
+    """(ledger id, row) for this entry by id, else by its name (a renamed id), else (None, None)."""
+    led = ledger()
+    eid = (entry or {}).get("id")
+    if eid in led:
+        return eid, led[eid]
+    name = fingerprint(entry)
+    return next(((k, v) for k, v in led.items() if isinstance(v, dict) and v.get("name") == name), (None, None))
+
+
+def is_legacy(entry):
+    e = entry or {}
+    return status(e) in DECIDED and not e.get("launch_lock") and LEGACY.get(e.get("id")) == fingerprint(e)
+
+
+def lock_problem(entry, stored=None):
+    """None when the launch_lock validates, else why not. Any error counts as a problem (fail closed)."""
+    e = entry if isinstance(entry, dict) else {}
+    lk = e.get("launch_lock")
+    if not has_lock(e):
+        return "missing"
+    try:
+        from . import v2
+        if v2.settings_hash(lk["settings"]) != lk["hash"]:
+            return "edited"
+        if lk["settings"].get("id") != e.get("id"):
+            return "made for another test"
+        diff = v2.settings_changes(e)[0]
+        if diff:
+            return "not matched by the entry: " + ", ".join(diff)
+        lid, row = _ledger_row(e)
+        if row is not None and (lid != e.get("id") or row.get("hash") != lk["hash"]):
+            return "replaced or renamed"
+        if isinstance(stored, dict) and stored.get("hash") and stored["hash"] != lk["hash"]:
+            return "replaced after launch"
+    except Exception:
+        return "not checkable"
+    return None
+
+
 def has_lock(entry):
     lk = (entry or {}).get("launch_lock")
     return isinstance(lk, dict) and bool(lk.get("hash")) and isinstance(lk.get("settings"), dict)
@@ -74,7 +144,8 @@ def has_lock(entry):
 def is_split(entry, stored=None):
     """True when couples are, or at launch were, divided into arms."""
     e = entry if isinstance(entry, dict) else {}
-    if e.get("_split") or str(lock_settings(e, stored).get("type") or "") == "split":
+    locks = [lk.get("settings") for lk in (e.get("launch_lock"), stored) if isinstance(lk, dict)]
+    if e.get("_split") or any(isinstance(s, dict) and s.get("type") == "split" for s in locks) or             _ledger_row(e)[1] is not None:
         return True
     a = e.get("assignment")
     if isinstance(a, dict) and a.get("split") is True:     # a real split the engine can't assign (e.g. by e-mail)
@@ -121,7 +192,7 @@ def _stored_lock(stored):
 
 def stopped_early(entry, stored=None):
     """Closed before its read date: the result was never read, and stays that way."""
-    if status(entry) not in DECIDED or not is_split(entry, _stored_lock(stored)):
+    if status(entry) not in DECIDED or not is_split(entry, _stored_lock(stored)) or is_legacy(entry):
         return False
     rd = read_date(entry, stored)
     when = to_date(entry.get("decided_on")) or to_date(entry.get("end_date"))
@@ -135,20 +206,34 @@ def hidden(entry, today=None, locked=None):
     st = status(entry)
     if st in NOT_STARTED:
         return True
+    if is_legacy(entry):
+        return False
+    if lock_problem(entry, _stored_lock(locked)):
+        return True
     rd = read_date(entry, locked)
     now = to_date(today) or utc_today()
-    if st in DECIDED:
-        if rd is None:                     # decided before read dates existed
-            return has_lock(entry) or bool(_stored_lock(locked))
-        return now < rd or stopped_early(entry, locked)
-    return rd is None or now < rd
+    return rd is None or now < rd or stopped_early(entry, locked)
 
 
-def hidden_text(entry, locked=None):
-    if status(entry) in DECIDED:
-        return STOPPED_EARLY
+def hidden_text(entry, locked=None, today=None):
     rd = read_date(entry, locked)
+    if stopped_early(entry, locked):
+        return STOPPED_EARLY
+    now = to_date(today) or utc_today()
+    if status(entry) not in DECIDED and rd and now < rd:
+        return f"Result: hidden until {rd.isoformat()}"
+    why = None if status(entry) in NOT_STARTED else lock_problem(entry, _stored_lock(locked))
+    if why:
+        return f"Result: hidden, launch lock {why}"
     return f"Result: hidden until {rd.isoformat()}" if rd else "Result: hidden until a read date is set"
+
+
+def text_open(entry, today=None):
+    """May a surface that only has the registry show this result? Not a split, legacy, or open with a recorded lock."""
+    if not is_split(entry) or is_legacy(entry):
+        return True
+    lid, row = _ledger_row(entry)
+    return not hidden(entry, today) and row is not None and lid == entry.get("id")
 
 
 def public_history(entry, today=None, locked=None):
@@ -162,34 +247,26 @@ def public_history(entry, today=None, locked=None):
 
 
 def setup_warning(entry):
-    """"Settings changed after launch: ..." when the entry no longer matches its launch_lock, else None. Same check on
-    every surface (v2.settings_changes)."""
-    if not (isinstance(entry, dict) and is_split(entry)) or status(entry) in NOT_STARTED:
+    """"RED: launch lock ..." when a started split's lock does not validate, else None. Same check on every surface."""
+    if not (isinstance(entry, dict) and is_split(entry)) or status(entry) in NOT_STARTED or is_legacy(entry):
         return None
-    try:
-        from . import v2
-        diff, _src = v2.settings_changes(entry)
-    except Exception:
-        return "Setup could not be checked" if entry.get("launch_lock") else None
-    return "RED: settings changed after launch: " + ", ".join(diff) if diff else None
+    why = lock_problem(entry)
+    return f"RED: launch lock {why}" if why else None
 
 
 def redact_entry(entry, today=None):
-    """Registry entry without anything that could carry a result (unchanged when it may be shown). On text surfaces a
-    running split without a launch_lock is never opened: they can't see the engine's copy."""
-    if not isinstance(entry, dict):
+    """Registry entry without anything that could carry a result (unchanged when it may be shown)."""
+    if not isinstance(entry, dict) or text_open(entry, today):
         return entry
-    unlocked = is_split(entry) and status(entry) not in DECIDED + NOT_STARTED and not has_lock(entry)
     warn = setup_warning(entry)
-    if not hidden(entry, today) and not unlocked:
-        return dict(entry, setup=warn) if warn else entry
     out = {k: v for k, v in entry.items() if k in DESIGN_FIELDS}
     if isinstance(out.get("family_history"), list):
-        out["family_history"] = public_history(entry, today)
-    if status(entry) in DECIDED and hidden(entry, today):
-        out["status"] = "stopped early"
-    out["result"] = hidden_text(entry) if hidden(entry, today) else \
-        "Result: not shown here (no launch_lock in the registry); see the Experiments tab"
+        out["family_history"] = [dict(r, outcome=None) if isinstance(r, dict) and r.get("entry") == entry.get("id") else r
+                                 for r in out["family_history"]]
+    if status(entry) in DECIDED:
+        out["status"] = "stopped early" if stopped_early(entry) else "closed"
+    out["result"] = hidden_text(entry, today=today) if hidden(entry, today) else \
+        "Result: not shown here; see the Experiments tab"
     if warn:
         out["setup"] = warn
     return out

@@ -32,6 +32,7 @@ BALANCE_MIN_N = 100         # nothing is judged below this
 BALANCE_FULL_N = 1500       # red at p < 0.001 from here, or from 75% of the planned couples when that is fewer
 BALANCE_FULL_MIN = 250
 MIX_RED = 0.01
+CHECKABLE_MIN = 0.90        # green needs this share of couples checkable, for each of the two checks
 COVERAGE_RED = 0.98
 EXPOSURE_GAP_H = 48
 GREEN, AMBER, RED = "green", "amber", "red"
@@ -72,7 +73,8 @@ def settings(entry):
                 return sorted(str(i) for i in a[k])
         return []
 
-    return {"type": a.get("type") or ("split" if readlock.is_split(e) else None), "rule": rule,
+    return {"id": e.get("id"), "type": "split" if a.get("split") is True else a.get("type") or (
+                "split" if readlock.is_split(e) else None), "rule": rule,
             "salt": str(a.get("salt") or "").rstrip(":") or None,
             "percent": (_f(a.get("pct")) if a.get("pct") is not None else 50.0) if rule == "hash_pct" else None,
             "treatment": str(a.get("treatment") or "even").lower() if rule == "user_id_parity" else None,
@@ -98,6 +100,13 @@ def launch_lock(entry, today=None):
     s = settings(entry)
     return {"hash": settings_hash(s), "settings": s,
             "locked_on": (readlock.to_date(today) or readlock.utc_today()).isoformat()}
+
+
+def same_core(a, b):
+    """Two locks describe the same test: rule, salt, share, start, measure and dates (exposure and wording may differ)."""
+    x, y = (lk.get("settings") or {} for lk in (a, b))
+    return all(x.get(k) == y.get(k) for k in ("id", "type", "rule", "salt", "percent", "treatment", "start", "metric",
+                                              "metric params", "direction", "read_date"))
 
 
 def settings_changes(entry, stored=None):
@@ -277,7 +286,8 @@ def mixing(entry, readout):
     if isinstance(m, dict):
         return m
     late = 0
-    rows = [r for r in _log_rows(entry) if any(r.get(k) is not None for k in ("both_arms", "repeat_accounts", "late_id"))]
+    rows = [r for r in _log_rows(entry) if any(r.get(k) is not None for k in (
+        "both_arms", "repeat_accounts", "late_id", "arm_recorded", "checked"))]
     res = [r for r in spec._as_list(entry.get("results")) if isinstance(r, dict) and isinstance(r.get("counts"), dict)
            and ("both_arms" in r["counts"] or "repeat_accounts" in r["counts"])]
     if rows:
@@ -292,8 +302,9 @@ def mixing(entry, readout):
     ex = exposed(entry, readout)
     n = (ex["control"] + ex["treatment"]) if ex else 0
     bad = both + rep + late
-    logged = {k: any(r.get(k) is not None for r in rows) if rows else True for k in ("both_arms", "repeat_accounts")}
-    return {"by_log": True, "arm_recorded": int(logged["both_arms"]), "checked": int(logged["repeat_accounts"]), "exposed": n, "both_arms": both, "repeat_accounts": rep, "late_id": late, "excluded": bad,
+    src = rows or [r["counts"] for r in res]
+    cov = {k: max([int(_h._num(r.get(k)) or 0) for r in src], default=0) for k in ("arm_recorded", "checked")}
+    return {"arm_recorded": cov["arm_recorded"], "checked": cov["checked"], "exposed": n, "both_arms": both, "repeat_accounts": rep, "late_id": late, "excluded": bad,
             "share": round(bad / n, 6) if n else (1.0 if bad else 0.0)}
 
 
@@ -306,30 +317,35 @@ def check_mixing(entry, readout):
     share = _h._num(m.get("share"))
     if share is None:
         share = bad / m["exposed"] if m.get("exposed") else (1.0 if bad else 0.0)
-    both, rep = int(m.get("both_arms") or 0), int(m.get("repeat_accounts") or 0)
-    can_arm = bool(m.get("arm_recorded"))
-    can_rep = bool(m.get("checked")) or rep > 0
-    bits = [f"{both} couples in both versions" if can_arm else
-            (f"{both} couples found in both versions; beyond that " if both else "") + "couples in both versions can't be checked (the version shown is not stored per couple)",
-            f"{rep} repeat accounts" if can_rep else "repeat accounts can't be checked (no account e-mails loaded)"]
+    both, rep, n = int(m.get("both_arms") or 0), int(m.get("repeat_accounts") or 0), int(m.get("exposed") or 0)
+
+    def part(found, what, known, why):
+        k = int(known or 0)
+        if n and k / n >= CHECKABLE_MIN:
+            return True, f"{found} {what} ({k:,} of {n:,} couples could be checked)"
+        seen = f"{found} {what} found, but " if found else f"{what} "
+        return False, seen + (f"only {k:,} of {n:,} couples could be checked ({k / n * 100:.0f}%; {CHECKABLE_MIN * 100:.0f}% needed)"
+                              if k and n else f"can't be checked ({why})")
+    can_arm, a_txt = part(both, "couples in both versions", m.get("arm_recorded"), "the version shown is not stored per couple")
+    can_rep, r_txt = part(rep, "repeat accounts", m.get("checked"), "no account e-mails loaded")
+    bits = [a_txt, r_txt]
     if m.get("late_id"):
         bits.append(f"{int(m['late_id'])} whose account arrived after the card was on screen")
     txt = "; ".join(bits) + "."
     txt = txt[:1].upper() + txt[1:]
     if bad:
         txt += f" {bad} left out of the read ({share * 100:.1f}%)."
-    if not m.get("by_log") and m.get("checked") and m.get("exposed") and m["checked"] < m["exposed"]:
-        txt += f" Repeat check covered {int(m['checked'])} of {int(m['exposed'])} accounts."
     return _check("mixing", label, RED if share > MIX_RED else (GREEN if can_arm and can_rep else AMBER), txt)
 
 
 def check_settings(entry, stored):
-    diff, src = settings_changes(entry, stored)
+    diff, _src = settings_changes(entry, stored)
     if diff:
         return _check("settings", "Settings", RED, "Changed after launch: " + ", ".join(diff) +
                       ". A test that changes while it runs can't be read; start a new one.")
-    if not src:
-        return _check("settings", "Settings", AMBER, "No stored launch settings to compare with.")
+    why = readlock.lock_problem(entry, stored)
+    if why:
+        return _check("settings", "Settings", RED, f"Launch lock {why}. Without a valid lock the result is never shown.")
     on = next((lk.get("locked_on") for lk in (entry.get("launch_lock"), stored) if isinstance(lk, dict)
                and lk.get("locked_on")), None)
     sd, lo = spec.parse_date(entry.get("start_date")), spec.parse_date(on)
@@ -532,7 +548,8 @@ def worst(checks):
 # ---------------------------------------------------------------------------
 
 _MONEY_WORDS = re.compile(r"\b(paid|pay|pays|paying|payer|payers|payments?|purchas\w*|buy\w*|bought|revenue|upgrad\w*|subscri\w*|"
-                          r"plans?|checkout\w*|unlock\w*|order\w*|convert\w* to paid|members?hip\w*)\b")
+                          r"plans?|checkout\w*|unlock\w*|order\w*|conver[ts]\w*|memberships?|(?:became|become|becomes|becoming|turned into|"
+                          r"joined as|is now|are now) (?:a )?(?:paid |paying )?members?)\b")
 
 
 def is_money_metric(entry):
@@ -613,31 +630,50 @@ def harm_bar(entry):
     return HARM_P / n
 
 
-def harm_look(entry, readout, hide):
-    """Today's look: {"fired": [labels], "checked": [labels], "not_checked": [(label, why)], "status": guardrail rows}."""
+def harm_look(entry, readout, hide, prior=None, today=None):
+    """Today's harm check, one look per measure per UTC day.
+
+    Returns {"date", "measures": {key: {"state": fired | ok | unchecked, "label", "why"}}, "status": guardrail rows}.
+    ``prior`` is the last stored look. A measure already looked at today is not looked at again, so it can't newly fire
+    until tomorrow; one that could not be read is looked at as soon as it can be. A fired stop clears as soon as the data
+    can be read and no longer supports it; it stays while the data can't be read. No numbers are stored."""
     ro = readout or {}
     m = entry.get("metric") or {}
-    gstatus, harmed = guardrail_rows(entry, ro)
-    fired = [next(g["label"] for g in gstatus if g["key"] == k) for k in harmed]
-    done = [g["label"] for g in gstatus if g.get("checked") and g["key"] not in harmed]
-    missing = [(g["label"], g["reason"]) for g in gstatus if not g.get("checked") and g["status"] != "breach"]
-    name = m.get("label") or "the main measure"
-    arms = ro.get("arms") or {}
+    day = (today or readlock.utc_today()).isoformat()
+    prior = prior if isinstance(prior, dict) else {}
+    old = prior.get("measures") if isinstance(prior.get("measures"), dict) else {}
+    same_day = prior.get("date") == day
+    gstatus, _harmed = guardrail_rows(entry, ro)
+    fresh = {}
     if hide:
+        arms = ro.get("arms") or {}
+        c, t = arms.get("control"), arms.get("treatment")
+        state, why = "unchecked", "no outcome feed: the engine can't see this measure"
         if ro.get("error"):
-            missing.insert(0, (name, "the metric failed"))
-        elif isinstance(arms.get("control"), dict) and isinstance(arms.get("treatment"), dict) and \
-                arms["control"].get("conv") is not None and arms["treatment"].get("conv") is not None:
-            p = harm_p(arms["control"], arms["treatment"], str(m.get("direction") or "increase"))
-            if p is None:
-                missing.insert(0, (name, "too few couples so far"))
-            elif p <= harm_bar(entry):
-                fired.insert(0, name)
-            else:
-                done.insert(0, name)
-        else:
-            missing.insert(0, (name, "no outcome feed: the engine can't see this measure"))
-    return {"fired": fired, "checked": done, "not_checked": [list(x) for x in missing], "status": gstatus}
+            why = "the metric failed"
+        elif isinstance(c, dict) and isinstance(t, dict) and c.get("conv") is not None and t.get("conv") is not None:
+            p = harm_p(c, t, str(m.get("direction") or "increase"))
+            state, why = ("unchecked", "too few couples so far") if p is None else (
+                "fired" if p <= harm_bar(entry) else "ok", "")
+        fresh["primary"] = {"state": state, "label": m.get("label") or "the main measure", "why": why}
+    for g in gstatus:
+        state = "fired" if g["status"] == "breach" else ("ok" if g.get("checked") else "unchecked")
+        fresh["g:" + str(g["key"])] = {"state": state, "label": g["label"], "why": "" if state != "unchecked" else g["reason"]}
+    for key, f in fresh.items():
+        was = (old.get(key) or {}).get("state")
+        if f["state"] == "fired" and same_day and was == "ok":
+            f["state"] = "ok"                                  # already looked today
+        elif f["state"] == "unchecked" and was == "fired":
+            f.update(state="fired", why="can't be re-checked now: " + f["why"])
+        elif f["state"] == "unchecked" and same_day and was == "ok":
+            f.update(state="ok", why="")                       # checked earlier today
+    for g in gstatus:
+        st = fresh["g:" + str(g["key"])]["state"]
+        if g["status"] == "breach" and st != "fired":
+            g.update(status="watch" if g["key"] in v2_data.PAYMENT_COUNTS else "ok", reason="checked today")
+        elif st == "fired" and g["status"] != "breach":
+            g.update(status="breach", reason="clear harm")
+    return {"date": day, "measures": fresh, "status": gstatus}
 
 
 # ---------------------------------------------------------------------------
@@ -686,7 +722,7 @@ def evaluate_split(entry, readout, history=None, changes=None, today=None, spec_
            "decision_rule": {"ship_p": READ_P, "stop_p": round(1 - READ_P, 6), "harm_p": HARM_P},
            "evidence_label": None, "exposure_per_arm_day": None, "guardrail_status": [],
            "failed_runs": 0, "paused_days": None, "read_date": rd.isoformat() if rd else None,
-           "result_hidden": hide, "result_text": readlock.hidden_text(e, lock) if hide else None,
+           "result_hidden": hide, "result_text": readlock.hidden_text(e, lock, today) if hide else None,
            "read": None, "checks": [], "light": GREEN, "exposed": None, "finished": None, "look": None}
 
     ex = exposed(e, ro)
@@ -742,12 +778,12 @@ def evaluate_split(entry, readout, history=None, changes=None, today=None, spec_
     block = [c for c in red if blocks_read(e, c)]
 
     # guardrails + harm stop
-    # (one look per UTC day: a look already taken today, or a stop that has fired, is reused)
     arms = ro.get("arms") or {}
-    if not (isinstance(look, dict) and (look.get("fired") or look.get("date") == today.isoformat())):
-        look = dict(harm_look(e, ro, hide), date=today.isoformat())
-    out["look"] = look
-    gstatus, labels = look["status"], list(look["fired"])
+    look = harm_look(e, ro, hide, look, today)
+    out["look"] = {k: look[k] for k in ("date", "measures")}
+    ms = list(look["measures"].values())
+    gstatus, labels = look["status"], [x["label"] for x in ms if x["state"] == "fired"]
+    ok_l, miss_l = [x["label"] for x in ms if x["state"] == "ok"], [x for x in ms if x["state"] == "unchecked"]
     out["guardrail_status"] = gstatus
     out["guardrails"] = [{"key": g["key"], "breached": g["status"] == "breach"} for g in gstatus]
     if labels:
@@ -756,11 +792,9 @@ def evaluate_split(entry, readout, history=None, changes=None, today=None, spec_
         flags["guardrail_breach"] = ("Clear harm to " + ", ".join(labels) + " (daily safety check). Stop the test" +
                                      (f"; the numbers stay hidden until {rd.isoformat()}" if hide and rd else ""))
     else:
-        miss = "; ".join(f"{n} ({w})" for n, w in look["not_checked"])
-        done = ", ".join(look["checked"])
-        if not hide and look["not_checked"] and not done:
-            checks.append(_check("harm", "Harm stop", AMBER, "Not checked: " + miss + "."))
-        elif look["not_checked"]:
+        miss = "; ".join(f"{x['label']} ({x['why']})" for x in miss_l)
+        done = ", ".join(ok_l)
+        if miss_l:
             checks.append(_check("harm", "Harm stop", AMBER, (f"Checked today, no clear harm: {done}. " if done else "") +
                                  f"Not checked: {miss}."))
         elif done:
@@ -790,10 +824,10 @@ def evaluate_split(entry, readout, history=None, changes=None, today=None, spec_
                                                direction=direction)
             # a stored read keeps the trust judgement it was taken with
             bad = read.get("untrusted_because") or [] if stored else [x["label"] for x in block]
-            out["read"] = {"call": "untrusted" if bad else call, "raw_call": call, "p_beat": round(p, 6), "date": when,
+            out["read"] = {"call": "untrusted" if bad else "harm" if labels and call == "ship" else call, "raw_call": call, "p_beat": round(p, 6), "date": when,
                            "arms": {"control": dict(c), "treatment": dict(t)}, "bar": READ_P,
                            "untrusted_because": bad}
-            if call in ("ship", "revert") and not bad:
+            if out["read"]["call"] in ("ship", "revert"):
                 flags["callable_win" if call == "ship" else "callable_loss"] = (
                     f"Read on {when}: {p:.3f} chance it's better, bar {READ_P}")
         undecided = not (e.get("_outcome") or e.get("decided_on"))
@@ -801,6 +835,8 @@ def evaluate_split(entry, readout, history=None, changes=None, today=None, spec_
             if call is None:
                 why = "its type was changed after launch, so it is not read" if not still_split else \
                     "read it out (first results entry with counts)" if manual else "no couples in both versions to read"
+            elif out["read"]["call"] == "harm":
+                why = "better on its own measure, but clear harm to " + ", ".join(labels)
             elif out["read"]["call"] == "untrusted":
                 why = "don't call a winner, setup is red: " + ", ".join(out["read"]["untrusted_because"])
             else:
@@ -923,7 +959,7 @@ def build_verdict(row):
                       "after_n": t["n"], "p_beat": p, "bar": READ_P,
                       "baseline": {"label": "Old version", "value": old, "rate": cr, "source": "readout control"}}
     word = {"ship": "New version is better", "revert": "New version is worse", "inconclusive": "No clear difference",
-            "untrusted": "Can't be trusted"}[read["call"]]
+            "harm": "Better on its own measure, but not safe to ship", "untrusted": "Can't be trusted"}[read["call"]]
     out["result"] = {"label": word, "tone": "neutral"}
     out["tldr"] = (f"Read once, on {read.get('date')}. {label}: new version {new}, old version {old}. "
                    f"{min(max(p * 100, 0.1), 99.9):.1f}% chance the new version is better; the bar is 97.5%. {word}.")
@@ -931,6 +967,8 @@ def build_verdict(row):
     if ci and None not in ci:
         out["confidence_note"] = f"The true change is likely between {ci[0] * 100:+.0f}% and {ci[1] * 100:+.0f}%."
     how["now"] = out["tldr"]
+    if row.get("harm"):
+        return rec("revert", "Stop the test: clear harm to " + ", ".join(row["harm"]), why)
     if read["call"] == "untrusted":
         return rec("inconclusive", "Don't call a winner", "Setup is red (" +
                    ", ".join(read.get("untrusted_because") or []) + "), so the numbers can't be trusted.")
@@ -972,14 +1010,16 @@ def lock_row(row, entry, locked=None):
     return row
 
 
-def lock_decided(row, entry, locked=None):
-    """A split closed before its read date: no outcome, take-away or verdict leaves (in place)."""
-    text = readlock.hidden_text(entry, locked)
-    row.update(result_hidden=True, result_text=text, status="stopped early", outcome=None, decision=None,
+def lock_decided(row, entry, locked=None, today=None):
+    """A closed split whose result may not be shown: no outcome, take-away or verdict leaves (in place)."""
+    text = readlock.hidden_text(entry, locked, today) if readlock.hidden(entry, today, locked) else \
+        "Result: not shown without the engine"
+    row.update(result_hidden=True, result_text=text, outcome=None, decision=None,
+               status="stopped early" if readlock.stopped_early(entry, locked) else "closed",
                takeaway=text, results=[])
     row["verdict"] = {"result": {"label": "Not read", "tone": "unknown"}, "tldr": text + ".", "numbers": None,
                       "recommend": None, "unstick": None, "confidence_note": None,
-                      "decided_on": row.get("decided_on"), "status": "stopped early"}
+                      "decided_on": row.get("decided_on"), "status": row["status"]}
     return row
 
 
@@ -994,6 +1034,8 @@ def lock_snapshot(snap, registry, today=None):
         e = by.get(r.get("id")) if isinstance(r, dict) else None
         if e is None and isinstance(r, dict):
             e = r                                # not in the registry any more: judge the row itself
+        elif isinstance(r, dict) and str(r.get("assignment_type")) == "split":
+            e = dict(e, _split=True)             # the engine scored it as a split, whatever the entry says now
         if e is not None and readlock.hidden(e, today):
             rd = readlock.read_date(e)
             r = dict(r, read_date=rd.isoformat() if rd else None, result_hidden=True,

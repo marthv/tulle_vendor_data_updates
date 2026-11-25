@@ -163,7 +163,12 @@ class HistoryStore:
     def load_lock(self, exp_id):
         return self._json(LOCKS).get(str(exp_id))
 
-    def save_lock(self, exp_id, lock):
+    def save_lock(self, exp_id, lock, replace=False):
+        if replace:
+            d = self._json(LOCKS)
+            d[str(exp_id)] = lock
+            _atomic_write(os.path.join(self.dir, LOCKS), json.dumps(d, indent=1, sort_keys=True, default=str))
+            return lock
         return self._put_once(LOCKS, exp_id, lock)
 
     def load_look(self, exp_id):
@@ -171,8 +176,6 @@ class HistoryStore:
 
     def save_look(self, exp_id, look):
         d = self._json(LOOKS)
-        if (d.get(str(exp_id)) or {}).get("fired"):
-            return                                  # a stop that fired stays fired
         d[str(exp_id)] = look
         _atomic_write(os.path.join(self.dir, LOOKS), json.dumps(d, indent=1, sort_keys=True, default=str))
 
