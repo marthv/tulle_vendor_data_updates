@@ -267,20 +267,9 @@ def _and(names):
 def differences(venues, guests, full, limit=3):
     out = []
     if full:
+        # No sentence says one venue costs more than another (2026-11-25): for audited pairs within 25% of each other our
+        # totals name the pricier one right 54% of the time (reports/assistant_visuals.md).
         priced = [v for v in venues if v.get("cost")]
-        same = {v["cost"]["guests"] for v in priced}
-        if len(priced) >= 2 and len(same) == 1:
-            lo, hi = min(priced, key=lambda v: v["cost"]["total"]), max(priced, key=lambda v: v["cost"]["total"])
-            gap = hi["cost"]["total"] - lo["cost"]["total"]
-            est = " (some lines estimated)" if lo["cost"]["estimated"] or hi["cost"]["estimated"] else ""
-            low = [v["name"] for v in (lo, hi) if any(l.get("minimum_only") for l in v["cost"]["lines"])]
-            if low:     # a total that is only a food minimum is a floor, so the gap is not a like-for-like gap
-                est = " (food at %s is only %s minimum and may cost more)" % (_and(low), "their" if len(low) > 1 else "its")
-            if gap >= 500:
-                out.append("%s comes to about %s more than %s for %d guests%s."
-                           % (hi["name"], _money(round(gap, -2)), lo["name"], same.pop(), est))
-            elif gap >= 0:
-                out.append("%s and %s come to about the same for %d guests%s." % (lo["name"], hi["name"], same.pop(), est))
         inc = [v for v in priced if any(l["key"] == "food" and l.get("included") for l in v["cost"]["lines"])]
         if inc and len(inc) < len(priced):
             out.append("Food and drink is inside the package price at %s, and added on top at %s."
@@ -314,6 +303,83 @@ def differences(venues, guests, full, limit=3):
         if len(kinds) >= 2 and len({k for _, k in kinds}) > 1:
             out.append(", ".join("%s: %s" % x for x in kinds) + ".")
     return out[:limit]
+
+
+# ---------------------------------------------------------------- the couple's pick (REC_COMPARE_DECIDE)
+
+PICK_SOURCE = "pick"
+PICK_SLOT = "Venue"
+_PICK_LOCKS = [threading.Lock() for _ in range(64)]
+
+
+def _pick_rows(xano, user_id):
+    return [r for r in xano.plan_items(user_id) if r.get("source") == PICK_SOURCE and r.get("slot") == PICK_SLOT]
+
+
+def pick_of(xano, user_id):
+    """{"vendor_id", "name"} the couple picked, or None. The newest active row."""
+    rows = _pick_rows(xano, user_id)
+    return {"vendor_id": rows[-1].get("vendor_id") or "", "name": rows[-1].get("vendor_name") or ""} if rows else None
+
+
+def set_pick(xano, user_id, vendor_id, chat_id=0):
+    """Set (a venue id) or clear ("") the pick; returns pick_of as stored. The new row is written before the old one is
+    marked removed, so a failure half way never loses a pick. LookupError = not a venue we list."""
+    card = None
+    if vendor_id:
+        ids = clean_ids([vendor_id])
+        card = xano.cached_vendor_card(ids[0]) if ids else None
+        if not card or (card.get("category") or "Venue") != "Venue":
+            raise LookupError("venue")
+    with _PICK_LOCKS[int(user_id) % len(_PICK_LOCKS)]:
+        old = _pick_rows(xano, user_id)
+        vid = str((card or {}).get("vendor_id") or "")
+        if vid and not any(r.get("vendor_id") == vid for r in old):
+            xano.plan_add({"user_id": user_id, "slot": PICK_SLOT, "vendor_id": vid, "vendor_name": (card.get("name") or "")[:200],
+                           "est_cost": 0, "note": "", "source": PICK_SOURCE, "chat_id": int(chat_id or 0), "status": "active"})
+        for r in old:
+            if r.get("vendor_id") != vid:
+                xano.plan_remove(user_id, r.get("id"))
+        return pick_of(xano, user_id)
+
+
+# ---------------------------------------------------------------- venues to compare a named one with (REC_NAMED_VENUE)
+
+NEAR_LIMIT_MILES = 40
+
+
+def near_venues(xano, railway_search, token, card, guests=0, limit=2):
+    """Up to `limit` venues near a named one that seat the couple's guests: name, place, photo, distance. One search of its
+    state; no price is read or returned."""
+    st = card.get("state")
+    st = st if isinstance(st, str) else (st or [""])[0]
+    if not st or "," in st or not card.get("vendor_id"):
+        return []
+    params = xano.venue_search_params(states=[st], guests=_int(guests), page_size=60)
+    d, _ = railway_search.railway_get(token, params)
+    items = [it for it in (d or {}).get("items") or [] if it.get("lat") is not None and it.get("lng") is not None]
+    me = next((it for it in items if it.get("Vendor_ID") == card["vendor_id"]), None)
+    if not me:      # further down the list than one page: its own coordinates by name
+        p = dict(xano.venue_search_params(states=[st], keyword=re.sub(r"[^a-z0-9 ]", " ", (card.get("name") or "").lower()), page_size=10))
+        dd, _ = railway_search.railway_get(token, p)
+        me = next((it for it in (dd or {}).get("items") or [] if it.get("Vendor_ID") == card["vendor_id"]
+                   and it.get("lat") is not None and it.get("lng") is not None), None)
+    if not me:
+        return []
+    mine = re.sub(r"[^a-z0-9]", "", (card.get("name") or "").lower())
+    out, names = [], {mine}
+    for it in sorted(items, key=lambda x: xano.miles(float(me["lat"]), float(me["lng"]), float(x["lat"]), float(x["lng"]))):
+        miles = xano.miles(float(me["lat"]), float(me["lng"]), float(it["lat"]), float(it["lng"]))
+        key = re.sub(r"[^a-z0-9]", "", (it.get("Name") or "").lower())
+        if miles > NEAR_LIMIT_MILES or not key or any(key in n or n in key for n in names):
+            continue
+        names.add(key)
+        out.append({"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"), "category": "Venue",
+                    "state": it.get("State"), "address": it.get("Address"), "image": _image(it.get("image_1")),
+                    "miles": max(1, int(round(miles)))})
+        if len(out) == limit:
+            break
+    return out
 
 
 # ---------------------------------------------------------------- build

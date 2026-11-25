@@ -1029,7 +1029,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     if not config.NAME_LOOKUP:
         return None
     q = lookup.detect(text, last_assistant, v2=config.NAME_MATCH_V2, guard=config.LOOKUP_GUARD,
-                      dym=config.DID_YOU_MEAN)
+                      dym=config.DID_YOU_MEAN, v3=config.LOOKUP_V3)
     if not q:
         return None
     t0 = time.time()
@@ -1059,6 +1059,8 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         return None          # "aspen", "North": several equal venues for one bare word - the model reads it
     if status == "not_found" and not q["cue"] and q["words"] == 1:
         return None          # one bare word we can't place: let the model read it
+    if q.get("soft") and status not in ("found", "best", "elsewhere"):
+        return None          # REC_LOOKUP_V3: an edit or a sentence - never "We don't have Remove dj yet"
     if after_q and status not in ("found", "best", "choices", "elsewhere") and not lookup.destination_in(
             "%s %s" % (q["name"], q.get("location") or q.get("alt_location") or "")):
         return None          # a reply to our question that is not a venue we have: the model reads it as before
@@ -1205,9 +1207,15 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     result = {"text": text_out, "cards": cards, "chips": chips, "more_cards": [], "search_filters": filters,
               "notes_saved": [], "widgets": [], "dropped_unverified_ids": [],
               "lookup": {"status": status, "query": name}, "venue_request": venue_request}
+    # REC_NAMED_VENUE (2026-11-25): one venue by name is the most common question; offer two near it to compare with.
+    near = []
+    if config.NAMED_VENUE and status == "found" and vkind == "Venue" and cards and compare.arm(user.get("id")) == "compare":
+        near = compare._safe(compare.near_venues, xano, railway_search, token, cards[0], guests) or []
     if _detail(paid, access) == "free":   # price-free mode: the same price guard as a model answer (text, cards, chips)
         result = free_mode.sanitize_result(result)
         result.pop("price_redactions", None)
+    if near:
+        result["compare_with"] = near
     ms = int((time.time() - t0) * 1000)
     search = slog.summary()
     _submit_usage(dict(base, status="ok", counted_as_free=counted_free, model="lookup",
@@ -1974,6 +1982,38 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         background.add_task(persist)
     return {"tool": name, "text": text, "widgets": [widget], "chips": [] if config.OPEN_ENDED else chips, "chat_id": chat["id"] if chat else None,
             "price_locked": not access}
+
+
+class PickBody(BaseModel):
+    vendor_id: str = ""        # "" clears the pick
+    chat_id: int = 0
+
+
+def _pick_status(user):
+    """/rec/status keys of the couple's pick (REC_COMPARE_DECIDE, compare arm only)."""
+    if not (config.COMPARE_DECIDE and compare.arm(user.get("id")) == "compare"):
+        return {"compare_decide": False, "compare_pick": None}
+    return {"compare_decide": True, "compare_pick": compare._safe(compare.pick_of, xano, user["id"])}
+
+
+@app.post("/rec/compare/pick")
+def compare_pick(body: PickBody, authorization: str = Header(None)):
+    """The couple's own pick among the venues they compared, kept in their wedding (table 90). No model, no question."""
+    _, user = _auth(authorization)
+    if config.KILL_SWITCH:
+        raise HTTPException(503, {"status": "killed"})
+    if not (config.COMPARE_DECIDE and compare.arm(user.get("id")) == "compare"):
+        raise HTTPException(404, {"status": "off"})
+    try:
+        got = compare.set_pick(xano, user["id"], (body.vendor_id or "").strip(), body.chat_id)
+    except LookupError:
+        raise HTTPException(404, {"status": "venue_not_found"})
+    except Exception as e:
+        print("compare_pick:", repr(e)[:160])
+        raise HTTPException(502, {"status": "error"})
+    _POOL.submit(xano.mp_track, user["id"], "rec_compare_picked", {"vendor_id": (got or {}).get("vendor_id") or "",
+                                                                  "cleared": not got, "source": "rec_service"})
+    return {"pick": got}
 
 
 class ContextBody(BaseModel):
@@ -3191,7 +3231,11 @@ def status(authorization: str = Header(None)):
             # Whole-wedding proposal (2026-11-15): true = this account is assigned; the page shows "Plan my wedding".
             "whole_wedding": whole_wedding.assigned(user.get("id")), "ww_arm": whole_wedding.arm(user.get("id")),
             # Side-by-side compare (2026-11-22): "compare" shows the button; "control" = the test's other half; "off".
-            "compare_arm": compare.arm(user.get("id")),
+            "compare_arm": compare.arm(user.get("id")), **_pick_status(user),
+            # Venue card lines (2026-11-25). Totals are drawn only from a card that carries one, which free and 1-week
+            # couples' cards never do.
+            "card_facts": config.on_for(config.CARD_FACTS, user.get("id")),
+            "card_totals": bool(paid and config.on_for(config.CARD_TOTALS, user.get("id"))),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 

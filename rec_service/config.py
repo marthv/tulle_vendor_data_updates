@@ -122,6 +122,11 @@ DID_YOU_MEAN = os.environ.get("REC_DID_YOU_MEAN", "0").strip() == "1"
 # LOOKUP GUARD: questions and non-venue text ("Pricing", "im looking for a bar tender", "houston and surrounding
 #   areas") never take the named-lookup path; they go to the model.
 LOOKUP_GUARD = os.environ.get("REC_LOOKUP_GUARD", "0").strip() == "1"
+# LOOKUP V3 (2026-11-25): (a) a venue the model searches by NAME and doesn't find in the couple's states is looked up in
+#   every state ("Villa Woodbine" is in Florida, the profile said Texas); (b) an edit or a sentence ("Remove dj, I have a
+#   personal dj") is never answered "We don't have <that>"; (c) a "did you mean" built on ONE word needs a near-exact word
+#   ("Amway grand" is not "Far Far Away Ranch"). 0 = exactly as before.
+LOOKUP_V3 = os.environ.get("REC_LOOKUP_V3", "0").strip() == "1"
 # PAGE VENUE: the bubble's surface "bubble:/vendors/...?v=<vendor_idx>" + "this venue / this one / here" with no named
 #   venue -> the message is answered about that vendor (table 11 row id -> its name and place).
 PAGE_VENUE = os.environ.get("REC_PAGE_VENUE", "0").strip() == "1"
@@ -326,6 +331,23 @@ COMPARE_PICK = os.environ.get("REC_COMPARE_PICK", "0").strip() == "1"
 COMPARE_AB_PCT = _pct(os.environ.get("REC_COMPARE_AB_PCT", "0"))
 COMPARE_AB_SALT = os.environ.get("REC_COMPARE_AB_SALT", "compare-2026-11")
 COMPARE_USER_IDS = _int_set(os.environ.get("REC_COMPARE_USER_IDS", ""))
+# COMPARE DECIDE (2026-11-25): the couple can mark one compared venue as their pick (table 90 rec_wedding_plan, source
+# "pick"); /rec/status carries it. NAMED VENUE: a venue found by name comes back with up to two venues near it to compare
+# with (names and photos only). Both need the compare arm; 0 = off.
+COMPARE_DECIDE = os.environ.get("REC_COMPARE_DECIDE", "0").strip() == "1"
+NAMED_VENUE = os.environ.get("REC_NAMED_VENUE", "0").strip() == "1"
+# CARD FACTS: one line on a venue card, "Seats 150" (or "Seats 100, you have 120"). CARD TOTALS: members also see the
+# total for their guests (owner decision pending). "0" off | "test" COMPARE_USER_IDS only | "1" everyone.
+CARD_FACTS = os.environ.get("REC_CARD_FACTS", "0").strip().lower()
+CARD_TOTALS = os.environ.get("REC_CARD_TOTALS", "0").strip().lower()
+
+
+def on_for(flag, user_id):
+    """'1' = everyone, 'test' = the compare testers, anything else = off."""
+    try:
+        return flag == "1" or (flag == "test" and int(user_id or 0) in COMPARE_USER_IDS)
+    except (TypeError, ValueError):
+        return False
 COMPARE_VENUES_PER_DAY = max(3, int(os.environ.get("REC_COMPARE_VENUES_PER_DAY", "30") or 30))
 # SOURCED ANSWERS (owner 2026-11-07: "I really really don't want to hallucinate, so I want very clear sources"): venue
 # questions beyond price are answered from venue_details (PDF facts, vibes, description, Google reviews) and, for full

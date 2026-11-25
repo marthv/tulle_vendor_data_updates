@@ -387,7 +387,35 @@ def area_request(text):
     return sum(1 for x in items if x and len(x.split()) <= 3) >= 4
 
 
-def detect(text, last_assistant="", v2=False, guard=False, dym=False):
+# ---- LOOKUP V3 (config.LOOKUP_V3, 2026-11-25): edits and sentences ----
+# Opens like an instruction to change or do something. Real names can open with one of these too ("Swan House" does not,
+# "Book Cadillac" does), so it never blocks a lookup: the message is only answered when the named vendor IS found.
+_EDIT = re.compile(r"^(?:please\s+|can you\s+|just\s+|pls\s+)?(?:remove|drop|delete|cancel|swap|switch|replace|change|update|"
+                   r"edit|add|include|exclude|skip|keep|take|get rid|undo|unsave|save|move|mark|set|put|book|send|email|"
+                   r"call|text|remind|schedule|write|draft|make|create|build|plan|turn|give|tell|forget|don'?t|do not)\b", re.I)
+_PERSON = re.compile(r"\b(?:i|i'?m|i'?ve|i'?d|we|we'?re|we'?ve|my|our|us|me|you|your)\b", re.I)
+_SERVICE_ONLY = re.compile(r"^(?:(?:a|an|the|wedding|local|good)\s+)*(?:%s)$" % "|".join(p for _, p in VENDOR_WORDS), re.I)
+NON_VENDOR = {"dessert", "desserts", "pictures", "picture", "pics", "photos", "images", "reviews", "review", "map",
+              "menu", "menus", "cake", "cakes", "flowers", "music", "invitations", "dj", "djs", "band", "bands",
+              "photographer", "photographers", "videographer", "videographers", "florist", "florists", "wedding",
+              "weddings", "vendor", "vendors", "guest", "guests", "free", "more", "link", "links", "pdf", "pdfs"}
+
+
+def _soft(raw, cue):
+    """Reads like an edit or a sentence: answered by the lookup only when a vendor by that name is really found."""
+    t = _clean(raw)
+    return bool(_EDIT.match(t) and not cue) or bool(_PERSON.search(re.sub(r"(?i)^.*?\b(?:do you have|tell me about|show me|look up|"
+                r"find me|can you \w+|could you \w+)\b", "", t)))
+
+
+def _nothing_named(core, check):
+    """No word left that could name a business: "dessert", "pictures", "gluten free wedding cake", "videographer"."""
+    ws = tokens(_clean(check)) or tokens(_clean(core))
+    return bool(_SERVICE_ONLY.match(norm(core))) or (bool(ws) and all(
+        w in NON_VENDOR or w in NON_VENUE or w in DESCRIPTORS for w in ws))
+
+
+def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
     """{"name", "location", "alt_name", "alt_location", "cue"} when the message looks like "look up <venue name>",
     else None. Conservative on purpose: anything that reads like a search or a follow-up goes to the model.
     last_assistant: the previous assistant message - a bare reply to its question ("Austin") is never a lookup.
@@ -478,6 +506,8 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False):
         return None
     if guard and non_venue_name(core):
         return None          # "Pricing", "bar tender", "estate multi day", "Texas city"
+    if v3 and _nothing_named(core, check):
+        return None          # "dessert", "pictures", "gluten free wedding cake": the model reads it
     if category and len(norm(core).split()) == 1 and len(norm(core)) < 4:
         return None          # "DJ me", "photo op": too short to be a business name
     after_question = False
@@ -496,6 +526,10 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False):
         out["v2"] = True      # find / resolve use the joined-words match (absent = exactly as before)
     if dym:
         out["dym"] = True     # find keeps its candidate pool and tries dropped-letter spellings (absent = as before)
+    if v3:
+        out["v3"] = True
+        if _soft(raw, cue):
+            out["soft"] = True   # only a real find is answered; anything else goes to the model
     return out
 
 
@@ -870,7 +904,10 @@ def _generic_typo(t):
         g[0] == t[0] and abs(len(g) - len(t)) <= 1 and sim(t, g) >= 0.6 for g in GENERIC if len(g) >= 4)
 
 
-def dym_score(query, name):
+DYM_ONE_WORD = 0.9     # v3: the only matching word must be this close ("rhyland"/"ryland" 0.92, "amway"/"away" 0.89)
+
+
+def dym_score(query, name, v3=False):
     """0 when the candidate does not hold the couple's distinctive words; else 0..1. Each distinctive word (venue-type
     words and their misspellings left out) must match a word of the name closely (>= 0.8, 0.9 under 5 letters); the
     longest must match; at least half of them must; with 3+ words at least 2 must."""
@@ -886,6 +923,10 @@ def dym_score(query, name):
     longest = max(range(len(qd)), key=lambda i: len(qd[i]))
     if not matched or not sims[longest] or matched / len(qd) < 0.5 or (len(qd) >= 3 and matched < 2):
         return 0.0
+    if v3 and matched < len(qd) and len(qd) == 2:
+        return 0.0           # "cape club of sharon" is not "Sharon Valley Ranch"
+    if v3 and matched == 1 and sims[longest] < DYM_ONE_WORD:
+        return 0.0
     return round(0.7 * matched / len(qd) + 0.3 * sum(sims) / len(qd), 3)
 
 
@@ -894,7 +935,7 @@ def dym_candidates(q, pool):
     names = [n for n in (q.get("name"), q.get("alt_name")) if n]
     out = []
     for m in pool or []:
-        s = max([dym_score(n, m.get(f) or "") for n in names for f in ("name", "google_name")] or [0.0])
+        s = max([dym_score(n, m.get(f) or "", bool(q.get("v3"))) for n in names for f in ("name", "google_name")] or [0.0])
         if s > 0:
             out.append((s, m))
     return sorted(out, key=lambda x: -x[0])
@@ -935,7 +976,7 @@ def place_fix(q, res, prefer_states=()):
     v2 = bool(q.get("v2"))
 
     def holds(m):
-        return any(strong(n, m.get(f) or "", v2) or dym_score(n, m.get(f) or "") > 0
+        return any(strong(n, m.get(f) or "", v2) or dym_score(n, m.get(f) or "", bool(q.get("v3"))) > 0
                    for n in names for f in ("name", "google_name"))
     place = _place_of(q)
     if place and (state_of(place) or [t for t in tokens(place) if t not in STATE_ABBR]):

@@ -878,6 +878,36 @@ def named_fully(text, name):
     return hit >= need
 
 
+def _state_text(st):
+    return (", ".join(st) if isinstance(st, list) else str(st or "")).strip()
+
+
+def find_by_name(token, keyword, last_user="", states=()):
+    """REC_LOOKUP_V3: a venue the model searched by name, looked up in EVERY state (lookup.find: typos, joined words).
+    {"status": "found", "venue"} | {"status": "close", "names"} | None. A style, a place or a need is never looked up, and
+    a venue is only "found" when the couple's own message or the keyword holds its whole name. Any failure -> None."""
+    if lookup._place(keyword) or lookup._descriptive_only(keyword) or lookup.non_venue_name(keyword) \
+            or len(lookup.norm(keyword)) < 4:
+        return None
+    words = lookup.norm(keyword).split()
+    q = {"name": keyword, "location": "", "alt_name": "", "alt_location": "", "cue": True, "words": len(words),
+         "category": "", "v2": config.NAME_MATCH_V2, "dym": True, "v3": True}
+    try:
+        res = lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), list(states or []))
+        res = lookup.did_you_mean(q, res, list(states or []))
+    except Exception as e:
+        print("find_by_name:", repr(e)[:160])
+        return None
+    ms = res.get("matches") or []
+    if res.get("status") in ("found", "best") and ms:
+        n = ms[0].get("name") or ""
+        if lookup.strong(keyword, n, config.NAME_MATCH_V2) or named_fully(last_user, n):
+            return {"status": "found", "venue": {k: v for k, v in ms[0].items() if k != "google_name"}}
+    if res.get("status") in ("found", "best", "choices", "dym") and ms:
+        return {"status": "close", "names": ["%s (%s)" % (m.get("name"), _state_text(m.get("state"))) for m in ms[:3]]}
+    return None
+
+
 PEAK_CAVEAT = re.compile(r"peak[- ]season saturday|peak saturday|peak-saturday|saturday evening", re.I)
 OPEN_PDF = re.compile(r"\bopen\b[^.]{0,80}\bpdf\b", re.I)
 
@@ -1371,6 +1401,13 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                     venues = hits + [v for v in venues if v.get("vendor_id") not in named_ids]
                 else:
                     relaxed_for_name = []
+        named_elsewhere = None
+        if config.LOOKUP_V3 and kw and not any(in_name(v) for v in venues):
+            named_elsewhere = find_by_name(token, keyword, last_user, states)
+            if named_elsewhere and named_elsewhere["status"] == "found":
+                hit = named_elsewhere["venue"]
+                named_ids.add(hit["vendor_id"])
+                venues = [hit] + [v for v in venues if v.get("vendor_id") != hit["vendor_id"]]
         if config.VENUE_LOG and kw and not (lookup._place(kw) or lookup._descriptive_only(kw)
                                              or lookup.non_venue_name(kw)):
             # The venue log (2026-11-18): the model looked a venue up by name - what it searched and what came back.
@@ -1489,6 +1526,14 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
             res["named_venue_outside_filters"] = {"keyword": keyword, "filters_it_does_not_meet": relaxed_for_name,
                                                  "note": "shown first because the couple named it; say which of their "
                                                          "filters it falls outside of"}
+        if named_elsewhere and named_elsewhere["status"] == "found":
+            res["named_venue_found_by_name"] = {
+                "name": named_elsewhere["venue"].get("name"), "state": _state_text(named_elsewhere["venue"].get("state")),
+                "note": "the venue they named. Tulle HAS it: show its card and say where it is if that is not where "
+                        "they're planning. Never say it is not in Tulle"}
+        elif named_elsewhere:
+            res["close_names"] = {"names": named_elsewhere["names"],
+                                  "note": "Tulle has no venue under exactly that name; ask if they meant one of these"}
         if n_hidden:
             res["already_shown_left_out"] = n_hidden
         # Nothing new left (2026-11-07): the planner log had 17 answers with ZERO cards, most of them "every barn
