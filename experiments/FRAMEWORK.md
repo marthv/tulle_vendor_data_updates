@@ -380,7 +380,7 @@ same as unset.** Set it on experiments-engine, the Streamlit dash, Tulle Bot and
 one that no longer matches). Read date = the lock's date; a later date on the entry also counts, an earlier one never
 opens anything. Without a lock: `read_date`, else the later of `review_date` and start + planned days; Tulle Bot's text
 and the registry-only tab then never open it. Once a split, always a split: changing `assignment.type`, or
-the status, opens nothing. Not started, running before the read date, and closed before the read date ("Stopped early,
+the status, opens nothing. A real split the engine can't assign (by e-mail hash, say) sets `assignment.split: true`. Not started, running before the read date, and closed before the read date ("Stopped early,
 result not read", for good) are hidden in the snapshot, HTTP API, history rows, tab, Slack messages, Bot answers and
 prompt, and the brief's A/B block. On the read date: ship at 97.5%, revert at 2.5%, else no clear difference;
 computed as of 00:00 UTC and kept (`reads.json`). Manual tests: the first `results[]` with counts dated on or after the

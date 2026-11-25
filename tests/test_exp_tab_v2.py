@@ -827,7 +827,7 @@ LOCKED = v2.launch_lock(entry())
     {"status": "shipped", "decided_on": "2026-11-15"}, {"status": "inconclusive"}, {"status": "concluded"}, {"status": "reverted", "end_date": "2026-11-14"},
     {"assignment": {"type": "pre_post", "pre": ["2026-11-01", "2026-11-09"], "post_start": "2026-11-10"}, "launch_lock": LOCKED},
     {"assignment": {"type": "pre_post", "rule": "hash_pct", "salt": "t1", "pct": 50}}, {"assignment": {"type": "rollout"}, "launch_lock": LOCKED},
-    {"status": "planned", "start_date": None}, {"status": "draft"}, {}, {"review_date": "2026-11-12", "launch_lock": LOCKED},
+    {"assignment": {"type": "rollout", "split": True}}, {"status": "planned", "start_date": None}, {"status": "draft"}, {}, {"review_date": "2026-11-12", "launch_lock": LOCKED},
     {"read_date": "2026-11-11", "review_date": "2026-11-11", "planned_days": 1, "launch_lock": LOCKED},
     {"status": "shipped", "decided_on": "2026-11-15", "review_date": "2026-11-12", "launch_lock": LOCKED}])
 def test_no_surface_opens_before_the_read_date(over, tmp_path, monkeypatch):

@@ -77,6 +77,8 @@ def is_split(entry, stored=None):
     if e.get("_split") or str(lock_settings(e, stored).get("type") or "") == "split":
         return True
     a = e.get("assignment")
+    if isinstance(a, dict) and a.get("split") is True:     # a real split the engine can't assign (e.g. by e-mail)
+        return True
     if isinstance(a, dict) and a.get("type"):
         if str(a["type"]).strip().lower() == "split":
             return True

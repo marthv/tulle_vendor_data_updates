@@ -673,7 +673,7 @@ def evaluate_split(entry, readout, history=None, changes=None, today=None, spec_
     manual = _is_manual(e)
     rd = readlock.read_date(e, lock)
     hide = readlock.hidden(e, today, lock)
-    still_split = e.get("_assignment_type") == "split"
+    still_split = e.get("_assignment_type") == "split" or (e.get("assignment") or {}).get("split") is True
     sd = spec.parse_date(e.get("start_date"))
     days = (today - sd).days if sd else None
     m = e.get("metric") or {}
