@@ -178,8 +178,6 @@ PLACES = {"nyc", "new york city", "manhattan", "brooklyn", "queens", "bronx", "s
           "boston", "philadelphia", "philly", "pittsburgh", "seattle", "portland", "denver", "phoenix", "scottsdale",
           "las vegas", "nashville", "charleston", "savannah", "asheville", "new orleans", "dc", "washington dc",
           "baltimore", "detroit", "minneapolis", "st louis", "kansas city", "charlotte", "raleigh", "richmond",
-          "finger lakes", "poconos", "berkshires", "adirondacks", "outer banks", "smoky mountains", "lake george",
-          "lake geneva", "napa valley", "sonoma valley", "central valley", "shenandoah valley", "brandywine valley",
           "palm springs", "santa barbara", "big sur", "hill country", "lake tahoe", "tahoe", "cape cod",
           "martha's vineyard", "upstate", "upstate new york", "north jersey", "south jersey", "international",
           "italy", "mexico", "france", "spain", "greece", "portugal", "england", "uk", "ireland", "canada"}
@@ -411,6 +409,11 @@ def _soft(raw, cue):
                 r"find me|can you \w+|could you \w+)\b", "", t)))
 
 
+# Regions couples type that PLACES lacks (v3 only).
+V3_PLACES = {"finger lakes", "poconos", "berkshires", "adirondacks", "outer banks", "smoky mountains", "lake george", "lake geneva",
+             "napa valley", "sonoma valley", "central valley", "shenandoah valley", "brandywine valley"}
+
+
 def _nothing_named(core, check):
     """No word left that could name a business: "dessert", "pictures", "gluten free wedding cake", "videographer"."""
     ws = tokens(_clean(check)) or tokens(_clean(core))
@@ -511,6 +514,8 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
     if guard and non_venue_name(core):
         return None          # "Pricing", "bar tender", "estate multi day", "Texas city"
     only_exact = False
+    if v3 and re.sub(r"^the ", "", norm(core)) in V3_PLACES:
+        return None
     if v3 and _nothing_named(core, check):
         only_exact = True    # "dessert", "pictures", "hair and makeup": the model reads it unless a vendor is called just that
     if category and len(norm(core).split()) == 1 and len(norm(core)) < 4:

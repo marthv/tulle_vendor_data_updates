@@ -283,3 +283,22 @@ def test_find_by_name_does_not_claim_a_near_name(monkeypatch):
         w in lookup.tokens(r["name"]) for w in term.split())])
     r = agent.find_by_name("t", "Woodmont Manor", "Tell me about Woodmont Manor", ["Texas"])
     assert r is None or r["status"] == "close"
+
+
+def test_a_stale_clear_never_clears_a_newer_pick(plan90):
+    post("V1")
+    r = TestClient(app.app).post("/rec/compare/pick", json={"vendor_id": "", "expect": "V2"}, headers=H)
+    assert r.status_code == 502 and r.json()["detail"]["pick"]["vendor_id"] == "V1"
+    assert TestClient(app.app).post("/rec/compare/pick", json={"vendor_id": "  "}, headers=H).status_code == 400
+    assert TestClient(app.app).post("/rec/compare/pick", json={"vendor_id": "", "expect": "V1"}, headers=H).json()["pick"] is None
+
+
+def test_one_bad_pin_does_not_drop_the_rest():
+    items = _items() + [dict(_items()[1], Vendor_ID="V8", Name="Bad Pin", lat="", lng="x")]
+    assert len(compare.near_venues(xano, Rail(items), "t", {"vendor_id": "V1", "name": "Wythe Hotel", "state": "New York"})) == 2
+
+
+@pytest.mark.parametrize("text", ["finger lakes", "the Poconos", "napa valley"])
+def test_regions_go_to_the_model_only_with_v3(text):
+    assert d(text) is None
+    assert lookup.detect(text, v2=True, guard=True, dym=True) is not None

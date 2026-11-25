@@ -321,18 +321,22 @@ def pick_of(xano, user_id):
     return {"vendor_id": rows[-1].get("vendor_id") or "", "name": rows[-1].get("vendor_name") or ""} if rows else None
 
 
-def set_pick(xano, user_id, vendor_id, chat_id=0):
+def set_pick(xano, user_id, vendor_id, chat_id=0, expect=""):
     """Set (a venue id) or clear ("") the pick. Returns (ok, pick as stored now): ok only when what is stored is what was asked.
     The new row is written before the old one is marked removed, so a failure half way never loses a pick, and a row that
-    could not be marked removed is older than the new one (pick_of reads the newest). LookupError = not a venue we list."""
-    card = None
-    if vendor_id:
-        ids = clean_ids([vendor_id])
-        card = xano.listed_venue(ids[0]) if ids else None
-        if not card:
-            raise LookupError("venue")
+    could not be marked removed is older than the new one (pick_of reads the newest). LookupError = not a venue we list. expect: a
+    clear is for that venue only, so a stale tab never clears a newer pick. Everything runs inside the couple's lock: taps
+    are stored in the order they arrive."""
     with _PICK_LOCKS[int(user_id) % len(_PICK_LOCKS)]:
+        card = None
+        if vendor_id:
+            ids = clean_ids([vendor_id])
+            card = xano.listed_venue(ids[0]) if ids else None
+            if not card:
+                raise LookupError("venue")
         old = _pick_rows(xano, user_id)
+        if not vendor_id and expect and old and old[-1].get("vendor_id") != expect:
+            return False, pick_of(xano, user_id)
         vid = str((card or {}).get("vendor_id") or "")
         newest = old[-1].get("vendor_id") if old else ""
         if vid and newest != vid:
@@ -353,6 +357,13 @@ def set_pick(xano, user_id, vendor_id, chat_id=0):
 NEAR_LIMIT_MILES = 40
 
 
+def _num(v):
+    try:
+        return bool(float(v))
+    except (TypeError, ValueError):
+        return False
+
+
 def near_venues(xano, railway_search, token, card, guests=0, limit=2):
     """Up to `limit` venues near a named one that seat the couple's guests: name, place, photo, distance. One search of its
     state; no price is read or returned."""
@@ -362,14 +373,14 @@ def near_venues(xano, railway_search, token, card, guests=0, limit=2):
         return []
     params = xano.venue_search_params(states=[st], guests=_int(guests), page_size=60)
     d, _ = railway_search.railway_get(token, params)
-    items = [it for it in (d or {}).get("items") or [] if it.get("lat") is not None and it.get("lng") is not None
+    items = [it for it in (d or {}).get("items") or [] if _num(it.get("lat")) and _num(it.get("lng"))
              and xano.geo_sanity.coords_match_state(it.get("State"), it.get("lat"), it.get("lng"))]
     me = next((it for it in items if it.get("Vendor_ID") == card["vendor_id"]), None)
     if not me:      # further down the list than one page: its own coordinates by name
         p = dict(xano.venue_search_params(states=[st], keyword=re.sub(r"[^a-z0-9 ]", " ", (card.get("name") or "").lower()), page_size=10))
         dd, _ = railway_search.railway_get(token, p)
         me = next((it for it in (dd or {}).get("items") or [] if it.get("Vendor_ID") == card["vendor_id"]
-                   and it.get("lat") is not None and it.get("lng") is not None), None)
+                   and _num(it.get("lat")) and _num(it.get("lng"))), None)
     if not me:
         return []
     mine = re.sub(r"[^a-z0-9]", "", (card.get("name") or "").lower())

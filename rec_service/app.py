@@ -1997,7 +1997,8 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
 
 
 class PickBody(BaseModel):
-    vendor_id: Optional[str] = None        # "" clears the pick; a body without it is refused
+    vendor_id: Optional[str] = None        # "" clears the pick; a body without it (or only spaces) is refused
+    expect: str = ""                       # a clear: the venue the page showed as the pick
     chat_id: int = 0
 
 
@@ -2040,10 +2041,10 @@ def compare_pick(body: PickBody, authorization: str = Header(None)):
         raise HTTPException(503, {"status": "killed"})
     if not (config.COMPARE_DECIDE and compare.arm(user.get("id")) == "compare"):
         raise HTTPException(404, {"status": "off"})
-    if body.vendor_id is None:
+    if body.vendor_id is None or (body.vendor_id and not body.vendor_id.strip()):
         raise HTTPException(400, {"status": "no_vendor"})
     try:
-        ok, got = compare.set_pick(xano, user["id"], body.vendor_id.strip(), body.chat_id)
+        ok, got = compare.set_pick(xano, user["id"], body.vendor_id.strip(), body.chat_id, body.expect.strip())
     except LookupError:
         raise HTTPException(404, {"status": "venue_not_found", **_pick_stored(user)})
     except Exception as e:
