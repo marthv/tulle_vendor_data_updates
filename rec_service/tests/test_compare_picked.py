@@ -86,12 +86,11 @@ def test_full_totals_equal_the_venue_page_formula():
     assert [v["name"] for v in w["venues"]] == ["Alpha", "Beta"]   # picked order, never a ranking
 
 
-def test_no_sentence_says_one_venue_costs_more():
-    """2026-11-25: our totals can't carry it (54% right within 25%)."""
+def test_totals_at_different_guest_counts_are_never_subtracted():
+    assert not any("comes to about" in d for d in build(FakeXano())["differences"])
     x = FakeXano()
     x.inp["V2"]["rental"] = 26000
-    for w in (build(FakeXano()), build(x, guests=200), build(x, guests=100)):
-        assert not any(k in d for d in w["differences"] for k in ("more than", "come to about", "comes to about", "cheap"))
+    assert "Beta comes to about $7,200 more than Alpha for 200 guests (some lines estimated)." in build(x, guests=200)["differences"]
 
 
 @pytest.mark.parametrize("access,entitled", [(False, False), (False, True), (True, False)])
@@ -235,8 +234,8 @@ def test_minimum_only_is_said_everywhere(monkeypatch):
     assert "may cost more" not in estimate.label(plain) and "food_is_only_the_minimum" not in estimate.summary(plain)
     x = FakeXano()
     x.inp = {"V1": inputs(), "V2": inp}
-    v = next(v for v in build(x, guests=100)["venues"] if v["name"] == "Beta")
-    assert any(l.get("minimum_only") for l in v["cost"]["lines"])   # the column says "food may be more"
+    d = build(x, guests=100)["differences"]
+    assert "Alpha comes to about $14,400 more than Beta for 100 guests (food at Beta is only its minimum and may cost more)." in d
 
 
 def test_room_is_named_in_the_seating_line():

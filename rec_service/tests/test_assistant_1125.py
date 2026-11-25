@@ -360,3 +360,13 @@ def test_strict_ignores_the_town_they_added():
     m = row("S2", "Knotting Hill Place", "Texas", "1 A Rd, Little Elm, TX 75068")
     q = lookup.detect("Knotting Hill Little Elm", v2=True, guard=True, dym=True, strict=True)
     assert lookup.dym_candidates(q, [m])
+
+
+def test_compare_price_sentence_goes_only_with_the_decide_switch(monkeypatch):
+    import test_compare_picked as T
+    x = T.FakeXano()
+    x.inp["V2"]["rental"] = 26000
+    has = lambda: any("more than" in d for d in T.build(x, guests=200)["differences"])
+    assert has()
+    monkeypatch.setattr(config, "COMPARE_DECIDE", True)
+    assert not has()
