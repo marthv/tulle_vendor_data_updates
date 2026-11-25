@@ -882,6 +882,9 @@ def _state_text(st):
     return (", ".join(st) if isinstance(st, list) else str(st or "")).strip()
 
 
+_TELL_ME = re.compile(r"(?i)^tell me about (.+?)(?:,? and whether it fits my wedding)?\s*[.?!]*$")
+
+
 def find_by_name(token, keyword, last_user="", states=()):
     """REC_LOOKUP_V3: a venue the model searched by name, looked up in EVERY state (lookup.find: typos, joined words).
     {"status": "found", "venue"} | {"status": "close", "names"} | None. A style, a place or a need is never looked up, and
@@ -899,11 +902,11 @@ def find_by_name(token, keyword, last_user="", states=()):
         print("find_by_name:", repr(e)[:160])
         return None
     ms = res.get("matches") or []
-    # Stated only when the venue's own name adds nothing to what was typed, and one word must be the whole name: towns and
-    # styles arrive here as keywords too ("Chandler", "treehouse").
-    one = len(lookup.tokens(keyword)) < 2
-    if res.get("status") in ("found", "best") and ms and lookup.holds_all(q, ms[0]) and lookup.same_name(q, ms[0]) and (
-            not one or lookup.key(keyword) == lookup.key(ms[0].get("name"))):
+    # Stated only when the couple's own message IS the venue's name (2+ words), or the vendor-page question about it. Towns and
+    # styles arrive here as keywords too ("Brentwood", "Cape May", "city hall"): those are only ever asked about.
+    said = (_TELL_ME.match(" ".join(str(last_user or "").split())) or [None, ""])[1]
+    whole = lookup.key(said) or (lookup.key(last_user) if len(lookup.tokens(last_user)) >= 2 else "")
+    if res.get("status") in ("found", "best") and ms and whole and whole == lookup.key(ms[0].get("name")):
         return {"status": "found", "venue": {k: v for k, v in ms[0].items() if k != "google_name"}}
     if res.get("status") in ("found", "best", "choices", "dym") and ms:
         return {"status": "close", "names": ["%s (%s)" % (m.get("name"), _state_text(m.get("state"))) for m in ms[:3]]}

@@ -346,8 +346,9 @@ def test_a_town_or_a_style_is_never_the_venue_they_named(monkeypatch):
     for kw in ("Chandler", "treehouse", "Gilbert"):
         r = agent.find_by_name("t", kw, kw, ["Arizona"])
         assert r is None or r["status"] == "close"
-    r = agent.find_by_name("t", "Treehouse Vineyards", "", ["Arizona"])
-    assert r["status"] == "found"
+    for said, st in (("Treehouse Vineyards", "found"), ("Tell me about Treehouse Vineyards and whether it fits my wedding", "found"),
+                     ("venues like Treehouse Vineyards in Arizona", "close")):
+        assert agent.find_by_name("t", "Treehouse Vineyards", said, ["Arizona"])["status"] == st
 
 
 def test_asking_for_a_price_politely_names_the_venue():
