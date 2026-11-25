@@ -964,7 +964,7 @@ def _town(m):
     if parts:
         st = _STREET.match(parts[0])
         parts[0] = parts[0][st.end():] if st else "" if len(parts) > 1 and re.match(r"\d", parts[0]) else parts[0]
-        if len(parts) > 1 and not st and not re.match(r"\d", str(m.get("address") or "").strip()):
+        if len(parts) > 1 and not st and not re.match(r"[A-Z]{2}", parts[1]):
             parts[0] = ""        # a building or street name on its own
     return tokens("%s %s" % (" ".join(parts), _st(m.get("state"))))
 
