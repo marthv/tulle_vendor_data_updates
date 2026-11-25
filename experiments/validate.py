@@ -97,22 +97,49 @@ def is_known_gap(issue, fields):
     return bool(f) and any(f == g or f.startswith(g + ".") or f.startswith(g + "[") for g in fields)
 
 
+GRANDFATHERED = ("EXP-2026-11-planner-context-first",)     # live before launch_lock existed; needs one before 12-01
+
+
 def exposure_issues(entry, e, strict):
     """EXP_TAB_V2 section 14: a test with no record of who was exposed cannot go live.
 
-    Only with EXP_TAB_V2 on. A live split without one is refused in every run; the launch check (--id) refuses any
-    test except a rollout; otherwise it is a warning."""
-    from experiments_engine import v2_data
+    Whatever the switch says: a live or paused split needs a written ``exposure`` and a ``launch_lock`` that matches its
+    settings, in every run (GRANDFATHERED entries: only in the launch check). The launch check (--id) also refuses a planned
+    split with no written exposure, and any other test with no exposure at all, except a rollout."""
+    from experiments_engine import v2, v2_data
     life, atype = e["_lifecycle"], e.get("_assignment_type")
-    if atype == "rollout" or life not in ("live", "planned", "paused") or v2_data.exposure_rule(entry):
+    split = readlock.is_split(entry)
+    running = life not in ("decided", "planned", "draft")
+    if not running and life != "planned" or (atype == "rollout" and not split):
         return []
-    live_split = atype == "split" and life == "live"
-    if not readlock.enabled():
-        return []
-    sev = "error" if live_split or strict else "warn"
-    return [{"severity": sev, "question": 2, "field": "exposure",
-             "message": 'No exposure source: set exposure = {"source": "xano:table79" | "xano:table1" | '
-                        '"mixpanel:<event>", "surfaces": [...]} (who saw it), or it cannot go live'}]
+    out = []
+
+    def add(sev, field, msg):
+        out.append({"severity": sev, "question": 2 if field == "exposure" else 6, "field": field, "message": msg})
+    old = entry.get("id") in GRANDFATHERED and not strict
+    written = v2_data.valid_source(v2_data.explicit_source(entry))
+    ok = written if split else bool(v2_data.exposure_rule(entry))
+    if not ok:
+        said = v2_data.explicit_source(entry)
+        msg = (f"exposure source {said!r} is not a record of who saw the test" if said else "No exposure source") + \
+            ': set exposure = {"source": "xano:table79" | "xano:table1" | "mixpanel:<event name>", "surfaces": [...]}, ' \
+            "or it cannot go live"
+        if (split and running and not old) or strict:
+            add("error", "exposure", msg)
+        elif readlock.enabled():
+            add("warn", "exposure", msg)
+    if split and running:
+        if not readlock.has_lock(entry):
+            msg = "No launch_lock: run validate.py --lock <id> at launch and paste it into the entry"
+            if not old:
+                add("error", "launch_lock", msg)
+            elif readlock.enabled():
+                add("warn", "launch_lock", msg)
+        else:
+            diff = v2.settings_changes(entry)[0]
+            if diff:
+                add("error", "launch_lock", "RED: settings changed after launch: " + ", ".join(diff))
+    return out
 
 
 def print_lock(entry):

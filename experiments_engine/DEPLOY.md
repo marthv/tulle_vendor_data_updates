@@ -119,3 +119,18 @@ Do not push or deploy between 13:30 and 13:45 UTC, while the daily brief runs.
   page loads a day.
 - GitHub: at most 4 unauthenticated calls per 6 h run (1 conditional list plus up to 3 commit
   details).
+
+## Watch patterns for the read lock (2026-11-25)
+
+Tulle Bot and health-report-cron (daily brief) import `experiments_engine/readlock.py`. Their watch patterns are set on the
+Railway service by hand (config files are not read there), so add, before the first push that needs them:
+
+| Service | Add |
+|---|---|
+| tulle-slack-qa (Tulle Bot) | `experiments_engine/**` |
+| health-report-cron | `/experiments_engine/**`, `/experiments/**`, `/ab_report.py`, `/experiments_brief.py` where missing |
+
+What a push then redeploys: `experiments_engine/**` -> experiments-engine, Tulle Bot, health-report-cron. `experiments/**`
+-> experiments-engine, health-report-cron, and Tulle Bot for `experiment_log.json`. `slack_qa/**` -> Tulle Bot. Any push to
+main also redeploys services without watch patterns: Tulle Admin Dash (Streamlit), batch-worker-cron, batch-ingest.
+rec-engine should show SKIPPED. Read from the repo's notes, not from Railway: check each service before pushing.

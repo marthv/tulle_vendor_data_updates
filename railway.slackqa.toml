@@ -8,7 +8,8 @@
 #     Start          : cd slack_qa && uvicorn app:app --host 0.0.0.0 --port $PORT
 #     Healthcheck    : /health
 #     Volume         : mount at /data  (mute settings + daily spend ledger; STATE_DIR=/data)
-#     Watch paths    : slack_qa/**, experiments/experiment_log.json  (registry edits redeploy the bot)
+#     Watch paths    : slack_qa/**, experiments/experiment_log.json, experiments_engine/**  (registry edits redeploy the
+#                      bot; experiments_engine holds the read lock it imports. SET ON THE SERVICE BY HAND, see NOTE)
 #     Public domain  : generate one; Slack Request URL = https://<domain>/slack/events
 #
 # Variables:
@@ -27,7 +28,7 @@
 [build]
 builder = "NIXPACKS"
 buildCommand = "pip install -r slack_qa/requirements.txt"
-watchPatterns = ["slack_qa/**", "experiments/experiment_log.json"]
+watchPatterns = ["slack_qa/**", "experiments/experiment_log.json", "experiments_engine/**"]
 
 [deploy]
 startCommand = "cd slack_qa && uvicorn app:app --host 0.0.0.0 --port $PORT"

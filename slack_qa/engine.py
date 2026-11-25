@@ -84,9 +84,19 @@ def _rotation(snap: dict) -> list[dict]:
 
 
 def _unlocked_split(e: dict) -> bool:
-    """EXP_TAB_V2 is on here but the engine's snapshot predates it: treat a running split as hidden (fail closed)."""
-    return (str(os.environ.get("EXP_TAB_V2", "")).strip().lower() in ("1", "on", "true", "yes")
-            and e.get("assignment_type") == "split" and e.get("lifecycle") in ("live", "paused")
+    """EXP_TAB_V2 is on here: hidden by the registry's own rule (readlock), whatever the engine's snapshot says; a
+    running split the engine did not lock, or one the registry can't confirm, is hidden too (fail closed)."""
+    if str(os.environ.get("EXP_TAB_V2", "")).strip().lower() not in ("1", "on", "true", "yes"):
+        return False
+    try:
+        import knowledge
+        reg = next((x for x in knowledge.load_registry().get("experiments") or []
+                    if isinstance(x, dict) and x.get("id") == e.get("id")), None) if e.get("id") else None
+        if reg is not None and knowledge.readlock_module().hidden(reg):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return (e.get("assignment_type") == "split" and e.get("lifecycle") in ("live", "paused")
             and "result_hidden" not in e)
 
 
@@ -99,6 +109,8 @@ def format_experiment(e: dict) -> str:
         lines.append(str(e.get("result_text") or "Result: hidden until its read date") + ".")
         if e.get("days_running") is not None:
             lines.append(f"Running for {e['days_running']} days.")
+        if e.get("lifecycle") == "decided" or e.get("status") == "stopped early":
+            return "\n".join(lines)
         bad = [c for c in e.get("checks") or [] if c.get("colour") in ("red", "amber")]
         lines += [f"Setup check, {c.get('label')} ({c.get('colour')}): {c.get('text')}" for c in bad]
         return "\n".join(lines)

@@ -142,19 +142,26 @@ def read_events(entry, events, payments, now_ms=None, days=7, internal=(), who=N
             "mixing": {"exposed": len(pool), "both_arms": len(both) + across, "repeat_accounts": len(repeat),
                        "late_id": len(late_hit), "excluded": len(bad), "other_version_recorded": mismatch,
                        "share": round(len(bad) / len(pool), 6) if pool else 0.0,
-                       "checked": len(who) if who is not None else 0},
+                       "checked": len(who) if who is not None else 0,
+                       "arm_recorded": sum(1 for u in pool if recorded.get(u))},
             "members_left_out": len(members), "settled": settled, "error": None, "source": "events",
             "last_exposure_at": _m._dt.datetime.fromtimestamp(last / 1000, _m._dt.timezone.utc).isoformat() if last else None,
             "computed_at": _m._dt.datetime.fromtimestamp(now_ms / 1000, _m._dt.timezone.utc).isoformat()}
 
 
-def exposure_log(ro):
-    """Registry ``exposure_log`` rows: couples per version per day and setup counts, no outcome."""
+def exposure_log(ro, read=False):
+    """Registry ``exposure_log`` rows: couples per version per day and setup counts, no outcome. The settled share is
+    added only once the test has been read."""
     out = [{"date": d, **v} for d, v in ro["exposure_by_day"].items()]
     if out:
         m = ro["mixing"]
-        out[-1].update(both_arms=m["both_arms"], repeat_accounts=m["repeat_accounts"], late_id=m["late_id"],
-                       settled=ro["settled"])
+        out[-1].update(late_id=m["late_id"])
+        if m.get("arm_recorded"):
+            out[-1]["both_arms"] = m["both_arms"]
+        if m.get("checked"):
+            out[-1]["repeat_accounts"] = m["repeat_accounts"]
+        if read:
+            out[-1]["settled"] = ro["settled"]
     return out
 
 
@@ -176,9 +183,11 @@ def main(argv=None):
         print("not a started split: " + a.id)
         return 1
     ro = read_events(entry, load(a.events), load(a.payments), days=a.days)
-    out = {"exposure_log": exposure_log(ro), "members_left_out": ro["members_left_out"], "mixing": ro["mixing"]}
     rd = readlock.read_date(entry)
-    if readlock.hidden(entry) or rd is None:
+    closed = readlock.hidden(entry) or rd is None
+    out = {"exposure_log": exposure_log(ro, read=not closed), "members_left_out": ro["members_left_out"],
+           "mixing": ro["mixing"]}
+    if closed:
         out["result"] = readlock.hidden_text(entry)
     else:
         out["results_entry"] = {"date": rd.isoformat(), "counts": ro["arms"]}

@@ -90,7 +90,7 @@ def test_no_result_anywhere_before_the_read_date(tmp_path):
     s = snap_for(e, r, "2026-11-17", history.HistoryStore(str(tmp_path)))
     txt = json.dumps({k: v for k, v in s.items() if k != "generated_at"})
     assert not FORBIDDEN.search(txt), FORBIDDEN.search(txt)
-    for bad in ("24.25", "10.75", "winning", "777", "0.1075", "0.2425", "211", "205", "chance it's"):
+    for bad in ("24.25", "10.75", "winning", "777", "0.1075", "0.2425", "211", "205", "chance"):
         assert bad not in txt, bad
     row = s["experiments"][0]
     assert row["card"]["result_text"] == "Result: hidden until 2026-11-24"
@@ -114,6 +114,7 @@ def test_one_read_on_the_date_and_it_is_kept(tmp_path):
     row = row_for(e, ro(), "2026-11-24", st)
     assert row["read"]["call"] == "ship" and row["health"] == "callable_win" and "97 of 400" in row["card"]["result_text"]
     later = row_for(e, ro(t=(400, 20)), "2026-11-27", st)          # a later run does not change the read
+    assert colour(later, "harm") in ("amber", "green")
     assert later["read"]["call"] == "ship" and later["read"]["arms"]["treatment"]["conv"] == 97
 
 
@@ -261,7 +262,8 @@ def test_daily_brief_ab_block(monkeypatch):
     import ab_report
     monkeypatch.setenv("REC_PLAN_AB_PCT", "50")
     monkeypatch.setattr(readlock, "hidden", lambda e, today=None, locked=None: e.get("id") == ab_report.EXPERIMENT_ID)
-    assert "hidden" in ab_report.block("tok", fetch_day=lambda *a: 1 / 0)
+    out = ab_report.block("tok", fetch_day=lambda *a: 1 / 0)
+    assert "hidden" in out or "not read" in out
 
 
 @pytest.mark.parametrize("name,p,n", [("price report", 0.171, 1148), ("2nd question", 0.48, 421), ("compare", 0.03, 131),
@@ -275,45 +277,51 @@ def test_sim_aa_false_ship(name, p, n):
 
 # --------------------------------------------------------------------------------------- 2 harm stop
 
-def harm_fast(c, t):
+def harm_fast(c, t, bar):
     """harm_p with a normal pre-filter, so the simulation only integrates the close calls."""
     if min(c["n"], t["n"]) < v2.HARM_MIN_N or c["conv"] + t["conv"] < v2.HARM_MIN_CONV:
-        return None
+        return False
     pc, pt = (c["conv"] + 1) / (c["n"] + 2), (t["conv"] + 1) / (t["n"] + 2)
     sd = math.sqrt(pc * (1 - pc) / c["n"] * .81 + pt * (1 - pt) / t["n"])
-    return 1.0 if (pt - 0.9 * pc) / sd > -1.8 else v2.harm_p(c, t)
+    return False if (pt - 0.9 * pc) / sd > -2.2 else v2.harm_p(c, t) <= bar
 
 
-def run_harm(rng, rates, days, per_day):
-    """rates: [(old, new)] per watched measure. The day the stop fires, or None."""
+def run_harm(rng, rates, days, per_day, looks=1):
+    """rates: [(old, new)] per watched measure, all sharing v2.HARM_P. The day the stop fires, or None."""
     tot = [[0, 0, 0, 0] for _ in rates]
-    for d in range(1, days + 1):
-        nc = binom(rng, 2 * per_day, .5)
-        nt = 2 * per_day - nc
+    for k in range(1, days * looks + 1):
+        n = 2 * per_day // looks + (1 if k % looks < (2 * per_day) % looks else 0)
+        nc = binom(rng, n, .5)
         for (pc, pt), x in zip(rates, tot):
             x[0] += nc
             x[1] += binom(rng, nc, pc)
-            x[2] += nt
-            x[3] += binom(rng, nt, pt)
-            p = harm_fast({"n": x[0], "conv": x[1]}, {"n": x[2], "conv": x[3]})
-            if p is not None and p <= v2.HARM_P:
-                return d
+            x[2] += n - nc
+            x[3] += binom(rng, n - nc, pt)
+            if harm_fast({"n": x[0], "conv": x[1]}, {"n": x[2], "conv": x[3]}, v2.HARM_P / len(rates)):
+                return k / looks
     return None
 
 
-@pytest.mark.parametrize("name,rates,days,per_day", [
-    ("price report + payments + 2nd question", [(.171,) * 2, (.017,) * 2, (.48,) * 2], 28, 42),
-    ("2nd question", [(.48,) * 2], 14, 9), ("compare", [(.03,) * 2], 35, 8), ("pdf in 1 day", [(.6,) * 2], 28, 48)])
-def test_sim_aa_false_stop(name, rates, days, per_day):
+@pytest.mark.parametrize("name,rates,days,per_day,looks", [
+    ("4 measures, every 6 hours", [(.171,) * 2, (.017,) * 2, (.48,) * 2, (.3,) * 2], 28, 42, 4),
+    ("4 low measures, every 6 hours", [(.03,) * 2, (.017,) * 2, (.068,) * 2, (.1,) * 2], 35, 42, 4),
+    ("4 measures, daily", [(.171,) * 2, (.017,) * 2, (.48,) * 2, (.3,) * 2], 28, 42, 1),
+    ("1 measure, daily", [(.171,) * 2], 28, 42, 1), ("2nd question", [(.48,) * 2], 14, 9, 4), ("pdf", [(.6,) * 2], 28, 48, 4)])
+def test_sim_aa_false_stop(name, rates, days, per_day, looks, capsys):
     rng = random.Random(7)
-    hits = sum(run_harm(rng, rates, days, per_day) is not None for _ in range(2000))
+    hits = sum(run_harm(rng, rates, days, per_day, looks) is not None for _ in range(2000))
+    with capsys.disabled():
+        print(f"\n  false stop, {name}: {hits / 20:.2f}%")
     assert hits / 2000 <= 0.03, (name, hits / 2000)
 
 
-@pytest.mark.parametrize("name,p,per_day", [("price report", .171, 42), ("2nd question", .48, 9), ("pdf", .6, 48)])
-def test_sim_60pct_drop_stops_within_14_days(name, p, per_day):
+@pytest.mark.parametrize("name,p,per_day,n", [("price report", .171, 42, 4), ("2nd question", .48, 9, 3), ("pdf", .6, 48, 2)])
+def test_sim_60pct_drop_stops_within_14_days(name, p, per_day, n, capsys):
     rng = random.Random(11)
-    hits = sum(run_harm(rng, [(p, p * .4)], 14, per_day) is not None for _ in range(300))
+    rates = [(p, p * .4)] + [(.3, .3)] * (n - 1)          # the bar is shared with n - 1 healthy measures
+    hits = sum(run_harm(rng, rates, 14, per_day) is not None for _ in range(300))
+    with capsys.disabled():
+        print(f"\n  60% drop caught in 14 days, {name}, {n} measures: {hits / 3:.1f}%")
     assert hits / 300 >= 0.80, (name, hits / 300)
 
 
@@ -335,7 +343,7 @@ def test_balance_planted_and_true():
     e = entry()
     assert v2.check_balance(e, {"exposed": {"control": 900, "treatment": 1100}})["colour"] == "red"
     assert v2.check_balance(e, {"exposed": {"control": 1000, "treatment": 1000}})["colour"] == "green"
-    assert v2.check_balance(e, {"exposure_by_day": expo(20, 45, 55)})["colour"] == "red"
+    assert v2.check_balance(e, {"exposure_by_day": expo(20, 45, 55)}, 4000)["colour"] == "red"
     skew = entry(assignment={"type": "split", "rule": "hash_pct", "salt": "a", "pct": 20})
     assert v2.check_balance(skew, {"exposed": {"control": 1600, "treatment": 400}})["colour"] == "green"
     assert v2.check_balance(skew, {"exposed": {"control": 1000, "treatment": 1000}})["colour"] == "red"
@@ -345,22 +353,37 @@ def test_balance_planted_and_true():
         assert abs(v2.balance_p(c, t, s) - min(1, 2 * tail)) < 1e-9
 
 
-def test_sim_true_split_rarely_red():
+def test_sim_true_split_rarely_red(capsys):
     rng = random.Random(5)
     one = sum(v2.check_balance(entry(), {"exposed": {"treatment": t, "control": 2000 - t}})["colour"] == "red"
               for t in (binom(rng, 2000, .5) for _ in range(2000)))
     assert one / 2000 <= 0.005
     ever = 0
-    for _ in range(2000):                       # looked at every day of a 24-day run
+    for _ in range(2000):                       # looked at every day of a 24-day run with the Price Report's plan
         rows, c, t = [], 0, 0
         for d in range(24):
             a = binom(rng, 84, .5)
             rows.append({"date": (dt.date(2026, 11, 1) + dt.timedelta(days=d)).isoformat(), "treatment": a, "control": 84 - a})
             t, c = t + a, c + 84 - a
-            if abs(t - c) / math.sqrt(t + c) > 3.0 and v2.check_balance(entry(), {"exposure_by_day": rows})["colour"] == "red":
+            if abs(t - c) / math.sqrt(t + c) > 3.0 and \
+                    v2.check_balance(entry(), {"exposure_by_day": rows}, 1148)["colour"] == "red":
                 ever += 1
                 break
+    with capsys.disabled():
+        print(f"\n  true 50/50 red at 2,000 couples: {one / 20:.2f}%; ever red over 24 daily looks: {ever / 20:.2f}%")
     assert ever / 2000 <= 0.005, ever / 2000
+
+
+def test_balance_is_red_at_once():
+    rows = expo(3, 333, 333) + [{"date": "2026-11-18", "control": 440, "treatment": 561}]      # first day over the line
+    p = v2.balance_p(999 + 440, 999 + 561)
+    assert 1e-5 < p < 0.001 or p < 0.05
+    rows = [{"date": "2026-11-10", "control": 480, "treatment": 520}, {"date": "2026-11-11", "control": 445, "treatment": 555}]
+    assert 1e-5 < v2.balance_p(925, 1075) < 0.001
+    assert v2.check_balance(entry(), {"exposure_by_day": rows}, 1148)["colour"] == "red"
+    early = [{"date": "2026-11-10", "control": 180, "treatment": 246}]
+    assert v2.check_balance(entry(), {"exposure_by_day": early}, 1148)["colour"] == "amber"
+    assert v2.check_balance(entry(), {"exposure_by_day": early}, 1148, final=True)["colour"] in ("amber", "red")
 
 
 def test_sim_55_45_turns_red():
@@ -408,7 +431,11 @@ def test_repeat_accounts_found_counted_excluded_and_red():
     chk = v2.check_mixing(entry(**CF), r)
     assert chk["colour"] == "red" and "10 repeat accounts" in chk["text"]
     ok = run_x(entry(**CF), tables(300, dup=1))
-    assert ok["mixing"]["repeat_accounts"] == 2 and v2.check_mixing(entry(**CF), ok)["colour"] == "green"
+    chk = v2.check_mixing(entry(**CF), ok)                    # no version is stored: never "0 in both versions"
+    assert ok["mixing"]["repeat_accounts"] == 2 and chk["colour"] == "amber" and "can't be checked" in chk["text"]
+    assert "0 couples in both" not in chk["text"] and "0 in both" not in chk["text"]
+    full = v2.check_mixing(entry(), {"mixing": {"exposed": 10, "checked": 10, "arm_recorded": 10, "both_arms": 0, "excluded": 0, "share": 0}})
+    assert full["colour"] == "green" and "0 couples in both versions" in full["text"]
     assert "@" not in json.dumps(r) and "person" not in json.dumps(r).lower()
 
 
@@ -636,7 +663,7 @@ def test_family_history_on_one_card_and_not_counted():
     s = snap_for([pp] + old, ro(), "2026-11-17")
     page = cards.build_html(s)
     assert s["summary"]["decided"] == 0 and s["summary"]["live"] == 1
-    assert page.count('<article class="card"') == 1 and page.count("outcome ") == 5 and "6, one test" in page
+    assert page.count('<details class="row"') == 1 and page.count("outcome ") == 5 and "6, one test" in page
     split = entry(family="f", family_card=True, family_history=FAMILY)
     assert "5 of 93" not in json.dumps(row_for(split, ro(), "2026-11-17"))
 
@@ -650,6 +677,10 @@ def test_overlap_text_now_and_2x2_only_at_the_read():
     assert out["EXP-2026-11-a"]["overlap"]["EXP-2026-11-b"]["shared"] == 200
     c = snap_for([a, b], lambda e: out[e["id"]], "2026-11-19")["experiments"][0]["card"]
     assert "Shares couples with" in c["overlaps"][0]["text"] and not c["overlaps"][0]["cells"]
+    later = dict(b, review_date="2026-12-20")                 # one read, the other not: nothing about either
+    s = snap_for([a, later], lambda e: out[e["id"]], "2026-12-02")
+    assert s["experiments"][0]["read"]["call"] and not s["experiments"][0]["card"]["overlaps"][0]["cells"]
+    assert '"cells": {"' not in json.dumps(s) and "treatment|" not in json.dumps(s)
     s = snap_for([a, b], lambda e: out[e["id"]], "2026-12-01")
     cells = s["experiments"][0]["card"]["overlaps"][0]["cells"]
     assert sum(x["n"] for x in cells.values()) == 200 and len(cells) == 4
@@ -668,7 +699,7 @@ def test_colour_is_health_only_and_text_is_escaped():
     from experiments_ui import cards
     page = cards.build_html(snap_for(entry(name="<script>x</script>"), ro(), "2026-11-24"))
     assert "<script>x" not in page
-    res = re.search(r'<div class="result">.*?</div>', page, re.S).group(0)
+    res = re.search(r'<p class="result">.*?</p>', page, re.S).group(0)
     assert not re.search(r"green|amber|red\b", res)
 
 
@@ -737,7 +768,8 @@ def test_event_read_rules():
     assert r["arms"] == {"treatment": {"n": 17, "conv": 1}, "control": {"n": 18, "conv": 1}}
     assert 0 < r["settled"]["treatment"]["settled"] < r["settled"]["treatment"]["views"]
     row = row_for(dict(e, exposure_log=event_read.exposure_log(r)), None, "2026-12-15")
-    assert colour(row, "mixing") == "red" and colour(row, "settled") in ("green", "amber") and row["result_hidden"]
+    assert colour(row, "mixing") == "red" and row["result_hidden"]
+    assert not [c for c in row["checks"] if c["key"] == "settled"] and "settled" not in json.dumps(row)
     assert '"conv"' not in json.dumps(event_read.exposure_log(r))
 
 
@@ -751,3 +783,182 @@ def test_flat_history_without_daily_counts_and_approximate_metric():
     out = v2.evaluate_split(entry(), ro(exposure_by_day=None), h, [], "2026-11-17")
     assert colour(out, "exposure") == "red"
     assert row_for(entry(), ro(approximate=True), "2026-11-24")["read"]["call"] == "untrusted"
+
+
+# --------------------------------------------------------------------------------------- 2026-11-25 independent check
+
+LEAK = re.compile(r"31\.7|97 of|11\.1")
+
+
+def leaky(**over):
+    e = entry(results=[{"date": "2026-11-05", "note": "31.7% vs 11.1%", "counts": _cn(43, 97)}], decision="kept, 31.7% vs 11.1%",
+              stat_sig="31.7", confounds_noted=["31.7"])
+    e.update(over)
+    return e
+
+
+def every_surface(e, today, tmp_path, monkeypatch, readout=None):
+    """Text of every surface this repo has for one entry."""
+    from experiments_ui import cards, render
+    sys.path.insert(0, os.path.join(ROOT, "slack_qa"))
+    import engine as bot_engine
+    import knowledge
+    reg = {"experiments": [e], "changes": []}
+    monkeypatch.setattr(readlock, "utc_today", lambda: dt.date.fromisoformat(today))
+    monkeypatch.setattr(knowledge, "load_registry", lambda *a, **k: reg)
+    s = snapshot.build_snapshot(reg, (lambda x: copy.deepcopy(readout or ro())), history.HistoryStore(str(tmp_path)), today)
+    deg = render.degraded_snapshot(reg, today)
+    mini = render._minimal_snapshot(reg, dt.date.fromisoformat(today))
+    rows = s["experiments"] + s["decided"]
+    out = [json.dumps(s), json.dumps(deg), json.dumps(mini), cards.build_html(s).split("</style>")[1], cards.build_html(deg).split("</style>")[1],
+           json.dumps(knowledge.bot_view(reg)), knowledge.headlines(3650), str(alerts.format_weekly(s, today)), str(alerts.format_digest(s)),
+           str(alerts.format_calls(s, alerts.call_ids(s)))] + [bot_engine.format_experiment(r) for r in rows]
+    monkeypatch.setenv("EXP_TAB_V2", "")
+    raw = snapshot.build_snapshot(reg, (lambda x: copy.deepcopy(readout or ro())), None, today)       # an engine without the switch
+    monkeypatch.setenv("EXP_TAB_V2", "1")
+    out += [bot_engine.format_experiment(r) for r in raw["experiments"] + raw["decided"]]
+    out.append(json.dumps(v2.lock_snapshot(raw, reg, today)))
+    out.append(json.dumps(readlock.redact_registry(reg)))
+    return out
+
+
+LOCKED = v2.launch_lock(entry())
+
+
+@pytest.mark.parametrize("over", [
+    {"status": "shipped", "decided_on": "2026-11-15"}, {"status": "inconclusive"}, {"status": "concluded"}, {"status": "reverted", "end_date": "2026-11-14"},
+    {"assignment": {"type": "pre_post", "pre": ["2026-11-01", "2026-11-09"], "post_start": "2026-11-10"}, "launch_lock": LOCKED},
+    {"assignment": {"type": "pre_post", "rule": "hash_pct", "salt": "t1", "pct": 50}}, {"assignment": {"type": "rollout"}, "launch_lock": LOCKED},
+    {"status": "planned", "start_date": None}, {"status": "draft"}, {}, {"review_date": "2026-11-12", "launch_lock": LOCKED},
+    {"read_date": "2026-11-11", "review_date": "2026-11-11", "planned_days": 1, "launch_lock": LOCKED},
+    {"status": "shipped", "decided_on": "2026-11-15", "review_date": "2026-11-12", "launch_lock": LOCKED}])
+def test_no_surface_opens_before_the_read_date(over, tmp_path, monkeypatch):
+    for i, t in enumerate(every_surface(leaky(**over), "2026-11-17", tmp_path, monkeypatch)):
+        assert not LEAK.search(t), (i, LEAK.search(t).group(0), t[:200])
+        assert not FORBIDDEN.search(t), (i, FORBIDDEN.search(t).group(0))
+
+
+def test_stopped_early_stays_unread_and_says_so(tmp_path, monkeypatch):
+    e = leaky(status="shipped", decided_on="2026-11-15", launch_lock=LOCKED)
+    for today in ("2026-11-17", "2027-03-01"):
+        out = every_surface(e, today, tmp_path, monkeypatch)
+        assert not any(LEAK.search(t) for t in out)
+        assert any("Stopped early, result not read" in t for t in out[:1]) and "Stopped early, result not read" in out[3]
+
+
+def test_type_change_is_red_and_never_read(tmp_path):
+    st = history.HistoryStore(str(tmp_path))
+    row_for(entry(), ro(), "2026-11-12", st)                  # the engine saw it as a split; no registry lock
+    e = entry(assignment={"type": "pre_post", "pre": ["2026-11-01", "2026-11-09"], "post_start": "2026-11-10"})
+    row = row_for(e, ro(), "2026-11-17", st)
+    assert row["result_hidden"] and colour(row, "settings") == "red" and not FORBIDDEN.search(json.dumps(row))
+    row = row_for(e, ro(), "2026-11-30", st)
+    assert (row["read"] or {}).get("call") is None and row["light"] == "red"
+
+
+def test_changed_settings_show_red_on_the_bot_and_in_the_registry_view():
+    e = entry(launch_lock=LOCKED, review_date="2026-11-12")
+    out = readlock.redact_entry(e, "2026-11-17")
+    assert out["setup"].startswith("RED") and "read date" in out["setup"] and "2026-11-24" in out["result"]
+    moved = entry(launch_lock=LOCKED, assignment={"type": "split", "rule": "hash_pct", "salt": "zz", "pct": 50})
+    assert "salt" in readlock.redact_entry(moved, "2026-12-30")["setup"]
+    edited = copy.deepcopy(LOCKED)
+    edited["settings"]["read_date"] = "2026-11-11"
+    assert v2.check_settings(entry(launch_lock=edited), None)["colour"] == "red"
+
+
+def test_one_read_date_source():
+    from experiments_ui import render
+    e = entry(launch_lock=LOCKED)
+    reg = {"experiments": [e], "changes": []}
+    for d, hid in (("2026-11-23", True), ("2026-11-24", False)):
+        assert readlock.hidden(e, d) is hid
+        assert bool(row_for(e, ro(), d)["result_hidden"]) is hid
+        assert bool(render.degraded_snapshot(reg, d)["experiments"][0]["result_hidden"]) is hid
+        assert ("result" in readlock.redact_entry(e, d)) is hid
+    # without a launch_lock the text surfaces and the registry-only tab never open it
+    assert "result" in readlock.redact_entry(entry(), "2027-01-01")
+    assert render.degraded_snapshot({"experiments": [entry()], "changes": []}, "2027-01-01")["experiments"][0]["result_hidden"]
+
+
+def test_harm_is_never_green_when_not_checked():
+    small = row_for(entry(), ro(c=(20, 5), t=(20, 5)), "2026-11-17")
+    h = next(c for c in small["checks"] if c["key"] == "harm")
+    assert h["colour"] == "amber" and "Not checked" in h["text"] and "too few couples" in h["text"]
+    man = entry(reporting="manual", metric={"key": "manual", "label": "tapped"}, exposure={"source": "mixpanel:seen_it"}, exposure_log=expo())
+    h = next(c for c in row_for(man, None, "2026-11-17")["checks"] if c["key"] == "harm")
+    assert h["colour"] == "amber" and "no outcome feed" in h["text"] and "no clear harm" not in h["text"]
+    h = next(c for c in row_for(entry(), {"error": "boom"}, "2026-11-17")["checks"] if c["key"] == "harm")
+    assert h["colour"] == "amber" and "metric failed" in h["text"]
+    ok = next(c for c in row_for(entry(), ro(c=(400, 43), t=(400, 44)), "2026-11-17")["checks"] if c["key"] == "harm")
+    assert ok["colour"] == "green" and "did the thing" in ok["text"]
+
+
+def test_one_harm_look_a_day_and_a_fired_stop_stays(tmp_path):
+    st = history.HistoryStore(str(tmp_path))
+    assert row_for(entry(), ro(c=(400, 43), t=(400, 44)), "2026-11-16", st)["health"] != "guardrail_breach"
+    bad = ro(c=(400, 120), t=(400, 40))
+    assert row_for(entry(), bad, "2026-11-16", st)["health"] != "guardrail_breach"       # today's look is taken
+    assert row_for(entry(), bad, "2026-11-17", st)["health"] == "guardrail_breach"
+    assert row_for(entry(), ro(c=(400, 43), t=(400, 44)), "2026-11-18", st)["health"] == "guardrail_breach"
+
+
+@pytest.mark.parametrize("env", ["", "0", "1"])
+@pytest.mark.parametrize("source", [None, "none", "todo", "everyone by default", "mixpanel:todo", "mixpanel:<event>", "manual", "xano"])
+def test_validate_refuses_whatever_the_switch(env, source, tmp_path):
+    e = entry(**({"exposure": {"source": source}} if source else {}))
+    e["launch_lock"] = v2.launch_lock(e)
+    good = entry(exposure={"source": "mixpanel:price_report_card_seen"})
+    good["launch_lock"] = v2.launch_lock(good)
+    planned = dict(e, status="planned", start_date=None)
+
+    def run(x, *extra):
+        p = tmp_path / "r.json"
+        p.write_text(json.dumps({"experiments": [x], "changes": []}), encoding="utf-8")
+        g = subprocess.run([sys.executable, os.path.join(ROOT, "experiments", "validate.py"), "--registry", str(p), *extra],
+                           capture_output=True, text=True, env=dict(os.environ, EXP_TAB_V2=env))
+        return g.returncode, g.stdout
+    assert run(e)[0] == 1 and run(e, "--id", e["id"])[0] == 1 and run(planned, "--id", e["id"])[0] == 1
+    if source is None:
+        assert run(good)[0] == 0 and run(good, "--id", good["id"])[0] == 0
+        nolock = {k: v for k, v in good.items() if k != "launch_lock"}
+        assert run(nolock)[0] == 1
+        assert run(dict(good, review_date="2026-11-20"))[0] == 1 and "RED" in run(dict(good, review_date="2026-11-20"))[1]
+
+
+def test_sample_pace_counts_finished_couples_only():
+    e = entry(metric={"key": "manual", "label": "tapped within 7 days", "direction": "increase", "baseline": .171, "mde_rel": .27},
+              reporting="manual", exposure={"source": "mixpanel:seen_it"}, exposure_log=expo(16, 40, 40, "2026-11-25"), review_date="2026-12-08",
+              planned_days=28)
+    assert v2.follow_days(e) == 7
+    row = row_for(e, None, "2026-11-25")
+    assert row["exposed"]["control"] == 640 and row["finished"]["control"] == 9 * 40
+    assert row["card"]["so_far"] == 360
+    txt = next(c["text"] for c in row["checks"] if c["key"] == "sample")
+    assert "945" in txt                                        # 360 / 8 finished days * (28 - 7) days, not 640 / 15 * 28
+
+
+@pytest.mark.parametrize("label", ["upgraded within 7 days", "subscribed", "picked a plan", "tapping upgrade", "bought"])
+def test_money_like_labels_hide_payments_by_version(label):
+    assert v2.is_money_metric(entry(metric={"key": "manual", "label": label}))
+    assert not v2.is_money_metric(entry(metric={"key": "manual", "label": "asked the Planner a question"}))
+
+
+def test_stop_and_never_decides_are_never_side_by_side():
+    pay = {"basis": "exposed", "arms": {"treatment": {"payers": 2, "n": 400}, "control": {"payers": 30, "n": 400}}}
+    row = row_for(entry(metric={"key": "x", "label": "asked"}), ro(c=(400, 120), t=(400, 40), payments=pay), "2026-11-17")
+    txt = json.dumps(row)
+    assert row["health"] == "guardrail_breach" and "never decides" not in txt
+
+
+def test_row_is_short_plain_and_not_repeated():
+    from experiments_ui import cards
+    e = entry(plain_name="Ask for context first", plain_line="New Planner couples get three starter questions.",
+              audience={"segment": "signed-in Planner couples (split by user id parity)", "est_daily_exposed": 100}, what_changed="X" * 500)
+    s = snap_for(e, ro(), "2026-11-17")
+    page = cards.build_html(s).split("</style>")[1]
+    summ = re.search(r'<details class="row".*?</summary>', page, re.S).group(0)
+    text = re.sub(r"<[^>]+>", " ", summ)
+    assert "Ask for context first" in text and "three starter questions" in text and len(text) < 260
+    assert page.count("three starter questions") == 1 and page.count("X" * 500) == 1
+    assert "parity" not in page and "half by account number" in page

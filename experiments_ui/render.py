@@ -98,7 +98,8 @@ def _v2_on():
 
 def _split_like(e):
     a = e.get("assignment")
-    return (isinstance(a, dict) and str(a.get("type")) == "split") or "split" in str(e.get("design") or "").lower() \
+    return "launch_lock" in e or (isinstance(a, dict) and (str(a.get("type")) == "split" or a.get("salt") or a.get("rule"))) \
+        or "split" in str(e.get("design") or "").lower() \
         or str(e.get("design") or "").lower().startswith("a/b")
 
 
@@ -113,6 +114,10 @@ def _minimal_snapshot(registry, today):
             continue
         name = e.get("name") or e.get("what") or e.get("id") or "(unnamed)"
         status = str(e.get("status") or "").lower()
+        if status in decided_status and _v2_on() and _split_like(e):
+            decided.append({"id": e.get("id"), "name": name, "status": "decided", "outcome": None, "decided_on": e.get("decided_on"),
+                            "takeaway": "Result not shown without the engine", "themes": []})
+            continue
         if status in decided_status:
             res = e.get("results") if isinstance(e.get("results"), list) else []
             last = res[-1] if res and isinstance(res[-1], dict) else {}
@@ -133,7 +138,7 @@ def _minimal_snapshot(registry, today):
                "start_date": e.get("start_date"), "review_date": e.get("review_date"),
                "results": [r for r in (e.get("results") or []) if isinstance(r, dict)],
                "spec_issues": [], "overlapping_changes": [], "health": None, "stale": False}
-        if _v2_on() and _split_like(e) and row["lifecycle"] not in ("planned", "draft"):
+        if _v2_on() and _split_like(e):
             row.update(results=[], result_hidden=True, result_text="Result: hidden until its read date")
         if status == "live" and sd:
             row["days_running"] = (today - sd).days

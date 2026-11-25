@@ -162,12 +162,23 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                 raise TypeError(f"registry entry is a {type(raw).__name__}, not an object")
             e = spec.normalise(raw)
             issues = spec.validate(raw)
+            lock = None
+            if v2on and history_store is not None and hasattr(history_store, "load_lock"):
+                try:
+                    lock = history_store.load_lock(eid)
+                except Exception as exc:
+                    errors.append({"id": eid, "stage": "read lock", "error": f"{type(exc).__name__}: {exc}"})
+            split = readlock.is_split(e, lock) if v2on else e.get("_assignment_type") == "split"
+            if v2on:
+                e["_split"] = split
             if e["_lifecycle"] == "decided":
                 decided.append(_decided_row(e))
                 if v2on and e.get("family"):
                     decided[-1]["family"] = e["family"]
+                if v2on and readlock.hidden(e, today_d, lock):
+                    from . import v2
+                    v2.lock_decided(decided[-1], e, lock)
                 continue
-            split = e.get("_assignment_type") == "split"
             row = {"id": eid, "name": e.get("name"), "status": e.get("status"),
                    "lifecycle": e["_lifecycle"], "tier": e.get("tier"),
                    "tier_effective": spec.tier(e), "themes": e.get("themes") or [],
@@ -207,7 +218,7 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                         hist = []
                 hist = sorted((x for x in hist if isinstance(x, dict)), key=lambda x: str(x.get("date")))
                 if v2on and split:
-                    h = _v2_evaluate(e, readout, hist, changes, today_d, issues, history_store, errors)
+                    h = _v2_evaluate(e, readout, hist, changes, today_d, issues, history_store, errors, lock)
                 else:
                     h = _health.evaluate(e, readout, hist, changes, today_d, spec_issues=issues)
             plan = (h or {}).get("sample_plan") or (spec.plan(e) if e.get("_assignment_type") != "rollout" else None)
@@ -234,13 +245,20 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                             "overlapping_changes": []})
             if v2on:
                 entries[eid] = e
+                for k in ("plain_name", "plain_line"):
+                    if e.get(k):
+                        row[k] = e[k]
                 if split and h:
                     for k in ("read_date", "result_hidden", "result_text", "read", "checks", "light", "exposed",
-                              "harm", "sample_plan"):
+                              "finished", "harm", "sample_plan"):
                         if k in h:
                             row[k] = h[k]
-                elif readlock.hidden(e, today_d):        # a running status the engine doesn't score: still locked
-                    row.update(result_hidden=True, result_text=readlock.hidden_text(e))
+                elif readlock.hidden(e, today_d, lock):   # planned, or a status the engine doesn't score: still locked
+                    row.update(result_hidden=True, result_text=readlock.hidden_text(e, lock))
+                if split and metric_runner is None and row.get("lifecycle") not in ("planned", "draft") and \
+                        not readlock.has_lock(e) and lock is None and not row.get("result_hidden"):
+                    # registry-only view: no engine copy and no launch_lock to check against, so nothing is opened
+                    row.update(result_hidden=True, result_text="Result: hidden (no launch_lock in the registry)", read=None)
             row.update(calendar_fields(e))
             row["verdict"] = _verdict.build_verdict(row, today_d)
             experiments.append(row)
@@ -290,22 +308,26 @@ def _v2_manual(raw, readout, metric_runner):
     return dict(readout, **{k: ro[k] for k in _V2_MANUAL_KEYS if k in ro})
 
 
-def _v2_evaluate(e, readout, hist, changes, today_d, issues, store, errors):
+def _v2_evaluate(e, readout, hist, changes, today_d, issues, store, errors, lock=None):
     """health.evaluate for a split with the stored launch settings and the stored read (engine volume)."""
     from . import v2
     eid = e.get("id")
-    lock = read = None
+    read = look = None
     try:
         if store is not None and hasattr(store, "load_lock"):
-            lock = store.load_lock(eid)
             if lock is None and e["_lifecycle"] == "live":
                 lock = v2.launch_lock(e, today_d)
                 store.save_lock(eid, lock)
             read = store.load_read(eid)
+            look = store.load_look(eid)
     except Exception as exc:
         errors.append({"id": eid, "stage": "read lock", "error": f"{type(exc).__name__}: {exc}"})
-    h = _health.evaluate(e, readout, hist, changes, today_d, spec_issues=issues, lock=lock, read=read)
+    h = _health.evaluate(e, readout, hist, changes, today_d, spec_issues=issues, lock=lock, read=read,
+                         look=look)
     try:
+        lk = h.get("look") or {}
+        if store is not None and hasattr(store, "save_look") and (lk.get("checked") or lk.get("fired")):
+            store.save_look(eid, lk)
         r = h.get("read") or {}
         if r.get("call") and read is None and store is not None and hasattr(store, "save_read"):
             store.save_read(eid, dict(r, read_at=_utcnow().isoformat().replace("+00:00", "Z")))
@@ -325,6 +347,7 @@ def _v2_finish(snap, entries, today_d):
         if fam in owner and owner[fam] != r.get("id"):
             r["folded_into"] = owner[fam]
     v2.attach_overlaps(rows, entries)
+    v2.strip_cells(rows)
     for r in rows:
         e = entries.get(r.get("id"))
         if e is None:
@@ -335,6 +358,7 @@ def _v2_finish(snap, entries, today_d):
             snap["errors"].append({"id": r.get("id"), "stage": "card", "error": f"{type(exc).__name__}: {exc}"})
         if r.get("result_hidden"):
             v2.lock_row(r, e, r.get("read_date"))
+            r["verdict"] = v2.build_verdict(r) if r.get("lifecycle") not in ("planned", "draft") else r.get("verdict")
         if e.get("family_history"):
             r["family_history"] = readlock.public_history(e, today_d, r.get("read_date"))
 

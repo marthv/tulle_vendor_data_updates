@@ -11,6 +11,7 @@ No extra tables or services: the same read-only, budgeted table views as metrics
 from __future__ import annotations
 
 import copy
+import re
 
 from . import metrics as _m
 from . import readlock
@@ -56,13 +57,32 @@ def _planner_surfaces(entry):
     return out or None
 
 
+_SOURCE = re.compile(r"^(xano:table(1|79)|mixpanel:(?P<event>[a-z0-9][a-z0-9 _.\-]{2,}))$")
+_PLACEHOLDER = re.compile(r"\b(todo|tbd|tbc|none|n/?a|null|unknown|event|everyone|everybody|all|any|default|placeholder|"
+                          r"fixme|xxx|test|later)\b")
+
+
+def valid_source(source):
+    """A real record of who saw the test: xano:table1 (sign-ups), xano:table79 (Planner use) or mixpanel:<event name>."""
+    g = _SOURCE.match(str(source or "").strip().lower())
+    return bool(g) and not (g.group("event") and _PLACEHOLDER.search(g.group("event").replace("_", " ").replace("-", " ")))
+
+
+def explicit_source(entry):
+    ex = (entry or {}).get("exposure")
+    return ex if isinstance(ex, str) else (ex or {}).get("source") if isinstance(ex, dict) else None
+
+
 def exposure_rule(entry):
-    """{"source", "surfaces", "kinds", "explicit"} or None when nothing says who was exposed."""
+    """{"source", "surfaces", "kinds", "explicit"} or None when nothing says who was exposed ("none", "todo",
+    "everyone by default" and the like say nothing)."""
     e = entry if isinstance(entry, dict) else {}
     ex = e.get("exposure")
-    if isinstance(ex, str) and ex.strip():
+    if isinstance(ex, str):
         ex = {"source": ex}
-    explicit = isinstance(ex, dict) and bool(str(ex.get("source") or "").strip())
+    explicit = ex is not None and ex != {}
+    if explicit and not (isinstance(ex, dict) and valid_source(ex.get("source"))):
+        return None
     if not explicit and e.get("id") in KNOWN_EXPOSURE:
         ex = KNOWN_EXPOSURE[e["id"]]
     if isinstance(ex, dict) and str(ex.get("source") or "").strip():
@@ -211,7 +231,8 @@ def prepare_units(units, window, mark=True):
     mixing = {"exposed": len(seen), "switched": len(switch), "repeat_accounts": len(repeat),
               "repeat_couples_both_arms": across, "both_arms": len(switch) + across, "excluded": len(bad),
               "share": round(len(bad) / len(seen), 6) if seen else 0.0,
-              "checked": sum(1 for u in seen if who.get(u)), "extra_rows": rows - len(seen), "forced": forced_n}
+              "checked": sum(1 for u in seen if who.get(u)), "arm_recorded": sum(1 for u in seen if rec.get(u)),
+              "extra_rows": rows - len(seen), "forced": forced_n}
     if mark and window.get("primary"):
         window["_exposed"] = {u["uid"]: (u["anchor"], seen[u["uid"]]) for u in kept if u["uid"] not in bad}
         window["_units"] = {u["uid"]: (seen[u["uid"]], bool(u.get("conv")), bool(u.get("pending")))

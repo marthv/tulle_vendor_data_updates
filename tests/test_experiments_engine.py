@@ -32,7 +32,7 @@ def v2_entry(**over):
         "assignment": {"type": "split", "rule": "hash_pct", "salt": "t1", "pct": 50},
         "start_date": "2026-11-16", "planned_days": 14, "review_date": "2026-12-05", "max_days": 42,
         "reporting": "auto", "rollback": "flag off", "links": ["abc123"],
-        "results": [], "framework_version": 2,
+        "results": [], "framework_version": 2, "exposure": {"source": "mixpanel:planner_click_seen"},
     }
     for k, v in over.items():
         e[k] = v
@@ -605,6 +605,10 @@ class TestValidateCli(unittest.TestCase):
     SCRIPT = os.path.join(ROOT, "experiments", "validate.py")
 
     def run_cli(self, payload, raw=False, extra=()):
+        if not raw:                     # live splits need the launch_lock of their own settings (FRAMEWORK section 14)
+            from experiments_engine import v2
+            for e in payload.get("experiments") or []:
+                e.setdefault("launch_lock", v2.launch_lock(e))
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "reg.json")
             with open(p, "w", encoding="utf-8") as f:

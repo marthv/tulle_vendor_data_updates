@@ -83,23 +83,26 @@ BOT_DROP_KEYS = frozenset({
 })
 
 
+def readlock_module():
+    if str(REPO) not in sys.path:
+        sys.path.append(str(REPO))
+    from experiments_engine import readlock
+    return readlock
+
+
 def _read_locked(reg: dict) -> dict:
     """EXP_TAB_V2: a running split's results, notes and read-outs never reach a prompt before its read date. If the
     lock module is missing the bot sees no split's results at all (fail closed)."""
     if str(os.environ.get("EXP_TAB_V2", "")).strip().lower() not in ("1", "on", "true", "yes"):
         return reg
     try:
-        if str(REPO) not in sys.path:
-            sys.path.append(str(REPO))
-        from experiments_engine import readlock
-        return readlock.redact_registry(reg)
+        return readlock_module().redact_registry(reg)
     except Exception:  # noqa: BLE001
         keep = ("id", "name", "status", "start_date", "review_date", "read_date")
         out = dict(reg)
-        out["experiments"] = [
-            {k: e[k] for k in keep if k in e} if isinstance(e, dict) and str(e.get("status")) not in (
-                "shipped", "reverted", "shelved", "inconclusive", "concluded", "ended", "decided", "planned", "draft")
-            else e for e in reg.get("experiments", [])]
+        out["experiments"] = [{k: e[k] for k in keep if k in e} if isinstance(e, dict) and (
+            "launch_lock" in e or "split" in json.dumps(e.get("assignment") or e.get("design") or "").lower()) else e
+            for e in reg.get("experiments", [])]
         return out
 
 

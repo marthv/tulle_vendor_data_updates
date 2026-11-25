@@ -398,7 +398,8 @@ def _total_n(readout):
 # evaluate
 # ---------------------------------------------------------------------------
 
-def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues=None, lock=None, read=None):
+def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues=None, lock=None, read=None,
+             look=None):
     """Health for one experiment (section 6). See module docstring for the rule details.
 
     entry      registry entry (raw or normalised)
@@ -415,9 +416,9 @@ def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues
     readout = readout if isinstance(readout, dict) else {}
     history = [h for h in (history or []) if isinstance(h, dict)]
     atype = e.get("_assignment_type")
-    if readlock.enabled() and atype == "split" and e.get("_lifecycle") in ("live", "paused"):
+    if readlock.enabled() and readlock.is_split(e, lock) and e.get("_lifecycle") in ("live", "paused"):
         from . import v2  # EXP_TAB_V2: read lock, harm stop, balance and setup checks
-        return v2.evaluate_split(e, readout, history, changes, today, spec_issues, lock=lock, read=read)
+        return v2.evaluate_split(e, readout, history, changes, today, spec_issues, lock=lock, read=read, look=look)
     rule = spec.decision_rule(e)
     issues = spec_issues if spec_issues is not None else spec.validate(e)
 

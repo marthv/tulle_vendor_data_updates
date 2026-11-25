@@ -407,7 +407,7 @@ def build_verdict(row, today=None):
 
 
 def _build(row):
-    if "result_hidden" in row:            # EXP_TAB_V2 split rows only: one read on a fixed date
+    if "result_hidden" in row and row.get("lifecycle") not in ("planned", "draft"):   # EXP_TAB_V2 split rows only: one read on a fixed date
         from . import v2
         return v2.build_verdict(row)
     lifecycle = row.get("lifecycle")

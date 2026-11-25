@@ -21,6 +21,7 @@ DEFAULT_DIR = "/data/experiments"
 READOUTS = "readouts.jsonl"
 ALERTS = "alerts_sent.json"
 LOCKS = "settings_lock.json"      # EXP_TAB_V2: launch settings first seen live, per experiment
+LOOKS = "harm_looks.json"         # EXP_TAB_V2: today's harm look per split (one a day); a fired stop stays
 READS = "reads.json"              # EXP_TAB_V2: the one read of each split, kept as first taken
 
 ROW_FIELDS = ("health", "stale", "days_running", "progress", "projected_days", "overdue_days")
@@ -164,6 +165,16 @@ class HistoryStore:
 
     def save_lock(self, exp_id, lock):
         return self._put_once(LOCKS, exp_id, lock)
+
+    def load_look(self, exp_id):
+        return self._json(LOOKS).get(str(exp_id))
+
+    def save_look(self, exp_id, look):
+        d = self._json(LOOKS)
+        if (d.get(str(exp_id)) or {}).get("fired"):
+            return                                  # a stop that fired stays fired
+        d[str(exp_id)] = look
+        _atomic_write(os.path.join(self.dir, LOOKS), json.dumps(d, indent=1, sort_keys=True, default=str))
 
     def load_read(self, exp_id):
         return self._json(READS).get(str(exp_id))
