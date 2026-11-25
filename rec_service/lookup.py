@@ -178,6 +178,8 @@ PLACES = {"nyc", "new york city", "manhattan", "brooklyn", "queens", "bronx", "s
           "boston", "philadelphia", "philly", "pittsburgh", "seattle", "portland", "denver", "phoenix", "scottsdale",
           "las vegas", "nashville", "charleston", "savannah", "asheville", "new orleans", "dc", "washington dc",
           "baltimore", "detroit", "minneapolis", "st louis", "kansas city", "charlotte", "raleigh", "richmond",
+          "finger lakes", "poconos", "berkshires", "adirondacks", "outer banks", "smoky mountains", "lake george",
+          "lake geneva", "napa valley", "sonoma valley", "central valley", "shenandoah valley", "brandywine valley",
           "palm springs", "santa barbara", "big sur", "hill country", "lake tahoe", "tahoe", "cape cod",
           "martha's vineyard", "upstate", "upstate new york", "north jersey", "south jersey", "international",
           "italy", "mexico", "france", "spain", "greece", "portugal", "england", "uk", "ireland", "canada"}
@@ -398,7 +400,8 @@ _SERVICE_ONLY = re.compile(r"^(?:(?:a|an|the|wedding|local|good)\s+)*(?:%s)$" % 
 NON_VENDOR = {"dessert", "desserts", "pictures", "picture", "pics", "photos", "images", "reviews", "review", "map",
               "menu", "menus", "cake", "cakes", "flowers", "music", "invitations", "dj", "djs", "band", "bands",
               "photographer", "photographers", "videographer", "videographers", "florist", "florists", "wedding",
-              "weddings", "vendor", "vendors", "guest", "guests", "free", "more", "link", "links", "pdf", "pdfs"}
+              "weddings", "rehearsal", "dinner", "brunch", "shower", "party", "engagement", "bachelorette", "cash", "block",
+              "makeup", "makeups", "hair", "honeymoon", "afterparty", "cocktail", "hour", "vendor", "vendors", "guest", "guests", "free", "more", "link", "links", "pdf", "pdfs"}
 
 
 def _soft(raw, cue):
@@ -507,8 +510,9 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
         return None
     if guard and non_venue_name(core):
         return None          # "Pricing", "bar tender", "estate multi day", "Texas city"
+    only_exact = False
     if v3 and _nothing_named(core, check):
-        return None          # "dessert", "pictures", "gluten free wedding cake": the model reads it
+        only_exact = True    # "dessert", "pictures", "hair and makeup": the model reads it unless a vendor is called just that
     if category and len(norm(core).split()) == 1 and len(norm(core)) < 4:
         return None          # "DJ me", "photo op": too short to be a business name
     after_question = False
@@ -529,7 +533,9 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
         out["dym"] = True     # find keeps its candidate pool and tries dropped-letter spellings (absent = as before)
     if v3:
         out["v3"] = True
-        if _soft(raw, cue):
+        if only_exact:
+            out["soft"] = "exact"
+        elif _soft(raw, cue):
             out["soft"] = "edit"    # only a real find is answered; anything else goes to the model
         elif alt_location and not location and not cue:
             out["soft"] = "place"   # "Algonquin Illinois" is as often a town: never "we don't have it"
@@ -920,20 +926,76 @@ def spelling_queries(name, done=()):
     return [x for x in dict.fromkeys(qs) if x not in done][:4]
 
 
-def holds_all(q, m):
-    """The candidate holds every word they typed, the venue-type word included ("Madonna INN" is not "Alex Madonna Expo
-    Center"). Place words they added count when the venue is there."""
-    for n in (q.get("name"), q.get("alt_name")):
-        for f in ("name", "google_name"):
-            if not (n and m.get(f)):
-                continue
-            ct = tokens(m[f])
-            nd = _distinctive(n)
-            if nd and _place(" ".join(nd)) and not all(_best(t, tokens(n), 0.9) for t in _distinctive(m[f])):
-                continue     # only a place and a type word typed: "Fort Worth club" is not "Woman's Club of Fort Worth"
-            if all(_best(t, ct, 0.9) for t in tokens(n)) or (joined_match(n, m[f]) and all(
-                    _best(t, ct, 0.9) for t in tokens(n) if t in GENERIC)):
-                return True
+def _same_word(t, toks):
+    """Exact, plural or one swap of letters. "capitale" is not "capital": a looser spelling may only be asked about."""
+    return any(sim(t, u) >= 0.97 or _transposed(t, u) for u in toks)
+
+
+def _near_word(t, toks):
+    """One letter off in a long word ("shacamaxon" / "shackamaxon"). Only ever beside another word that matches exactly."""
+    return len(t) >= 6 and any(len(u) >= 6 and u[0] == t[0] and abs(len(u) - len(t)) <= 1 and sim(t, u) >= 0.9 for u in toks)
+
+
+def _city_words(place):
+    return [t for t in tokens(place) if t not in STATE_ABBR and t not in {w for st in US_STATES for w in st.split()}]
+
+
+def in_place(m, place):
+    """The place they named, city included: "The Thompson houston" is not the one in Dallas."""
+    if not place:
+        return True
+    hay = tokens("%s %s" % (m.get("address") or "", _st(m.get("state"))))
+    city = _city_words(place)
+    if city:
+        return all(_same_word(t, hay) for t in city)
+    st = state_of(place)
+    return not st or st == _st(m.get("state"))
+
+
+def _holds(name, m, cand, placed=False, loose=False):
+    """Every word they typed is in the candidate's name, or says where it is (its own address / state). One type word may be
+    missing, only when they named the place it is in (placed: "Thompson hotel in Seattle" / Thompson Seattle) and the name
+    carries no other type word. At least one word that is not a type or a place must be in the name. loose: one long word
+    may be a letter off when another word matches exactly."""
+    if not name or not cand:
+        return False
+    if key(name) == key(cand):
+        return True
+    typed, ct = tokens(name), tokens(cand)
+    where = tokens("%s %s" % (m.get("address") or "", _st(m.get("state"))))
+    joined = joined_match(name, cand)
+    nd, cd = _distinctive(name), _distinctive(cand)
+    off = [t for t in nd if not _same_word(t, ct) and not _same_word(t, where) and _near_word(t, ct)] if loose and not joined else []
+    if len(off) > 1 or (off and not any(_same_word(t, ct) for t in typed)):
+        off = []
+    if not joined and not any(_same_word(t, ct) or t in off for t in nd or typed):
+        return False
+    missing = 0
+    for t in typed:
+        if _same_word(t, ct) or t in off or (joined and t in nd):
+            continue
+        if t in GENERIC:
+            missing += 1
+            if not placed or missing > 1 or any(g in GENERIC and not _same_word(g, typed) for g in ct):
+                return False
+        elif not _same_word(t, where):
+            return False
+    named = nd if joined else [t for t in nd if _same_word(t, ct) or t in off]
+    if (not named or _place(" ".join(named)) or all(_same_word(t, where) for t in named)):
+        # only a place (and a type) in common: the name itself must add nothing ("Fort Worth club" is not "Woman's Club of
+        # Fort Worth")
+        return all(_same_word(t, typed) for t in cd)
+    return True
+
+
+def holds_all(q, m, loose=False):
+    for f in ("name", "google_name"):
+        loc = q.get("location") or ""
+        if _holds(q.get("name"), m, m.get(f), bool(loc) and in_place(m, loc), loose):
+            return True
+        # the other reading ("Aspen Grove" AT "Sundance Trail") only when the venue is there
+        if q.get("alt_name") and in_place(m, q.get("alt_location")) and _holds(q["alt_name"], m, m.get(f), True, loose):
+            return True
     return False
 
 
@@ -948,26 +1010,40 @@ def same_name(q, m):
     return all(_best(t, typed, 0.9) or t in GENERIC or _VENDOR_TOKEN.fullmatch(t) for t in tokens(m.get("name")))
 
 
-def certain(q, res):
-    """v3: a match is only STATED ("Here's X", "We have 2 that match") when it holds every word they typed and, when they named a
-    place, is there. Otherwise it becomes "not found" and did_you_mean may offer it as a question. Pure."""
-    if not q.get("v3") or res.get("status") not in ("found", "best", "choices") or not res.get("matches"):
+def exact(q, m):
+    return any(n and key(n) == key(m.get(f)) for n in (q.get("name"), q.get("alt_name")) for f in ("name", "google_name"))
+
+
+def certain(q, res, pool=None):
+    """v3: a match is only STATED ("Here's X", "We have 2 that match") when it holds every word they typed and is in the place
+    they named. Otherwise it becomes "not found" and did_you_mean may offer it as a question. The other way round, a miss whose
+    candidates hold every word is a match ("Skylands manor"). Pure."""
+    if not q.get("v3"):
         return res
-    ms = [m for m in res["matches"] if holds_all(q, m)]
-    if res["status"] == "found":       # a found venue somewhere else keeps its "We don't have one in ..." answer (place_fix)
-        return res if ms else dict(res, status="not_found", matches=[])
-    place = q.get("location") or q.get("alt_location") or ""
-    if place and (state_of(place) or [t for t in tokens(place) if t not in STATE_ABBR]):
-        ms = [m for m in ms if _in_place(m, place)]
+    place = q.get("location") or ""
+    have = list(res.get("matches") or []) + list((pool if pool is not None else res.get("pool")) or [])
+    loose = not any(holds_all(q, m) for m in have)       # a letter off counts only when nothing is spelled as they typed it
+    ms = [m for m in res.get("matches") or [] if holds_all(q, m, loose)]
+    if res.get("status") == "found":
+        return res if ms else dict(res, status="not_found", matches=[])     # elsewhere is said by place_fix
+    if res.get("status") in ("best", "choices"):
+        ms = [m for m in ms if in_place(m, place)]
+        full = [m for m in ms if exact(q, m)]
+        if full and len(full) < len(ms):
+            ms = full
+    elif res.get("status") == "not_found" and len(tokens(q.get("name"))) >= 2:
+        ms = [m for m in (pool if pool is not None else res.get("pool")) or [] if holds_all(q, m, loose) and in_place(m, place)][:3]
+    else:
+        return res
     if not ms:
         return dict(res, status="not_found", matches=[])
-    return dict(res, status=res["status"] if len(ms) > 1 else "found", matches=ms)
+    return dict(res, status="found" if len(ms) == 1 else "choices" if res["status"] == "not_found" else res["status"], matches=ms)
 
 
-def _generic_typo(t):
+def _generic_typo(t, v3=False):
     """'meusuem' is a misspelt 'museum': a venue-type word, not a distinctive one."""
     return len(t) >= 5 and t not in GENERIC and any(
-        g[0] == t[0] and abs(len(g) - len(t)) <= 1 and sim(t, g) >= 0.6 for g in GENERIC if len(g) >= 4)
+        g[0] == t[0] and abs(len(g) - len(t)) <= 1 and sim(t, g) >= (0.7 if v3 else 0.6) for g in GENERIC if len(g) >= 4)
 
 
 DYM_ONE_WORD = 0.9     # v3: the only matching word must be this close ("rhyland"/"ryland" 0.92, "amway"/"away" 0.89)
@@ -977,7 +1053,7 @@ def dym_score(query, name, v3=False):
     """0 when the candidate does not hold the couple's distinctive words; else 0..1. Each distinctive word (venue-type
     words and their misspellings left out) must match a word of the name closely (>= 0.8, 0.9 under 5 letters); the
     longest must match; at least half of them must; with 3+ words at least 2 must."""
-    qd = [t for t in _distinctive(query) if not _generic_typo(t)] or _distinctive(query)
+    qd = [t for t in _distinctive(query) if not _generic_typo(t, v3)] or _distinctive(query)
     ct = tokens(name)
     if not qd or not ct:
         return 0.0
@@ -1014,6 +1090,16 @@ def _place_of(q):
     return q.get("location") or q.get("alt_location") or ""
 
 
+def soft_ok(q, res):
+    """v3: may this lookup be answered at all? False = the model reads the message."""
+    kind, st = q.get("soft"), res.get("status")
+    if not kind:
+        return True
+    if kind == "exact":
+        return st in ("found", "best", "elsewhere") and bool(res.get("matches")) and exact(q, res["matches"][0])
+    return st in (("found", "best", "elsewhere") if kind == "edit" else ("found", "best", "elsewhere", "choices", "dym"))
+
+
 def did_you_mean(q, res, prefer_states=()):
     """A not_found lookup whose candidate pool holds the couple's words -> status "dym" with up to 3 matches (in the
     place they named, else their wedding state(s), first). Anything else passes through unchanged. Pure."""
@@ -1045,11 +1131,13 @@ def place_fix(q, res, prefer_states=()):
     v2 = bool(q.get("v2"))
 
     def holds(m):
-        return any(strong(n, m.get(f) or "", v2) or dym_score(n, m.get(f) or "", bool(q.get("v3"))) > 0
+        if q.get("v3"):      # an exact name somewhere else is never swapped for a lookalike near them
+            return holds_all(q, m) and (exact(q, m) or not exact(q, top))
+        return any(strong(n, m.get(f) or "", v2) or dym_score(n, m.get(f) or "") > 0
                    for n in names for f in ("name", "google_name"))
     place = _place_of(q)
     if place and (state_of(place) or [t for t in tokens(place) if t not in STATE_ABBR]):
-        inside = lambda m: _in_place(m, place)
+        inside = (lambda m: in_place(m, place)) if q.get("v3") else (lambda m: _in_place(m, place))
         where = place
     else:
         want = {str(s).strip().lower() for s in prefer_states if s}

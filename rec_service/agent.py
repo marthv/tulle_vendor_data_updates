@@ -885,7 +885,7 @@ def _state_text(st):
 def find_by_name(token, keyword, last_user="", states=()):
     """REC_LOOKUP_V3: a venue the model searched by name, looked up in EVERY state (lookup.find: typos, joined words).
     {"status": "found", "venue"} | {"status": "close", "names"} | None. A style, a place or a need is never looked up, and
-    a venue is only "found" when the couple's own message or the keyword holds its whole name. Any failure -> None."""
+    a venue is only "found" when it holds every word of the name (lookup.holds_all). Any failure -> None."""
     if lookup._place(keyword) or lookup._descriptive_only(keyword) or lookup.non_venue_name(keyword) \
             or len(lookup.norm(keyword)) < 4:
         return None
@@ -893,16 +893,14 @@ def find_by_name(token, keyword, last_user="", states=()):
     q = {"name": keyword, "location": "", "alt_name": "", "alt_location": "", "cue": True, "words": len(words),
          "category": "", "v2": config.NAME_MATCH_V2, "dym": True, "v3": True}
     try:
-        res = lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), list(states or []))
+        res = lookup.certain(q, lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), list(states or [])))
         res = lookup.did_you_mean(q, res, list(states or []))
     except Exception as e:
         print("find_by_name:", repr(e)[:160])
         return None
     ms = res.get("matches") or []
-    if res.get("status") in ("found", "best") and ms:
-        n = ms[0].get("name") or ""
-        if lookup.strong(keyword, n, config.NAME_MATCH_V2) or named_fully(last_user, n):
-            return {"status": "found", "venue": {k: v for k, v in ms[0].items() if k != "google_name"}}
+    if res.get("status") in ("found", "best") and ms and lookup.holds_all(q, ms[0]):
+        return {"status": "found", "venue": {k: v for k, v in ms[0].items() if k != "google_name"}}
     if res.get("status") in ("found", "best", "choices", "dym") and ms:
         return {"status": "close", "names": ["%s (%s)" % (m.get("name"), _state_text(m.get("state"))) for m in ms[:3]]}
     return None

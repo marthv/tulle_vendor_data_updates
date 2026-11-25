@@ -941,8 +941,18 @@ def _find_and_price(q, token, full, prefer=()):
     the whole cost of that answer (measured 2026-11-02: 7.0 s with two matches vs 0.2 s for a miss). The tap on a
     name comes back as a found lookup and is priced then."""
     hint = q.get("category") or ""
+    res = None
     if hint and hint != "Venue":      # "Bloom florist", "Jane Doe Photography": that type only
         res = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, (hint,))), prefer)
+        if q.get("v3") and res["status"] == "not_found":
+            # "Music Hall", "Edgemont Caterers" may be a venue, or another type: only a name that holds every word they typed
+            other = lookup.certain(q, lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer))
+            if other["status"] == "not_found":
+                other = lookup.certain(q, lookup.resolve(q, lookup.find(q, _any_vendor_search(
+                    token, [c for c in OTHER_VENDOR_CATS if c != hint])), prefer))
+            if other["status"] in ("found", "best") and lookup.holds_all(q, other["matches"][0]):
+                res = other
+        res.pop("pool", None)
     else:
         res = lookup.certain(q, lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer))
         venue_res = res
@@ -1061,8 +1071,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         return None          # "aspen", "North": several equal venues for one bare word - the model reads it
     if status == "not_found" and not q["cue"] and q["words"] == 1:
         return None          # one bare word we can't place: let the model read it
-    if q.get("soft") and status not in (("found", "best", "elsewhere") if q["soft"] == "edit" else
-                                        ("found", "best", "elsewhere", "choices", "dym")):
+    if not lookup.soft_ok(q, res):
         return None          # REC_LOOKUP_V3: an edit or a sentence - never "We don't have Remove dj yet"
     if after_q and status not in ("found", "best", "choices", "elsewhere") and not lookup.destination_in(
             "%s %s" % (q["name"], q.get("location") or q.get("alt_location") or "")):

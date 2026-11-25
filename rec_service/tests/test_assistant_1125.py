@@ -185,7 +185,9 @@ def d(text):
 @pytest.mark.parametrize("text", ["dessert", "pictures", "gluten free wedding cake in philadelphia", "videographer in philadelphia",
                                   "wedding photographer in dallas"])
 def test_nothing_named_goes_to_the_model(text):
-    assert d(text) is None
+    q = d(text)
+    assert q is None or (q["soft"] == "exact" and not lookup.soft_ok(q, {"status": "not_found"})
+                         and not lookup.soft_ok(q, {"status": "found", "matches": [{"name": "Sony Pictures Studios"}]}))
 
 
 @pytest.mark.parametrize("text", ["Remove dj, I have a personal dj", "Drop the florist", "swap the band for something else"])
@@ -239,3 +241,45 @@ def test_find_by_name_never_invents(names, kw):
 def test_find_by_name_survives_a_search_failure(monkeypatch):
     monkeypatch.setattr(xano, "name_search", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     assert agent.find_by_name("t", "Villa Woodbine", "", []) is None
+
+
+def row(vid, name, state, address):
+    return {"vendor_id": vid, "name": name, "state": state, "address": address, "google_name": ""}
+
+
+R = [row("A", "Lake Pearl", "Massachusetts", "299 Creek St, Wrentham, MA 02093"), row("B", "Woodmont Country Club", "Maryland", "Rockville, MD"),
+     row("C", "Thompson Seattle", "Washington", "110 Stewart St, Seattle, WA 98101"), row("D", "Thompson Dallas", "Texas", "205 N Akard St, Dallas, TX 75201"),
+     row("E", "Capital Venue", "Texas", "Austin, TX"), row("F", "Woodbine Mansion", "Texas", "Round Rock, TX"),
+     row("G", "Woman's Club of Fort Worth", "Texas", "1316 Pennsylvania Ave, Fort Worth, TX"), row("H", "Villa Woodbine", "Florida", "Miami, FL"),
+     row("I", "Liberty House", "New Jersey", "Jersey City, NJ"), row("J", "The Skylands Manor at the New Jersey State Botanical Garden", "New Jersey", "Ringwood, NJ")]
+BY = {r["vendor_id"]: r for r in R}
+
+
+@pytest.mark.parametrize("text,vid,ok", [
+    ("Lake Pearl Wrentham", "A", True), ("Woodmont Manor", "B", False), ("Thompson hotel in Seattle", "C", True),
+    ("The thompson houston", "D", False), ("capitale", "E", False), ("Villa Woodbine", "F", False), ("Villa Woodbine", "H", True),
+    ("Fort Worth club", "G", False), ("Liberty House Restaurant", "I", False), ("Skylands manor", "J", True)])
+def test_what_counts_as_that_venue(text, vid, ok):
+    q = d(text)
+    m = BY[vid]
+    assert (lookup.holds_all(q, m) and lookup.in_place(m, q.get("location") or "")) is ok
+
+
+@pytest.mark.parametrize("text,vid,ok", [("Lake Perl", "A", False), ("Woodmnt Country Club", "B", True), ("capitale", "E", False),
+                                          ("Woodmnt Manor", "B", False)])
+def test_a_letter_off_counts_only_beside_an_exact_word(text, vid, ok):
+    assert lookup.holds_all(d(text), BY[vid], True) is ok
+
+
+def test_an_exact_name_elsewhere_is_not_swapped_for_a_lookalike():
+    q = d("Villa Woodbine")
+    res = lookup.place_fix(q, {"status": "found", "matches": [BY["H"]], "pool": [BY["F"], BY["H"]]}, ["Texas"])
+    assert res["status"] == "elsewhere" and res["matches"][0]["vendor_id"] == "H"
+
+
+def test_find_by_name_does_not_claim_a_near_name(monkeypatch):
+    monkeypatch.setattr(config, "NAME_MATCH_V2", True)
+    monkeypatch.setattr(xano, "name_search", lambda term, token="", **k: [dict(r) for r in R if all(
+        w in lookup.tokens(r["name"]) for w in term.split())])
+    r = agent.find_by_name("t", "Woodmont Manor", "Tell me about Woodmont Manor", ["Texas"])
+    assert r is None or r["status"] == "close"
