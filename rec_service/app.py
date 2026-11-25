@@ -1043,7 +1043,7 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
     if not config.NAME_LOOKUP:
         return None
     q = lookup.detect(text, last_assistant, v2=config.NAME_MATCH_V2, guard=config.LOOKUP_GUARD,
-                      dym=config.DID_YOU_MEAN, v3=config.LOOKUP_V3)
+                      dym=config.DID_YOU_MEAN, v3=config.LOOKUP_V3, edits=config.LOOKUP_EDITS, strict=config.DYM_STRICT)
     if not q:
         return None
     t0 = time.time()

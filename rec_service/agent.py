@@ -891,7 +891,7 @@ def find_by_name(token, keyword, last_user="", states=()):
         return None
     words = lookup.norm(keyword).split()
     q = {"name": keyword, "location": "", "alt_name": "", "alt_location": "", "cue": True, "words": len(words),
-         "category": "", "v2": config.NAME_MATCH_V2, "dym": True, "v3": True}
+         "category": "", "v2": config.NAME_MATCH_V2, "dym": True, "v3": True, "strict": True}
     try:
         res = lookup.certain(q, lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), list(states or [])))
         res = lookup.did_you_mean(q, res, list(states or []))
@@ -1400,7 +1400,7 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 else:
                     relaxed_for_name = []
         named_elsewhere = None
-        if config.LOOKUP_V3 and kw and not any(in_name(v) for v in venues):
+        if (config.LOOKUP_ALL_STATES or config.LOOKUP_V3) and kw and not any(in_name(v) for v in venues):
             named_elsewhere = find_by_name(token, keyword, last_user, states)
             if named_elsewhere and named_elsewhere["status"] == "found":
                 hit = named_elsewhere["venue"]

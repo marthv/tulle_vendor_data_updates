@@ -422,7 +422,7 @@ def _nothing_named(core, check):
     return bool(_SERVICE_ONLY.match(norm(core))) or (bool(ws) and all(need(w) for w in ws))
 
 
-def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
+def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False, edits=False, strict=False):
     """{"name", "location", "alt_name", "alt_location", "cue"} when the message looks like "look up <venue name>",
     else None. Conservative on purpose: anything that reads like a search or a follow-up goes to the model.
     last_assistant: the previous assistant message - a bare reply to its question ("Austin") is never a lookup.
@@ -514,9 +514,10 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
     if guard and non_venue_name(core):
         return None          # "Pricing", "bar tender", "estate multi day", "Texas city"
     only_exact = False
-    if v3 and re.sub(r"^the ", "", norm(core)) in V3_PLACES:
+    edits = edits or v3
+    if edits and re.sub(r"^the ", "", norm(core)) in V3_PLACES:
         return None
-    if v3 and _nothing_named(core, check):
+    if edits and _nothing_named(core, check):
         only_exact = True    # "dessert", "pictures", "hair and makeup": the model reads it unless a vendor is called just that
     if category and len(norm(core).split()) == 1 and len(norm(core)) < 4:
         return None          # "DJ me", "photo op": too short to be a business name
@@ -536,8 +537,11 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
         out["v2"] = True      # find / resolve use the joined-words match (absent = exactly as before)
     if dym:
         out["dym"] = True     # find keeps its candidate pool and tries dropped-letter spellings (absent = as before)
+    if strict or v3:
+        out["strict"] = True
     if v3:
         out["v3"] = True
+    if edits:
         out["full"] = first.rstrip("?!. ")     # as typed: "The Odyssey Venue" before " Venue" was taken off
         if only_exact:
             out["soft"] = "exact"
@@ -948,10 +952,21 @@ def _city_words(place):
     return [t for t in tokens(place) if t not in STATE_ABBR and t not in {w for st in US_STATES for w in st.split()}]
 
 
+_STREET = re.compile(r"^\d[\w-]*\s+.*?\b(?:st|street|rd|road|ave|avenue|blvd|boulevard|dr|drive|ln|lane|hwy|highway|pkwy|parkway|"
+                     r"pl|place|ct|court|way|pike|ter|terrace|cir|circle|sq|square|trl|trail|route|rte|turnpike|plaza|loop|row)\b\.?"
+                     r"(?:\s+(?:n|s|e|w|ne|nw|se|sw|north|south|east|west)\b)?(?:\s*(?:#|suite|ste|unit|floor|fl)\.?\s*\w+)?\s*", re.I)
+
+
 def _town(m):
-    """Words of the town and state, never of the street: "Caesars Goldwater" is not Caesars Republic on Goldwater Blvd."""
-    parts = [p for p in str(m.get("address") or "").split(",") if p.strip()]
-    return tokens("%s %s" % (" ".join(parts[1:]), _st(m.get("state"))))
+    """Words of the town and state, never of the street: "Caesars Goldwater" is not Caesars Republic on Goldwater Blvd. The town
+    can sit in the same part as the street ("8 Lawrenceville Road Princeton, NJ")."""
+    parts = [p.strip() for p in str(m.get("address") or "").split(",") if p.strip()]
+    if parts:
+        st = _STREET.match(parts[0])
+        parts[0] = parts[0][st.end():] if st else "" if len(parts) > 1 and re.match(r"\d", parts[0]) else parts[0]
+        if len(parts) > 1 and not st and not re.match(r"\d", str(m.get("address") or "").strip()):
+            parts[0] = ""        # a building or street name on its own
+    return tokens("%s %s" % (" ".join(parts), _st(m.get("state"))))
 
 
 def in_place(m, place):
@@ -1097,7 +1112,7 @@ def dym_candidates(q, pool):
     names = [n for n in (q.get("name"), q.get("alt_name")) if n]
     out = []
     for m in pool or []:
-        s = max([dym_score(n, m.get(f) or "", bool(q.get("v3"))) for n in names for f in ("name", "google_name")] or [0.0])
+        s = max([dym_score(n, m.get(f) or "", bool(q.get("strict"))) for n in names for f in ("name", "google_name")] or [0.0])
         if s > 0:
             out.append((s, m))
     if q.get("v3"):      # the type word they typed breaks a tie: "Elkin ESTATE" -> Elkins Estate before Elkin Creek Vineyard

@@ -314,3 +314,24 @@ def test_one_bad_pin_does_not_drop_the_rest():
 def test_regions_go_to_the_model_only_with_v3(text):
     assert d(text) is None
     assert lookup.detect(text, v2=True, guard=True, dym=True) is not None
+
+
+@pytest.mark.parametrize("addr,town,street", [
+    ("8 Lawrenceville Road Princeton, NJ 08540", "princeton", "lawrenceville"), ("4747 N Goldwater Blvd, Scottsdale, AZ 85251", "scottsdale", "goldwater"),
+    ("70 Rowes Wharf, Boston, MA 02110", "boston", "rowes"), ("Stowe, VT", "stowe", "zzz")])
+def test_town_of_an_address(addr, town, street):
+    w = lookup._town({"address": addr, "state": "X"})
+    assert town in w and street not in w
+
+
+def test_the_three_parts_are_independent():
+    base = lookup.detect("Remove dj, I have a personal dj", v2=True, guard=True, dym=True)
+    assert base and "soft" not in base and "strict" not in base
+    e = lookup.detect("Remove dj, I have a personal dj", v2=True, guard=True, dym=True, edits=True)
+    assert e["soft"] == "edit" and "v3" not in e and "strict" not in e
+    s = lookup.detect("Amway grand", v2=True, guard=True, dym=True, strict=True)
+    assert s["strict"] and "v3" not in s and "soft" not in s
+    pool = [{"vendor_id": "Z", "name": "Far Far Away Ranch", "state": "California", "google_name": ""}]
+    assert lookup.did_you_mean(s, {"status": "not_found", "pool": pool})["status"] == "not_found"
+    plain = lookup.detect("Amway grand", v2=True, guard=True, dym=True)
+    assert lookup.did_you_mean(plain, {"status": "not_found", "pool": pool})["status"] == "dym"

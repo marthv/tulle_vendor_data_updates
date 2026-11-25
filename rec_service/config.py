@@ -122,10 +122,15 @@ DID_YOU_MEAN = os.environ.get("REC_DID_YOU_MEAN", "0").strip() == "1"
 # LOOKUP GUARD: questions and non-venue text ("Pricing", "im looking for a bar tender", "houston and surrounding
 #   areas") never take the named-lookup path; they go to the model.
 LOOKUP_GUARD = os.environ.get("REC_LOOKUP_GUARD", "0").strip() == "1"
-# LOOKUP V3 (2026-11-25): (a) a venue the model searches by NAME and doesn't find in the couple's states is looked up in
-#   every state ("Villa Woodbine" is in Florida, the profile said Texas); (b) an edit or a sentence ("Remove dj, I have a
-#   personal dj") is never answered "We don't have <that>"; (c) a "did you mean" built on ONE word needs a near-exact word
-#   ("Amway grand" is not "Far Far Away Ranch"). 0 = exactly as before.
+# Three lookup parts that passed QA on their own (2026-11-25, t4_lookup/QA3.md). Each default off = exactly as before.
+# ALL STATES: a venue the MODEL searches by name and doesn't find in the couple's states is looked up in every state ("Villa
+#   Woodbine" is in Florida, the profile said Texas).
+LOOKUP_ALL_STATES = os.environ.get("REC_LOOKUP_ALL_STATES", "0").strip() == "1"
+# EDITS: an edit, a sentence or a need ("Remove dj, I have a personal dj", "dessert") is never answered "We don't have <that>".
+LOOKUP_EDITS = os.environ.get("REC_LOOKUP_EDITS", "0").strip() == "1"
+# DYM STRICT: "did you mean" needs every word that names the venue ("Amway grand" is not "Far Far Away Ranch").
+DYM_STRICT = os.environ.get("REC_DYM_STRICT", "0").strip() == "1"
+# LOOKUP V3: the typed-name stating rules on top of all three. NOT passed QA: keep 0.
 LOOKUP_V3 = os.environ.get("REC_LOOKUP_V3", "0").strip() == "1"
 # PAGE VENUE: the bubble's surface "bubble:/vendors/...?v=<vendor_idx>" + "this venue / this one / here" with no named
 #   venue -> the message is answered about that vendor (table 11 row id -> its name and place).
