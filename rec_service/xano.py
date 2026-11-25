@@ -1107,6 +1107,15 @@ def vendor_card_by_idx(vendor_idx, ttl_s=3600):
     return card
 
 
+def listed_venue(vendor_id):
+    """The card of a venue couples can see (a merged duplicate -> the kept one), or None: hidden, not a venue, not found."""
+    rows = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
+    it = follow_merge(rows[0]) if rows else None
+    if not it or it.get("Category") != "Venue" or str(it.get("Validated_Data")) != "1":
+        return None
+    return card_from_row(it)
+
+
 def card_from_row(it):
     """A table-11 row -> the card shape vendor_card returns (venue or photographer / entertainer)."""
     img = it.get("image_1")
@@ -1349,9 +1358,14 @@ def package_update(user_id, item_id, changes, price=None, paid=None):
 PLAN_TABLE = 90
 
 
-def plan_items(user_id, include_removed=False):
+PICK_SOURCE = "pick"      # the couple's pick from Compare (compare.set_pick); never a row of the old plan
+
+
+def plan_items(user_id, include_removed=False, picks=False):
+    """The old plan's rows; picks=True = only the Compare pick's rows. The two never mix."""
     uid = int(user_id)
-    rows = [r for r in _search_all(PLAN_TABLE, [{"user_id": uid}]) if int(r.get("user_id") or 0) == uid]
+    rows = [r for r in _search_all(PLAN_TABLE, [{"user_id": uid}]) if int(r.get("user_id") or 0) == uid
+            and (r.get("source") == PICK_SOURCE) == bool(picks)]
     if not include_removed:
         rows = [r for r in rows if (r.get("status") or "active") == "active"]
     return sorted(rows, key=lambda r: (r.get("created_at") or 0, r.get("id") or 0))

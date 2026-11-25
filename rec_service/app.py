@@ -1988,7 +1988,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
 
 
 class PickBody(BaseModel):
-    vendor_id: str = ""        # "" clears the pick
+    vendor_id: Optional[str] = None        # "" clears the pick; a body without it is refused
     chat_id: int = 0
 
 
@@ -1996,7 +1996,31 @@ def _pick_status(user):
     """/rec/status keys of the couple's pick (REC_COMPARE_DECIDE, compare arm only)."""
     if not (config.COMPARE_DECIDE and compare.arm(user.get("id")) == "compare"):
         return {"compare_decide": False, "compare_pick": None}
-    return {"compare_decide": True, "compare_pick": compare._safe(compare.pick_of, xano, user["id"])}
+    try:
+        return {"compare_decide": True, "compare_pick": compare.pick_of(xano, user["id"])}
+    except Exception as e:      # could not be read: say nothing about it (the page keeps what it has)
+        print("compare_pick status:", repr(e)[:160])
+        return {"compare_decide": True}
+
+
+def _pick_stored(user):
+    """{"pick": ...} as stored now, {} when that can't be read either."""
+    try:
+        return {"pick": compare.pick_of(xano, user["id"])}
+    except Exception:
+        return {}
+
+
+@app.get("/rec/compare/pick")
+def compare_pick_get(authorization: str = Header(None)):
+    """What is stored: the page asks after a save it can't be sure of."""
+    _, user = _auth(authorization)
+    if not (config.COMPARE_DECIDE and compare.arm(user.get("id")) == "compare"):
+        raise HTTPException(404, {"status": "off"})
+    got = _pick_stored(user)
+    if not got:
+        raise HTTPException(502, {"status": "error"})
+    return got
 
 
 @app.post("/rec/compare/pick")
@@ -2007,16 +2031,20 @@ def compare_pick(body: PickBody, authorization: str = Header(None)):
         raise HTTPException(503, {"status": "killed"})
     if not (config.COMPARE_DECIDE and compare.arm(user.get("id")) == "compare"):
         raise HTTPException(404, {"status": "off"})
+    if body.vendor_id is None:
+        raise HTTPException(400, {"status": "no_vendor"})
     try:
-        got = compare.set_pick(xano, user["id"], (body.vendor_id or "").strip(), body.chat_id)
+        ok, got = compare.set_pick(xano, user["id"], body.vendor_id.strip(), body.chat_id)
     except LookupError:
-        raise HTTPException(404, {"status": "venue_not_found"})
+        raise HTTPException(404, {"status": "venue_not_found", **_pick_stored(user)})
     except Exception as e:
         print("compare_pick:", repr(e)[:160])
-        raise HTTPException(502, {"status": "error"})
+        raise HTTPException(502, {"status": "error", **_pick_stored(user)})
+    if not ok:
+        raise HTTPException(502, {"status": "not_stored", "pick": got})
     _POOL.submit(xano.mp_track, user["id"], "rec_compare_picked", {"vendor_id": (got or {}).get("vendor_id") or "",
                                                                   "cleared": not got, "source": "rec_service"})
-    return {"pick": got}
+    return {"ok": True, "pick": got}
 
 
 class ContextBody(BaseModel):
@@ -2486,7 +2514,8 @@ def plan_add(body: PlanAddBody, authorization: str = Header(None)):
     slot = plan.slot_of(body.category)
     row = {"user_id": user["id"], "slot": slot, "vendor_id": vid, "vendor_name": name,
            "est_cost": max(0, min(int(body.est_cost or 0), 10_000_000)), "note": (body.note or "").strip()[:300],
-           "source": (body.source or "planner_card")[:40], "chat_id": int(body.chat_id or 0), "status": "active"}
+           "source": "planner_card" if (body.source or "").strip() in ("", xano.PICK_SOURCE) else body.source[:40],
+           "chat_id": int(body.chat_id or 0), "status": "active"}
     created = xano.plan_add(row) or row
     rows = rows + [created]
     _POOL.submit(xano.mp_track, user["id"], "rec_plan_add", {
@@ -3235,10 +3264,10 @@ def status(authorization: str = Header(None)):
             "whole_wedding": whole_wedding.assigned(user.get("id")), "ww_arm": whole_wedding.arm(user.get("id")),
             # Side-by-side compare (2026-11-22): "compare" shows the button; "control" = the test's other half; "off".
             "compare_arm": compare.arm(user.get("id")), **_pick_status(user),
-            # Venue card lines (2026-11-25). Totals are drawn only from a card that carries one, which free and 1-week
-            # couples' cards never do.
+            # Venue card lines (2026-11-25). Totals only for couples entitled to the venue page's figures (ep230's own rule): a
+            # 1-week card can carry a total when REC_BETA_AUDIENCE is "paid".
             "card_facts": config.on_for(config.CARD_FACTS, user.get("id")),
-            "card_totals": bool(paid and config.on_for(config.CARD_TOTALS, user.get("id"))),
+            "card_totals": bool(paid and xano.pi_entitled(user) and config.on_for(config.CARD_TOTALS, user.get("id"))),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
 
 

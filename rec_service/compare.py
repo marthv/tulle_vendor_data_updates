@@ -307,13 +307,12 @@ def differences(venues, guests, full, limit=3):
 
 # ---------------------------------------------------------------- the couple's pick (REC_COMPARE_DECIDE)
 
-PICK_SOURCE = "pick"
 PICK_SLOT = "Venue"
 _PICK_LOCKS = [threading.Lock() for _ in range(64)]
 
 
 def _pick_rows(xano, user_id):
-    return [r for r in xano.plan_items(user_id) if r.get("source") == PICK_SOURCE and r.get("slot") == PICK_SLOT]
+    return [r for r in xano.plan_items(user_id, picks=True) if r.get("slot") == PICK_SLOT]
 
 
 def pick_of(xano, user_id):
@@ -323,24 +322,30 @@ def pick_of(xano, user_id):
 
 
 def set_pick(xano, user_id, vendor_id, chat_id=0):
-    """Set (a venue id) or clear ("") the pick; returns pick_of as stored. The new row is written before the old one is
-    marked removed, so a failure half way never loses a pick. LookupError = not a venue we list."""
+    """Set (a venue id) or clear ("") the pick. Returns (ok, pick as stored now): ok only when what is stored is what was asked.
+    The new row is written before the old one is marked removed, so a failure half way never loses a pick, and a row that
+    could not be marked removed is older than the new one (pick_of reads the newest). LookupError = not a venue we list."""
     card = None
     if vendor_id:
         ids = clean_ids([vendor_id])
-        card = xano.cached_vendor_card(ids[0]) if ids else None
-        if not card or (card.get("category") or "Venue") != "Venue":
+        card = xano.listed_venue(ids[0]) if ids else None
+        if not card:
             raise LookupError("venue")
     with _PICK_LOCKS[int(user_id) % len(_PICK_LOCKS)]:
         old = _pick_rows(xano, user_id)
         vid = str((card or {}).get("vendor_id") or "")
-        if vid and not any(r.get("vendor_id") == vid for r in old):
+        newest = old[-1].get("vendor_id") if old else ""
+        if vid and newest != vid:
             xano.plan_add({"user_id": user_id, "slot": PICK_SLOT, "vendor_id": vid, "vendor_name": (card.get("name") or "")[:200],
-                           "est_cost": 0, "note": "", "source": PICK_SOURCE, "chat_id": int(chat_id or 0), "status": "active"})
-        for r in old:
-            if r.get("vendor_id") != vid:
-                xano.plan_remove(user_id, r.get("id"))
-        return pick_of(xano, user_id)
+                           "est_cost": 0, "note": "", "source": xano.PICK_SOURCE, "chat_id": int(chat_id or 0), "status": "active"})
+            drop = old
+        else:
+            drop = old[:-1] if vid else old
+        for r in drop:       # oldest first, and clearing stops at the first failure: an older pick must never come back
+            if not _safe(xano.plan_remove, user_id, r.get("id")) and not vid:
+                break
+        got = pick_of(xano, user_id)
+        return str((got or {}).get("vendor_id") or "") == vid, got
 
 
 # ---------------------------------------------------------------- venues to compare a named one with (REC_NAMED_VENUE)
@@ -357,7 +362,8 @@ def near_venues(xano, railway_search, token, card, guests=0, limit=2):
         return []
     params = xano.venue_search_params(states=[st], guests=_int(guests), page_size=60)
     d, _ = railway_search.railway_get(token, params)
-    items = [it for it in (d or {}).get("items") or [] if it.get("lat") is not None and it.get("lng") is not None]
+    items = [it for it in (d or {}).get("items") or [] if it.get("lat") is not None and it.get("lng") is not None
+             and xano.geo_sanity.coords_match_state(it.get("State"), it.get("lat"), it.get("lng"))]
     me = next((it for it in items if it.get("Vendor_ID") == card["vendor_id"]), None)
     if not me:      # further down the list than one page: its own coordinates by name
         p = dict(xano.venue_search_params(states=[st], keyword=re.sub(r"[^a-z0-9 ]", " ", (card.get("name") or "").lower()), page_size=10))
@@ -375,8 +381,7 @@ def near_venues(xano, railway_search, token, card, guests=0, limit=2):
             continue
         names.add(key)
         out.append({"vendor_id": it.get("Vendor_ID"), "vendor_idx": it.get("id"), "name": it.get("Name"), "category": "Venue",
-                    "state": it.get("State"), "address": it.get("Address"), "image": _image(it.get("image_1")),
-                    "miles": max(1, int(round(miles)))})
+                    "state": it.get("State"), "address": it.get("Address"), "image": _image(it.get("image_1"))})      # no distance: 750 venues share another's pin
         if len(out) == limit:
             break
     return out

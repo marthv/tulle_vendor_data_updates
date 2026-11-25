@@ -27,8 +27,9 @@ def plan90(monkeypatch):
     rows = [{"id": 1, "user_id": 7, "slot": "Venue", "vendor_id": "V2", "vendor_name": "Celestine", "source": "planner_card",
              "status": "active"}]      # a card added in the old plan: never a pick, never touched
 
-    def items(uid, include_removed=False):
-        return [r for r in rows if r["user_id"] == uid and (include_removed or r["status"] == "active")]
+    def items(uid, include_removed=False, picks=False):
+        return [r for r in rows if r["user_id"] == uid and (include_removed or r["status"] == "active")
+                and (r["source"] == "pick") == picks]
 
     def add(row):
         rows.append(dict(row, id=len(rows) + 1))
@@ -43,7 +44,7 @@ def plan90(monkeypatch):
     monkeypatch.setattr(xano, "plan_items", items)
     monkeypatch.setattr(xano, "plan_add", add)
     monkeypatch.setattr(xano, "plan_remove", remove)
-    monkeypatch.setattr(xano, "cached_vendor_card", lambda v, stats=None: CARDS.get(v))
+    monkeypatch.setattr(xano, "listed_venue", lambda v: CARDS.get(v) if (CARDS.get(v) or {}).get("category") == "Venue" else None)
     monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
     monkeypatch.setattr(config, "COMPARE_PICK", True)
     monkeypatch.setattr(config, "COMPARE_DECIDE", True)
@@ -89,8 +90,60 @@ def test_flag_off_or_control_arm(plan90, monkeypatch):
 def test_a_failed_write_keeps_the_old_pick(plan90, monkeypatch):
     post("V1")
     monkeypatch.setattr(xano, "plan_add", lambda row: (_ for _ in ()).throw(RuntimeError("xano")))
-    assert post("V2").status_code == 502
+    r = post("V2")
+    assert r.status_code == 502 and r.json()["detail"]["pick"]["vendor_id"] == "V1"      # the page is told what is stored
     assert compare.pick_of(xano, 7)["vendor_id"] == "V1"
+
+
+def test_a_row_that_cannot_be_removed(plan90, monkeypatch):
+    post("V1")
+    real = xano.plan_remove
+    monkeypatch.setattr(xano, "plan_remove", lambda *a: (_ for _ in ()).throw(RuntimeError("xano")))
+    assert post("V2").json()["pick"]["vendor_id"] == "V2"                    # the newest is the pick
+    r = post("")
+    assert r.status_code == 502 and r.json()["detail"]["pick"]["vendor_id"] == "V2"      # not cleared, and says so
+    monkeypatch.setattr(xano, "plan_remove", real)
+    assert post("").json()["pick"] is None
+    assert TestClient(app.app).get("/rec/compare/pick", headers=H).json() == {"pick": None}
+
+
+def test_going_back_to_a_leftover_older_row(plan90, monkeypatch):
+    post("V1")
+    monkeypatch.setattr(xano, "plan_remove", lambda *a: (_ for _ in ()).throw(RuntimeError("xano")))
+    post("V2")
+    assert post("V1").json()["pick"]["vendor_id"] == "V1"
+
+
+def test_a_body_without_a_venue_never_clears(plan90):
+    post("V1")
+    assert TestClient(app.app).post("/rec/compare/pick", json={}, headers=H).status_code == 400
+    assert compare.pick_of(xano, 7)["vendor_id"] == "V1"
+
+
+def test_status_says_nothing_when_the_pick_cannot_be_read(plan90, monkeypatch):
+    monkeypatch.setattr(xano, "plan_items", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("xano")))
+    assert app._pick_status({"id": 7}) == {"compare_decide": True}
+
+
+def test_the_old_plan_cannot_write_or_see_a_pick(plan90, monkeypatch):
+    post("V1")
+    monkeypatch.setattr(app.sheet_log, "event", lambda *a, **k: None)
+    TestClient(app.app).post("/rec/plan/add", json={"vendor_id": "V1", "vendor_name": "Wythe", "source": "pick"}, headers=H)
+    assert [r["source"] for r in plan90] == ["planner_card", "pick", "planner_card"]
+    post("")
+    assert plan90[2]["status"] == "active" and plan90[1]["status"] == "removed"
+
+
+def test_listed_venue(monkeypatch):
+    row = {"Vendor_ID": "V1", "id": 1, "Name": "A", "Category": "Venue", "Validated_Data": "1"}
+    for change, ok in (({}, True), ({"Validated_Data": "0"}, False), ({"Category": ""}, False), ({"Category": "Flowers"}, False)):
+        monkeypatch.setattr(xano, "_search_all", lambda t, s, change=change: [dict(row, **change)])
+        assert bool(xano.listed_venue("V1")) is ok
+
+
+def test_card_totals_need_the_same_entitlement_as_the_venue_page(monkeypatch):
+    src = (pathlib.Path(app.__file__)).read_text(encoding="utf-8")
+    assert '"card_totals": bool(paid and xano.pi_entitled(user)' in src
 
 
 # ---------------------------------------------------------------- near venues
