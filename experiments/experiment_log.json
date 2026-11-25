@@ -3712,7 +3712,7 @@
     {
       "id": "EXP-2026-11-price-report-vs-pi-card",
       "what": "Tulle Price Report (ww-price-report) replaces the Pricing Intelligence card on both vendor pages, no holdout",
-      "status": "reverted",
+      "status": "inconclusive",
       "themes": [
         "paywall",
         "pricing-intelligence",
@@ -3722,7 +3722,7 @@
       "primary_metric": "Unique clicked_membership_for_pricing_venue_price_report / unique viewed_vendor_page per day (Mixpanel 3963130), vs the old card's clicked_membership_for_pricing_venue_pricing_intelligence / viewed_vendor_page.",
       "guardrail": "Purchases/day (payment log table 16; Mixpanel membership_purchase_confirmed) not below the 14 days before; signed_up -> viewed_vendor_pdf share not down; no paid figure visible to free couples in the report's locked view.",
       "start_date": "2026-11-17",
-      "end_date": "2026-11-21",
+      "end_date": null,
       "review_date": "2026-12-01",
       "dates_note": "Live with WeWeb publish cacheVersion 1398, 2026-11-17 16:47 UTC (ww-price-report 888aaf3; old card hidden, not deleted, restore steps in tulletogether .claude/xano_backups/weweb_pi_card_pre_replace_by_price_report_2026-11-17.json). review_date = start + 14 days. Registered retroactively 2026-11-18 (the launch was only logged as a confound in changes[] 2026-11-17).",
       "design": "pre/post, everyone (no A/B). Read rates per day, not counts; exclude internal accounts at read time.",
@@ -3742,7 +3742,7 @@
         }
       ],
       "stat_sig": "not computed",
-      "decision": "Owner 2026-11-21 ~23:20 UTC: 'revert back to the very original pricing intelligence'. Original PI card restored and the Price Report hidden on both vendor pages (WeWeb editor 11-21; goes live with the next publish). Not read as a test: three treatments in 5 days (11-17 16:47, 11-18 06:47, locked-compact 11-19 05:04) and two confounds (no free first vendor 11-18 05:39; PDF-limit redirect 11-19 05:04). Mixpanel unique users, internal NOT excluded: unlock clicks / vendor-page visitors 14.9% (254/1,700, 11-04..11-16, old card) vs 9.6% (11/115, 11-18) and 9.8% (24/246, 11-19..11-20) on the report - below the bar but confounded. Learning: Des/Kate found the report harder to read than the old card.",
+      "decision": "CORRECTED 2026-11-25: the 11-21 revert was editor-only and never published, so the Price Report has been live since 2026-11-17 and stays live. No proven difference from the old card: per couple 103/573 = 18.0% (11-12..16) vs 80/537 = 14.9% (11-19..23), p~0.17, different events and confounded; the earlier 9.6-9.8% reads were summed daily uniques over three low days. It becomes the control of EXP-2026-11-price-report-v2.",
       "confounds_noted": [
         "Same publish (1398): Plan my wedding for every couple, Meta pixel, landing pages, Back to Planner, Ask Tulle off the phone sticky bar",
         "Overlaps EXP-2026-11-pi-first-vendor-free (call 11-23): the report is what free couples now see on their first and later vendors",
@@ -3815,8 +3815,8 @@
         "evidence": "Live since 11-17 16:47 UTC; period 2 from 11-18 06:47 (publish 1401). Further locked-view builds pushed 11-18 (98f613c teaser, f52e04a one CTA, 8a2c36d compact = default) are pending owner activation + publish (memory project_payment_dip_2026-11-18) - a third treatment if published. Venue-card upgrade clicks fell ~60% after the 11-18 overnight changes (same memory; small sample). Owner: no split test. Review 12-01."
       },
       "in_rotation": false,
-      "outcome": "reverted",
-      "decided_on": "2026-11-21"
+      "outcome": "inconclusive",
+      "decided_on": "2026-11-25"
     },
     {
       "id": "EXP-2026-11-planner-venue-fixes",
@@ -4919,7 +4919,7 @@
     {
       "id": "EXP-2026-11-price-report-locked-compact",
       "name": "Price Report locked view: compact member layout with blurred numbers + one 'See the Exact Number' CTA",
-      "status": "reverted",
+      "status": "inconclusive",
       "themes": [
         "paywall",
         "pricing-intelligence"
@@ -4928,7 +4928,7 @@
       "primary_metric": "venue-card upgrade clicks per 100 vendor views back to 3-5; click -> pay ~12%",
       "guardrail": "",
       "start_date": "2026-11-19",
-      "end_date": "2026-11-21",
+      "end_date": null,
       "review_date": "2026-12-01",
       "dates_note": "ww-price-report 98f613c (teaser) -> f52e04a (one CTA) -> 8a2c36d (compact default, no fake reading) pushed 2026-11-18; owner must activate + publish; locked-shown Mixpanel workflows not verified. Source: memory project_payment_dip_2026-11-18. 2026-11-20 check: LIVE - production build 1404 (asset Last-Modified 2026-11-19 05:04:29 UTC) wwElement chunk carries ww-price-report 8a2c36d markers (tpr__ring-lock, is-compact, locked-shown); both instances (9568da51 venue, bcbabf98 other) leave lockedView unset, so the default 'compact' applies. Staging build 1403 (04:25 UTC) first listed the Price Report change; post_start = the 1404 build time, the earliest production time proven. Rendering and the locked-shown Mixpanel workflows not verified.",
       "design": "pre/post (would be period 3 of EXP-2026-11-price-report-vs-pi-card)",
@@ -4938,7 +4938,7 @@
           "note": "Status planned -> live 2026-11-20: ww-price-report 8a2c36d found in production build 1404 (2026-11-19 ~05:04 UTC). Period 3 of EXP-2026-11-price-report-vs-pi-card; same publish as EXP-2026-11-pdf-limit-soft-redirect."
         }
       ],
-      "decision": "Ended with EXP-2026-11-price-report-vs-pi-card (period 3 of it, never a separate call): owner restored the original PI card 2026-11-21 (live at the next publish). No separate read-out.",
+      "decision": "CORRECTED 2026-11-25: still live (it never ended 11-21, the revert was not published). No separate read-out: pre/post, confounded at launch. Baseline from here: 80 of 468 couples shown it tapped upgrade = 17.1% (11-19..23, Mixpanel uniques, internal not excluded). It is the control view of EXP-2026-11-price-report-v2.",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
       "backfilled": true,
@@ -4989,8 +4989,8 @@
       ],
       "framework_version": 2,
       "review_note": "2026-11-20: review aligned with EXP-2026-11-price-report-vs-pi-card (12-01) - read it there as period 3, not as its own call.",
-      "outcome": "reverted",
-      "decided_on": "2026-11-21"
+      "outcome": "inconclusive",
+      "decided_on": "2026-11-25"
     },
     {
       "id": "EXP-2026-12-pdf-limit-popup-plans",
@@ -5081,7 +5081,7 @@
     {
       "id": "EXP-2026-11-pi-card-restore",
       "name": "Original Pricing Intelligence card restored on both vendor pages (Price Report hidden)",
-      "status": "planned",
+      "status": "shelved",
       "framework_version": 2,
       "owner": "Vivek",
       "launched_by": null,
@@ -5145,11 +5145,13 @@
           "note": "Planned: owner parked the popup test to read this first. Restored in the editor 11-21 (EXACTLY as original, owner reversal ~23:20 UTC); not yet published (live build 1404)."
         }
       ],
-      "decision": "",
+      "decision": "Never launched. Owner + Kate 2026-11-24: skip restoring the PI card and test Des's new design against the live Price Report instead (EXP-2026-11-price-report-v2). Why: the ~45% drop behind this entry did not hold up. Counted once per couple, old card 103/573 = 18.0% (11-12..16) vs Price Report 80/537 = 14.9% (11-19..23), p~0.17; the 9.8% baseline was three low days of summed daily uniques. Learning: range-level uniques, full control period, exposure denominator. Editor put back to the Price Report 2026-11-25 (never published).",
       "spec_gaps": [],
       "links": [
         "backup: tulletogether/.claude/xano_backups/weweb_restore_pi_card_pre_2026-11-21.json"
-      ]
+      ],
+      "outcome": "shelved",
+      "decided_on": "2026-11-25"
     },
     {
       "id": "EXP-2026-11-planner-next-step",
@@ -6003,6 +6005,81 @@
       "review_date": "2026-11-30",
       "rollback": "ep109_user_update_attributes_pre_mixpanel_profile_2026-11-23.xs",
       "dates_note": "Read only accounts created after 05:26 UTC 11-23; earlier ones were filled by the backfill."
+    },
+    {
+      "id": "EXP-2026-11-price-report-v2",
+      "name": "Price Report v2 (Des's fee-by-fee design): free couples see the whole report with every number blurred",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "in_rotation": false,
+      "tier": "money",
+      "themes": [
+        "paywall",
+        "pricing-intelligence"
+      ],
+      "bucket": "payment_funnel",
+      "tldr": "Half of accounts get Des's new Price Report, where free couples see the layout with every number blurred, like locked filters; half keep today's. Question: do more free couples tap upgrade?",
+      "what_changed": "Venue page only. Arm v2: new fee-by-fee Price Report for free couples and members (percentile and green-to-red bar, this venue beside the local typical, all-in total). Free couples: same layout, all numbers blurred placeholders, one button above the fees. Never a locked row for a fee the venue hasn't listed ('Not in their pricing', 'N of 4 fees listed'); 'See this venue's pricing' where part of the total is an estimate, else 'See the Exact Number'. Control: today's report (compact locked view). Other Vendors page unchanged.",
+      "surfaces": [
+        "weweb:vendor-page",
+        "ww-price-report"
+      ],
+      "audience": {
+        "segment": "free couples who see the Price Report on a venue page",
+        "est_daily_exposed": 85,
+        "est_note": "468 couples shown the locked card in 5 days (11-19..23) = 94/day unique within the window; 2,000-2,500 per 28 days estimated; Thanksgiving lowers it"
+      },
+      "hypothesis": "If free couples see the full fee-by-fee report with the numbers blurred and the button above it, then the share tapping upgrade within 7 days rises from 17.1% to 21.7%+, because they can see exactly what they would get.",
+      "tests": "Does a visible but blurred report get more free couples to tap upgrade than today's compact locked card?",
+      "goal": "Owner + Des + Kate 2026-11-24: preview it without giving the data away, like the locked filters. Keep v2 only if clearly better; stop early only for clear harm; otherwise 'no difference' and the owner chooses on design.",
+      "primary_metric": "Couples tapping the card's upgrade button within 7 days of first seeing the card / free couples who saw it, once per couple, by arm (new card-seen event fires when the header shows, both arms)",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.171,
+        "baseline_note": "80 of 468 couples shown the locked compact card tapped upgrade, 11-19..11-23 (Mixpanel price_report_locked_shown and clicked_membership_for_pricing_venue_price_report, range-level uniques, internal not excluded; clicks not limited to 7 days). Phones 66/333. The control arm is the real comparison.",
+        "mde_rel": 0.27,
+        "label": "free couples tapping upgrade within 7 days of seeing the card"
+      },
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "guardrail": "Paid within 7 days per couple (1.7% so far, cannot be powered), PDF opens, all vendor-page upgrade taps (rules out shifting). Members: total and percentile must match an independent recompute before launch.",
+      "decision_rule": {
+        "ship_p": 0.95,
+        "stop_p": 0.05
+      },
+      "assignment": {
+        "type": "split",
+        "rule": "hash_pct",
+        "salt": "price-report-v2",
+        "pct": 50,
+        "note": "sha256('price-report-v2:'+user id), first 8 hex digits mod 100 < 50 = v2. Independent of the Planner parity test. No user id = control and excluded."
+      },
+      "start_date": null,
+      "planned_days": 28,
+      "max_days": 42,
+      "review_date": "2026-12-28",
+      "reporting": "manual",
+      "rollback": "testMode 'off' on 9568da51 (venue page Price Report) and publish: everyone gets today's report.",
+      "dates_note": "review_date provisional, reset at launch + 28 days. Overlaps Thanksgiving, a possible Cyber Monday sale, and the PDF-limit redirect read (12-03); the split handles all three. Owner answers 2026-11-25: test plan yes, honesty rules yes, members get the new design too.",
+      "results": [],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "design: https://claude.ai/artifact/Av9BJ2BNHPtu5YDG2Kmyg1",
+        "pass bar: tulletogether .claude/price_report_v2_2026-11-25/PASS_BAR.md"
+      ]
     }
   ],
   "changes": [
@@ -6518,6 +6595,16 @@
       ],
       "source": "github",
       "ref": "ww-planner-chat 7e18016"
+    },
+    {
+      "date": "2026-11-25",
+      "what": "WeWeb editor (not published): Price Report shown again and the Pricing Intelligence card hidden on both vendor pages; the planned PI card restore is cancelled. Live site unchanged (build 1404).",
+      "affects": [
+        "EXP-2026-11-pi-card-restore",
+        "EXP-2026-11-price-report-v2"
+      ],
+      "source": "weweb",
+      "ref": "editor"
     }
   ]
 }
