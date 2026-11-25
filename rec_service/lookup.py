@@ -411,8 +411,9 @@ def _soft(raw, cue):
 def _nothing_named(core, check):
     """No word left that could name a business: "dessert", "pictures", "gluten free wedding cake", "videographer"."""
     ws = tokens(_clean(check)) or tokens(_clean(core))
-    return bool(_SERVICE_ONLY.match(norm(core))) or (bool(ws) and all(
-        w in NON_VENDOR or w in NON_VENUE or w in DESCRIPTORS for w in ws))
+    need = lambda w: (w in NON_VENDOR or w in NON_VENUE or w in DESCRIPTORS or
+                      (len(w) >= 6 and any(w[0] == n[0] and sim(w, n) >= 0.9 for n in NON_VENUE if len(n) >= 6)))   # "mutiday"
+    return bool(_SERVICE_ONLY.match(norm(core))) or (bool(ws) and all(need(w) for w in ws))
 
 
 def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
@@ -529,7 +530,9 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
     if v3:
         out["v3"] = True
         if _soft(raw, cue):
-            out["soft"] = True   # only a real find is answered; anything else goes to the model
+            out["soft"] = "edit"    # only a real find is answered; anything else goes to the model
+        elif alt_location and not location and not cue:
+            out["soft"] = "place"   # "Algonquin Illinois" is as often a town: never "we don't have it"
     return out
 
 
@@ -670,6 +673,15 @@ def find(q, search, workers=6):
         extra = typo_queries(q["name"], done)
         if extra:
             run(extra)
+            ranked = _rank(rows, q)
+            status, matches = decide(ranked)
+    if q.get("v3") and status != "found" and not any(holds_all(q, m) for m in _unique(rows)):
+        extra = spelling_queries(q["name"], done)
+        if extra:
+            try:
+                run(extra)
+            except LookupFailed:
+                pass
             ranked = _rank(rows, q)
             status, matches = decide(ranked)
     if q.get("dym") and status != "found" and not dym_candidates(q, _unique(rows)):
@@ -898,6 +910,60 @@ def deletion_queries(name, done=()):
     return [x for x in dict.fromkeys(qs) if x not in done][:8]
 
 
+def spelling_queries(name, done=()):
+    """v3: every distinctive word of 4+ letters with an "s" added ("lamb hill" -> "lambs") or a doubled letter made single
+    ("sapphire" -> "saphire"), longest first."""
+    d = sorted([t for t in tokens(name) if t not in GENERIC and len(t) >= 4], key=len, reverse=True)[:2]
+    qs = []
+    for t in d:
+        qs += ([t + "s"] if not t.endswith("s") else [t[:-1]]) + [t[:i] + t[i + 1:] for i in range(1, len(t)) if t[i] == t[i - 1]]
+    return [x for x in dict.fromkeys(qs) if x not in done][:4]
+
+
+def holds_all(q, m):
+    """The candidate holds every word they typed, the venue-type word included ("Madonna INN" is not "Alex Madonna Expo
+    Center"). Place words they added count when the venue is there."""
+    for n in (q.get("name"), q.get("alt_name")):
+        for f in ("name", "google_name"):
+            if not (n and m.get(f)):
+                continue
+            ct = tokens(m[f])
+            nd = _distinctive(n)
+            if nd and _place(" ".join(nd)) and not all(_best(t, tokens(n), 0.9) for t in _distinctive(m[f])):
+                continue     # only a place and a type word typed: "Fort Worth club" is not "Woman's Club of Fort Worth"
+            if all(_best(t, ct, 0.9) for t in tokens(n)) or (joined_match(n, m[f]) and all(
+                    _best(t, ct, 0.9) for t in tokens(n) if t in GENERIC)):
+                return True
+    return False
+
+
+_VENDOR_TOKEN = re.compile("|".join(p for _, p in VENDOR_WORDS) + r"|designs?|studios?|co|company|productions?|group|"
+                           r"collective|llc|inc|services?|creative|cinema|artistry|beauty|makeup|hair|music", re.I)
+
+
+def same_name(q, m):
+    """A photographer / DJ / ... found for a name with no vendor word in it: its own name adds nothing but vendor words ("Mike
+    Lentz" -> "Mike Lentz | Videographer"; "four seasons" is not "The Four Seasons Ensemble")."""
+    typed = [t for n in (q.get("name"), q.get("alt_name")) if n for t in tokens(n)]
+    return all(_best(t, typed, 0.9) or t in GENERIC or _VENDOR_TOKEN.fullmatch(t) for t in tokens(m.get("name")))
+
+
+def certain(q, res):
+    """v3: a match is only STATED ("Here's X", "We have 2 that match") when it holds every word they typed and, when they named a
+    place, is there. Otherwise it becomes "not found" and did_you_mean may offer it as a question. Pure."""
+    if not q.get("v3") or res.get("status") not in ("found", "best", "choices") or not res.get("matches"):
+        return res
+    ms = [m for m in res["matches"] if holds_all(q, m)]
+    if res["status"] == "found":       # a found venue somewhere else keeps its "We don't have one in ..." answer (place_fix)
+        return res if ms else dict(res, status="not_found", matches=[])
+    place = q.get("location") or q.get("alt_location") or ""
+    if place and (state_of(place) or [t for t in tokens(place) if t not in STATE_ABBR]):
+        ms = [m for m in ms if _in_place(m, place)]
+    if not ms:
+        return dict(res, status="not_found", matches=[])
+    return dict(res, status=res["status"] if len(ms) > 1 else "found", matches=ms)
+
+
 def _generic_typo(t):
     """'meusuem' is a misspelt 'museum': a venue-type word, not a distinctive one."""
     return len(t) >= 5 and t not in GENERIC and any(
@@ -938,6 +1004,9 @@ def dym_candidates(q, pool):
         s = max([dym_score(n, m.get(f) or "", bool(q.get("v3"))) for n in names for f in ("name", "google_name")] or [0.0])
         if s > 0:
             out.append((s, m))
+    if q.get("v3"):      # the type word they typed breaks a tie: "Elkin ESTATE" -> Elkins Estate before Elkin Creek Vineyard
+        ty = [t for n in names[:1] for t in tokens(n) if t in GENERIC]
+        out = [(s + 0.05 * sum(1 for t in ty if t in tokens(m.get("name") or "")), m) for s, m in out]
     return sorted(out, key=lambda x: -x[0])
 
 

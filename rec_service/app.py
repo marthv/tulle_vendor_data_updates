@@ -944,11 +944,13 @@ def _find_and_price(q, token, full, prefer=()):
     if hint and hint != "Venue":      # "Bloom florist", "Jane Doe Photography": that type only
         res = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, (hint,))), prefer)
     else:
-        res = lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer)
+        res = lookup.certain(q, lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer))
         venue_res = res
         if res["status"] == "not_found" and not lookup.destination_in(q["name"]):
             # Not a venue we have: maybe a photographer, florist, caterer ... by name (one more parallel round).
-            other = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, OTHER_VENDOR_CATS)), prefer)
+            other = lookup.certain(q, lookup.resolve(q, lookup.find(q, _any_vendor_search(token, OTHER_VENDOR_CATS)), prefer))
+            if q.get("v3") and not all(lookup.same_name(q, m) for m in other.get("matches") or []):
+                other = dict(other, status="not_found", matches=[])
             if other["status"] != "not_found":
                 res = other
         if q.get("dym"):
@@ -1059,7 +1061,8 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
         return None          # "aspen", "North": several equal venues for one bare word - the model reads it
     if status == "not_found" and not q["cue"] and q["words"] == 1:
         return None          # one bare word we can't place: let the model read it
-    if q.get("soft") and status not in ("found", "best", "elsewhere"):
+    if q.get("soft") and status not in (("found", "best", "elsewhere") if q["soft"] == "edit" else
+                                        ("found", "best", "elsewhere", "choices", "dym")):
         return None          # REC_LOOKUP_V3: an edit or a sentence - never "We don't have Remove dj yet"
     if after_q and status not in ("found", "best", "choices", "elsewhere") and not lookup.destination_in(
             "%s %s" % (q["name"], q.get("location") or q.get("alt_location") or "")):
