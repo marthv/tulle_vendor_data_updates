@@ -359,7 +359,7 @@ def test_sim_true_split_rarely_red(capsys):
               for t in (binom(rng, 2000, .5) for _ in range(2000)))
     assert one / 2000 <= 0.005
     ever = 0
-    for _ in range(2000):                       # looked at every day of a 24-day run with the Price Report's plan
+    for _ in range(10000):                      # looked at every day of a 24-day run with the Price Report's plan
         rows, c, t = [], 0, 0
         for d in range(24):
             a = binom(rng, 84, .5)
@@ -370,14 +370,11 @@ def test_sim_true_split_rarely_red(capsys):
                 ever += 1
                 break
     with capsys.disabled():
-        print(f"\n  true 50/50 red at 2,000 couples: {one / 20:.2f}%; ever red over 24 daily looks: {ever / 20:.2f}%")
-    assert ever / 2000 <= 0.005, ever / 2000
+        print(f"\n  true 50/50 red at 2,000 couples: {one / 20:.2f}%; ever red over 24 daily looks: {ever / 100:.2f}%")
+    assert ever / 10000 <= 0.005, ever / 10000
 
 
 def test_balance_is_red_at_once():
-    rows = expo(3, 333, 333) + [{"date": "2026-11-18", "control": 440, "treatment": 561}]      # first day over the line
-    p = v2.balance_p(999 + 440, 999 + 561)
-    assert 1e-5 < p < 0.001 or p < 0.05
     rows = [{"date": "2026-11-10", "control": 480, "treatment": 520}, {"date": "2026-11-11", "control": 445, "treatment": 555}]
     assert 1e-5 < v2.balance_p(925, 1075) < 0.001
     assert v2.check_balance(entry(), {"exposure_by_day": rows}, 1148)["colour"] == "red"
@@ -559,7 +556,8 @@ def test_exposure_stop():
 
 def test_validate_refuses_a_live_split_with_no_exposure_source(tmp_path):
     e = entry(reporting="manual", metric={"key": "manual", "direction": "increase", "baseline": .1, "mde_rel": .5})
-    for x, code in ((e, 1), (dict(e, exposure={"source": "mixpanel:seen"}), 0)):
+    good = dict(e, exposure={"source": "mixpanel:card_seen"})
+    for x, code in ((e, 1), (dict(good, launch_lock=v2.launch_lock(good)), 0)):
         p = tmp_path / "r.json"
         p.write_text(json.dumps({"experiments": [x], "changes": []}), encoding="utf-8")
         for extra in ([], ["--id", x["id"]]):

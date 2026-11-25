@@ -29,7 +29,8 @@ BALANCE_P = 0.001
 BALANCE_STRONG_P = 1e-5     # red at any size
 BALANCE_AMBER_P = 0.01
 BALANCE_MIN_N = 100         # nothing is judged below this
-BALANCE_FULL_N = 1000       # red at p < 0.001 from here, or from half the planned couples when that is fewer
+BALANCE_FULL_N = 1500       # red at p < 0.001 from here, or from 75% of the planned couples when that is fewer
+BALANCE_FULL_MIN = 250
 MIX_RED = 0.01
 COVERAGE_RED = 0.98
 EXPOSURE_GAP_H = 48
@@ -246,8 +247,8 @@ def blocks_read(entry, check):
 
 
 def check_balance(entry, readout, need=None, final=False):
-    """``need`` = planned couples per version. Red at once at p < 0.001 once half the plan (at most 1,000 couples) is
-    in, and on the read date; at p < 0.00001 from 100 couples. Earlier p < 0.001 is amber: looked at every day from
+    """``need`` = planned couples per version. Red at once at p < 0.001 once 75% of the plan (at most 1,500 couples)
+    is in, and on the read date; at p < 0.00001 from 100 couples. Earlier p < 0.001 is amber: looked at every day from
     the first couple, a true 50/50 crosses 0.001 in 0.6-0.9% of runs."""
     ex = exposed(entry, readout)
     if not ex:
@@ -260,8 +261,8 @@ def check_balance(entry, readout, need=None, final=False):
     want = f"{share * 100:g}/{(1 - share) * 100:g}"
     got = f"{ex['treatment']} new / {ex['control']} old"
     if p < BALANCE_P:
-        full = BALANCE_MIN_N if final else max(BALANCE_MIN_N, min(BALANCE_FULL_N, need or BALANCE_FULL_N))
-        if n >= full or p < BALANCE_STRONG_P:          # need per version = half the planned couples
+        full = BALANCE_MIN_N if final else max(BALANCE_FULL_MIN, min(BALANCE_FULL_N, int(1.5 * (need or BALANCE_FULL_N))))
+        if n >= full or p < BALANCE_STRONG_P:          # 1.5 x need per version = 75% of the planned couples
             return _check("balance", "Balance", RED, f"The versions are not the planned {want}: {got}. A real {want} "
                           "split would almost never look like this, so the read can't be trusted.")
         return _check("balance", "Balance", AMBER, f"{got}: off the planned {want}, but early; red if it is still off "

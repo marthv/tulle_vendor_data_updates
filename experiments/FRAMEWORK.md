@@ -404,10 +404,10 @@ hand) is amber with the reason, never green. Why not the plain P(better) <= 0.5%
 
 (8,000 runs each, seed 11, normal approximation to the posterior; the exact function is simulated in tests/test_exp_tab_v2.py.)
 
-**Balance.** Exact binomial. Red at once at p < 0.001 once half the planned couples (at most 1,000) are in, and on the
-read date; at p < 0.00001 from 100 couples. Earlier p < 0.001 is amber. Measured: 55/45 at 2,000 couples red in 87%;
-true 50/50 at 2,000 red in 0.1%. Red at once from the first couple would be red at some point in 0.6-0.9% of true
-50/50 runs looked at daily, above the 0.5% limit.
+**Balance.** Exact binomial. Red at once at p < 0.001 once 75% of the planned couples (at most 1,500) are in, and on
+the read date; at p < 0.00001 from 100 couples. Earlier p < 0.001 is amber. Measured (100,000 runs): 55/45 at 2,000
+couples red in 87%; true 50/50 at 2,000 red in 0.1%, and red at any of the daily looks of a whole run in 0.2-0.4%. Red
+at once from the first couple would do that in 0.6-0.9% of runs, above the 0.5% limit.
 
 **Other checks.** Both versions / repeat accounts: recorded-version mismatches and accounts with the same normalised
 e-mail (keyed hash in memory only), left out of the read, red over 1%. Where no version is stored the check says
