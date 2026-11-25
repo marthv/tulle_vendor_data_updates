@@ -98,7 +98,7 @@ def _v2_on():
 
 def _split_like(e):
     a = e.get("assignment")
-    return "launch_lock" in e or (isinstance(a, dict) and (str(a.get("type")) == "split" or a.get("salt") or a.get("rule"))) \
+    return "launch_lock" in e or (isinstance(a, dict) and (str(a.get("type")) == "split" or a.get("salt") or a.get("rule") or a.get("split"))) \
         or "split" in str(e.get("design") or "").lower() \
         or str(e.get("design") or "").lower().startswith("a/b")
 
