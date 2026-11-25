@@ -1,4 +1,17 @@
 {
  "_about": "Launch locks recorded at launch (validate.py --lock <id> --write). Never edit by hand.",
- "locks": {}
+ "locks": {
+  "EXP-2026-11-welcome-subject": {
+   "hash": "d9e7eef188801a5d",
+   "read_date": "2026-12-26",
+   "name": "090b65f3a283",
+   "locked_on": "2026-11-25"
+  },
+  "EXP-2026-11-planner-context-first": {
+   "hash": "0456dfae9561769f",
+   "read_date": "2026-12-01",
+   "name": "a0699a4af255",
+   "locked_on": "2026-11-25"
+  }
+ }
 }

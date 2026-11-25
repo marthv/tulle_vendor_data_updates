@@ -3597,7 +3597,43 @@
         "evidence": "Code live (server 53d9a72, component 23d878c) with contextTest default OFF; no evidence in memory that the owner switched it on. Verify the instance prop in live page data before treating as running."
       },
       "in_rotation": true,
-      "bucket": "planner_engagement"
+      "bucket": "planner_engagement",
+      "exposure": {
+        "source": "xano:table79",
+        "surfaces": [
+          "planner"
+        ]
+      },
+      "read_date": "2026-12-01",
+      "launch_lock": {
+        "hash": "0456dfae9561769f",
+        "settings": {
+          "id": "EXP-2026-11-planner-context-first",
+          "type": "split",
+          "rule": "user_id_parity",
+          "salt": null,
+          "percent": null,
+          "treatment": "even",
+          "hash digits": null,
+          "forced ids": [],
+          "excluded ids": [],
+          "start": "2026-11-17T00:00Z",
+          "metric": "planner_second_question",
+          "metric params": {},
+          "direction": "increase",
+          "metric wording": null,
+          "read_date": "2026-12-01",
+          "read date as written": "2026-12-01",
+          "exposure": {
+            "source": "xano:table79",
+            "surfaces": [
+              "planner"
+            ],
+            "kinds": null
+          }
+        },
+        "locked_on": "2026-11-25"
+      }
     },
     {
       "id": "EXP-2026-11-whole-wedding-planner",
@@ -6166,10 +6202,11 @@
         "key": "manual",
         "params": {},
         "direction": "increase",
-        "baseline": null,
+        "baseline": 0.023,
         "baseline_note": "See lanes/T3/PASS_BAR_email.md: planned 766 per arm at 2.3% vs 4.6% welcome clicks",
         "mde_rel": 1.0,
-        "label": "people who clicked the welcome email (Brevo), 7 days after delivery"
+        "label": "people who clicked the welcome email (Brevo), 7 days after delivery",
+        "follow_days": 7
       },
       "primary_metric": "unique welcome clicks per delivered person, 7 days mature",
       "guardrail": "unsubscribes +0.5 pt; spam complaints 2+ and over 0.1%",
@@ -6183,12 +6220,16 @@
       ],
       "assignment": {
         "type": "rollout",
-        "note": "REALLY a 50/50 split by FNV hash of 'ewel1:'+email, B = hash%100 < 50 (B_SHARE in fn72). Marked rollout because the engine only assigns by account id; it cannot compute these arms. Read from Brevo in the Monday report."
+        "note": "REALLY a 50/50 split by FNV hash of 'ewel1:'+email, B = hash%100 < 50 (B_SHARE in fn72). Marked rollout because the engine only assigns by account id; it cannot compute these arms. Read from Brevo in the Monday report.",
+        "split": true,
+        "rule": "email_hash",
+        "salt": "ewel1",
+        "pct": 50
       },
       "start_date": "2026-11-25",
-      "planned_days": 25,
+      "planned_days": 31,
       "max_days": 35,
-      "review_date": "2026-12-20",
+      "review_date": "2026-12-26",
       "reporting": "manual",
       "rollback": "Set B_SHARE = 0 in fn72 (everyone gets A); or restore fn72_pre_subject_test_2026-11-25.xs",
       "links": [
@@ -6205,7 +6246,38 @@
       "outcome": null,
       "decided_on": null,
       "owner": "owner",
-      "launched_by": "T3 (owner yes 2026-11-25)"
+      "launched_by": "T3 (owner yes 2026-11-25)",
+      "exposure": {
+        "source": "brevo:welcome_email_delivered"
+      },
+      "read_date": "2026-12-26",
+      "launch_lock": {
+        "hash": "d9e7eef188801a5d",
+        "settings": {
+          "id": "EXP-2026-11-welcome-subject",
+          "type": "split",
+          "rule": "email_hash",
+          "salt": "ewel1",
+          "percent": 50.0,
+          "treatment": null,
+          "hash digits": null,
+          "forced ids": [],
+          "excluded ids": [],
+          "start": "2026-11-25T00:00Z",
+          "metric": "manual",
+          "metric params": {},
+          "direction": "increase",
+          "metric wording": "people who clicked the welcome email (Brevo), 7 days after delivery",
+          "read_date": "2026-12-26",
+          "read date as written": "2026-12-26",
+          "exposure": {
+            "source": "brevo:welcome_email_delivered",
+            "surfaces": null,
+            "kinds": null
+          }
+        },
+        "locked_on": "2026-11-25"
+      }
     }
   ],
   "changes": [
