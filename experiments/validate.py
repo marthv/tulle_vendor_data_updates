@@ -37,7 +37,7 @@ from collections import Counter
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from experiments_engine import buckets, spec  # noqa: E402
+from experiments_engine import buckets, readlock, spec  # noqa: E402
 from experiments_engine.snapshot import ROTATION_MAX  # noqa: E402
 
 ROTATION_MAX_DAYS = 14
@@ -97,12 +97,37 @@ def is_known_gap(issue, fields):
     return bool(f) and any(f == g or f.startswith(g + ".") or f.startswith(g + "[") for g in fields)
 
 
+def exposure_issues(entry, e, strict):
+    """EXP_TAB_V2 section 14: a test with no record of who was exposed cannot go live.
+
+    Only with EXP_TAB_V2 on. A live split without one is refused in every run; the launch check (--id) refuses any
+    test except a rollout; otherwise it is a warning."""
+    from experiments_engine import v2_data
+    life, atype = e["_lifecycle"], e.get("_assignment_type")
+    if atype == "rollout" or life not in ("live", "planned", "paused") or v2_data.exposure_rule(entry):
+        return []
+    live_split = atype == "split" and life == "live"
+    if not readlock.enabled():
+        return []
+    sev = "error" if live_split or strict else "warn"
+    return [{"severity": sev, "question": 2, "field": "exposure",
+             "message": 'No exposure source: set exposure = {"source": "xano:table79" | "xano:table1" | '
+                        '"mixpanel:<event>", "surfaces": [...]} (who saw it), or it cannot go live'}]
+
+
+def print_lock(entry):
+    from experiments_engine import v2
+    _out(json.dumps({"launch_lock": v2.launch_lock(entry)}, indent=2, ensure_ascii=False))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Validate experiments/experiment_log.json (FRAMEWORK.md)")
     ap.add_argument("--all", action="store_true", help="also report decided / draft entries")
     ap.add_argument("--registry", default=DEFAULT_REGISTRY)
     ap.add_argument("--id", dest="only_id", default=None,
                     help="validate one entry strictly (spec_gaps not excused); use before a launch")
+    ap.add_argument("--lock", dest="lock_id", default=None,
+                    help="print the launch_lock object (hash of the launch settings) to paste into the entry at launch")
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -116,6 +141,13 @@ def main(argv=None):
         return 2
 
     exps = [x for x in reg["experiments"] if isinstance(x, dict)]
+    if args.lock_id:
+        hit = [x for x in exps if x.get("id") == args.lock_id]
+        if not hit:
+            _out(f"ERROR: no entry with id {args.lock_id}")
+            return 1
+        print_lock(hit[0])
+        return 0
     failures = []
     dupes = [i for i, c in Counter(x.get("id") for x in exps).items() if c > 1]
     strict = args.only_id is not None
@@ -140,7 +172,7 @@ def main(argv=None):
     known_total = 0
     for raw in exps:
         e = spec.normalise(raw)
-        issues = spec.validate(raw)
+        issues = spec.validate(raw) + exposure_issues(raw, e, strict)
         enforced = spec.is_enforced(e)
         v2 = not e["_legacy"]
         if not strict:

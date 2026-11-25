@@ -25,6 +25,7 @@ import traceback
 
 from . import buckets as _buckets
 from . import health as _health
+from . import readlock
 from . import spec
 from . import verdict as _verdict
 
@@ -153,6 +154,7 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
     changes = [c for c in (reg.get("changes") or []) if isinstance(c, dict)]
 
     experiments, decided = [], []
+    v2on, entries = readlock.enabled(), {}
     for raw in raw_exps:
         eid = raw.get("id") if isinstance(raw, dict) else None
         try:
@@ -162,7 +164,10 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
             issues = spec.validate(raw)
             if e["_lifecycle"] == "decided":
                 decided.append(_decided_row(e))
+                if v2on and e.get("family"):
+                    decided[-1]["family"] = e["family"]
                 continue
+            split = e.get("_assignment_type") == "split"
             row = {"id": eid, "name": e.get("name"), "status": e.get("status"),
                    "lifecycle": e["_lifecycle"], "tier": e.get("tier"),
                    "tier_effective": spec.tier(e), "themes": e.get("themes") or [],
@@ -176,6 +181,8 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
             if e["_lifecycle"] in ("live", "paused"):
                 if is_manual(e):
                     readout = manual_readout(e)
+                    if v2on:
+                        readout = _v2_manual(raw, readout, metric_runner)
                 elif metric_runner is None:
                     readout = {"error": "no metric runner configured", "computed_at": None}
                 else:
@@ -199,7 +206,10 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                         errors.append({"id": eid, "stage": "history", "error": f"{type(exc).__name__}: {exc}"})
                         hist = []
                 hist = sorted((x for x in hist if isinstance(x, dict)), key=lambda x: str(x.get("date")))
-                h = _health.evaluate(e, readout, hist, changes, today_d, spec_issues=issues)
+                if v2on and split:
+                    h = _v2_evaluate(e, readout, hist, changes, today_d, issues, history_store, errors)
+                else:
+                    h = _health.evaluate(e, readout, hist, changes, today_d, spec_issues=issues)
             plan = (h or {}).get("sample_plan") or (spec.plan(e) if e.get("_assignment_type") != "rollout" else None)
             row.update(sections(e, plan))
             row["seven"] = {k: row[k] for k in SECTION_KEYS}
@@ -222,6 +232,15 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
             else:
                 row.update({"health": None, "stale": False, "action": None, "reason": None,
                             "overlapping_changes": []})
+            if v2on:
+                entries[eid] = e
+                if split and h:
+                    for k in ("read_date", "result_hidden", "result_text", "read", "checks", "light", "exposed",
+                              "harm", "sample_plan"):
+                        if k in h:
+                            row[k] = h[k]
+                elif readlock.hidden(e, today_d):        # a running status the engine doesn't score: still locked
+                    row.update(result_hidden=True, result_text=readlock.hidden_text(e))
             row.update(calendar_fields(e))
             row["verdict"] = _verdict.build_verdict(row, today_d)
             experiments.append(row)
@@ -246,8 +265,78 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
 
     snap = {"generated_at": now.isoformat().replace("+00:00", "Z"), "today": today_d.isoformat(),
             "experiments": experiments, "decided": decided, "changes": change_rows, "errors": errors}
+    if v2on:
+        _v2_finish(snap, entries, today_d)
     recompute_views(snap)
     return _jsonable(snap)
+
+
+# -- EXP_TAB_V2 (FRAMEWORK section 14) ---------------------------------------------------------------------------
+
+_V2_MANUAL_KEYS = ("guardrails", "payments", "exposure_by_day", "exposed", "mixing", "last_exposure_at", "overlap")
+
+
+def _v2_manual(raw, readout, metric_runner):
+    """Manual entry: the results[] read-out plus what the engine can compute itself (guardrails, payments and
+    couples by arm). A runner that has nothing for it changes nothing."""
+    if metric_runner is None:
+        return readout
+    try:
+        ro = metric_runner(raw)
+    except Exception:
+        return readout
+    if not isinstance(ro, dict) or (ro.get("error") and "guardrails" not in ro):
+        return readout
+    return dict(readout, **{k: ro[k] for k in _V2_MANUAL_KEYS if k in ro})
+
+
+def _v2_evaluate(e, readout, hist, changes, today_d, issues, store, errors):
+    """health.evaluate for a split with the stored launch settings and the stored read (engine volume)."""
+    from . import v2
+    eid = e.get("id")
+    lock = read = None
+    try:
+        if store is not None and hasattr(store, "load_lock"):
+            lock = store.load_lock(eid)
+            if lock is None and e["_lifecycle"] == "live":
+                lock = v2.launch_lock(e, today_d)
+                store.save_lock(eid, lock)
+            read = store.load_read(eid)
+    except Exception as exc:
+        errors.append({"id": eid, "stage": "read lock", "error": f"{type(exc).__name__}: {exc}"})
+    h = _health.evaluate(e, readout, hist, changes, today_d, spec_issues=issues, lock=lock, read=read)
+    try:
+        r = h.get("read") or {}
+        if r.get("call") and read is None and store is not None and hasattr(store, "save_read"):
+            store.save_read(eid, dict(r, read_at=_utcnow().isoformat().replace("+00:00", "Z")))
+    except Exception as exc:
+        errors.append({"id": eid, "stage": "read lock", "error": f"{type(exc).__name__}: {exc}"})
+    return h
+
+
+def _v2_finish(snap, entries, today_d):
+    """Overlaps, cards and the family fold, then the read lock on every row whose result is hidden."""
+    from . import v2, v2_cards
+    snap["exp_tab_v2"] = True
+    rows = [r for r in snap["experiments"] if isinstance(r, dict)]
+    owner = {e.get("family"): i for i, e in entries.items() if e.get("family") and e.get("family_card")}
+    for r in rows + snap["decided"]:
+        fam = r.get("family") or (entries.get(r.get("id")) or {}).get("family")
+        if fam in owner and owner[fam] != r.get("id"):
+            r["folded_into"] = owner[fam]
+    v2.attach_overlaps(rows, entries)
+    for r in rows:
+        e = entries.get(r.get("id"))
+        if e is None:
+            continue
+        try:
+            r["card"] = v2_cards.build_card(r, e, today_d)
+        except Exception as exc:
+            snap["errors"].append({"id": r.get("id"), "stage": "card", "error": f"{type(exc).__name__}: {exc}"})
+        if r.get("result_hidden"):
+            v2.lock_row(r, e, r.get("read_date"))
+        if e.get("family_history"):
+            r["family_history"] = readlock.public_history(e, today_d, r.get("read_date"))
 
 
 def _next_monday(d):
@@ -259,6 +348,9 @@ def recompute_views(snap):
     notes set ``decision_pending`` on rows (those leave Decide now, the queue and the backlog)."""
     experiments = [r for r in snap.get("experiments") or [] if isinstance(r, dict)]
     decided = [r for r in snap.get("decided") or [] if isinstance(r, dict)]
+    if snap.get("exp_tab_v2"):             # versions folded into a family card are not tests of their own
+        experiments = [r for r in experiments if not r.get("folded_into")]
+        decided = [r for r in decided if not r.get("folded_into")]
     today_d = spec.parse_date(snap.get("today")) or _utcnow().date()
     live_rows = [r for r in experiments if r.get("health")]
     open_rows = [r for r in live_rows if not r.get("decision_pending")]

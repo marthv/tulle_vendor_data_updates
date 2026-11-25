@@ -53,7 +53,7 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from . import alerts, changefeed, history, notes, snapshot
+from . import alerts, changefeed, history, notes, readlock, snapshot
 
 log = logging.getLogger("experiments_engine.service")
 
@@ -67,6 +67,9 @@ SEND_RETRY_AFTER = _dt.timedelta(minutes=30)
 HOOK_MAX_BYTES = 64 * 1024
 DEFAULT_MIN_FULL_GAP_S = 900     # POST /refresh?mode=full is refused (429) this soon after a full run
 SNAPSHOT_FILE = "snapshot_latest.json.gz"
+RAW_FILE = "readouts_raw.json.gz"        # EXP_TAB_V2: full readouts for rescoring; never served
+SAFE_HISTORY_FIELDS = ("date", "exp_id", "generated_at", "n_control", "n_treatment", "n_total", "days_running",
+                       "progress", "error")
 MAX_INLINE_HISTORY = 60
 HISTORY_FIELDS = ("date", "p_beat", "n_control", "n_treatment", "health")
 BREACH_MAX_GAP_DAYS = 3          # days with no readout row inside one breach run (no full run that day)
@@ -139,6 +142,16 @@ def cached_runner(prev_snapshot):
     return runner
 
 
+def recording_runner(runner, store):
+    """Pass-through runner that keeps each full readout, so a locked (redacted) snapshot can be rescored later."""
+    def run(entry):
+        ro = runner(entry)
+        if isinstance(ro, dict) and not ro.get("cached") and entry.get("id"):
+            store[entry["id"]] = ro
+        return ro
+    return run
+
+
 class Engine:
     """Holds the latest snapshot, runs refreshes and the alert schedule.
 
@@ -161,6 +174,7 @@ class Engine:
         self.snapshot = None
         self.snapshot_gz = None
         self.snapshot_etag = None
+        self._raw = {}                   # EXP_TAB_V2: {exp_id: full readout}, internal only
         self.last_run = None
         self.last_full_started = None    # in-memory: covers failed full runs (they still read Xano)
         self.current_run = None
@@ -226,9 +240,11 @@ class Engine:
                 return self._variants[key]
         ids = [r.get("id") for r in (snap or {}).get("experiments") or [] if isinstance(r, dict) and r.get("id")]
         by_id = {i: [] for i in ids}
+        hide = self.hidden_ids()
         for r in self.store._read_all():      # one file read for every experiment
             if r.get("exp_id") in by_id:
-                by_id[r["exp_id"]].append({k: r.get(k) for k in HISTORY_FIELDS})
+                keys = [k for k in HISTORY_FIELDS if r["exp_id"] not in hide or k in SAFE_HISTORY_FIELDS]
+                by_id[r["exp_id"]].append({k: r.get(k) for k in keys})
         for i, rows in by_id.items():
             rows.sort(key=lambda x: str(x.get("date")))
             by_id[i] = rows[-n:]
@@ -246,6 +262,14 @@ class Engine:
                 gz = f.read()
             snap = json.loads(gzip.decompress(gz).decode("utf-8"))
             if isinstance(snap, dict):
+                self._load_raw(snap)
+                if readlock.enabled() and not snap.get("exp_tab_v2"):
+                    from . import v2  # a snapshot from before the switch: lock it before anyone can read it
+                    try:
+                        reg = self.load_registry()[0]
+                    except Exception:
+                        reg = {}
+                    snap = v2.lock_snapshot(snap, reg, self.clock().date())
                 self._set_snapshot(snap, persist=False)
                 return True
         except FileNotFoundError:
@@ -253,6 +277,45 @@ class Engine:
         except Exception as exc:
             log.error("could not load the saved snapshot: %s", exc)
         return False
+
+    # -- EXP_TAB_V2: full readouts (never served) ----------------------------------------------
+    def _load_raw(self, snap):
+        if not (readlock.enabled() or snap.get("exp_tab_v2")):
+            return
+        try:
+            with open(os.path.join(self.data_dir, RAW_FILE), "rb") as f:
+                raw = json.loads(gzip.decompress(f.read()).decode("utf-8"))
+            self._raw = raw if isinstance(raw, dict) else {}
+        except FileNotFoundError:
+            self._raw = {} if snap.get("exp_tab_v2") else {
+                r.get("id"): r["readout"] for r in snap.get("experiments") or []
+                if isinstance(r, dict) and isinstance(r.get("readout"), dict)}
+        except Exception as exc:
+            log.error("could not load the saved readouts: %s", exc)
+
+    def _save_raw(self):
+        body = json.dumps(self._raw, separators=(",", ":"), default=str).encode("utf-8")
+        _atomic_write_bytes(os.path.join(self.data_dir, RAW_FILE), gzip.compress(body, compresslevel=6, mtime=0))
+
+    def _cache_source(self):
+        """What a registry-only rebuild rescores from: the snapshot's readouts, or (when the snapshot is locked)
+        the full readouts kept beside it."""
+        if readlock.enabled() or (self.snapshot or {}).get("exp_tab_v2"):
+            return {"experiments": [{"id": k, "readout": v} for k, v in self._raw.items()]}
+        return self.snapshot
+
+    def hidden_ids(self):
+        """Ids whose result is hidden now (EXP_TAB_V2), for history answers."""
+        if not readlock.enabled():
+            return set()
+        out = {r.get("id") for r in (self.snapshot or {}).get("experiments") or []
+               if isinstance(r, dict) and r.get("result_hidden")}
+        try:
+            out |= {e.get("id") for e in self.load_registry()[0].get("experiments") or []
+                    if isinstance(e, dict) and readlock.hidden(e, self.clock().date())}
+        except Exception as exc:
+            log.error("hidden_ids: registry unreadable: %s", exc)
+        return out
 
     def snapshot_time(self):
         if not self.snapshot:
@@ -384,8 +447,12 @@ class Engine:
             runner, xstats = self.metric_runner_factory(reg, now, self.data_dir)
             include = ("weweb", "github", "railway", "xano")
         else:
-            runner, xstats = cached_runner(self.snapshot), {"requests": 0, "note": "registry-only rebuild"}
+            runner, xstats = cached_runner(self._cache_source()), {"requests": 0, "note": "registry-only rebuild"}
             include = ("railway",)
+        v2on = readlock.enabled()
+        fresh = {}
+        if v2on:
+            runner = recording_runner(runner, fresh)
         snap = snapshot.build_snapshot(reg, runner, self.store, now.date())
         snap["generated_at"] = _iso(now)      # the run's clock (staleness + schedule use it)
         sc = xstats.pop("scorecards", None) if isinstance(xstats, dict) else None
@@ -406,6 +473,9 @@ class Engine:
             snap["rebuilt_at"] = _iso(now)
         if mode == "full":
             self.store.append_day(snap)
+        if v2on and mode == "full":
+            self._raw = fresh
+            self._save_raw()
         self._set_snapshot(snap)
         self.check_guardrails(snap, now)
         return snap
@@ -735,6 +805,8 @@ def create_app(engine=None, start_scheduler=None):
         require_key(request)
         days = max(1, min(int(days), 365))
         rows = eng.store.load(exp_id, days=days, today=eng.clock().date())
+        if exp_id in eng.hidden_ids():
+            rows = [{k: r.get(k) for k in SAFE_HISTORY_FIELDS if k in r} for r in rows]
         return {"id": exp_id, "days": days, "rows": rows}
 
     @app.get("/experiments/{exp_id}/notes")

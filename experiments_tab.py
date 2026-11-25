@@ -209,7 +209,8 @@ def _render_legacy():
 # The tab now renders one self-contained HTML view (experiments_ui/) from the experiments-engine snapshot.
 # Every click happens inside the page; only saving a note (drawer > Notes) reruns the dash, to post it to the engine. The engine runs
 # as its own Railway service (private network); if it is unreachable the view is built from the registry
-# alone (spec + manual results), so the tab never breaks. EXP_TAB_V2=0 brings back the old tab.
+# alone (spec + manual results), so the tab never breaks. EXP_TAB_V2=0 brings back the old tab;
+# unset = this tab; 1 / on / true / yes (2026-11-25) = read lock + one card per test (FRAMEWORK section 14).
 ENGINE_URL = os.environ.get("EXP_ENGINE_URL", "").rstrip("/")
 ENGINE_KEY = os.environ.get("EXP_API_KEY", "")
 

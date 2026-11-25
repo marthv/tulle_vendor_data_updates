@@ -20,6 +20,7 @@ import plan as _plan  # noqa: E402  (pure: hashlib + os only)
 START = os.environ.get("PLAN_AB_START", "2026-11-08")
 PLAN_TABLE = 90
 MIN_DAYS = 14
+EXPERIMENT_ID = "EXP-2026-11-planner-my-wedding-plan"
 
 
 def _z(c1, n1, c2, n2):
@@ -120,10 +121,31 @@ def format_block(s, day_n):
     return "\n".join(lines)
 
 
+def _read_locked(today=None):
+    """EXP_TAB_V2: "" unless this experiment is a running split before its read date; then the line to send instead."""
+    if str(os.environ.get("EXP_TAB_V2", "")).strip().lower() not in ("1", "on", "true", "yes"):
+        return ""
+    try:
+        import json
+        from experiments_engine import readlock
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "experiments", "experiment_log.json"),
+                  encoding="utf-8") as f:
+            reg = json.load(f)
+        e = next((x for x in reg.get("experiments") or [] if x.get("id") == EXPERIMENT_ID), None)
+        if e is None or not readlock.hidden(e, today):
+            return ""
+        return "*My wedding plan* - %s." % readlock.hidden_text(e)
+    except Exception:
+        return "*My wedding plan* - result hidden (read lock could not be checked)."
+
+
 def block(token, now_ms=None, fetch_day=None, fetch_table=None, fetch_payments=None, internal=None):
     """"" when the plan is off for everyone (REC_PLAN_AB_PCT=0, owner rollback 2026-11-07) - nothing to report."""
     if int(os.environ.get("REC_PLAN_AB_PCT", "100")) <= 0:
         return ""
+    locked = _read_locked()
+    if locked:
+        return locked
     try:
         now = dt.datetime.utcfromtimestamp((now_ms or dt.datetime.utcnow().timestamp() * 1000) / 1000)
         start = dt.datetime.strptime(START, "%Y-%m-%d")

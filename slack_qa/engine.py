@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -82,11 +83,25 @@ def _rotation(snap: dict) -> list[dict]:
     return [e for e in snap.get("experiments") or [] if e.get("in_rotation")]
 
 
+def _unlocked_split(e: dict) -> bool:
+    """EXP_TAB_V2 is on here but the engine's snapshot predates it: treat a running split as hidden (fail closed)."""
+    return (str(os.environ.get("EXP_TAB_V2", "")).strip().lower() in ("1", "on", "true", "yes")
+            and e.get("assignment_type") == "split" and e.get("lifecycle") in ("live", "paused")
+            and "result_hidden" not in e)
+
+
 def format_experiment(e: dict) -> str:
     v = e.get("verdict") or {}
     hw = v.get("how_we_call") or {}
     name = e.get("name") or e.get("title") or e.get("id")
     lines = [f"*{name}* ({e.get('status', '?')})"]
+    if e.get("result_hidden") or _unlocked_split(e):      # EXP_TAB_V2 read lock: one read on a fixed date, nothing before it
+        lines.append(str(e.get("result_text") or "Result: hidden until its read date") + ".")
+        if e.get("days_running") is not None:
+            lines.append(f"Running for {e['days_running']} days.")
+        bad = [c for c in e.get("checks") or [] if c.get("colour") in ("red", "amber")]
+        lines += [f"Setup check, {c.get('label')} ({c.get('colour')}): {c.get('text')}" for c in bad]
+        return "\n".join(lines)
     if v.get("tldr"):
         lines.append(v["tldr"])
     rec = v.get("recommend")

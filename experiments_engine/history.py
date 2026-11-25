@@ -20,6 +20,8 @@ import tempfile
 DEFAULT_DIR = "/data/experiments"
 READOUTS = "readouts.jsonl"
 ALERTS = "alerts_sent.json"
+LOCKS = "settings_lock.json"      # EXP_TAB_V2: launch settings first seen live, per experiment
+READS = "reads.json"              # EXP_TAB_V2: the one read of each split, kept as first taken
 
 ROW_FIELDS = ("health", "stale", "days_running", "progress", "projected_days", "overdue_days")
 
@@ -71,6 +73,10 @@ def row_from_experiment(exp, day, generated_at=None):
            "error": ro.get("error")}
     for k in ROW_FIELDS:
         row[k] = exp.get(k)
+    if exp.get("result_hidden"):           # EXP_TAB_V2: couples only until the read date
+        for k in ("p_beat", "lift_median_rel", "lift_ci95_rel", "expected_loss_abs", "control_rate",
+                  "treatment_rate", "conv_control", "conv_treatment"):
+            row[k] = None
     return row
 
 
@@ -134,6 +140,36 @@ class HistoryStore:
                and (_date(r.get("date")) or _dt.date.min) >= cutoff]
         out.sort(key=lambda r: str(r.get("date")))
         return out
+
+    # -- EXP_TAB_V2: launch settings and the one read ----------------------
+    def _json(self, name):
+        try:
+            with open(os.path.join(self.dir, name), encoding="utf-8") as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except (FileNotFoundError, ValueError):
+            return {}
+
+    def _put_once(self, name, key, value):
+        """Write-once: an existing value is never replaced."""
+        d = self._json(name)
+        if str(key) in d:
+            return d[str(key)]
+        d[str(key)] = value
+        _atomic_write(os.path.join(self.dir, name), json.dumps(d, indent=1, sort_keys=True, default=str))
+        return value
+
+    def load_lock(self, exp_id):
+        return self._json(LOCKS).get(str(exp_id))
+
+    def save_lock(self, exp_id, lock):
+        return self._put_once(LOCKS, exp_id, lock)
+
+    def load_read(self, exp_id):
+        return self._json(READS).get(str(exp_id))
+
+    def save_read(self, exp_id, read):
+        return self._put_once(READS, exp_id, read)
 
     # -- alert de-dup -----------------------------------------------------
     def _alerts(self):

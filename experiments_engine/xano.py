@@ -30,10 +30,13 @@ The token is read from ``XANO_METADATA_TOKEN`` and is never printed, logged or p
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import json
 import os
 import re
 import time
+
+from . import readlock
 
 DEFAULT_BASE = "https://xqtb-2ma7-ijfy.n7e.xano.io/api:meta"
 DEFAULT_WORKSPACE = 1
@@ -144,6 +147,24 @@ def _is_email(v):
     return isinstance(v, str) and bool(_EMAIL_VALUE.match(v.strip()))
 
 
+_WHO_KEY = os.urandom(16)      # new every process: keys can't be joined across runs or reversed
+
+
+def person_key(email):
+    """In-memory key for "same person, second account": the normalised e-mail (lower case, +tag dropped, gmail dots
+    dropped), keyed-hashed with a per-process random key. Never written anywhere. None when there is no e-mail."""
+    e = str(email or "").strip().lower()
+    if not _is_email(e):
+        return None
+    local, _, domain = e.rpartition("@")
+    local = local.split("+", 1)[0]
+    if domain in ("gmail.com", "googlemail.com"):
+        local, domain = local.replace(".", ""), "gmail.com"
+    if not local:
+        return None
+    return hashlib.blake2b(("%s@%s" % (local, domain)).encode(), key=_WHO_KEY, digest_size=12).hexdigest()
+
+
 def sanitize_row(row, table=None):
     """Drop sensitive fields (recursively) and compute ``is_internal``.
 
@@ -159,6 +180,8 @@ def sanitize_row(row, table=None):
     emails = [str(v).strip().lower() for k, v in row.items()
               if str(k).lower() in own and isinstance(v, str)]
     out = _scrub(row)
+    if readlock.enabled() and emails and table != 16:     # the buyer's e-mail may be a gift giver's
+        out["_who"] = person_key(emails[0])
     out["is_internal"] = is_internal(row.get(uid_field)) or any(is_internal(None, e) for e in emails)
     return out
 

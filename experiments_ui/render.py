@@ -92,6 +92,16 @@ def _date(v):
         return None
 
 
+def _v2_on():
+    return str(os.environ.get("EXP_TAB_V2", "")).strip().lower() in ("1", "on", "true", "yes")
+
+
+def _split_like(e):
+    a = e.get("assignment")
+    return (isinstance(a, dict) and str(a.get("type")) == "split") or "split" in str(e.get("design") or "").lower() \
+        or str(e.get("design") or "").lower().startswith("a/b")
+
+
 def _minimal_snapshot(registry, today):
     """Last-resort view: no engine import, dates only. Never raises."""
     exps, decided = [], []
@@ -123,6 +133,8 @@ def _minimal_snapshot(registry, today):
                "start_date": e.get("start_date"), "review_date": e.get("review_date"),
                "results": [r for r in (e.get("results") or []) if isinstance(r, dict)],
                "spec_issues": [], "overlapping_changes": [], "health": None, "stale": False}
+        if _v2_on() and _split_like(e) and row["lifecycle"] not in ("planned", "draft"):
+            row.update(results=[], result_hidden=True, result_text="Result: hidden until its read date")
         if status == "live" and sd:
             row["days_running"] = (today - sd).days
             if rd and today > rd:
@@ -301,6 +313,9 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
             snap["degraded_note"] = (f"No live numbers: {str(degraded_reason).rstrip('.')}. Showing the registry "
                                      "only (spec, hand-written readouts, dates), so nothing here is a measured result."
                                      + (prior[prior.index(" (engine import failed"):] if " (engine import failed" in prior else ""))
+    if snap.get("exp_tab_v2") or _v2_on():
+        from experiments_ui import cards
+        return cards.render(snap, theme_mode, on_note=on_note, author=author)
     if history_by_id:
         snap = attach_history(dict(snap), history_by_id)
     degraded = bool(snap.get("degraded"))

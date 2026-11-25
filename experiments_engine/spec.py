@@ -238,8 +238,10 @@ def plan(entry, observed_daily_per_arm=None):
     from . import stats  # local import keeps module import cheap
     e = entry if "_assignment_type" in (entry or {}) else normalise(entry)
     m = e.get("metric") or {}
+    from . import readlock
     return stats.sample_plan(m.get("baseline"), m.get("mde_rel"), m.get("mde_abs"),
-                             daily_exposed_per_arm(e, observed_daily_per_arm))
+                             daily_exposed_per_arm(e, observed_daily_per_arm), m.get("direction"),
+                             two_sided=readlock.enabled() and e.get("_assignment_type") == "split")
 
 
 def is_enforced(entry):

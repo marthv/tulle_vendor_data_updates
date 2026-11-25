@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
+import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -81,8 +83,29 @@ BOT_DROP_KEYS = frozenset({
 })
 
 
+def _read_locked(reg: dict) -> dict:
+    """EXP_TAB_V2: a running split's results, notes and read-outs never reach a prompt before its read date. If the
+    lock module is missing the bot sees no split's results at all (fail closed)."""
+    if str(os.environ.get("EXP_TAB_V2", "")).strip().lower() not in ("1", "on", "true", "yes"):
+        return reg
+    try:
+        if str(REPO) not in sys.path:
+            sys.path.append(str(REPO))
+        from experiments_engine import readlock
+        return readlock.redact_registry(reg)
+    except Exception:  # noqa: BLE001
+        keep = ("id", "name", "status", "start_date", "review_date", "read_date")
+        out = dict(reg)
+        out["experiments"] = [
+            {k: e[k] for k in keep if k in e} if isinstance(e, dict) and str(e.get("status")) not in (
+                "shipped", "reverted", "shelved", "inconclusive", "concluded", "ended", "decided", "planned", "draft")
+            else e for e in reg.get("experiments", [])]
+        return out
+
+
 def bot_view(reg: dict) -> dict:
     """The registry as the bot sees it: same shape, minus the structured v2 spec fields."""
+    reg = _read_locked(reg)
     out = {k: v for k, v in reg.items() if k != "experiments"}
     out["experiments"] = [{k: v for k, v in e.items() if k not in BOT_DROP_KEYS} if isinstance(e, dict) else e
                           for e in reg.get("experiments", [])]
@@ -92,6 +115,8 @@ def bot_view(reg: dict) -> dict:
 def static_context() -> str:
     """Registry + MEMORY.md top. Rebuilt only when either file changes, so the bytes stay identical."""
     key = (_mtime(REGISTRY), _mtime(KNOW / "memory" / "MEMORY.md"))
+    if os.environ.get("EXP_TAB_V2"):      # a read date passing must rebuild the text
+        key += (os.environ["EXP_TAB_V2"], time.strftime("%Y-%m-%d", time.gmtime()))
     if _static_cache.get("key") != key:
         reg = load_registry()
         _static_cache["key"] = key

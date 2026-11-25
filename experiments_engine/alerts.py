@@ -52,6 +52,8 @@ def _pct(x, nd=0):
 
 def counts_line(row):
     """'control 12 of 300 (4.0%) vs treatment 20 of 310 (6.5%), 93% chance better'."""
+    if row.get("result_hidden"):           # EXP_TAB_V2: nothing is sent before the read date
+        return ""
     st = row.get("stats") or {}
     c_n, c_x, t_n, t_x = st.get("c_n"), st.get("c_conv"), st.get("t_n"), st.get("t_conv")
     if c_n is None or t_n is None:
@@ -175,7 +177,7 @@ def format_guardrail(row):
     lines = [f":rotating_light: *Guardrail breach: {_name(row)}*",
              f"{_esc(row.get('reason') or 'A guardrail crossed its threshold.')}"]
     for g in row.get("guardrails") or []:
-        if isinstance(g, dict) and g.get("breached"):
+        if isinstance(g, dict) and g.get("breached") and not row.get("result_hidden"):
             bits = [str(g.get("key") or "guardrail")]
             if g.get("p_breach") is not None:
                 way = "rise" if g.get("max_drop_rel") is None and g.get("max_rise_rel") is not None else "drop"

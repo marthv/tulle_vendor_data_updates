@@ -26,6 +26,8 @@ _EXACT_MAX_ALPHA = 200000
 
 Z_ALPHA = 1.645  # one-sided 95%
 Z_BETA = 0.84    # 80% power
+Z_TWO_SIDED = 1.959964   # EXP_TAB_V2: two-sided 5%
+Z_POWER = 0.841621       # 80% power
 
 
 # ---------------------------------------------------------------------------
@@ -246,8 +248,89 @@ def gamma_poisson(pre_count, pre_days, post_count, post_days, max_drop_rel=0.2):
 # sample planning
 # ---------------------------------------------------------------------------
 
-def sample_plan(baseline, mde_rel=None, mde_abs=None, daily_exposed_per_arm=None):
+def two_sided_n(p_control, p_treatment, z_alpha=Z_TWO_SIDED, z_beta=Z_POWER):
+    """Couples per arm for a two-sided 5% test at 80% power, with the variance of BOTH arms:
+    (z_a + z_b)^2 * [p1(1-p1) + p2(1-p2)] / (p2 - p1)^2 (FRAMEWORK section 14)."""
+    p1, p2 = float(p_control), float(p_treatment)
+    return (z_alpha + z_beta) ** 2 * (p1 * (1 - p1) + p2 * (1 - p2)) / (p2 - p1) ** 2
+
+
+def prob_ratio_above(a_t, b_t, a_c, b_c, k=1.0, steps=800):
+    """P(T > k * C) for T ~ Beta(a_t, b_t), C ~ Beta(a_c, b_c), integer shapes. Deterministic: exact for k = 1
+    (and the smaller of the two arms is summed), else Simpson integration over C."""
+    if k == 1.0:
+        if a_t <= _EXACT_MAX_ALPHA:
+            return prob_beta_greater(a_t, b_t, a_c, b_c)
+    mean, n = a_c / (a_c + b_c), a_c + b_c
+    sd = math.sqrt(mean * (1 - mean) / (n + 1))
+    lo, hi = max(0.0, mean - 10 * sd), min(1.0, mean + 10 * sd)
+    if a_c == 1 or b_c == 1:              # skewed against an edge: cover it all
+        lo, hi = (0.0, hi) if a_c == 1 else (lo, 1.0)
+    h = (hi - lo) / steps
+    lb = _lbeta(a_c, b_c)
+    mt, nt = a_t / (a_t + b_t), a_t + b_t
+    sdt = math.sqrt(mt * (1 - mt) / (nt + 1))
+    total = norm = 0.0
+    for i in range(steps + 1):
+        x = lo + i * h
+        if x <= 0:
+            pdf = math.exp(-lb) if a_c == 1 else 0.0
+        elif x >= 1:
+            pdf = math.exp(-lb) if b_c == 1 else 0.0
+        else:
+            pdf = math.exp((a_c - 1) * math.log(x) + (b_c - 1) * math.log1p(-x) - lb)
+        w = 1 if i in (0, steps) else (4 if i % 2 else 2)
+        norm += w * pdf
+        if pdf:
+            y = k * x
+            if y <= 0:
+                sf = 1.0
+            elif y >= 1:
+                sf = 0.0
+            elif abs(y - mt) > 12 * sdt and nt > 50:
+                sf = 1.0 if y < mt else 0.0
+            else:
+                sf = 1.0 - inc_beta(y, a_t, b_t)
+            total += w * pdf * sf
+    return min(max(total / norm, 0.0), 1.0) if norm else 0.5
+
+
+def inc_beta(x, a, b):
+    """Regularised incomplete beta I_x(a, b) (continued fraction, Lentz)."""
+    if x <= 0:
+        return 0.0
+    if x >= 1:
+        return 1.0
+    front = math.exp(a * math.log(x) + b * math.log1p(-x) - _lbeta(a, b))
+    if x < (a + 1) / (a + b + 2):
+        return front * _beta_cf(x, a, b) / a
+    return 1.0 - front * _beta_cf(1 - x, b, a) / b
+
+
+def _beta_cf(x, a, b, eps=1e-12, tiny=1e-300):
+    c, d = 1.0, 1.0 - (a + b) * x / (a + 1)
+    d = 1.0 / (d if abs(d) > tiny else tiny)
+    out = d
+    for m in range(1, 1000):
+        m2 = 2 * m
+        for num in (m * (b - m) * x / ((a + m2 - 1) * (a + m2)),
+                    -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1))):
+            d = 1.0 + num * d
+            d = 1.0 / (d if abs(d) > tiny else tiny)
+            c = 1.0 + num / c
+            c = c if abs(c) > tiny else tiny
+            delta = c * d
+            out *= delta
+        if abs(delta - 1.0) < eps:
+            break
+    return out
+
+
+def sample_plan(baseline, mde_rel=None, mde_abs=None, daily_exposed_per_arm=None, direction="increase",
+                two_sided=None):
     """Planning estimate of sample size (section 4).
+
+    two_sided: None = on when EXP_TAB_V2 is on. Two-sided plans use both arms' variance (section 14).
 
     n per arm = (1.645 + 0.84)^2 * 2p(1-p) / d^2, d = mde_abs or baseline * mde_rel.
     days_needed = ceil(n / daily_exposed_per_arm).
@@ -278,7 +361,21 @@ def sample_plan(baseline, mde_rel=None, mde_abs=None, daily_exposed_per_arm=None
         out["reason"] = "no smallest-lift-worth-having (mde_rel or mde_abs)"
         return out
     out["d_abs"] = _round(d, 8)
-    n = (Z_ALPHA + Z_BETA) ** 2 * 2 * p * (1 - p) / d ** 2
+    if two_sided is None:
+        from . import readlock
+        two_sided = readlock.enabled()
+    if two_sided:
+        p2 = p - d if str(direction or "").lower().startswith("dec") else p + d
+        if not 0 < p2 < 1:
+            p2 = p - d if p2 >= 1 else p + d       # no room that way: plan the same distance the other way
+        if not 0 < p2 < 1:
+            out["reason"] = "the lift worth having is bigger than the rate allows"
+            return out
+        n = two_sided_n(p, p2)
+        out["target"] = _round(p2, 8)
+        out["two_sided"] = True
+    else:
+        n = (Z_ALPHA + Z_BETA) ** 2 * 2 * p * (1 - p) / d ** 2
     out["n_per_arm"] = int(math.ceil(n))
     try:
         rate = float(daily_exposed_per_arm) if daily_exposed_per_arm is not None else None

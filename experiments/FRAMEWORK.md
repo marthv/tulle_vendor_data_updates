@@ -367,3 +367,44 @@ It is a health read, not an experiment: no ship or revert comes from it.
 **How we'll make the call** (`verdict.how_we_call`). Every verdict states its decision rule in plain
 words: `bar`, `ship_if`, `revert_if`, `otherwise` and `now`. There is no standard time box. Each
 experiment carries its own rule and its current position against it.
+
+## 14. EXP_TAB_V2: one read per split, setup checks, one card per test (2026-11-25)
+
+Behind `EXP_TAB_V2`: `1`, `on`, `true` or `yes` turns it on. Unset or anything else = the behaviour of sections
+1-13, unchanged (`0` still means the old tab). **Before deploying, check that no service already has
+`EXP_TAB_V2=1` set: it used to mean the same as unset.** Set it on every service that shows experiments
+(experiments-engine, the Streamlit dash, Tulle Bot, health-report-cron), engine first.
+
+**Read lock (splits).** Read date = `read_date`, else `review_date`, else start + planned days. Until then no
+result, chance, lift, rate, winner, leaning or guardrail probability is in the snapshot, the HTTP API, history
+rows, the tab, Slack messages, Tulle Bot's prompt and answers, or the brief's A/B block. On the read date the
+new version ships at 97.5% (reverts at 2.5%, otherwise no clear difference). Automatic tests are computed as of 00:00 UTC that
+day and the first read is kept (`reads.json` on the engine volume). Manual tests: the first `results[]` with
+counts dated on or after the read date is the read. A red balance, mixing, settings, coverage or data check
+makes the read "can't be trusted". A date moved earlier after launch does not open a result.
+Not covered: free text people write (dash notes, `changes[]`, MEMORY.md, commit messages), the public registry
+file itself, and admin-api (branch `admin-cloudflare`), which serves its own registry copy.
+
+**Harm stop (daily, splits).** Stop when P(the new version is within 10% of the old one, or better) <= 0.5%, for
+the primary or a guardrail, with 40+ couples per version and 12+ conversions together. The 10% margin is why: a bare
+P(better) <= 0.5% looked at daily fired in 3-4% of A/A runs on one measure and about 10% on three. It opens no numbers.
+
+**Setup checks.** Balance: exact binomial, red at p < 0.001 (held 3 days when looked at daily, or at once under
+1e-5). Both versions / repeat accounts: recorded-arm mismatches and accounts with the same normalised e-mail (keyed
+hash in memory only), all left out of the read, red over 1%. Settings: `launch_lock` in the registry
+(`python experiments/validate.py --lock <id>`) and the engine's first-seen copy; any change to rule, salt,
+percent, start, metric, read date or exposure is red. Exposure: `exposure = {"source", "surfaces", "kinds"}`;
+none = red and `validate.py` refuses to let it go live; 48 h with nobody is amber or red by expected volume. Coverage of
+PDF opens under 98% in a version is red. Manual splits log couples in `exposure_log` (no outcomes).
+
+**Guardrails and payments.** Computed for manual entries too. Inside a split nothing is compared before/after;
+payments are counted by version, watch-only (still able to trip the harm stop if they are a declared guardrail).
+
+**Sample plan (splits).** Two-sided 5%, 80% power, both arms' variance: n = (1.96 + 0.84)^2 [p1(1-p1) + p2(1-p2)] / d^2.
+
+**Event-based tests (Price Report v2).** `python -m experiments_engine.event_read`: version from `split_arm(account id)`,
+every card-seen view kept, members left out by account using the purchase log at first card-seen, late-id couples left out by
+account in both versions. `access_settled` and `arm != late_arm` are never filters; the settled share is shown as a diagnostic.
+
+New additive registry keys: `read_date`, `exposure`, `exposure_log`, `launch_lock`, `family`, `family_card`,
+`family_history`. Cards: `experiments/CARDS.md`.

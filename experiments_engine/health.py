@@ -48,7 +48,7 @@ import datetime as _dt
 import math
 import re
 
-from . import spec, stats
+from . import readlock, spec, stats
 
 STATES = (
     "guardrail_breach", "callable_win", "callable_loss", "needs_call", "starved", "no_data",
@@ -191,6 +191,26 @@ def evaluate_guardrails(entry, readout):
                     "max_drop_rel": drop if rise is None else None, "max_rise_rel": rise,
                     "error": g.get("error"), "manual": bool(g.get("manual"))})
     return out
+
+
+def watch_payments(readout):
+    """EXP_TAB_V2: (readout without its payment guardrails, {key: what they show}) for a manual entry."""
+    watch, keep = {}, []
+    for g in readout.get("guardrails") or []:
+        if not (isinstance(g, dict) and g.get("payment")):
+            keep.append(g)
+            continue
+        cnt = g.get("count") or {}
+        pre, post = cnt.get("pre") or {}, cnt.get("post") or {}
+        if _num(pre.get("days")) and _num(post.get("days")):
+            watch[g.get("key")] = (f"whole site, {post['count']:g} in {post['days']:.1f} days since the start, "
+                                   f"{pre['count']:g} in {pre['days']:.1f} days before; can't be read for one change")
+        else:
+            watch[g.get("key")] = str(g.get("error") or "not counted yet") + "; can't be read for one change"
+    if not watch:
+        return readout, watch
+    rows = keep + [{"key": k, "manual": True} for k in watch]
+    return dict(readout, guardrails=rows), watch
 
 
 def guardrail_status(entry, readout, guards, manual_reporting=False):
@@ -378,7 +398,7 @@ def _total_n(readout):
 # evaluate
 # ---------------------------------------------------------------------------
 
-def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues=None):
+def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues=None, lock=None, read=None):
     """Health for one experiment (section 6). See module docstring for the rule details.
 
     entry      registry entry (raw or normalised)
@@ -395,6 +415,9 @@ def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues
     readout = readout if isinstance(readout, dict) else {}
     history = [h for h in (history or []) if isinstance(h, dict)]
     atype = e.get("_assignment_type")
+    if readlock.enabled() and atype == "split" and e.get("_lifecycle") in ("live", "paused"):
+        from . import v2  # EXP_TAB_V2: read lock, harm stop, balance and setup checks
+        return v2.evaluate_split(e, readout, history, changes, today, spec_issues, lock=lock, read=read)
     rule = spec.decision_rule(e)
     issues = spec_issues if spec_issues is not None else spec.validate(e)
 
@@ -422,11 +445,20 @@ def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues
     except Exception as exc:  # scoring must never break health
         readout = dict(readout, error=readout.get("error") or f"score failed: {exc}")
     out["stats"] = st
-    guards = evaluate_guardrails(e, readout)
-    out["guardrails"] = guards
     m0 = e.get("metric") or {}
     manual_rep = str(e.get("reporting") or "manual").lower() == "manual" or str(m0.get("key") or "") == "manual"
-    gstatus = guardrail_status(e, readout, guards, manual_reporting=manual_rep)
+    watch = {}
+    if readlock.enabled() and manual_rep:
+        readout, watch = watch_payments(readout)            # payments are watch-only, never a breach
+    guards = evaluate_guardrails(e, readout)
+    out["guardrails"] = guards
+    if readlock.enabled() and manual_rep and isinstance(readout.get("guardrails"), list):
+        gstatus = guardrail_status(e, readout, guards)      # EXP_TAB_V2: manual entries' guardrails are computed
+        for g in gstatus:
+            if g["key"] in watch:
+                g.update(status="watch", reason=watch[g["key"]])
+    else:
+        gstatus = guardrail_status(e, readout, guards, manual_reporting=manual_rep)
     out["guardrail_status"] = gstatus
     overlaps = overlapping_changes(e, changes, today)
     out["overlapping_changes"] = overlaps
@@ -454,7 +486,7 @@ def evaluate(entry, readout, history=None, changes=None, today=None, spec_issues
     if baseline is None and st and st.get("control_rate"):
         baseline = st["control_rate"]
     plan = stats.sample_plan(baseline, m.get("mde_rel"), m.get("mde_abs"),
-                             spec.daily_exposed_per_arm(e, plan_rate))
+                             spec.daily_exposed_per_arm(e, plan_rate), two_sided=False)
     out["sample_plan"] = plan
     n_prog = _progress_n(readout, atype)
     if plan.get("n_per_arm") and n_prog is not None:

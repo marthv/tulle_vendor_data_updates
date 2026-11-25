@@ -33,6 +33,7 @@ import json
 import os
 import tempfile
 
+from . import readlock as _rl
 from . import xano as _x
 
 DAY = 86400000
@@ -183,6 +184,10 @@ def _window_caveats(window):
 def rate_readout(units, window, definition, caveats=None, extra=None):
     """units: [{"uid", "anchor", "conv", "pending"}] -> rate readout with arms / pending / exposure."""
     arms, pending, expo = {}, {}, {}
+    more = {}
+    if window.get("v2"):                   # EXP_TAB_V2: exposure rule, arm switchers, repeat accounts
+        from . import v2_data
+        units, more = v2_data.prepare_units(units, window)
     split = window["type"] == "split"
     for u in units:
         arm = _arm_for(u, window)
@@ -213,6 +218,8 @@ def rate_readout(units, window, definition, caveats=None, extra=None):
     out["caveats"] += _window_caveats(window)
     if extra:
         out.update(extra)
+    if more:
+        out.update(more)
     return out
 
 
@@ -295,6 +302,9 @@ class DataContext:
 
     def prepare(self, entries):
         for e in entries:
+            if _rl.enabled():
+                from . import v2_data
+                v2_data.want_views(self, e)
             if not is_auto(e):
                 continue
             w = build_window(e, self.now_ms)
@@ -585,14 +595,28 @@ def _new_users(ctx, window, lookback=0):
     return out
 
 
+def surface_allowed(value, allowed):
+    """Table-79 ``surface`` ("planner", "bubble:/vendors/..") against an exposure rule's surfaces. A row with no
+    surface (older component versions) is not proof of exposure, so it is left out."""
+    s = str(value or "").strip().lower()
+    for a in allowed or ():
+        a = str(a).strip().lower()
+        if s == a or (a and s.startswith(a) and not s[len(a)].isalnum()):
+            return True
+    return False
+
+
 def _usage_rows(ctx, since_ms):
     internal = ctx.internal_uids()
     out = []
+    surfaces = getattr(ctx, "exposure_surfaces", None)     # EXP_TAB_V2 only (None = every surface, as before)
     for r in ctx.view("usage", since_ms):
         uid = _x.to_int(r.get("user_id"))
         kind = str(r.get("kind") or "")
         t = _x.to_ms(r.get("created_at"))
         if not uid or uid in internal or t is None or kind.startswith("mcp_"):
+            continue
+        if surfaces and not surface_allowed(r.get("surface"), surfaces):
             continue
         out.append((uid, t, kind, str(r.get("status") or ""), r))
     out.sort(key=lambda x: x[1])
@@ -682,6 +706,8 @@ def m_pdf_open_within_1d(ctx, params, window):
     users = _new_users(ctx, window)
     hist = ctx.pdf_history()
     units, exact = [], True
+    if _rl.enabled():
+        return _pdf_open_covered(ctx, window, users, hist, days, follow)
     for uid, t, u in users:
         pending = t + follow + 6 * HOUR > ctx.now_ms
         unit = {"uid": uid, "anchor": t, "pending": pending, "conv": False}
@@ -703,6 +729,46 @@ def m_pdf_open_within_1d(ctx, params, window):
                             "so this is the 'opened by read time' definition. Exact once history spans the "
                             "whole cohort window.")
     ro["approximate"] = True
+    return ro
+
+
+PDF_MIN_COVERAGE = 0.98
+
+
+def _pdf_open_covered(ctx, window, users, hist, days, follow):
+    """EXP_TAB_V2: an account the engine's pdf history can't place is dropped, not allowed to make the whole metric
+    approximate. ``coverage`` says how many were placed, by arm; under 98% is red (v2.py). Outside a split the old
+    guard stays: below 98% the readout is still marked approximate, so it can't be called."""
+    units, cov = [], {}
+    for uid, t, u in users:
+        pending = t + follow + 6 * HOUR > ctx.now_ms
+        unit = {"uid": uid, "anchor": t, "pending": pending, "conv": False}
+        if _arm_for(unit, window) is None:
+            continue
+        if not pending:
+            v = hist.within(uid, t, days)
+            unit["covered"] = v is not None
+            unit["conv"] = bool(v)
+        units.append(unit)
+    more, raw_window = {}, window
+    if window.get("v2"):
+        from . import v2_data
+        units, more = v2_data.prepare_units(units, window)
+        raw_window = dict(window, v2=False)
+    for u in units:
+        if not u["pending"]:
+            c = cov.setdefault(_arm_for(u, window), {"covered": 0, "total": 0})
+            c["total"] += 1
+            c["covered"] += 1 if u["covered"] else 0
+    ro = rate_readout([u for u in units if u["pending"] or u["covered"]], raw_window,
+                      "share of new accounts that open a PDF within %g day(s) of sign-up (engine pdf history; "
+                      "accounts it can't place are left out)" % days,
+                      ["Resolution is the engine run cadence (about 6 h)."])
+    ro["coverage"] = cov
+    ro.update(more)
+    if window.get("type") != "split" and any(c["total"] and c["covered"] / c["total"] < PDF_MIN_COVERAGE
+                                             for c in cov.values()):
+        ro["approximate"] = True
     return ro
 
 
@@ -1235,6 +1301,9 @@ def compute(ctx, key, params, window):
 
 def run_experiment(ctx, entry):
     """Primary metric readout + guardrails[] for one registry entry."""
+    if _rl.enabled():
+        from . import v2_data
+        return v2_data.run_experiment(ctx, entry)
     w = build_window(entry, ctx.now_ms)
     m = entry.get("metric") or {}
     ro = compute(ctx, m.get("key"), m.get("params") or {}, w)
@@ -1261,6 +1330,9 @@ def run_all(entries, client, now_ms=None, statuses=("live",), record_pdf_history
     """
     ctx = DataContext(client, now_ms=now_ms, record_pdf_history=record_pdf_history, data_dir=data_dir)
     todo = [e for e in entries if is_auto(e) and str(e.get("status") or "") in statuses]
+    if _rl.enabled():                      # manual entries too: guardrails, payments and exposure by arm
+        from . import v2_data
+        todo = [e for e in entries if str(e.get("status") or "") in statuses and (is_auto(e) or v2_data.wants_run(e))]
     if scorecards:
         todo = todo + scorecard_entries(ctx.now_ms)
     ctx.prepare(todo)
@@ -1272,6 +1344,9 @@ def run_all(entries, client, now_ms=None, statuses=("live",), record_pdf_history
             for rest in todo[i:]:
                 out[rest.get("id")] = {"error": "budget exceeded: %s" % exc}
             break
+    if _rl.enabled():
+        from . import v2_data
+        v2_data.attach_overlaps(ctx, todo, out)
     if scorecards:
         sc = [e for e in todo if e.get("_scorecard")]
         ctx.scorecards = {"planner": scorecard_rows(out, sc), "computed_at": _iso(ctx.now_ms)}
