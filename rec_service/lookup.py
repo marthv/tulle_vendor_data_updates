@@ -405,7 +405,9 @@ NON_VENDOR = {"dessert", "desserts", "pictures", "picture", "pics", "photos", "i
 def _soft(raw, cue):
     """Reads like an edit or a sentence: answered by the lookup only when a vendor by that name is really found."""
     t = _clean(raw)
-    return bool(_EDIT.match(t) and not cue) or bool(_PERSON.search(re.sub(r"(?i)^.*?\b(?:do you have|tell me about|show me|look up|"
+    if cue:
+        return False         # "can you show me the pricing for X" names X
+    return bool(_EDIT.match(t)) or bool(_PERSON.search(re.sub(r"(?i)^.*?\b(?:do you have|tell me about|show me|look up|"
                 r"find me|can you \w+|could you \w+)\b", "", t)))
 
 
@@ -1084,11 +1086,13 @@ def _generic_typo(t, v3=False):
 DYM_ONE_WORD = 0.9     # v3: the only matching word must be this close ("rhyland"/"ryland" 0.92, "amway"/"away" 0.89)
 
 
-def dym_score(query, name, v3=False):
+def dym_score(query, name, v3=False, town=()):
     """0 when the candidate does not hold the couple's distinctive words; else 0..1. Each distinctive word (venue-type
     words and their misspellings left out) must match a word of the name closely (>= 0.8, 0.9 under 5 letters); the
     longest must match; at least half of them must; with 3+ words at least 2 must."""
     qd = [t for t in _distinctive(query) if not _generic_typo(t, v3)] or _distinctive(query)
+    if v3 and town:          # a town they added ("Knotting Hill Little Elm") says where it is, not which one
+        qd = [t for t in qd if any(_same_word(t, [u]) for u in tokens(name)) or not _same_word(t, town)] or qd
     ct = tokens(name)
     if not qd or not ct:
         return 0.0
@@ -1112,7 +1116,7 @@ def dym_candidates(q, pool):
     names = [n for n in (q.get("name"), q.get("alt_name")) if n]
     out = []
     for m in pool or []:
-        s = max([dym_score(n, m.get(f) or "", bool(q.get("strict"))) for n in names for f in ("name", "google_name")] or [0.0])
+        s = max([dym_score(n, m.get(f) or "", bool(q.get("strict")), _town(m) if q.get("strict") else ()) for n in names for f in ("name", "google_name")] or [0.0])
         if s > 0:
             out.append((s, m))
     if q.get("v3"):      # the type word they typed breaks a tie: "Elkin ESTATE" -> Elkins Estate before Elkin Creek Vineyard

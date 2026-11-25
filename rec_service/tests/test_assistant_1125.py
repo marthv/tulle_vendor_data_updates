@@ -335,3 +335,27 @@ def test_the_three_parts_are_independent():
     assert lookup.did_you_mean(s, {"status": "not_found", "pool": pool})["status"] == "not_found"
     plain = lookup.detect("Amway grand", v2=True, guard=True, dym=True)
     assert lookup.did_you_mean(plain, {"status": "not_found", "pool": pool})["status"] == "dym"
+
+
+def test_a_town_or_a_style_is_never_the_venue_they_named(monkeypatch):
+    monkeypatch.setattr(config, "NAME_MATCH_V2", True)
+    rows = [row("P", "Chandlers", "Illinois", "Schaumburg, IL"), row("Q", "Treehouse Vineyards", "North Carolina", "Monroe, NC"),
+            row("R2", "Smith Gilbert Gardens", "Georgia", "Kennesaw, GA")]
+    monkeypatch.setattr(xano, "name_search", lambda term, token="", **k: [dict(r) for r in rows if any(
+        w in lookup.tokens(r["name"]) for w in term.split())])
+    for kw in ("Chandler", "treehouse", "Gilbert"):
+        r = agent.find_by_name("t", kw, kw, ["Arizona"])
+        assert r is None or r["status"] == "close"
+    r = agent.find_by_name("t", "Treehouse Vineyards", "", ["Arizona"])
+    assert r["status"] == "found"
+
+
+def test_asking_for_a_price_politely_names_the_venue():
+    q = lookup.detect("can you show me the pricing for the sapphire estate", v2=True, guard=True, dym=True, edits=True)
+    assert q and "soft" not in q
+
+
+def test_strict_ignores_the_town_they_added():
+    m = row("S2", "Knotting Hill Place", "Texas", "1 A Rd, Little Elm, TX 75068")
+    q = lookup.detect("Knotting Hill Little Elm", v2=True, guard=True, dym=True, strict=True)
+    assert lookup.dym_candidates(q, [m])

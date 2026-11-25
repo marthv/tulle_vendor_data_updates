@@ -899,7 +899,11 @@ def find_by_name(token, keyword, last_user="", states=()):
         print("find_by_name:", repr(e)[:160])
         return None
     ms = res.get("matches") or []
-    if res.get("status") in ("found", "best") and ms and lookup.holds_all(q, ms[0]):
+    # Stated only when the venue's own name adds nothing to what was typed, and one word must be the whole name: towns and
+    # styles arrive here as keywords too ("Chandler", "treehouse").
+    one = len(lookup.tokens(keyword)) < 2
+    if res.get("status") in ("found", "best") and ms and lookup.holds_all(q, ms[0]) and lookup.same_name(q, ms[0]) and (
+            not one or lookup.key(keyword) == lookup.key(ms[0].get("name"))):
         return {"status": "found", "venue": {k: v for k, v in ms[0].items() if k != "google_name"}}
     if res.get("status") in ("found", "best", "choices", "dym") and ms:
         return {"status": "close", "names": ["%s (%s)" % (m.get("name"), _state_text(m.get("state"))) for m in ms[:3]]}
