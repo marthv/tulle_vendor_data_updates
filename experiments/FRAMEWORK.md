@@ -375,21 +375,26 @@ still means the old tab). **Before deploying, check that no service already has 
 same as unset.** Set it on experiments-engine, the Streamlit dash, Tulle Bot and health-report-cron, engine first.
 `validate.py` ignores the switch.
 
-**Read lock (splits).** One source on every surface: the registry entry and its `launch_lock`
-(`python experiments/validate.py --lock <id>`, pasted in at launch; validate.py refuses a live split without one, or
-one that no longer matches). Read date = the lock's date; a later date on the entry also counts, an earlier one never
-opens anything. Without a lock: `read_date`, else the later of `review_date` and start + planned days; Tulle Bot's text
-and the registry-only tab then never open it. Once a split, always a split: changing `assignment.type`, or
+**Read lock (splits).** One source on every surface: the registry entry and its `launch_lock`. Only a lock that validates
+and a read date reached open a result: the lock is present, its hash matches its settings, it was made for this id, the
+entry still matches it, and it was not replaced. Missing, removed, edited, replaced, renamed: hidden everywhere.
+To lock: `python experiments/validate.py --lock <id> --write` prints the object to paste into the entry and records its hash in
+`experiments_engine/launch_locks.json` (written once, never replaced). Tulle Bot's text and the registry-only tab
+open only a recorded lock, because they can't see the engine's own copy. validate.py refuses a live split whose lock is missing
+or invalid. Read date = the lock's date; a later date on the entry also counts. Splits decided before locks existed (two,
+listed in readlock.LEGACY) are unchanged. Once a split, always a split: changing `assignment.type`, or
 the status, opens nothing. A real split the engine can't assign (by e-mail hash, say) sets `assignment.split: true`. Not started, running before the read date, and closed before the read date ("Stopped early,
 result not read", for good) are hidden in the snapshot, HTTP API, history rows, tab, Slack messages, Bot answers and
 prompt, and the brief's A/B block. On the read date: ship at 97.5%, revert at 2.5%, else no clear difference;
 computed as of 00:00 UTC and kept (`reads.json`). Manual tests: the first `results[]` with counts dated on or after the
 read date. A red balance, mixing, settings, coverage or data check makes the read "can't be trusted". The engine also
-keeps the settings it first saw (`settings_lock.json`), so replacing the lock itself is red there.
+keeps the lock it first saw (`settings_lock.json`); a different one later stays hidden.
 Not covered: free text people write (dash notes, `changes[]`, MEMORY.md, commits), the public registry file itself, and
 admin-api (branch `admin-cloudflare`). An edit made before the lock is stored can't be seen.
 
-**Harm stop (splits).** One look per UTC day (`harm_looks.json`); a stop that fires stays. It fires when P(the new
+**Harm stop (splits).** One look per measure per UTC day (`harm_looks.json`); a measure the first run could not read is looked at
+as soon as it can be. A fired stop clears when the data can be read and no longer supports it, and stays while it can't be
+read. At the read a fired stop outranks a win: "Stop the test", never "Ship it". It fires when P(the new
 version is within 10% of the old one, or better) <= 0.5% divided by the number of watched measures, with 40+
 couples per version and 12+ conversions. "Not checked" (too few couples, no outcome feed, metric failed, read by
 hand) is amber with the reason, never green. Why not the plain P(better) <= 0.5%: A/A runs, 28-35 days, 4 measures:
@@ -410,8 +415,8 @@ couples red in 87%; true 50/50 at 2,000 red in 0.1%, and red at any of the daily
 at once from the first couple would do that in 0.6-0.9% of runs, above the 0.5% limit.
 
 **Other checks.** Both versions / repeat accounts: recorded-version mismatches and accounts with the same normalised
-e-mail (keyed hash in memory only), left out of the read, red over 1%. Where no version is stored the check says
-"can't be checked" (amber). Settings: any change to rule, salt, percent, start, measure, read date or exposure is red.
+e-mail (keyed hash in memory only), left out of the read, red over 1%. Green needs 90% of
+couples checkable for each of the two checks (the share is on the card); below that it is amber. Settings: any change to rule, salt, percent, start, measure, read date or exposure is red.
 Exposure: `exposure = {"source": "xano:table79" | "xano:table1" | "mixpanel:<event>", "surfaces", "kinds"}`; "none", "todo",
 "everyone by default" and the like are refused. 48 h with nobody is amber or red by expected volume. Coverage of PDF opens under
 98% is red. Sample pace counts only couples whose follow-up is over (`metric.follow_days`, params, or "within N days" in

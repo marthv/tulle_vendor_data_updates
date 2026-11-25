@@ -76,7 +76,7 @@ def settings(entry):
     return {"id": e.get("id"), "type": "split" if a.get("split") is True else a.get("type") or (
                 "split" if readlock.is_split(e) else None), "rule": rule,
             "salt": str(a.get("salt") or "").rstrip(":") or None,
-            "percent": (_f(a.get("pct")) if a.get("pct") is not None else 50.0) if rule == "hash_pct" else None,
+            "percent": _f(a.get("pct")) if a.get("pct") is not None else 50.0 if rule == "hash_pct" else None,
             "treatment": str(a.get("treatment") or "even").lower() if rule == "user_id_parity" else None,
             "hash digits": a.get("hash_digits"), "forced ids": ids("force_ids", "forced_ids"),
             "excluded ids": ids("exclude_ids"),
@@ -196,7 +196,7 @@ def balance_p(n_control, n_treatment, share=0.5):
 def treatment_share(entry):
     a = entry.get("assignment") if isinstance(entry.get("assignment"), dict) else {}
     p = _f(a.get("pct"))
-    if a.get("rule") == "hash_pct" and p is not None:
+    if a.get("rule") != "user_id_parity" and p is not None and 0 < p < 100:
         return p / 100.0
     return 0.5
 

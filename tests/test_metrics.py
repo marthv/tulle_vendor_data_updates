@@ -366,6 +366,9 @@ def test_known_buckets():
 def test_parity_with_rec_service_modules(monkeypatch):
     rs = os.path.join(ROOT, "rec_service")
     monkeypatch.syspath_prepend(rs)
+    for name, mod in list(sys.modules.items()):      # slack_qa has modules of the same names (config, ...)
+        if "slack_qa" in str(getattr(mod, "__file__", "") or "") and os.path.exists(os.path.join(rs, name + ".py")):
+            monkeypatch.delitem(sys.modules, name)
     try:
         import plan
         import railway_search

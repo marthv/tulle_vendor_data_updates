@@ -827,7 +827,7 @@ def every_surface(e, today, tmp_path, monkeypatch, readout=None):
     out += [bot_engine.format_experiment(r) for r in raw["experiments"] + raw["decided"]]
     out.append(json.dumps(v2.lock_snapshot(raw, reg, today)))
     out.append(json.dumps(readlock.redact_registry(reg)))
-    return out
+    return [re.sub(r'"(generated_at|computed_at)": "[^"]*"', "", t) for t in out]
 
 
 LOCKED = v2.launch_lock(entry())
