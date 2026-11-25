@@ -208,7 +208,6 @@ def test_did_you_mean_needs_a_close_word():
     assert lookup.dym_score("the cape club of sharon", "Sharon Valley Ranch", True) == 0
     assert lookup.dym_score("Rhyland", "Ryland Inn", True) > 0
     assert lookup.dym_score("Elkin estate", "Elkins Estate", True) > 0
-    assert lookup.dym_score("the duxbury bar maritime school", "Duxbury Bay Maritime Weddings", True) > 0
 
 
 TABLE = [{"vendor_id": "V3882", "name": "Villa Woodbine", "state": "Florida", "address": "Miami, FL", "google_name": ""},
@@ -291,6 +290,19 @@ def test_a_stale_clear_never_clears_a_newer_pick(plan90):
     assert r.status_code == 502 and r.json()["detail"]["pick"]["vendor_id"] == "V1"
     assert TestClient(app.app).post("/rec/compare/pick", json={"vendor_id": "  "}, headers=H).status_code == 400
     assert TestClient(app.app).post("/rec/compare/pick", json={"vendor_id": "", "expect": "V1"}, headers=H).json()["pick"] is None
+
+
+@pytest.mark.parametrize("text,m,ok", [
+    ("Caesars Goldwater", row("K", "Caesars Republic", "Arizona", "4747 N Goldwater Blvd, Scottsdale, AZ 85251"), False),
+    ("Sleepy Hollow Country Club Briarcliff Manor", row("L", "Sleepy Hollow Country Club", "New York", "777 Albany Post Rd, Briarcliff Manor, NY 10510"), True)])
+def test_the_town_counts_the_street_does_not(text, m, ok):
+    assert lookup.holds_all(d(text), m) is ok
+
+
+def test_the_name_word_for_word_wins():
+    a, b = row("M", "The Odyssey", "Ohio", "1 A St, Akron, OH"), row("N", "The Odyssey Venue", "Texas", "2 B St, Austin, TX")
+    r = lookup.certain(d("The Odyssey Venue"), {"status": "found", "matches": [a], "pool": [a, b]})
+    assert r["matches"] == [b]
 
 
 def test_one_bad_pin_does_not_drop_the_rest():

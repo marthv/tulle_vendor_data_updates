@@ -943,24 +943,26 @@ def _find_and_price(q, token, full, prefer=()):
     hint = q.get("category") or ""
     res = None
     if hint and hint != "Venue":      # "Bloom florist", "Jane Doe Photography": that type only
-        res = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, (hint,))), prefer)
+        res = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, (hint,)), spell=False), prefer)
         if q.get("v3") and res["status"] == "not_found":
             # "Music Hall", "Edgemont Caterers" may be a venue, or another type: only a name that holds every word they typed
             other = lookup.certain(q, lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer))
-            if other["status"] == "not_found":
-                other = lookup.certain(q, lookup.resolve(q, lookup.find(q, _any_vendor_search(
-                    token, [c for c in OTHER_VENDOR_CATS if c != hint])), prefer))
             if other["status"] in ("found", "best") and lookup.holds_all(q, other["matches"][0]):
                 res = other
         res.pop("pool", None)
     else:
         res = lookup.certain(q, lookup.resolve(q, lookup.find(q, lambda term: xano.name_search(term, token)), prefer))
         venue_res = res
-        if res["status"] == "not_found" and not lookup.destination_in(q["name"]):
+        asked = lookup.did_you_mean(q, venue_res, prefer) if q.get("v3") and res["status"] == "not_found" else None
+        if asked and asked["status"] == "dym" and not lookup.destination_in(q["name"]):
+            # v3: there is a venue to ask about. A vendor of another type only beats it when the name as typed finds it (one
+            # search per type, not up to 100).
+            other = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, OTHER_VENDOR_CATS), quick=True), prefer)
+            if other["status"] == "found" and lookup.holds_all(q, other["matches"][0]):
+                res = other
+        elif res["status"] == "not_found" and not lookup.destination_in(q["name"]):
             # Not a venue we have: maybe a photographer, florist, caterer ... by name (one more parallel round).
-            other = lookup.certain(q, lookup.resolve(q, lookup.find(q, _any_vendor_search(token, OTHER_VENDOR_CATS)), prefer))
-            if q.get("v3") and not all(lookup.same_name(q, m) for m in other.get("matches") or []):
-                other = dict(other, status="not_found", matches=[])
+            other = lookup.resolve(q, lookup.find(q, _any_vendor_search(token, OTHER_VENDOR_CATS), spell=False), prefer)
             if other["status"] != "not_found":
                 res = other
         if q.get("dym"):
@@ -1200,6 +1202,8 @@ def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, 
             text_out = ("We don't have %s - Tulle covers US venues, so there's no real pricing for a %s wedding here. "
                         "If you're also weighing a US option, tell me the area and I'll show you venues we do have there."
                         % (name, dest.title()))
+        elif q.get("v3") and not q.get("cue"):      # it may not be a venue at all ("rehearsal dinner", "cash bar")
+            text_out = "I couldn't find a venue called “%s”. If it's something else you're after, tell me a bit more." % name
         elif repeat:
             text_out = "We still don't have %s." % name
         else:     # owner 2026-11-23: no promise to add it - nobody is working a request list

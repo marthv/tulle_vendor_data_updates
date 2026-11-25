@@ -538,6 +538,7 @@ def detect(text, last_assistant="", v2=False, guard=False, dym=False, v3=False):
         out["dym"] = True     # find keeps its candidate pool and tries dropped-letter spellings (absent = as before)
     if v3:
         out["v3"] = True
+        out["full"] = first.rstrip("?!. ")     # as typed: "The Odyssey Venue" before " Venue" was taken off
         if only_exact:
             out["soft"] = "exact"
         elif _soft(raw, cue):
@@ -649,7 +650,7 @@ def _promote_single(q, status, matches):
     return status, matches
 
 
-def find(q, search, workers=6):
+def find(q, search, workers=6, spell=True, quick=False):
     """q: detect() output. search(term) -> rows (each with vendor_id, name, google_name, address, state); it may
     raise. Returns {"status", "matches", "queries", "scores"}. Stage 2 (typo variants) runs only when stage 1 is not
     confident, so a correctly spelled name costs one parallel round of Xano calls."""
@@ -675,18 +676,20 @@ def find(q, search, workers=6):
             raise LookupFailed(str(errors[0])[:200])
 
     terms = first_queries(q["name"], q.get("alt_name"), bool(q.get("v2")))
+    if quick:          # the name as typed, one search, no spelling rounds
+        terms = terms[:1]
     if not terms:
         return {"status": "not_found", "matches": [], "queries": [], "scores": []}
     run(terms)
     ranked = _rank(rows, q)
     status, matches = decide(ranked)
-    if status != "found":
+    if status != "found" and not quick:
         extra = typo_queries(q["name"], done)
         if extra:
             run(extra)
             ranked = _rank(rows, q)
             status, matches = decide(ranked)
-    if q.get("v3") and status != "found" and not any(holds_all(q, m) for m in _unique(rows)):
+    if q.get("v3") and spell and not quick and status != "found" and not any(holds_all(q, m) for m in _unique(rows)):
         extra = spelling_queries(q["name"], done)
         if extra:
             try:
@@ -695,7 +698,7 @@ def find(q, search, workers=6):
                 pass
             ranked = _rank(rows, q)
             status, matches = decide(ranked)
-    if q.get("dym") and status != "found" and not dym_candidates(q, _unique(rows)):
+    if q.get("dym") and status != "found" and not quick and not dym_candidates(q, _unique(rows)):
         # Stage 3 (REC_DID_YOU_MEAN): one letter dropped from the most distinctive word ("rhyland" -> "ryland"). A
         # failure here never turns into "we don't have it" - the earlier rounds already answered.
         extra = deletion_queries(q["name"], done)
@@ -945,11 +948,17 @@ def _city_words(place):
     return [t for t in tokens(place) if t not in STATE_ABBR and t not in {w for st in US_STATES for w in st.split()}]
 
 
+def _town(m):
+    """Words of the town and state, never of the street: "Caesars Goldwater" is not Caesars Republic on Goldwater Blvd."""
+    parts = [p for p in str(m.get("address") or "").split(",") if p.strip()]
+    return tokens("%s %s" % (" ".join(parts[1:]), _st(m.get("state"))))
+
+
 def in_place(m, place):
     """The place they named, city included: "The Thompson houston" is not the one in Dallas."""
     if not place:
         return True
-    hay = tokens("%s %s" % (m.get("address") or "", _st(m.get("state"))))
+    hay = _town(m)
     city = _city_words(place)
     if city:
         return all(_same_word(t, hay) for t in city)
@@ -967,7 +976,8 @@ def _holds(name, m, cand, placed=False, loose=False):
     if key(name) == key(cand):
         return True
     typed, ct = tokens(name), tokens(cand)
-    where = tokens("%s %s" % (m.get("address") or "", _st(m.get("state"))))
+    where = _town(m)
+    town_typed = any(t not in GENERIC and _same_word(t, where) and not _same_word(t, ct) for t in typed)
     joined = joined_match(name, cand)
     nd, cd = _distinctive(name), _distinctive(cand)
     off = [t for t in nd if not _same_word(t, ct) and not _same_word(t, where) and _near_word(t, ct)] if loose and not joined else []
@@ -979,6 +989,8 @@ def _holds(name, m, cand, placed=False, loose=False):
     for t in typed:
         if _same_word(t, ct) or t in off or (joined and t in nd):
             continue
+        if t in GENERIC and town_typed and _same_word(t, where):
+            continue         # "Briarcliff MANOR", "Chapel HILL": part of the town they typed
         if t in GENERIC:
             missing += 1
             if not placed or missing > 1 or any(g in GENERIC and not _same_word(g, typed) for g in ct):
@@ -1016,7 +1028,7 @@ def same_name(q, m):
 
 
 def exact(q, m):
-    return any(n and key(n) == key(m.get(f)) for n in (q.get("name"), q.get("alt_name")) for f in ("name", "google_name"))
+    return any(n and key(n) == key(m.get(f)) for n in (q.get("full"), q.get("name"), q.get("alt_name")) for f in ("name", "google_name"))
 
 
 def certain(q, res, pool=None):
@@ -1027,6 +1039,9 @@ def certain(q, res, pool=None):
         return res
     place = q.get("location") or ""
     have = list(res.get("matches") or []) + list((pool if pool is not None else res.get("pool")) or [])
+    word_for_word = _unique([m for m in have if key(q.get("full")) and key(q["full"]) == key(m.get("name"))])
+    if len(word_for_word) == 1 and res.get("matches") and res["matches"][0].get("vendor_id") != word_for_word[0].get("vendor_id"):
+        return dict(res, status="found", matches=word_for_word)      # "The Odyssey Venue" is not "The Odyssey"
     loose = not any(holds_all(q, m) for m in have)       # a letter off counts only when nothing is spelled as they typed it
     ms = [m for m in res.get("matches") or [] if holds_all(q, m, loose)]
     if res.get("status") == "found":
@@ -1070,8 +1085,8 @@ def dym_score(query, name, v3=False):
     longest = max(range(len(qd)), key=lambda i: len(qd[i]))
     if not matched or not sims[longest] or matched / len(qd) < 0.5 or (len(qd) >= 3 and matched < 2):
         return 0.0
-    if v3 and matched < len(qd) and len(qd) == 2:
-        return 0.0           # "cape club of sharon" is not "Sharon Valley Ranch"
+    if v3 and matched < len(qd):
+        return 0.0           # every word that names it: "cape club of sharon" is not "Sharon Valley Ranch"
     if v3 and matched == 1 and sims[longest] < DYM_ONE_WORD:
         return 0.0
     return round(0.7 * matched / len(qd) + 0.3 * sum(sims) / len(qd), 3)
@@ -1137,7 +1152,7 @@ def place_fix(q, res, prefer_states=()):
 
     def holds(m):
         if q.get("v3"):      # an exact name somewhere else is never swapped for a lookalike near them
-            return holds_all(q, m) and (exact(q, m) or not exact(q, top))
+            return holds_all(q, m)
         return any(strong(n, m.get(f) or "", v2) or dym_score(n, m.get(f) or "") > 0
                    for n in names for f in ("name", "google_name"))
     place = _place_of(q)
@@ -1152,6 +1167,8 @@ def place_fix(q, res, prefer_states=()):
         where = ", ".join(s for s in prefer_states if s)
     if inside(top):
         return res
+    if q.get("v3") and place and not q.get("location") and any(key(q.get(k)) and key(q[k]) == key(top.get("name")) for k in ("full", "name")):
+        return res           # the "place" is part of the venue's own name
     pool = [m for m in (res.get("pool") or []) + list(res["matches"]) if m.get("vendor_id") != top.get("vendor_id")]
     here = [m for m in pool if inside(m) and holds(m)]
     if here:
