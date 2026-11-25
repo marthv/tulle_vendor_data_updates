@@ -1203,7 +1203,8 @@
         "evidence": "The softer copy was REVERTED: memory project_limit_cards_plans_revert_and_vibe_lookup_2026-11-03 - limit + warning cards back to 'Check out our plans', submit-PDF link hidden, published and verified live 2026-11-03 ~21:10 UTC (owner: the 10-24 'keep going free' copy may have cost payments). Further changed by the 11-12 venue-specific limit card build. Ran 10-26..11-03."
       },
       "outcome": "reverted",
-      "decided_on": "2026-11-03"
+      "decided_on": "2026-11-03",
+      "family": "pdf-limit"
     },
     {
       "id": "EXP-2026-10-trustpilot-5star",
@@ -4365,12 +4366,17 @@
       "goal": "Owner 11-12 ('lets definitely do that'): make the PDF limit card about the venue the couple is on.",
       "primary_metric": "clicked_membership_for_pricing_pdf_limit_popup -> purchase (vendor_id, plan, button)",
       "guardrail": "",
-      "start_date": null,
-      "end_date": "2026-11-21",
+      "start_date": "2026-11-12",
+      "end_date": "2026-11-19",
       "review_date": null,
       "dates_note": "Built in the editor 2026-11-12 (venue card 614fcf8f, OV card 0942ec05; backup .claude/weweb_pdf_limit_pre_contextual_2026-11-12.json; phone fit fix same day). The 11-12 ~06:40 UTC publish note does not name it; live status NOT verified. Source: memory project_pdf_warning_view3 / project_gates_to_pay_2026-11-12.",
       "design": "pre/post",
-      "results": [],
+      "results": [
+        {
+          "date": "2026-11-25",
+          "note": "RECORD CORRECTED: this card WAS live, 2026-11-12 to 2026-11-19 05:04 UTC. Evidence: clicked_membership_for_pricing_pdf_limit_popup carries button=main/plan_chip from 11-12 (0 before), and the live build holds the card. 'Never launched' (11-21) was wrong."
+        }
+      ],
       "decision": "Shelved by the owner 2026-11-21 ('it's shelved'): superseded by EXP-2026-11-pdf-limit-soft-redirect - since build 1404 (2026-11-19 05:04 UTC) hitting the PDF limit redirects to /pricing instead of showing the limit card. Never launched. NOT deleted yet (2026-11-21): the card lives inside the 'Pdf Limit Overlay' sections (614fcf8f venue page, 0942ec05 other vendors page), which are the OFF branch of the 'Redirect experiment on?' switch in the PDF Limit Trigger workflows - i.e. the rollback for EXP-2026-11-pdf-limit-soft-redirect. Delete overlay + switch together once that test is called a keep (review 12-03).",
       "owner": "Vivek",
       "launched_by": "Claude Code (backfill 2026-11-19)",
@@ -4417,7 +4423,8 @@
       ],
       "framework_version": 2,
       "outcome": "shelved",
-      "decided_on": "2026-11-21"
+      "decided_on": "2026-11-21",
+      "family": "pdf-limit"
     },
     {
       "id": "EXP-2026-11-discovery-filters-unblurred",
@@ -4853,6 +4860,10 @@
         {
           "date": "2026-11-21",
           "note": "Early read (owner asked), NOT callable: paid within 1 day of sign-up, new accounts with 3+ PDF views: before 21 of 356 = 5.9% (11-05..11-19 05:04) vs after 4 of 35 = 11.4% (11-19 05:04..11-20 23:14); within 2 days 23/356 = 6.5% vs 3/18 = 16.7%. ~92% chance after beats before on the 1-day rate (Beta, uniform prior). Tiny sample, after cohort still filling, and confounded with the Price Report locked card (same publish) and its revert. 7-day read not possible before 11-26."
+        },
+        {
+          "date": "2026-11-25",
+          "note": "Owner 2026-11-25: bring the popup back for everyone, stabilise, maybe reintroduce the redirect later; keep every PDF-limit version on this one card (family_history). Independent read (payment log, first-ever limit hitters, internal and prior payers out, PDF leak excluded): paid in 24 h plain popup 2/60 = 3.3% [0.9, 11.4], venue popup 10/101 = 9.9% [5.5, 17.3], redirect 4/82 = 4.9% [1.9, 11.9]; venue minus redirect +5.0 pts [-3.3, +13.0], venue minus plain +6.6 [-2.6, +14.3]; 7-day gap vs plain +1.0 [-9.8, +10.3]. Verdict LEAD, not proven: non-hitters' 24 h pay rate also fell 1.1% -> 0.5%. Clean split test: ~359 per arm, ~7 weeks for 4.5% vs 9.9%. Status stays live until the publish that carries the switch is verified."
         }
       ],
       "decision": "",
@@ -4914,7 +4925,53 @@
         "guardrails[0]: no threshold stated at launch; engine default (25% move, 90% sure) applies",
         "confounded at launch: shipped in the same publish (1404) as EXP-2026-11-price-report-locked-compact; owner launch approval not recorded"
       ],
-      "framework_version": 2
+      "framework_version": 2,
+      "family": "pdf-limit",
+      "family_card": true,
+      "family_history": [
+        {
+          "version": "Softer wall copy",
+          "from": "2026-10-26",
+          "to": "2026-11-03",
+          "entry": "EXP-2026-10-pdf-popup-copy",
+          "outcome": "reverted, no read recorded"
+        },
+        {
+          "version": "Plain limit popup",
+          "from": "2026-11-03",
+          "to": "2026-11-12",
+          "entry": null,
+          "outcome": "after the leak, first-ever hitters, payment log: 2 of 60 paid in 24 h"
+        },
+        {
+          "version": "Venue-specific limit popup with plan chips",
+          "from": "2026-11-12",
+          "to": "2026-11-19",
+          "entry": "EXP-2026-11-venue-specific-pdf-limit-card",
+          "outcome": "11-12 18:00 UTC to 11-19 05:04 UTC: 10 of 101 paid in 24 h"
+        },
+        {
+          "version": "Soft redirect to the plans page",
+          "from": "2026-11-19",
+          "to": null,
+          "entry": "EXP-2026-11-pdf-limit-soft-redirect",
+          "outcome": "11-19 05:04 UTC on: 4 of 82 paid in 24 h (immature later)"
+        },
+        {
+          "version": "Venue-specific limit popup, back for everyone",
+          "from": null,
+          "to": null,
+          "entry": "EXP-2026-11-pdf-limit-soft-redirect",
+          "outcome": "owner 2026-11-25; starts at the next publish (real time to be filled in)"
+        },
+        {
+          "version": "Popup with plan cards and buy buttons",
+          "from": null,
+          "to": null,
+          "entry": "EXP-2026-12-pdf-limit-popup-plans",
+          "outcome": "parked"
+        }
+      ]
     },
     {
       "id": "EXP-2026-11-price-report-locked-compact",
@@ -5076,7 +5133,8 @@
       "bucket": "payment_funnel",
       "links": [
         "spec: tulletogether/.claude/specs/pdf_limit_popup_plans_spec_2026-11-22.md"
-      ]
+      ],
+      "family": "pdf-limit"
     },
     {
       "id": "EXP-2026-11-pi-card-restore",
@@ -6080,6 +6138,74 @@
         "design: https://claude.ai/artifact/Av9BJ2BNHPtu5YDG2Kmyg1",
         "pass bar: tulletogether .claude/price_report_v2_2026-11-25/PASS_BAR.md"
       ]
+    },
+    {
+      "id": "EXP-2026-11-welcome-subject",
+      "name": "Welcome email subject: 'Your 3 free pricing PDFs are ready' vs 'Welcome to Tulle Together'",
+      "status": "live",
+      "framework_version": 2,
+      "tier": "ux",
+      "bucket": "onboarding",
+      "themes": [
+        "email"
+      ],
+      "in_rotation": false,
+      "what_changed": "Xano fn72 welcome email: half of new sign-ups (by a hash of their email) get subject B '{First}, your 3 free pricing PDFs are ready'; the rest get A 'Welcome to Tulle Together, {First}'. Same body. Same update removed the 'first venue Pricing Intelligence estimate is free' line in both arms.",
+      "surfaces": [
+        "xano:fn72",
+        "brevo:welcome"
+      ],
+      "audience": {
+        "segment": "new sign-ups",
+        "est_daily_exposed": 89
+      },
+      "hypothesis": "If the subject names the 3 free PDFs, then welcome clicks go up, because it says what they get. Opens are inflated by privacy opens, so clicks decide.",
+      "tests": "Does naming the 3 free PDFs in the welcome subject get more people to click through?",
+      "goal": "Owner 2026-11-25 (T3-6, after QA passed): keep testing copy and reporting open and click rates on Mondays.",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": null,
+        "baseline_note": "See lanes/T3/PASS_BAR_email.md: planned 766 per arm at 2.3% vs 4.6% welcome clicks",
+        "mde_rel": 1.0,
+        "label": "people who clicked the welcome email (Brevo), 7 days after delivery"
+      },
+      "primary_metric": "unique welcome clicks per delivered person, 7 days mature",
+      "guardrail": "unsubscribes +0.5 pt; spam complaints 2+ and over 0.1%",
+      "guardrails": [
+        {
+          "key": "purchases_per_day",
+          "label": "purchases per day",
+          "params": {},
+          "max_drop_rel": 0.25
+        }
+      ],
+      "assignment": {
+        "type": "rollout",
+        "note": "REALLY a 50/50 split by FNV hash of 'ewel1:'+email, B = hash%100 < 50 (B_SHARE in fn72). Marked rollout because the engine only assigns by account id; it cannot compute these arms. Read from Brevo in the Monday report."
+      },
+      "start_date": "2026-11-25",
+      "planned_days": 25,
+      "max_days": 35,
+      "review_date": "2026-12-20",
+      "reporting": "manual",
+      "rollback": "Set B_SHARE = 0 in fn72 (everyone gets A); or restore fn72_pre_subject_test_2026-11-25.xs",
+      "links": [
+        "xano fn72 updated 2026-11-25 06:53:31 UTC",
+        "EMAIL-2026-12-welcome-subject"
+      ],
+      "decision_rule": {
+        "ship_p": 0.95,
+        "stop_p": 0.1,
+        "max_loss": 0.005
+      },
+      "results": [],
+      "decision": "",
+      "outcome": null,
+      "decided_on": null,
+      "owner": "owner",
+      "launched_by": "T3 (owner yes 2026-11-25)"
     }
   ],
   "changes": [
@@ -6605,6 +6731,34 @@
       ],
       "source": "weweb",
       "ref": "editor"
+    },
+    {
+      "date": "2026-11-25",
+      "what": "Xano fn72 welcome email 06:53 UTC: subject test 50/50 (EXP-2026-11-welcome-subject) and the 'first venue Pricing Intelligence estimate free' line removed for everyone.",
+      "affects": [
+        "EXP-2026-11-welcome-subject",
+        "EXP-2026-11-onboarding-try-it"
+      ],
+      "source": "xano",
+      "ref": "fn72"
+    },
+    {
+      "date": "2026-11-25",
+      "what": "Xano task 11 06:56 UTC: Monday email report now adds per-email opens, clicks and copy-test rows (team Slack only; first run 2026-11-30).",
+      "affects": [
+        "EXP-2026-11-welcome-subject"
+      ],
+      "source": "xano",
+      "ref": "task11"
+    },
+    {
+      "date": "2026-11-25",
+      "what": "ww-planner-chat f262e5f pushed (~05:30 UTC; not activated or published): onboarding without question chips and with a free-view line. WeWeb editor only: finish workflow, pages limit, bubble context test off, no-results banner hidden on Map, PDF-limit popup back (redirect off). Live site still build 1404.",
+      "affects": [
+        "EXP-2026-11-onboarding-try-it"
+      ],
+      "source": "weweb",
+      "ref": "f262e5f"
     }
   ]
 }
