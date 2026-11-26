@@ -360,9 +360,19 @@ def _venue_result(d):
             "food_minimum": it.get("min_fb_min_peak_sat") or 0,
             "at_a_glance": it.get("flt_glance"), "image": it.get("image_1"),
             "description": (it.get("Description") or "")[:300],
-            **({"setting_tags": glance_tags(it.get("flt_glance"))} if config.PHOTO_FIRST else {}),
+            **({"setting_tags": glance_tags(_glance_of(it))} if config.PHOTO_FIRST else {}),
         })
     return {"total_matches": d.get("itemsTotal"), "venues": out}
+
+
+def _glance_of(it):
+    """The live ep119 (v24) unsets flt_glance and lifts its keys to the item (venue_types, venue_attributes, ...); the
+    Railway search and older shapes still carry flt_glance. Either way: {venue_types, venue_attributes}."""
+    g = dict(it.get("flt_glance") or {}) if isinstance(it.get("flt_glance"), dict) else {}
+    for k in ("venue_types", "venue_attributes"):
+        if it.get(k):
+            g[k] = it[k]
+    return g
 
 
 def glance_tags(g):

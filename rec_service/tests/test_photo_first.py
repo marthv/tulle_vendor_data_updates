@@ -73,11 +73,18 @@ def test_no_cards_keeps_only_the_first_sentence():
 
 @pytest.mark.parametrize("text", [
     "The Foundry has the lowest rental of the three, with food at a typical rate for New York venues.",
-    "Wythe fits best.", "That one is expensive.", "A bargain.", "Good value for a Saturday.",
-    "This sentence has far more than fifteen words in it so it can never be the one short line here."])
-def test_no_card_line_is_short_and_never_judges_price(text):
+    "Wythe fits best.", "That one is expensive.", "A bargain.", "Good value for a Saturday."])
+def test_no_card_line_never_judges_price(text):
     line = pf.apply(answer(cards=[], text=text), "full", {})["text"]
-    assert len(line.split()) <= pf.MAX_WORDS and not QUALITY.search(line) and line in (pf.NEUTRAL_TEXT, pf.NEUTRAL_WIDGET)
+    assert not QUALITY.search(line) and line in (pf.NEUTRAL_TEXT, pf.NEUTRAL_WIDGET)
+
+
+def test_a_long_no_card_answer_is_clipped_not_replaced():
+    text = ("Most DJs in Texas play for four to five hours and bring their own sound system and lights for the dance floor. "
+            "Ask about travel.")
+    line = pf.apply(answer(cards=[], text=text), "full", {})["text"]
+    assert line == "Most DJs in Texas play for four to five hours and bring their own sound…"
+    assert len(line.split()) == pf.MAX_WORDS
 
 
 def test_international_is_never_a_place():
@@ -88,7 +95,65 @@ def test_international_is_never_a_place():
 def test_member_estimate_keeps_the_minimum_caveat():
     c = venue(rental_source="estimate", estimate_label="About $38,115 for 100 guests before tax and gratuity, with food at its "
                                                        "minimum spend (it may cost more)")
-    assert pf.price_line(c, "full")["text"].endswith("food at its minimum spend, may cost more")
+    t = pf.price_line(c, "full")["text"]
+    assert t == "About $38,100 for 100 guests before tax and tip, an estimate; food at its minimum spend, may cost more"
+
+
+def test_member_estimate_says_before_tax_and_tip():
+    assert pf.price_line(venue(rental_source="estimate"), "full")["text"] == "About $38,100 for 100 guests before tax and tip, an estimate"
+
+
+def test_one_of_a_kind_is_singular():
+    c = [{"vendor_id": "P1", "name": "Snap", "category": "Photography", "state": "Texas"}]
+    assert pf.apply(answer(cards=c, search_filters={"states": ["Texas"]}), "free", {})["text"] == "1 photographer in Texas"
+
+
+@pytest.mark.parametrize("text,line", [
+    ("We don't have Ben Conger Inn yet. Tell me the city.", "We don't have Ben Conger Inn yet."),
+    ("Here's Brooklyn Botanic Garden in Brooklyn, New York. It's outside California.", None),
+    ("It's outside California, where you're planning - tell me if you meant another. More.", "It's outside California, where you're planning - tell me if you meant another."),
+])
+def test_reopened_turns_stored_before_the_switch_keep_what_cards_cant_say(text, line):
+    out = pf.apply({"text": text, "cards": [venue()], "search_filters": {}}, "full", {}, reopened=True)
+    assert out["text"] == (line or "One in New York")
+
+
+def test_show_more_line_uses_the_search_guests(monkeypatch):
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7}))
+    monkeypatch.setattr(app, "_chat_used", lambda *a: None)
+    monkeypatch.setattr(xano, "get_chat", lambda u, c: {"id": c})
+    hist = [{"role": "assistant", "text": "x", "cards": [], "filters": {"states": ["New York"], "city": "Brooklyn", "guests": 150},
+             "more_cards": [venue("V%d" % i) for i in range(5)]}]
+    monkeypatch.setattr(xano, "get_messages", lambda c: hist)
+    monkeypatch.setattr(app, "_gate", lambda *a, **k: (True, True, [], True, False, {}))
+    monkeypatch.setattr(xano, "log_usage", lambda *a, **k: None)
+    monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
+    monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Guest_Count": 90})
+    monkeypatch.setattr(xano, "add_message", lambda *a, **k: None)
+    monkeypatch.setattr(xano, "touch_chat", lambda *a, **k: None)
+    monkeypatch.setattr(app.sheet_log, "event", lambda *a, **k: None)
+    h = {"Authorization": "Bearer t"}
+    r = TestClient(app.app).post("/rec/more?photo_first=1", json={"chat_id": 3}, headers=h).json()
+    assert r["text"] == "3 in Brooklyn for 150 guests" and "search_filters" not in r
+    r0 = TestClient(app.app).post("/rec/more", json={"chat_id": 3}, headers=h).json()
+    assert "photo_first" not in r0 and "search_filters" not in r0
+
+
+def test_main_search_reads_the_live_ep119_item_shape(monkeypatch):
+    """Live ep119 v24 unsets flt_glance and lifts venue_types / venue_attributes onto the item."""
+    item = {"id": 4081, "Vendor_ID": "V4081", "Name": "Wythe Hotel", "State": "New York", "Address": "80 Wythe Ave, Brooklyn, NY 11249",
+            "Venue_Type": "Hotel", "Max_Capacity_Seated": 150, "image_1": "https://i/w.jpg", "Description": "",
+            "flt_min_venue_fee": 0, "flt_max_venue_fee": 0, "space_count": 4, "pricing_row_count": 20,
+            "venue_types": ["Hotel / Resort"], "venue_offerings": ["All-Inclusive"],
+            "venue_attributes": ["Rooftop / Skyline Views; Natural Light / Large Windows", "Rooftop / Skyline Views"],
+            "min_fb_min_peak_sat": 43000}
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    v = xano._venue_result({"items": [item], "itemsTotal": 1})["venues"][0]
+    assert v["setting_tags"] == ["Hotel / Resort", "Rooftop / Skyline Views", "Natural Light / Large Windows"]
+    assert [f["label"] for f in pf.facts(v)] == ["Seats 150", "Rooftop", "Hotel"]
+    monkeypatch.setattr(config, "PHOTO_FIRST", False)
+    assert "setting_tags" not in xano._venue_result({"items": [item], "itemsTotal": 1})["venues"][0]
 
 
 def test_free_facts_drop_digit_words_but_keep_seats():

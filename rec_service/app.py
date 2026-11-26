@@ -1884,7 +1884,8 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
                     isinstance(w, dict) and w.get("type") in (whole_wedding.PROPOSAL, "ww_context") for w in t.get("widgets") or []):
                 got = photo_first.apply({"text": t.get("text") or "", "cards": t.get("cards") or [], "lookup": lk,
                                          "venue_request": vr, "widgets": t.get("widgets") or [],
-                                         "search_filters": t.get("filters") or {}, "price_locked": not access}, lvl, prof)
+                                         "search_filters": t.get("filters") or {}, "price_locked": not access}, lvl, prof,
+                                        reopened=True)
                 t.update({k: got[k] for k in ("text", "cards", "photo_first", "understood")})
                 if got.get("not_found"):
                     t["not_found"] = got["not_found"]
@@ -1966,9 +1967,13 @@ def _show_more(user, body, background, tracker):
         sheet_log.event(user, "Tapped Show more", "Show 3 more", text, chat["id"], picks)
     background.add_task(persist)
     left = reply["left"]
-    return _pf(dict(text=text, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
-                    more_available=left if left >= agent.MORE_STEP else 0, widgets=[], questions=[], upsell_prompt=None,
-                    **_counters("refine", paid, rows, counted_free, feedback_given, access)), user)
+    res = dict(text=text, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
+               more_available=left if left >= agent.MORE_STEP else 0, widgets=[], questions=[], upsell_prompt=None,
+               **_counters("refine", paid, rows, counted_free, feedback_given, access))
+    if config.PHOTO_FIRST:   # the line names the search's own place and guests (server-side state, never sent)
+        res = _pf(dict(res, search_filters=_active_filters(history)), user)
+        res.pop("search_filters", None)
+    return res
 
 
 class ToolBody(BaseModel):

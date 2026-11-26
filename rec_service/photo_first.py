@@ -90,6 +90,8 @@ _SETTINGS = (
 _NOT_SETTING = re.compile(r"inclusive|catering|raw space|byo|package", re.I)
 _NOUNS = {"Photography": "photographers", "Entertainment": "bands and DJs", "Flowers": "florists",
           "Beauty": "hair and makeup artists", "Food and Beverage": "caterers", "Wedding Planner": "planners"}
+_NOUN1 = {"Photography": "photographer", "Entertainment": "band or DJ", "Flowers": "florist",
+          "Beauty": "hair and makeup artist", "Food and Beverage": "caterer", "Wedding Planner": "planner"}
 _DIGIT = re.compile(r"\d")
 _SENT = re.compile(r"(.+?[.!?])(?:\s|$)", re.S)
 
@@ -155,7 +157,8 @@ def price_line(card, level):
             return {"text": "Rental %s, from its PDF" % _usd(fee), "source": "pdf"}
         tot, g = card.get("estimate_total"), _int(card.get("estimate_guests"))
         if isinstance(tot, (int, float)) and tot > 0 and (card.get("category") or "Venue") == "Venue":
-            t = "About %s for %d guests, an estimate" % (_usd(round(tot, -2)), g) if g else "About %s, an estimate" % _usd(round(tot, -2))
+            t = ("About %s for %d guests before tax and tip, an estimate" % (_usd(round(tot, -2)), g) if g
+                 else "About %s before tax and tip, an estimate" % _usd(round(tot, -2)))
             if "minimum spend" in str(card.get("estimate_label") or ""):   # the stored caveat stays
                 t += "; food at its minimum spend, may cost more"
             return {"text": t, "source": "estimate"}
@@ -218,19 +221,37 @@ def short_line(out, profile=None):
         return "We don't have %s." % name if name else "We don't have that one."
     if cards:
         cat = cards[0].get("category") or "Venue"
-        noun = _NOUNS.get(cat, "")
-        area, g = _area(out, cards), _guests(out, profile)
         n = len(cards)
+        noun = (_NOUN1 if n == 1 else _NOUNS).get(cat, "")
+        area, g = _area(out, cards), _guests(out, profile)
         line = ("%d %s" % (n, noun)).strip() if noun else ("One" if n == 1 else str(n))
         if area:
             line += " in %s" % area
         if g and cat == "Venue":
             line += " for %d guests" % g
         return line if (area or g or noun) else ("Here it is" if n == 1 else "%d to look at" % n)
-    s = first_sentence(text)
-    if not s or len(s.split()) > MAX_WORDS or _BANNED.search(s):
+    s = clip(first_sentence(text))
+    if not s or _BANNED.search(s):
         return NEUTRAL_WIDGET if out.get("widgets") else NEUTRAL_TEXT
     return s
+
+
+def clip(s, n=MAX_WORDS):
+    """At most n words; a cut sentence ends with an ellipsis."""
+    w = str(s or "").split()
+    return " ".join(w) if len(w) <= n else " ".join(w[:n]).rstrip(",;:-") + "…"
+
+
+_REOPEN_KEEP = re.compile(r"we don.t have|we still don.t have|\boutside\b", re.I)
+
+
+def reopen_line(text):
+    """A turn stored before the switch (no lookup kept with it): a 'We don't have X' / 'outside X' first sentence is the
+    line, since the card can't say it. None = shape as usual."""
+    s = first_sentence(text)
+    if s and _REOPEN_KEEP.search(s) and not _BANNED.search(s):
+        return clip(s)
+    return None
 
 
 def understood(out, profile=None):
@@ -255,12 +276,13 @@ def _free_safe(text):
     return not free_mode.has_price_talk(text or "")
 
 
-def apply(out, level, profile=None):
-    """The photo-first version of one answer (a new dict; `out` itself is not changed, so what is stored is the full text)."""
+def apply(out, level, profile=None, reopened=False):
+    """The photo-first version of one answer (a new dict; `out` itself is not changed, so what is stored is the full text).
+    reopened: a stored turn read back (chat_detail); one stored before the switch has no lookup with it."""
     if not isinstance(out, dict) or out.get("stopped"):
         return out
     free = level == "free" or bool(out.get("price_locked"))
-    line = short_line(out, profile)
+    line = (reopen_line(out.get("text")) if reopened and not out.get("lookup") else None) or short_line(out, profile)
     if (free and not _free_safe(line)) or _BANNED.search(line):
         line = "Here are some to look at" if out.get("cards") else NEUTRAL_TEXT
     cards = []
