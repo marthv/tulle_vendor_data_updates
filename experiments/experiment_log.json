@@ -6831,6 +6831,58 @@
       ],
       "source": "weweb",
       "ref": "f262e5f"
+    },
+    {
+      "date": "2026-11-25",
+      "what": "rec-engine REC_PREWARM 1->0 at 06:21 UTC: the Assistant stops pre-loading answers when a chat opens (cost only; answers unchanged).",
+      "affects": [
+        "EXP-2026-11-planner-context-first"
+      ],
+      "source": "railway",
+      "ref": "REC_PREWARM"
+    },
+    {
+      "date": "2026-11-25",
+      "what": "rec-engine push 1db0ed1 live 15:17:24 UTC (T0-34) with every new switch off; couples see no change.",
+      "affects": [],
+      "source": "github",
+      "ref": "1db0ed1"
+    },
+    {
+      "date": "2026-11-26",
+      "what": "rec-engine REC_LOOKUP_EDITS 0->1, live 03:39:51 UTC: an edit or need ('remove dj') is no longer answered 'We don't have <that>'. Probe before/after checked.",
+      "affects": [
+        "EXP-2026-11-planner-context-first"
+      ],
+      "source": "railway",
+      "ref": "REC_LOOKUP_EDITS"
+    },
+    {
+      "date": "2026-11-26",
+      "what": "rec-engine REC_DYM_STRICT 0->1, live 03:41:27 UTC: 'did you mean' needs every naming word ('Amway grand' no longer offers Far Far Away Ranch).",
+      "affects": [
+        "EXP-2026-11-planner-context-first"
+      ],
+      "source": "railway",
+      "ref": "REC_DYM_STRICT"
+    },
+    {
+      "date": "2026-11-26",
+      "what": "rec-engine REC_LOOKUP_ALL_STATES 0->1, live 03:43:02 UTC: a venue named but not found in the couple's states is looked up everywhere (Villa Woodbine now found from a New York account).",
+      "affects": [
+        "EXP-2026-11-planner-context-first"
+      ],
+      "source": "railway",
+      "ref": "REC_LOOKUP_ALL_STATES"
+    },
+    {
+      "date": "2026-11-26",
+      "what": "Xano task 11 03:43:56 UTC: Monday report's welcome-subject line now says read on 12-26 after 985 each (was 12-20, 779), matching the locked plan. Wording only.",
+      "affects": [
+        "EXP-2026-11-welcome-subject"
+      ],
+      "source": "xano",
+      "ref": "task11"
     }
   ]
 }
