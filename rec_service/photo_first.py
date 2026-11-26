@@ -7,12 +7,10 @@ When on, app._pf() passes each answer through apply():
   cards       each card gains `facts` - icons + words the card can show: Seats N and up to two setting tags we hold for
               the WHOLE venue (venue type, vibes). Never a guest minimum (that belongs to one room and season), never a
               pricing style (all-inclusive and the like are left out).
-              Members (level full) also get `price_line` {text, source} on VENUE cards: one line naming where it came
-              from - "Rental $7,000 on a peak-season Saturday, from its PDF" or "About $38,100 for 100 guests, an estimate". Light: the rounded
-              band, marked as an estimate. Free: no price line, and no price digit anywhere. Other vendors: no price line.
-              A rental only some couples pay (conditional_rates.json, from stored table-37 Notes) says whose it is: "Rental
-              $X on a peak-season Saturday for county residents[ ($Y otherwise)], from its PDF"; an estimate built on it
-              says "... using the county-resident rental, an estimate". A condition we can't tell apart: no price line.
+              Members (level full) also get `price_line` {text, source: "estimate"} on VENUE cards: the labelled estimate
+              only, "About $38,100 for 100 guests before tax and tip, an estimate" - never a rental line (owner ruling T0-55,
+              2026-11-26: QA found 11 of 28 member rental lines wrong against their PDFs). Light: the rounded band, marked
+              as an estimate. Free: no price line, and no price digit anywhere. Other vendors: no price line.
               Free, no cards, a price question or a cost widget held back: UPGRADE_LINE + the existing upgrade card.
   understood  {place, guests, date} - what we searched with, as chips the couple can change.
   not_found   {name, question, chip} when we don't hold the venue they named.
@@ -24,7 +22,6 @@ everyone else only WHERE each part is ("In the PDF" / "Not in this PDF") with no
 Pure except build_cost_lines (xano is passed in)."""
 import contextvars
 import json
-import os
 import re
 
 import config
@@ -159,67 +156,18 @@ def _usd(n):
     return "$" + format(int(round(n)), ",")
 
 
-# Rates only some couples pay (owner ruling T0-54, 2026-11-26): V2118 Newton White Mansion's stored $7,480 is the county
-# residents' rate; its PDF's $9,724 for everyone else is stored nowhere. conditional_rates.json is built OFFLINE from the
-# stored table-37 Notes by build_conditional_rates.py ({vendor_id: {fee: {kind, condition?, other?}}}); nothing reads a PDF.
-_COND = None
-
-
-def conditional_rate(vendor_id, fee):
-    """The stored condition on this venue's rental fee, or None (the rate everyone pays, or not one we found)."""
-    global _COND
-    if _COND is None:
-        try:
-            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "conditional_rates.json"), encoding="utf-8") as f:
-                _COND = json.load(f)
-        except (OSError, ValueError) as e:
-            print("conditional_rates.json not read:", repr(e)[:160])
-            _COND = {}
-    if not isinstance(fee, (int, float)) or fee <= 0:
-        return None
-    return (_COND.get(str(vendor_id or "")) or {}).get(str(int(round(fee))))
-
-
-COND_KINDS = ("both", "conditional", "not_private")   # conditions we can name; "unclear" is the only other kind
-
-
-def basis_words(who):
-    """'county residents' -> 'county-resident', 'members' -> "members'", 'non-profits' -> 'non-profit' (the estimate's basis)."""
-    m = re.match(r"^(\w+) residents$", who or "")
-    if m:
-        return m.group(1) + "-resident"
-    return {"residents": "resident", "members": "members'", "non-profits": "non-profit", "businesses": "business"}.get(
-        who, who)
-
-
 def price_line(card, level):
     """{"text", "source"} or None. source: "pdf" | "estimate". Free: always None. Venues only."""
     if level == "free" or card.get("price_locked") or (card.get("category") or "Venue") != "Venue":
         return None
     if level == "full":
-        fee = (card.get("venue_fee_range") or [None])[0]
-        cond = conditional_rate(card.get("vendor_id"), fee)
-        who = (cond or {}).get("condition") if (cond or {}).get("kind") in COND_KINDS else ""
-        if cond and not who:
-            # A condition we can't tell apart ("unclear"): no rental line, and the estimate (built on that rental) has no
-            # basis we can name - no line. Owner bar 12.6a #1: every other condition is SHOWN, labelled, never hidden.
-            return None
-        if (who and isinstance(fee, (int, float)) and fee > 0 and card.get("rental_source") == "pdf"
-                and card.get("rental_when") == "peak_saturday"):
-            other = " (%s otherwise)" % _usd(cond["other"]) if cond.get("kind") == "both" and cond.get("other") else ""
-            return {"text": "Rental %s on a peak-season Saturday for %s%s, from its PDF" % (_usd(fee), who, other),
-                    "source": "pdf"}
-        # The PDF's rental only with the date it is for: the panel quotes ONE scenario, a peak-season Saturday, and a
-        # venue's other days cost less (QA round 5: V82 "Rental $6,800" where the PDF says "$3,900 to $6,800" Fri-Sun).
-        # We don't hold the low end per card, so the line says which end it is; without that, no rental line.
-        if isinstance(fee, (int, float)) and fee > 0 and card.get("rental_source") == "pdf" \
-                and card.get("rental_when") == "peak_saturday":
-            return {"text": "Rental %s on a peak-season Saturday, from its PDF" % _usd(fee), "source": "pdf"}
+        # Owner ruling T0-55 (2026-11-26): no rental line on a member card ("Rental $X on a peak-season Saturday, from its
+        # PDF", with or without a condition) - independent QA found 11 of 28 wrong against their PDFs. The labelled
+        # estimate only, worded as today's Assistant words it. The rental is in the PDF and in "What it costs".
         tot, g = card.get("estimate_total"), _int(card.get("estimate_guests"))
         if isinstance(tot, (int, float)) and tot > 0 and (card.get("category") or "Venue") == "Venue":
-            basis = " using the %s rental" % basis_words(who) if who else ""   # an estimate on a conditional rental names it
-            t = ("About %s for %d guests before tax and tip%s, an estimate" % (_usd(round(tot, -2)), g, basis) if g
-                 else "About %s before tax and tip%s, an estimate" % (_usd(round(tot, -2)), basis))
+            t = ("About %s for %d guests before tax and tip, an estimate" % (_usd(round(tot, -2)), g) if g
+                 else "About %s before tax and tip, an estimate" % _usd(round(tot, -2)))
             if "minimum spend" in str(card.get("estimate_label") or ""):   # the stored caveat stays
                 t += "; food at its minimum spend, may cost more"
             return {"text": t, "source": "estimate"}
@@ -228,10 +176,7 @@ def price_line(card, level):
         return None
     band = card.get("price_band") or {}
     if band.get("label"):
-        cond = conditional_rate(card.get("vendor_id"), (card.get("venue_fee_range") or [None])[0])
-        if cond and not (cond.get("kind") in COND_KINDS and cond.get("condition")):
-            return None                          # a band on a rental whose condition we can't tell apart
-        t = str(band["label"]) + (" using the %s rental" % basis_words(cond["condition"]) if cond else "")
+        t = str(band["label"])
         return {"text": t[0].upper() + t[1:] + ", an estimate", "source": "estimate"}
     return None
 
@@ -677,12 +622,6 @@ def build_cost_lines(xano, token, user, vendor_id, *, access, guests=0, default_
         return lock_cost(dict(base, room=None, lines=_where_rows(p)))
     c = compare._cost(e, inp)
     by = {l["key"]: l for l in c["lines"]}
-    # A rental only some couples pay (T0-54): the rental row and the total say whose rate it is (and the everyone-else
-    # rate when stored); a condition we can't tell apart -> the words-only version (the total is built on that rental).
-    rent = by.get("rental") or {}
-    cond = conditional_rate(vid, rent.get("amount")) if rent.get("source") == "pdf" else None
-    if cond and not (cond.get("kind") in COND_KINDS and cond.get("condition")):   # unclear: no basis we can name
-        return lock_cost(dict(base, room=None, lines=_where_rows(p)))
     lines = []
     for key, label, icon in _COST_ROWS:
         l = by.get(key)
@@ -696,15 +635,10 @@ def build_cost_lines(xano, token, user, vendor_id, *, access, guests=0, default_
             row["note"] = "Included" + (", from the PDF" if src == "pdf" else "")
         if key == "service" and l.get("pct"):
             row["pct"] = l["pct"]
-        if key == "rental" and cond:
-            row["note"] = "For %s%s, from the PDF" % (cond["condition"], " (%s otherwise)" % _usd(cond["other"])
-                                                       if cond.get("kind") == "both" and cond.get("other") else "")
         lines.append(row)
-    note = "%s%d guests, before tax and tip" % ((e.get("space") + ", ") if e.get("space") else "", g)
-    if cond:
-        note += ", with the rental for %s" % cond["condition"]
     return dict(base, level="full", room=e.get("space") or None, lines=lines, total=c["total"],
-                estimated=[r["label"] for r in lines if r["source"] == "estimate" and r["amount"]], total_note=note)
+                estimated=[r["label"] for r in lines if r["source"] == "estimate" and r["amount"]],
+                total_note="%s%d guests, before tax and tip" % ((e.get("space") + ", ") if e.get("space") else "", g))
 
 
 def cost_summary(w):

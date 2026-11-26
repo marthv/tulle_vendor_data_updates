@@ -212,8 +212,10 @@ def test_no_guest_minimum_fact():
 
 # ---------------------------------------------------------------- price line by level
 
-def test_member_price_line_names_the_pdf():
-    assert pf.price_line(venue(), "full") == {"text": "Rental $7,000 on a peak-season Saturday, from its PDF", "source": "pdf"}
+def test_member_price_line_is_the_labelled_estimate_never_the_rental():
+    # owner ruling T0-55 (2026-11-26): a PDF rental on a peak-season Saturday no longer gives a rental line
+    assert pf.price_line(venue(), "full") == {"text": "About $38,100 for 100 guests before tax and tip, an estimate",
+                                              "source": "estimate"}
 
 
 def test_member_estimated_rental_is_not_called_pdf():
@@ -281,7 +283,7 @@ def test_pf_on_level_from_tier(monkeypatch):
     monkeypatch.setattr(config, "PHOTO_FIRST", True)
     monkeypatch.setattr(xano, "profile_of", lambda u: {})
     pf.REQ.set(True)
-    assert app._pf(answer(), {"id": 1})["cards"][0]["price_line"]["source"] == "pdf"
+    assert app._pf(answer(), {"id": 1})["cards"][0]["price_line"]["source"] == "estimate"   # T0-55: never a rental line
     free = app._pf(answer(has_access=False, paid=False), {"id": 1})
     assert all("price_line" not in c for c in free["cards"])
     pf.REQ.set(False)
@@ -772,6 +774,7 @@ def test_radius_search_says_near_the_town_searched():
     cards = [venue("V1", address="10 Front St, Red Bank, NJ 07701", state="New Jersey", distance_miles=8.2),
              venue("V2", address="2 Ocean Ave, Long Branch, NJ 07740", state="New Jersey", distance_miles=5.0),
              venue("V3", address="5 Broad St, Manhattan, NY 10004", state="New York", distance_miles=29.0)]
+    cards = [dict(c, estimate_guests=150) for c in cards]   # T0-55: the estimate line names its count; same as the search
     f = {"city": "Asbury Park", "states": ["New Jersey", "New York"], "radius_miles": 30, "guests": 150}
     out = pf.apply(answer(cards=cards, search_filters=f), "full", {})
     assert out["text"] == "3 near Asbury Park for 150 guests"        # never "in Asbury Park", never a card's state
@@ -842,6 +845,7 @@ def test_r5_mixed_kinds_never_take_the_first_cards_noun(level):
     assert line == "3 vendors in Philadelphia" and "photographer" not in line
     # one kind keeps its noun (and venues their guest count)
     assert pf.apply(answer(cards=[_pe("A"), _pe("B")], search_filters=f), level, {})["text"] == "2 bands and DJs in Manhattan"
+    v = dict(v, estimate_guests=400)   # T0-55: the estimate line names its count; priced at the search's
     assert pf.apply(answer(cards=[v, dict(v, vendor_id="V9")], search_filters=f), level, {})["text"] == \
         "2 near Manhattan for 400 guests"
 
@@ -917,9 +921,9 @@ def test_r5_rental_line_says_which_end_of_the_range_it_is():
     finally:
         cfg.PHOTO_FIRST = old
     assert card["rental_when"] == "peak_saturday" and card["venue_fee_range"] == [6800, 6800]
-    pl = pf.price_line(card, "full")
-    assert pl == {"text": "Rental $6,800 on a peak-season Saturday, from its PDF", "source": "pdf"}
-    # never the bare figure as if it were THE price: a PDF rental we can't place on a date gets no rental line
+    # T0-55 (owner 2026-11-26): no rental line on a member card, even one placed on its date; no estimate -> no line
+    assert pf.price_line(card, "full") is None
+    assert pf.price_line(dict(card, estimate_total=30000, estimate_guests=100), "full")["source"] == "estimate"
     bare = dict(card)
     bare.pop("rental_when")
     assert not (pf.price_line(bare, "full") or {}).get("text", "").startswith("Rental")
