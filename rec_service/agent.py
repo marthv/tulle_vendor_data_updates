@@ -299,6 +299,10 @@ def _with_rental(v, p, guests=0, budget=0):
             src = next((l.get("source") for l in (p or {}).get("lines") or [] if l.get("line") == "Rental fee"
                         and isinstance(l.get("amount"), (int, float)) and l["amount"] > 0), None)
             v["rental_source"] = "pdf" if src == "venue" else "estimate"
+            # Which date that one rental is for (QA round 5, V82 Aldie Mansion: the panel's $6,800 is the peak-season
+            # Saturday end of a "$3,900 to $6,800" Fri-Sun range). The panel prices one scenario and says which.
+            if str((p or {}).get("headline") or "").lower().startswith("a peak-season saturday"):
+                v["rental_when"] = "peak_saturday"
     elif _rental_not_disclosed(p) and not any(v.get("venue_fee_range") or []):
         v = dict(v, venue_fee_range=[None, None])
     e = estimate.compute((p or {}).get("cost_inputs"), guests)

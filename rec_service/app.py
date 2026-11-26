@@ -1895,7 +1895,7 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
                                          "unmatched_name": (pm or {}).get("unmatched_name"), "last_user": asked,
                                          "search_filters": t.get("filters") or last_f, "price_locked": not access}, lvl, prof,
                                         reopened=True)
-                t.update({k: got[k] for k in ("text", "cards", "photo_first", "understood")})
+                t.update({k: got[k] for k in ("text", "cards", "photo_first", "understood", "widgets")})   # widgets: free hides "typical cost"
                 if got.get("not_found"):
                     t["not_found"] = got["not_found"]
     for i, t in enumerate(turns):

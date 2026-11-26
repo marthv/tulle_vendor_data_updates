@@ -125,7 +125,9 @@ def test_agent_prefetch_uses_caches_and_reports_parts(caches_on, monkeypatch):
     assert u1["prefetch_saved_n"] == 2 and u1["prefetch_bench_ms"] >= 0 and u1["prefetch_saved_ms"] >= 0
     u2 = _run(monkeypatch, user)
     assert u2["prefetch_cache"] == {"bench_hits": 1, "bench_misses": 0, "card_hits": 2, "card_misses": 0}
-    assert len(caches_on["bench"]) == 1 and caches_on["card"] == ["V1", "V2"]
+    # The saved cards are read in parallel (pool.map), so the ORDER of the reads is the thread scheduler's: compare the
+    # set (QA round 5: this failed at random in full-suite runs as ['V2', 'V1']).
+    assert len(caches_on["bench"]) == 1 and sorted(caches_on["card"]) == ["V1", "V2"] and len(caches_on["card"]) == 2
 
 
 def test_light_and_free_still_get_no_benchmarks(caches_on, monkeypatch):

@@ -25,7 +25,7 @@ def venue(vid="V1", **kw):
     return dict({"vendor_id": vid, "vendor_idx": 1, "name": "Brooklyn Botanic Garden", "state": "New York",
                  "address": "990 Washington Ave, Brooklyn, NY 11225", "venue_type": "Garden / Botanical Garden",
                  "max_capacity_seated": 220, "image": "https://x/1.jpg", "venue_fee_range": [7000, 7000],
-                 "rental_source": "pdf", "estimate_total": 38115, "estimate_guests": 100,
+                 "rental_source": "pdf", "rental_when": "peak_saturday", "estimate_total": 38115, "estimate_guests": 100,
                  "estimate_label": "About $38,115 for 100 guests"}, **kw)
 
 
@@ -117,7 +117,7 @@ def test_one_of_a_kind_is_singular():
 ])
 def test_reopened_turns_stored_before_the_switch_keep_what_cards_cant_say(text, line):
     out = pf.apply({"text": text, "cards": [venue()], "search_filters": {}}, "full", {}, reopened=True)
-    assert out["text"] == (line or "One in New York for 100 guests")
+    assert out["text"] == (line or "One in New York")      # no search count stored, no profile count: no guests
 
 
 def test_show_more_line_uses_the_search_guests(monkeypatch):
@@ -213,7 +213,7 @@ def test_no_guest_minimum_fact():
 # ---------------------------------------------------------------- price line by level
 
 def test_member_price_line_names_the_pdf():
-    assert pf.price_line(venue(), "full") == {"text": "Rental $7,000, from its PDF", "source": "pdf"}
+    assert pf.price_line(venue(), "full") == {"text": "Rental $7,000 on a peak-season Saturday, from its PDF", "source": "pdf"}
 
 
 def test_member_estimated_rental_is_not_called_pdf():
@@ -291,8 +291,9 @@ def test_a_page_that_did_not_ask_gets_todays_answer_with_the_switch_on(monkeypat
     """The vendor-page bubble (no photoFirst prop, so no ?photo_first=1) with REC_PHOTO_FIRST=1: today's full answer."""
     monkeypatch.setattr(config, "PHOTO_FIRST", True)
     monkeypatch.setattr(xano, "profile_of", lambda u: {})
-    today = answer(cards=[{k: v for k, v in venue(vid).items() if k != "rental_source"} for vid in ("V1", "V2")])
-    with_keys = answer(cards=[dict(c, setting_tags=["Waterfront"], rental_source="pdf") for c in today["cards"]])
+    today = answer(cards=[{k: v for k, v in venue(vid).items() if k not in ("rental_source", "rental_when")} for vid in ("V1", "V2")])
+    with_keys = answer(cards=[dict(c, setting_tags=["Waterfront"], rental_source="pdf", rental_when="peak_saturday")
+                              for c in today["cards"]])
     pf.REQ.set(False)
     got = app._pf(with_keys, {"id": 1})
     assert json.dumps(got, sort_keys=True) == json.dumps(today, sort_keys=True)
@@ -577,13 +578,15 @@ def test_free_fallback_with_nothing_shown_is_neutral():
     assert pf.apply(res, "free", {})["text"] == pf.NEUTRAL_TEXT
 
 
-def test_headline_guests_match_the_cards_price_line():
-    cards = [venue("V%d" % i, estimate_guests=250, state="Pennsylvania", address="1 Main St, Philadelphia, PA 19107") for i in range(3)]
-    out = pf.apply(answer(cards=cards, search_filters={"states": ["Pennsylvania"], "city": "Philadelphia", "guests": 200}), "full", {})
-    assert out["text"] == "3 in Philadelphia for 250 guests"
-    est = pf.apply(answer(cards=[venue("V1", estimate_guests=250, rental_source="estimate", address="Philadelphia, PA")] * 3,
-                          search_filters={"city": "Philadelphia", "guests": 200}), "full", {})
-    assert est["text"] == "3 in Philadelphia for 250 guests" and "for 250 guests" in est["cards"][0]["price_line"]["text"]
+def test_headline_guests_are_the_searchs_and_the_price_line_names_its_own():
+    # QA round 5 replaced round 3's "headline = the cards' priced count": a free card carries no priced count, so only the
+    # search's count can make the member and free lines agree. The member's price line says which count ITS figure is for.
+    cards = [venue("V%d" % i, estimate_guests=250, rental_source="estimate", state="Pennsylvania",
+                   address="1 Main St, Philadelphia, PA 19107") for i in range(3)]
+    f = {"states": ["Pennsylvania"], "city": "Philadelphia", "guests": 200}
+    out = pf.apply(answer(cards=cards, search_filters=f), "full", {})
+    assert out["text"] == "3 in Philadelphia for 200 guests" and out["understood"]["guests"] == 200
+    assert "for 250 guests" in out["cards"][0]["price_line"]["text"]
 
 
 def test_a_show_more_batch_stores_its_search_with_the_switch_on(monkeypatch):
@@ -759,10 +762,10 @@ def test_radius_search_says_near_the_town_searched():
              venue("V3", address="5 Broad St, Manhattan, NY 10004", state="New York", distance_miles=29.0)]
     f = {"city": "Asbury Park", "states": ["New Jersey", "New York"], "radius_miles": 30, "guests": 150}
     out = pf.apply(answer(cards=cards, search_filters=f), "full", {})
-    assert out["text"] == "3 near Asbury Park for 100 guests"        # never "in Asbury Park", never a card's state
+    assert out["text"] == "3 near Asbury Park for 150 guests"        # never "in Asbury Park", never a card's state
     assert out["understood"]["place"] == "Asbury Park"
     inside = [dict(c, address="1 Cookman Ave, Asbury Park, NJ 07712") for c in cards]
-    assert pf.apply(answer(cards=inside, search_filters=f), "full", {})["text"] == "3 in Asbury Park for 100 guests"
+    assert pf.apply(answer(cards=inside, search_filters=f), "full", {})["text"] == "3 in Asbury Park for 150 guests"
 
 
 def test_a_state_is_named_only_when_every_card_is_in_it():
@@ -801,3 +804,182 @@ def test_switch_off_a_row_stored_with_marks_reads_as_today(monkeypatch):
         got.append(TestClient(app.app).get("/rec/chats/5?photo_first=1", headers={"Authorization": "Bearer t"}).json())
     assert json.dumps(got[0], sort_keys=True) == json.dumps(got[1], sort_keys=True)
     assert "pf_meta" not in json.dumps(got[0]) and "Willow" not in json.dumps(got[0])
+
+
+# ---------------------------------------------------------------- QA round 5
+
+def _pe(vid, cat="Entertainment", **kw):
+    return dict({"vendor_id": vid, "name": "DJ " + vid, "category": cat, "state": "New York",
+                 "address": "1 Broadway, Manhattan, NY 10004", "venue_type": "DJ"}, **kw)
+
+
+@pytest.mark.parametrize("level", ["full", "free"])
+def test_r5_mixed_kinds_never_take_the_first_cards_noun(level):
+    # msg 5388: one venue + two DJs read "3 near Manhattan for 400 guests"; a photographer first + two venues read
+    # "3 photographers ...".
+    f = {"city": "Manhattan", "states": ["New York"], "radius_miles": 15, "guests": 400}
+    v = venue("V4347", address="170 Central Prk W, New York, NY 10024", state="New York", distance_miles=2.0)
+    a = answer(cards=[v, _pe("V32", distance_miles=1.0), _pe("V1925", distance_miles=1.0)], search_filters=f)
+    line = pf.apply(a, level, {})["text"]
+    assert line == "3 vendors near Manhattan" and "guests" not in line
+    b = answer(cards=[_pe("P1", "Photography", address="1 Main St, Philadelphia, PA", state="Pennsylvania"),
+                      venue("V1", address="2 Main St, Philadelphia, PA", state="Pennsylvania"),
+                      venue("V2", address="3 Main St, Philadelphia, PA", state="Pennsylvania")],
+               search_filters={"city": "Philadelphia", "states": ["Pennsylvania"], "guests": 100})
+    line = pf.apply(b, level, {})["text"]
+    assert line == "3 vendors in Philadelphia" and "photographer" not in line
+    # one kind keeps its noun (and venues their guest count)
+    assert pf.apply(answer(cards=[_pe("A"), _pe("B")], search_filters=f), level, {})["text"] == "2 bands and DJs in Manhattan"
+    assert pf.apply(answer(cards=[v, dict(v, vendor_id="V9")], search_filters=f), level, {})["text"] == \
+        "2 near Manhattan for 400 guests"
+
+
+def test_r5_member_and_free_lines_agree_on_the_guest_count():
+    # msg 5337: search 200 guests, estimates stored for 100. Member line said "for 100 guests", free "for 200 guests".
+    f = {"city": "Atlanta", "guests": 200, "states": ["Georgia"], "radius_miles": 50}
+    full = [venue("V14604", name="The Westin Atlanta Airport", state="Georgia", rental_source="estimate",
+                  venue_fee_range=[None, None], address="4736 Best Rd, College Park, GA 30337", estimate_total=28750,
+                  estimate_guests=100, distance_miles=8.0),
+            venue("V9331", name="Atlanta Airport Marriott Gateway", state="Georgia", rental_source="estimate",
+                  venue_fee_range=[None, None], address="2020 Convention Center Concourse, Atlanta, GA 30337",
+                  estimate_total=28980, estimate_guests=100, distance_miles=9.0)]
+    free = [free_mode.card(c) for c in full]
+    m = pf.apply(answer(cards=full, search_filters=f), "full", {"Wedding_Guest_Count": 100})
+    fr = pf.apply(answer(cards=free, search_filters=f, price_locked=True, paid=False, has_access=False), "free",
+                  {"Wedding_Guest_Count": 100})
+    assert m["text"] == fr["text"] == "2 near Atlanta for 200 guests"
+    assert m["understood"]["guests"] == fr["understood"]["guests"] == 200
+    # the member's price line is honest about the count ITS figure is for
+    assert all("for 100 guests" in c["price_line"]["text"] and "estimate" in c["price_line"]["text"] for c in m["cards"])
+    assert not any("price_line" in c for c in fr["cards"]) and not PRICE.search(json.dumps(fr["cards"]))
+
+
+@pytest.mark.parametrize("said", ["ryland inn", "RYLAND INN", "what about the ryland inn?", "The Ryland Inn pricing"])
+def test_r5_we_dont_have_matches_a_name_with_or_without_the(said):
+    # msg 6705: "ryland inn" typed, the answer says "I couldn't find The Ryland Inn among the New Jersey venues..."
+    text = ("I couldn't find The Ryland Inn among the New Jersey venues with pricing PDFs on Tulle, so I have no figures "
+            "for it. Tulle holds 425 New Jersey venues with real pricing.")
+    assert pf.typed_not_listed(text, said) == "The Ryland Inn"
+    out = pf.apply({"text": text, "cards": [], "last_user": said, "search_filters": {"states": ["New Jersey"]}},
+                   "full", {}, reopened=True)
+    assert out["text"] == "We don't have The Ryland Inn."
+    # live: the search's own mark (agent._note_unmatched) reads the same name
+    timing = {}
+    agent._note_unmatched(timing, "The Ryland Inn", said, [], None)
+    assert timing.get("unmatched_names") == ["The Ryland Inn"]
+
+
+@pytest.mark.parametrize("text", [
+    "I couldn't find The Ryland Inn among the New Jersey venues with pricing PDFs on Tulle, so I have no figures for it.",
+    "We can't find the ryland inn among the venues in New Jersey that have pricing PDFs on Tulle today, sorry about that.",
+    "Tulle doesn't list The Ryland Inn among New Jersey venues with pricing PDFs yet, so there are no figures for it.",
+    "Unfortunately we do not have Ryland Inn anywhere in the New Jersey listings that we hold pricing documents for.",
+])
+@pytest.mark.parametrize("reopened", [False, True])
+def test_r5_a_cut_off_not_found_sentence_never_becomes_the_line(text, reopened):
+    # The couple did not type the name (or we can't tell): no "We don't have", and never the clipped sentence either.
+    out = pf.apply({"text": text, "cards": [], "last_user": "venues in new jersey", "search_filters": {"states": ["New Jersey"]}},
+                   "full", {}, reopened=reopened)
+    assert out["text"] == pf.NEUTRAL_TEXT and "…" not in out["text"]
+
+
+def test_r5_an_ordinary_no_card_sentence_is_still_the_line():
+    out = pf.apply({"text": "Most New Jersey barns open their calendars about eighteen months ahead, so ask early.",
+                    "cards": [], "search_filters": {}}, "full", {})
+    assert out["text"].startswith("Most New Jersey barns open their calendars")
+
+
+def test_r5_rental_line_says_which_end_of_the_range_it_is():
+    # V82 Aldie Mansion: the panel's $6,800 is the peak-season Saturday; the PDF says "Fri-Sun $3,900 to $6,800".
+    p = {"headline": "A peak-season Saturday dinner in the Aldie Mansion, before tax and gratuity",
+         "lines": [{"line": "Rental fee", "amount": 6800, "source": "venue"}]}
+    import config as cfg
+    old = cfg.PHOTO_FIRST
+    try:
+        cfg.PHOTO_FIRST = True
+        card = agent._with_rental({"vendor_id": "V82", "name": "Aldie Mansion", "category": "Venue"}, p)
+        cfg.PHOTO_FIRST = False
+        assert "rental_when" not in agent._with_rental({"name": "x"}, p)            # switch off: no new key
+    finally:
+        cfg.PHOTO_FIRST = old
+    assert card["rental_when"] == "peak_saturday" and card["venue_fee_range"] == [6800, 6800]
+    pl = pf.price_line(card, "full")
+    assert pl == {"text": "Rental $6,800 on a peak-season Saturday, from its PDF", "source": "pdf"}
+    # never the bare figure as if it were THE price: a PDF rental we can't place on a date gets no rental line
+    bare = dict(card)
+    bare.pop("rental_when")
+    assert not (pf.price_line(bare, "full") or {}).get("text", "").startswith("Rental")
+    assert pf.price_line(dict(bare, estimate_total=30000, estimate_guests=100), "full")["source"] == "estimate"
+    assert "rental_when" in pf.PF_ONLY_KEYS and "rental_when" not in json.dumps(pf.strip_cards([card]))
+
+
+# ---- owner ruling 2026-11-26: no "typical cost" widget for free couples in photo-first answers
+
+TYPICAL = {"v": 1, "note": None, "type": "cost_estimate", "state": "Delaware", "budget": 40000, "guests": 130,
+           "tiers": [{"label": "Minimalist", "amount": 7843, "multiplier": 0.3}, {"label": "Average", "amount": 26145,
+                     "multiplier": 1}, {"label": "Luxury", "amount": 44446, "multiplier": 1.7}],
+           "gap_pct": 53, "missing": [], "verdict": "over", "major_city": False, "peak_season": False, "guest_lookup": 130}
+# price-like: a $ sign, a percent, a K figure, or a widget/card amount field with a number in it
+PRICE_LIKE = re.compile(r"\$|\d+\s?%|\d[\d,]*\s?[kK]\b|\"(?:amount|budget|price\w*|total\w*|tiers|gap_pct|fee\w*|"
+                        r"estimate_total|food_minimum|venue_fee_range)\": ?[\[\d]")
+
+
+def _price_like(obj):
+    return PRICE_LIKE.findall(json.dumps(obj))
+
+
+def _free_answer():
+    card = free_mode.card(venue("V1597", name="Juniper by Tonic", state="Delaware", address="111 W 11th St, Wilmington, DE 19801"))
+    return {"text": "Typical Delaware venues for 130 guests run about $27,100.", "cards": [card], "chips": [],
+            "widgets": [dict(TYPICAL)], "search_filters": {"guests": 130, "states": ["Delaware"]},
+            "paid": False, "has_access": False, "price_locked": True}
+
+
+def _free_response(monkeypatch, pf_on=True):
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    monkeypatch.setattr(xano, "profile_of", lambda u: {"Wedding_Guest_Count": 130})
+    tok = pf.REQ.set(pf_on)
+    try:
+        return app._public(app._pf(_free_answer(), {"id": 1}), chat_id=9)
+    finally:
+        pf.REQ.reset(tok)
+
+
+def test_owner_free_photo_first_response_has_no_price_like_string(monkeypatch):
+    got = _free_response(monkeypatch)
+    assert got["photo_first"] is True and not any(w.get("type") == "cost_estimate" for w in got["widgets"])
+    assert _price_like(got) == [], _price_like(got)
+    assert got["text"] != pf.NEUTRAL_WIDGET          # the line does not point at a widget that is not there
+
+
+def test_owner_canary_the_check_fails_if_the_typical_cost_widget_comes_back(monkeypatch):
+    monkeypatch.setattr(pf, "FREE_HIDDEN_WIDGETS", ())            # the widget comes back
+    got = _free_response(monkeypatch)
+    assert any(w.get("type") == "cost_estimate" for w in got["widgets"])
+    assert _price_like(got), "the price-like check missed the typical cost widget: the test above could never fail"
+
+
+def test_owner_members_and_switch_off_keep_the_typical_cost_widget(monkeypatch):
+    # switch on, page did not ask (or switch off): today's response, widget kept
+    assert any(w.get("type") == "cost_estimate" for w in _free_response(monkeypatch, pf_on=False)["widgets"])
+    monkeypatch.setattr(config, "PHOTO_FIRST", False)
+    assert app._pf(_free_answer(), {"id": 1})["widgets"] == [TYPICAL]
+    # a member in photo-first keeps it
+    m = dict(_free_answer(), cards=[venue("V1597")], paid=True, has_access=True, price_locked=False)
+    assert pf.apply(m, "full", {})["widgets"] == [TYPICAL]
+
+
+def test_owner_reopened_free_chat_hides_the_typical_cost_widget(monkeypatch):
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7}))
+    monkeypatch.setattr(xano, "get_chat", lambda u, c: {"id": c, "title": "t"})
+    monkeypatch.setattr(xano, "has_paid_access", lambda u: False)
+    monkeypatch.setattr(xano, "beta_member", lambda u: False)
+    monkeypatch.setattr(xano, "profile_of", lambda u: {})
+    row = {"id": 3, "role": "assistant", "content": "Here are venues in Delaware for 130 guests.",
+           "cards": [{"meta": "widget", "widget": dict(TYPICAL)}, {"meta": "search", "filters": {"guests": 130, "states": ["Delaware"]}}]}
+    monkeypatch.setattr(xano, "get_messages", lambda c: [xano.parse_message_row(json.loads(json.dumps(row)))])
+    on = TestClient(app.app).get("/rec/chats/5?photo_first=1", headers={"Authorization": "Bearer t"}).json()
+    assert not any(w.get("type") == "cost_estimate" for t in on["turns"] for w in t.get("widgets") or [])
+    off = TestClient(app.app).get("/rec/chats/5", headers={"Authorization": "Bearer t"}).json()   # page did not ask
+    assert any(w.get("type") == "cost_estimate" for t in off["turns"] for w in t.get("widgets") or [])

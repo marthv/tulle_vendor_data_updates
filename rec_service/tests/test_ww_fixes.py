@@ -89,11 +89,32 @@ def test_1_lapsed_member_reactions_carry_no_vendor_figure(wd, monkeypatch, prici
         assert p["detail"] == detail and p["total"] is None and p["total_locked"] is True, msg
         assert all(r["amount"] is None for r in p["rows"] if r.get("amount_from") == "vendor"), msg
         assert leaks(xano.get_messages(cid)[-1]) == [], msg             # nor into the saved chat turn
-        assert leaks(app._WW_LAST) == [], msg                           # nor into what the next tap is built from
+        assert leaks(last_cards()) == [], msg                           # nor into what the next tap is built from
     assert leaks([x for _, x in wd.mp[n_mp:]]) == [] and leaks(wd.notes[n_notes:]) == [] and leaks(wd.usage[n_usage:]) == []
     # and "Add all" from that account copies no figure out either
     d = client(monkeypatch, wd.users["tok7001"]).post("/rec/ww/add", json={"chat_id": cid, "all": True}).json()
     assert leaks(d) == [] and leaks(wd.packages) == []
+
+
+
+def last_cards():
+    """The cards app._WW_LAST holds (what the next tap is built from) - NOT its whole entries. Each entry is (chat_id,
+    card, unix time), and json.dumps of the clock contains vendor-figure digits at times: QA round 5's "random" failure
+    was time.time() = 1795715050.x (2026-11-26 17:43-17:45 UTC) containing "7150", a SECRET figure. Not a leak."""
+    return [v[1] for v in app._WW_LAST.values()]
+
+
+def test_1_the_leak_check_reads_the_cards_not_the_clock(wd, monkeypatch):
+    """Regression for the flaky test above: with the clock at 1795715050.25 the old check (the whole _WW_LAST entry)
+    finds "7150" in the timestamp; the card itself carries no figure."""
+    monkeypatch.setattr(config, "FREE_PRICING", "none")
+    monkeypatch.setattr(config, "FREE_INITIAL_REFINES", 50)
+    monkeypatch.setattr(app.time, "time", lambda: 1795715050.25)
+    out = ask(wd, FULL, "Plan my wedding", START)
+    lapse(wd)
+    o = ask(wd, FULL, "swap the photographer", {"action": "swap", "category": "Photography"}, chat_id=out["chat_id"])
+    assert leaks(o) == [] and leaks(last_cards()) == []
+    assert 7150 in leaks(app._WW_LAST)          # the old check: the clock's digits, not a vendor figure
 
 
 def test_1_a_member_who_still_has_full_figures_keeps_them_on_a_reaction(wd):

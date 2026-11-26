@@ -8,7 +8,7 @@ When on, app._pf() passes each answer through apply():
               the WHOLE venue (venue type, vibes). Never a guest minimum (that belongs to one room and season), never a
               pricing style (all-inclusive and the like are left out).
               Members (level full) also get `price_line` {text, source} on VENUE cards: one line naming where it came
-              from - "Rental $7,000, from its PDF" or "About $38,100 for 100 guests, an estimate". Light: the rounded
+              from - "Rental $7,000 on a peak-season Saturday, from its PDF" or "About $38,100 for 100 guests, an estimate". Light: the rounded
               band, marked as an estimate. Free: no price line, and no price digit anywhere. Other vendors: no price line.
   understood  {place, guests, date} - what we searched with, as chips the couple can change.
   not_found   {name, question, chip} when we don't hold the venue they named.
@@ -27,7 +27,7 @@ import free_mode
 # Per request (QA 2026-11-26): only a page that ASKS for photo-first gets it (?photo_first=1, sent by the component when its
 # photoFirst prop is on). Every other Assistant instance (the vendor-page bubble...) gets today's answer even with the switch on.
 REQ = contextvars.ContextVar("rec_photo_first", default=False)
-PF_ONLY_KEYS = ("setting_tags", "rental_source")   # card keys only photo-first adds (stripped for every other request)
+PF_ONLY_KEYS = ("setting_tags", "rental_source", "rental_when")   # card keys only photo-first adds (stripped for every other request)
 PF_ONLY_TOP = ("unmatched_name",)                   # response keys only photo-first adds
 
 
@@ -50,6 +50,7 @@ def strip(out):
             res[k] = strip_cards(res[k])
     return res
 
+FREE_HIDDEN_WIDGETS = ("cost_estimate",)   # the "typical cost" widget (cost_tools estimate_cost): members only here
 COST_TOOL = "cost_lines"
 COST_TYPE = "cost_lines"
 MAX_WORDS = 15
@@ -154,8 +155,12 @@ def price_line(card, level):
         return None
     if level == "full":
         fee = (card.get("venue_fee_range") or [None])[0]
-        if isinstance(fee, (int, float)) and fee > 0 and card.get("rental_source") == "pdf":
-            return {"text": "Rental %s, from its PDF" % _usd(fee), "source": "pdf"}
+        # The PDF's rental only with the date it is for: the panel quotes ONE scenario, a peak-season Saturday, and a
+        # venue's other days cost less (QA round 5: V82 "Rental $6,800" where the PDF says "$3,900 to $6,800" Fri-Sun).
+        # We don't hold the low end per card, so the line says which end it is; without that, no rental line.
+        if isinstance(fee, (int, float)) and fee > 0 and card.get("rental_source") == "pdf" \
+                and card.get("rental_when") == "peak_saturday":
+            return {"text": "Rental %s on a peak-season Saturday, from its PDF" % _usd(fee), "source": "pdf"}
         tot, g = card.get("estimate_total"), _int(card.get("estimate_guests"))
         if isinstance(tot, (int, float)) and tot > 0 and (card.get("category") or "Venue") == "Venue":
             t = ("About %s for %d guests before tax and tip, an estimate" % (_usd(round(tot, -2)), g) if g
@@ -212,13 +217,10 @@ def _area(out, cards):
 
 
 def _guests(out, profile):
-    """The count the cards were priced for when they carry one (so the headline matches their price line), else the
-    search's, else the profile's."""
-    cg = {_int(c.get("estimate_guests")) for c in out.get("cards") or [] if isinstance(c, dict) and _int(c.get("estimate_guests"))}
-    if len(cg) == 1:
-        return cg.pop()
-    if len(cg) > 1:
-        return 0       # priced for different counts: no one count is true for all of them
+    """The guest count the search used, else the profile's - the same for every level (QA round 5, msg 5337: the search
+    was 200 guests, the stored estimates were for 100; the member line said "for 100 guests", the free line "for 200
+    guests"). A free card carries no priced count, so the headline can only agree across levels if it never reads one.
+    A member's price line names the count ITS figure is for ("About $28,800 for 100 guests ..., an estimate")."""
     return _int((out.get("search_filters") or {}).get("guests")) or _int((profile or {}).get("Wedding_Guest_Count"))
 
 
@@ -266,7 +268,8 @@ def not_listed(text):
         for m in rx.finditer(t):
             name = m.group(1).strip(" .,'\u2019")
             name = re.sub(r"(?:\s+(?:yet|in|on|at|by|and|the|of|among|anywhere|here))+$", "", name)
-            if name and len(name.split()) <= 8 and not _bad_name(name):
+            bare = re.sub(r"^the\s+", "", name, flags=re.I)   # "The Ryland Inn" is checked as "Ryland Inn" (QA round 5, msg 6705)
+            if bare and len(bare.split()) <= 8 and not _bad_name(bare):
                 return name
     return ""
 
@@ -399,9 +402,12 @@ def short_line(out, profile=None, legacy=False):
         rest = short_line(dict(out, text="", unmatched_name=""), profile) if cards else ""
         return head + " " + rest if rest and len((head + " " + rest).split()) <= MAX_WORDS else head
     if cards:
-        cat = cards[0].get("category") or "Venue"
+        cats = {c.get("category") or "Venue" for c in cards}
         n = len(cards)
-        noun = (_NOUN1 if n == 1 else _NOUNS).get(cat, "")
+        # One kind: its noun (venues have none: "3 in Brooklyn"). Mixed kinds (QA round 5, msg 5388: a venue and two DJs
+        # read "3 near Manhattan for 400 guests"): "vendors", and no guest count (that is a venue search's).
+        cat = cats.pop() if len(cats) == 1 else None
+        noun = (_NOUN1 if n == 1 else _NOUNS).get(cat, "") if cat else ("vendor" if n == 1 else "vendors")
         (prep, area), g = _place_phrase(out, cards), _guests(out, profile)
         line = ("%d %s" % (n, noun)).strip() if noun else ("One" if n == 1 else str(n))
         if area:
@@ -409,10 +415,19 @@ def short_line(out, profile=None, legacy=False):
         if g and cat == "Venue":
             line += " for %d guests" % g
         return line if (area or g or noun) else ("Here it is" if n == 1 else "%d to look at" % n)
-    s = clip(first_sentence(text))
+    first = first_sentence(text)
+    # A "we couldn't find / don't have X" sentence is never the line (QA round 5, msg 6705: a cut-off "I couldn't find The
+    # Ryland Inn among the New Jersey venues..."): it is "We don't have X." above when the couple typed X, else neutral.
+    s = "" if (not_listed(first) or _SAYS_MISSING.search(first)) else clip(first)
     if not _usable(s):
         return NEUTRAL_WIDGET if out.get("widgets") else NEUTRAL_TEXT
     return s
+
+
+# Our own "we don't have it" wording (any case, any subject we / I / Tulle), for the no-card line only.
+_SAYS_MISSING = re.compile(r"\b(?:we|i|tulle)\s+(?:still\s+)?(?:can['’]t|couldn['’]t|could not|cannot|didn['’]t|did not|"
+                           r"don['’]t|doesn['’]t|do not|does not)\s+(?:find|locate|see|have|list|carry)\b|"
+                           r"\b(?:isn['’]t|is not|aren['’]t|are not)\s+(?:listed|on tulle|in tulle|one of (?:the|our))\b", re.I)
 
 
 def clip(s, n=MAX_WORDS):
@@ -477,6 +492,10 @@ def apply(out, level, profile=None, reopened=False):
     if not isinstance(out, dict) or out.get("stopped"):
         return out
     free = level == "free" or bool(out.get("price_locked"))
+    if free and any(isinstance(w, dict) and w.get("type") in FREE_HIDDEN_WIDGETS for w in out.get("widgets") or []):
+        # Owner ruling 2026-11-26: in a photo-first answer a free couple does not see the "typical cost" widget (market-
+        # average dollar tiers, e.g. msgs 6686 / 6031). Members, and every answer with the switch off, keep it.
+        out = dict(out, widgets=[w for w in out["widgets"] if not (isinstance(w, dict) and w.get("type") in FREE_HIDDEN_WIDGETS)])
     legacy = reopened and not out.get("pf_stored")      # stored before the switch: no structural marks with it
     shown = [c.get("name") for c in out.get("cards") or [] if isinstance(c, dict)]
     line = (reopen_line(out.get("text"), out.get("last_user"), shown) if legacy else None) \
