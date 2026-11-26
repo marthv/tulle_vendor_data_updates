@@ -54,7 +54,7 @@ def test_apply_never_changes_what_is_stored():
 
 
 def test_guests_fall_back_to_the_profile_and_date_is_understood():
-    a = answer(cards=[venue("V%d" % i, estimate_guests=None) for i in range(3)], search_filters={"states": ["Texas"]})
+    a = answer(cards=[venue("V%d" % i, estimate_guests=None, state="Texas") for i in range(3)], search_filters={"states": ["Texas"]})
     out = pf.apply(a, "full", {"Wedding_Guest_Count": 120, "Wedding_Date": "2027-09-18"})
     assert out["text"] == "3 in Texas for 120 guests"
     assert out["understood"] == {"place": "Texas", "guests": 120, "date": "Sep 2027"}
@@ -109,8 +109,9 @@ def test_one_of_a_kind_is_singular():
 
 
 @pytest.mark.parametrize("text,line", [
-    ("We don't have Ben Conger Inn yet. Tell me the city.", "We don't have Ben Conger Inn yet."),
-    ("Here's Brooklyn Botanic Garden in Brooklyn, New York. It's outside California.", None),   # no "where you're planning"
+    ("We don't have Ben Conger Inn yet. Tell me the city.", "We don't have Ben Conger Inn."),
+    ("We don't have 2027 pricing yet for this one.", None),                                     # not a name: the normal line
+    ("Here's Brooklyn Botanic Garden in Brooklyn, New York. It's outside California.", "The one you asked about"),
     ("Here's Brooklyn Botanic Garden in Brooklyn, New York. It's outside California, where you're planning - tell me.",
      "Outside California, where you're planning"),
 ])
@@ -234,7 +235,7 @@ def test_free_answer_has_no_price_digit_anywhere():
 
 
 def test_free_line_never_carries_price_talk(monkeypatch):
-    monkeypatch.setattr(pf, "short_line", lambda o, p=None: "Under budget at $5,000")
+    monkeypatch.setattr(pf, "short_line", lambda o, p=None, **k: "Under budget at $5,000")
     out = pf.apply(free_mode.sanitize_result(answer()), "free", {})
     assert not PRICE.search(out["text"])
 
@@ -324,9 +325,9 @@ def test_reopened_chat_keeps_the_lookup(monkeypatch):
     out = answer(cards=[venue()], lookup={"status": "elsewhere", "query": "bbg"}, venue_request=None)
     stored = app._stored_cards(out)
     turn = xano.parse_message_row({"id": 1, "role": "assistant", "content": "x", "cards": stored})
-    assert turn["lookup"] == {"status": "elsewhere", "query": "bbg"} and len(turn["cards"]) == 1
+    assert turn["pf_meta"]["lookup"] == {"status": "elsewhere", "query": "bbg"} and len(turn["cards"]) == 1
     monkeypatch.setattr(config, "PHOTO_FIRST", False)
-    assert not any(c.get("meta") == "lookup" for c in app._stored_cards(out))
+    assert not any(c.get("meta") for c in app._stored_cards(out) if c.get("meta") not in ("search",))
 
 
 def test_glance_tags_are_whole_venue_settings_never_offerings():
@@ -551,9 +552,15 @@ def test_a_named_vendor_we_dont_list(text, name):
 def test_not_listed_leads_the_line_live_and_reopened():
     cards = [{"vendor_id": "F%d" % i, "name": "F", "category": "Flowers", "state": "New Hampshire"} for i in range(3)]
     t = "Lasting Impressions Event Decor isn't in Tulle's listings. Here are florists in New Hampshire."
-    for reopened in (False, True):
-        out = pf.apply({"text": t, "cards": cards, "search_filters": {"states": ["New Hampshire"]}}, "free", {}, reopened=reopened)
-        assert out["text"] == "We don't have Lasting Impressions Event Decor. 3 florists in New Hampshire"
+    want = "We don't have Lasting Impressions Event Decor. 3 florists in New Hampshire"
+    base = {"text": t, "cards": cards, "search_filters": {"states": ["New Hampshire"]}}
+    # live: from the structural mark only - the wording alone never decides it
+    assert pf.apply(dict(base, unmatched_name="Lasting Impressions Event Decor"), "free", {})["text"] == want
+    assert pf.apply(base, "free", {})["text"] == "3 florists in New Hampshire"
+    # stored before the switch (no marks): the wording fallback
+    assert pf.apply(base, "free", {}, reopened=True)["text"] == want
+    # stored with the switch on and no mark: nothing guessed
+    assert pf.apply(dict(base, pf_stored=True), "free", {}, reopened=True)["text"] == "3 florists in New Hampshire"
 
 
 def test_clip_never_cuts_inside_a_price_or_parenthesis():
@@ -571,10 +578,10 @@ def test_free_fallback_with_nothing_shown_is_neutral():
 
 
 def test_headline_guests_match_the_cards_price_line():
-    cards = [venue("V%d" % i, estimate_guests=250) for i in range(3)]
+    cards = [venue("V%d" % i, estimate_guests=250, state="Pennsylvania", address="1 Main St, Philadelphia, PA 19107") for i in range(3)]
     out = pf.apply(answer(cards=cards, search_filters={"states": ["Pennsylvania"], "city": "Philadelphia", "guests": 200}), "full", {})
     assert out["text"] == "3 in Philadelphia for 250 guests"
-    est = pf.apply(answer(cards=[venue("V1", estimate_guests=250, rental_source="estimate")] * 3,
+    est = pf.apply(answer(cards=[venue("V1", estimate_guests=250, rental_source="estimate", address="Philadelphia, PA")] * 3,
                           search_filters={"city": "Philadelphia", "guests": 200}), "full", {})
     assert est["text"] == "3 in Philadelphia for 250 guests" and "for 250 guests" in est["cards"][0]["price_line"]["text"]
 
@@ -600,3 +607,197 @@ def test_a_show_more_batch_stores_its_search_with_the_switch_on(monkeypatch):
     monkeypatch.setattr(config, "PHOTO_FIRST", False)
     TestClient(app.app).post("/rec/more", json={"chat_id": 3}, headers={"Authorization": "Bearer t"})
     assert not any(c.get("meta") for c in saved[-1])
+
+
+# ---------------------------------------------------------------- QA round 4
+# Names and towns below are made up for these tests (none is from the QA sample).
+
+@pytest.mark.parametrize("name,said,want", [
+    ("Willow Creek Lodge", "is willow creek lodge on here?", "Willow Creek Lodge"),
+    ("Willow Creek Lodge Asbury Park", "willow creek lodge", "Willow Creek Lodge"),     # the model added the town
+    ("Marigold & Fern Floral", "do you have marigold and fern floral", "Marigold & Fern Floral"),
+    ("Willow Creek Lodge", "something rustic please", ""),                               # not typed by the couple
+    ("Rustic Barn", "a rustic barn please", ""),                                         # a style, not a name
+    ("Outdoor Garden Venue", "outdoor garden venue", ""),
+    ("Finger Lakes Valley", "finger lakes valley", ""),                                  # a region
+    ("Upstate New York", "upstate new york", ""),                                        # a place (never "Upstate New")
+    ("Harrow", "harrow", ""),                                                            # one word: too thin for a search mark
+])
+def test_couple_typed_is_only_a_name_the_couple_typed(name, said, want):
+    assert pf.couple_typed(name, said) == want
+
+
+@pytest.mark.parametrize("text", [
+    "I can't find a Willow Creek Lodge in our New Jersey data, so I can't price it.",
+    "I couldn't find Willow Creek Lodge among the New Jersey venues Tulle holds pricing for.",
+    "We don't list Willow Creek Lodge, so I can't open its card here.",
+    "We don't have Willow Creek Lodge yet. Here are lodges nearby.",
+    "Willow Creek Lodge isn't one of the venues we list. These are close by.",
+    "Tulle doesn't have Willow Creek Lodge. Here are three nearby.",
+])
+def test_any_wording_of_we_dont_have_a_name_the_couple_typed(text):
+    assert pf.typed_not_listed(text, "how much is willow creek lodge for 120", []) == "Willow Creek Lodge"
+    assert pf.typed_not_listed(text, "lodges in new jersey", []) == ""          # the couple never named it
+    assert pf.typed_not_listed(text, "how much is willow creek lodge", ["Willow Creek Lodge & Barn"]) == ""   # shown
+
+
+def test_a_card_that_may_be_the_named_vendor_is_never_we_dont_have():
+    assert pf.holds_name("Harbor's Edge Pavilion", ["Harbor Edge Pavilion"])          # a typo away
+    assert pf.holds_name("Willow Creek Lodge", ["The Lodge at Willow Creek (New Jersey)"])  # words reordered, "(State)"
+    assert not pf.holds_name("Willow Creek Lodge", ["Cedar Hollow Farm", "Seabright Hall"])
+
+
+def test_we_dont_have_leads_however_the_model_worded_it_live(monkeypatch):
+    """Live: agent.unmatched_name sets the mark from the answer's wording when the search ran without the name (a type /
+    style search) - the round-4 miss - and from the search itself when it ran with it."""
+    cards = [venue("V%d" % i, name=n, state="New Jersey", address="1 Main St, Red Bank, NJ 07701", estimate_guests=120)
+             for i, n in enumerate(("Cedar Hollow Farm", "Seabright Hall", "Navesink House"))]
+    text = "I can't find a Willow Creek Lodge in our New Jersey data. Similar lodges we hold: Cedar Hollow Farm is close."
+    um = agent.unmatched_name({}, text, "does willow creek lodge fit our budget", cards)
+    assert um == "Willow Creek Lodge"
+    out = pf.apply(answer(cards=cards, text=text, unmatched_name=um,
+                          search_filters={"states": ["New Jersey"], "guests": 120}), "full", {})
+    assert out["text"] == "We don't have Willow Creek Lodge. 3 in New Jersey for 120 guests"
+    # the search's own mark wins (the model added the town to the keyword)
+    t = {}
+    agent._note_unmatched(t, "Willow Creek Lodge Red Bank", "willow creek lodge", cards, None)
+    assert agent.unmatched_name(t, "Here are three nearby.", "willow creek lodge", cards) == "Willow Creek Lodge"
+    # ...never when a result is the venue, or a close name was found elsewhere
+    t = {}
+    agent._note_unmatched(t, "Seabright Hall", "seabright hall", cards, None)
+    agent._note_unmatched(t, "Willow Creek Lodge", "willow creek lodge", [], {"status": "close", "names": ["Willow Creek Lodges (Ohio)"]})
+    assert t == {}
+    # a style or a place the model searched as a keyword is never a name
+    t = {}
+    agent._note_unmatched(t, "rustic barn", "a rustic barn near the shore", [], None)
+    agent._note_unmatched(t, "Jersey Shore", "something on the jersey shore", [], None)
+    assert t == {}
+
+
+def _fake_model(script):
+    import types
+
+    class Msg:
+        content, model = [], "fake"
+        usage = types.SimpleNamespace(input_tokens=1, output_tokens=1, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+
+    class Runner:
+        def __init__(self, tools, **kw):
+            self.tools = {(getattr(t, "name", None) or t.__name__): t for t in tools}
+
+        def __iter__(self):
+            for name, args in script:
+                self.tools[name](**args)
+            yield Msg()
+
+    class Client:
+        def __init__(self):
+            self.beta = types.SimpleNamespace(messages=types.SimpleNamespace(tool_runner=lambda **kw: Runner(**kw)))
+    return Client
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_run_marks_a_named_florist_we_dont_list_only_with_the_switch_on(monkeypatch, on):
+    items = [{"id": 500 + i, "Vendor_ID": "V%d" % (500 + i), "Name": n, "State": "New Jersey", "Category": "Flowers",
+              "Address": "1 Main St, Red Bank, NJ", "image_1": {"url": "https://x/%d.jpg" % i}, "flt_glance": {}}
+             for i, n in enumerate(("Stems Studio", "Petal & Moss"), 1)]
+    monkeypatch.setattr(config, "PHOTO_FIRST", on)
+    monkeypatch.setattr(config, "LISTINGS_IN_CHAT", True)
+    monkeypatch.setattr(xano, "_get", lambda url, token=None, params=None: (
+        {"itemsTotal": 2, "nextPage": None, "items": json.loads(json.dumps(items))}
+        if url.endswith("/wptp_updated_mappings_search") else {}))
+    monkeypatch.setattr(xano, "market_benchmarks", lambda s: {"state": s, "metrics": {}})
+    script = [("search_vendors", {"category": "florist", "states": ["New Jersey"], "keyword": "Marigold & Fern Floral"}),
+              ("present_recommendations", {"message": "Here are florists in New Jersey.", "vendor_ids": ["V501", "V502"],
+                                           "reasons": ["a", "b"], "chips": []})]
+    monkeypatch.setattr(agent.anthropic, "Anthropic", _fake_model(script), raising=False)
+    res, _ = agent.run("tok", {"id": 0}, True, [{"role": "user", "content": "do you have marigold & fern floral?"}],
+                       profile_override={"Wedding_Location_Updated": ["New Jersey"]}, detail="full")
+    assert [c["vendor_id"] for c in res["cards"]] == ["V501", "V502"]
+    if on:
+        assert res["unmatched_name"] == "Marigold & Fern Floral"
+        line = pf.apply(dict(res, search_filters={"states": ["New Jersey"]}), "full", {})["text"]
+        assert line.startswith("We don't have Marigold & Fern Floral.")
+    else:
+        assert "unmatched_name" not in res
+
+
+def test_reopened_turn_keeps_we_dont_have_and_an_old_turn_needs_the_couples_words(monkeypatch):
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    cards = [venue("V%d" % i, name="Hall %d" % i, state="New Jersey", address="1 Main St, Red Bank, NJ") for i in range(3)]
+    out = answer(cards=cards, text="Three halls nearby.", unmatched_name="Willow Creek Lodge",
+                 search_filters={"states": ["New Jersey"], "guests": 100})
+    stored = app._stored_cards(out)
+    turn = xano.parse_message_row({"id": 1, "role": "assistant", "content": out["text"], "cards": stored})
+    assert turn["pf_meta"]["unmatched_name"] == "Willow Creek Lodge"
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7}))
+    monkeypatch.setattr(xano, "get_chat", lambda u, c: {"id": c, "title": "t"})
+    monkeypatch.setattr(xano, "has_paid_access", lambda u: True)
+    monkeypatch.setattr(xano, "pi_entitled", lambda u: True)
+    monkeypatch.setattr(xano, "beta_member", lambda u: True)
+    monkeypatch.setattr(xano, "profile_of", lambda u: {})
+    old = {"id": 3, "role": "assistant", "text": "We don't have Willow Creek Lodge yet. Here are three halls.",
+           "cards": [dict(c) for c in cards], "filters": {"states": ["New Jersey"], "guests": 100}}
+    asked = lambda q: [{"id": 2, "role": "user", "text": q, "cards": []}, json.loads(json.dumps(old))]
+    rows = {"new": [{"id": 2, "role": "user", "text": "halls near red bank", "cards": []}, turn]}
+    for case, turns in (("new", rows["new"]), ("old_typed", asked("what about willow creek lodge")),
+                        ("old_not_typed", asked("halls near red bank"))):
+        monkeypatch.setattr(xano, "get_messages", lambda c, t=turns: json.loads(json.dumps(t)))
+        r = TestClient(app.app).get("/rec/chats/5?photo_first=1", headers={"Authorization": "Bearer t"}).json()
+        line = [t for t in r["turns"] if t["role"] == "assistant"][0]["text"]
+        if case == "old_not_typed":
+            assert not line.startswith("We don't have"), line
+        else:
+            assert line.startswith("We don't have Willow Creek Lodge."), (case, line)
+
+
+# ---- the place line names the place the search used
+
+def test_radius_search_says_near_the_town_searched():
+    cards = [venue("V1", address="10 Front St, Red Bank, NJ 07701", state="New Jersey", distance_miles=8.2),
+             venue("V2", address="2 Ocean Ave, Long Branch, NJ 07740", state="New Jersey", distance_miles=5.0),
+             venue("V3", address="5 Broad St, Manhattan, NY 10004", state="New York", distance_miles=29.0)]
+    f = {"city": "Asbury Park", "states": ["New Jersey", "New York"], "radius_miles": 30, "guests": 150}
+    out = pf.apply(answer(cards=cards, search_filters=f), "full", {})
+    assert out["text"] == "3 near Asbury Park for 100 guests"        # never "in Asbury Park", never a card's state
+    assert out["understood"]["place"] == "Asbury Park"
+    inside = [dict(c, address="1 Cookman Ave, Asbury Park, NJ 07712") for c in cards]
+    assert pf.apply(answer(cards=inside, search_filters=f), "full", {})["text"] == "3 in Asbury Park for 100 guests"
+
+
+def test_a_state_is_named_only_when_every_card_is_in_it():
+    cards = [venue("V1", state="Ohio", address="1 A St, Dayton, OH"), venue("V2", state="Ohio", address="2 B St, Lima, OH"),
+             venue("V3", state="Kentucky", address="3 C St, Covington, KY")]
+    out = pf.apply(answer(cards=cards, search_filters={"states": ["Ohio"], "guests": 100}), "full", {})
+    assert out["text"] == "3 for 100 guests" and "place" not in out["understood"]
+    two = [{"vendor_id": "E%d" % i, "name": "E%d" % i, "category": "Entertainment", "state": s}
+           for i, s in enumerate(("Ohio", "Indiana"))]
+    assert pf.apply({"text": "x", "cards": two, "search_filters": {"states": ["Ohio"]}}, "free", {})["text"] == "2 bands and DJs"
+
+
+def test_city_is_matched_as_a_whole_word_and_kept_with_no_cards():
+    cards = [venue("V%d" % i, state="Ohio", address="9 Palima Rd, Dayton, OH") for i in range(2)]
+    out = pf.apply(answer(cards=cards, search_filters={"city": "Lima", "states": ["Ohio"], "guests": 100}), "full", {})
+    assert "Lima" not in out["text"]                                      # "Palima Rd" is not Lima
+    none = pf.apply(answer(cards=[], text="Nothing matched those caps in Lima yet, so try widening the rental cap.",
+                           search_filters={"city": "Lima", "states": ["Ohio"]}), "full", {})
+    assert none["understood"]["place"] == "Lima"
+
+def test_switch_off_a_row_stored_with_marks_reads_as_today(monkeypatch):
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    cards = [venue("V1")]
+    out = answer(cards=cards, unmatched_name="Willow Creek Lodge")
+    marked = {"id": 3, "role": "assistant", "content": "Three halls.", "cards": app._stored_cards(out)}
+    plain = {"id": 3, "role": "assistant", "content": "Three halls.",
+             "cards": [c for c in marked["cards"] if c.get("meta") != "pf"]}
+    monkeypatch.setattr(config, "PHOTO_FIRST", False)
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7}))
+    monkeypatch.setattr(xano, "get_chat", lambda u, c: {"id": c, "title": "t"})
+    monkeypatch.setattr(xano, "has_paid_access", lambda u: True)
+    monkeypatch.setattr(xano, "pi_entitled", lambda u: True)
+    got = []
+    for row in (marked, plain):
+        monkeypatch.setattr(xano, "get_messages", lambda c, r=row: [xano.parse_message_row(json.loads(json.dumps(r)))])
+        got.append(TestClient(app.app).get("/rec/chats/5?photo_first=1", headers={"Authorization": "Bearer t"}).json())
+    assert json.dumps(got[0], sort_keys=True) == json.dumps(got[1], sort_keys=True)
+    assert "pf_meta" not in json.dumps(got[0]) and "Willow" not in json.dumps(got[0])

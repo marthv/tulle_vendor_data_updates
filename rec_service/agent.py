@@ -889,6 +889,36 @@ def _state_text(st):
 _TELL_ME = re.compile(r"(?i)^tell me about (.+?)(?:,? and whether it fits my wedding)?\s*[.?!]*$")
 
 
+def _note_unmatched(timing, keyword, last_user, results, named_elsewhere):
+    """REC_PHOTO_FIRST: record a vendor NAME the couple typed that this search could not match - the structural signal for
+    "We don't have X" (QA 2026-11-26: the model's wording varies too much to read it from the text alone). Any category.
+    Only the words the couple typed (photo_first.couple_typed), and only when no result - nor a close name found elsewhere - may be it."""
+    import photo_first   # lazy: only with the switch on
+    name = photo_first.couple_typed(keyword, last_user)
+    if not name:
+        return
+    if named_elsewhere and named_elsewhere.get("status") == "found":
+        return
+    names = [v.get("name") for v in results or [] if isinstance(v, dict)]
+    names += list((named_elsewhere or {}).get("names") or [])
+    if photo_first.holds_name(name, names):
+        return
+    timing.setdefault("unmatched_names", []).append(name[:80])
+
+
+def unmatched_name(timing, text, last_user, cards):
+    """REC_PHOTO_FIRST: the vendor the couple named that this answer does not show, or ''. The search's own mark first
+    (_note_unmatched); else the answer's words saying we don't have / can't find a vendor (photo_first.not_listed) -
+    which also covers a search run without the name (a type / style search after "does the Ritz-Carlton fit?") - and
+    then only when the couple typed that name themselves. Never when a card shown may be it."""
+    import photo_first   # lazy: photo_first is only needed with the switch on
+    shown = [c.get("name") for c in cards or [] if isinstance(c, dict)]
+    for n in reversed((timing or {}).get("unmatched_names") or []):
+        if not photo_first.holds_name(n, shown):
+            return n
+    return photo_first.typed_not_listed(text, last_user, shown)
+
+
 def find_by_name(token, keyword, last_user="", states=()):
     """REC_LOOKUP_V3: a venue the model searched by name, looked up in EVERY state (lookup.find: typos, joined words).
     {"status": "found", "venue"} | {"status": "close", "names"} | None. A style, a place or a need is never looked up, and
@@ -1417,6 +1447,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
                 hit = named_elsewhere["venue"]
                 named_ids.add(hit["vendor_id"])
                 venues = [hit] + [v for v in venues if v.get("vendor_id") != hit["vendor_id"]]
+        if config.PHOTO_FIRST:   # the couple named a venue and no venue of that name came back (photo_first.unmatched)
+            _note_unmatched(timing, keyword, last_user, venues, named_elsewhere)
         if config.VENUE_LOG and kw and not (lookup._place(kw) or lookup._descriptive_only(kw)
                                              or lookup.non_venue_name(kw)):
             # The venue log (2026-11-18): the model looked a venue up by name - what it searched and what came back.
@@ -1733,6 +1765,8 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
         sts = [s for s in (states or []) if s] or _states_of(profile)
         r = xano.search_listings(token, cat, states=sts, keyword=keyword, sort_by=sort_by, page_size=14,
                                  search_log=slog)
+        if config.PHOTO_FIRST:   # a florist / planner the couple named that we don't list
+            _note_unmatched(timing, keyword, last_user, r.get("vendors") or [], None)
         out = []
         level = "free" if free else ("light" if light else "full")
         priced = cat == "Flowers" and any(_florist_view(v.get("florist_pricing"), level) for v in r["vendors"])
@@ -2576,6 +2610,10 @@ def run(token, user, paid, messages, profile_override=None, memory_notes=None, o
               "notes_saved": saved_notes,
               "widgets": list(widgets),
               "dropped_unverified_ids": [v for v in final.get("vendor_ids", []) if v not in seen]}
+    if config.PHOTO_FIRST:   # "We don't have X" leads the photo-first line (photo_first.short_line)
+        um = unmatched_name(timing, text, last_user, cards)
+        if um:
+            result["unmatched_name"] = um
     usage["repeat_bounced"] = bool(guard.get("repeat_bounced"))
     usage["repeats_shown"] = guard.get("repeats_shown") or []
     return result, usage

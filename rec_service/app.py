@@ -263,9 +263,10 @@ def _stored_cards(out):
         stored.append({"meta": "upsell", "reason": out["upsell_prompt"].get("reason")})
     if out.get("sources"):     # 2026-11-07: a reopened chat shows the same sources under the answer
         stored.append({"meta": "sources", "sources": out["sources"]})
-    if config.PHOTO_FIRST and isinstance(out.get("lookup"), dict):   # a reopened photo-first chat keeps "Outside X" lines
-        stored.append({"meta": "lookup", "lookup": {k: out["lookup"].get(k) for k in ("status", "query")},
-                       "venue_request": out.get("venue_request")})
+    if config.PHOTO_FIRST:   # a reopened photo-first chat keeps its structural marks ("Outside X", "We don't have X")
+        lk = out.get("lookup") if isinstance(out.get("lookup"), dict) else None
+        stored.append({"meta": "pf", "lookup": {k: lk.get(k) for k in ("status", "query")} if lk else None,
+                       "venue_request": out.get("venue_request"), "unmatched_name": out.get("unmatched_name")})
     return stored
 
 
@@ -1865,10 +1866,11 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
                 t["text"] = free_mode.sanitize_text(t.get("text") or "")[0]
     left = _more_left(turns)
     last = max((i for i, t in enumerate(turns) if t["role"] == "assistant"), default=None)
+    if not photo_first.on():   # a row stored with the switch on, read with it off: its photo-first marks never go out
+        for t in turns:
+            t.pop("pf_meta", None)
     if config.PHOTO_FIRST and not photo_first.on():   # not asked for: today's turns
         for t in turns:
-            t.pop("lookup", None)
-            t.pop("venue_request", None)
             if t.get("cards"):
                 t["cards"] = photo_first.strip_cards(t["cards"])
     if photo_first.on():   # a reopened chat looks like a new answer: short line + card facts
@@ -1878,15 +1880,19 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
             prof = xano.profile_of(user)
         except Exception:
             prof = {}
-        last_f = {}
+        last_f, asked = {}, None
         for t in turns:
-            lk, vr = t.pop("lookup", None), t.pop("venue_request", None)
+            pm = t.pop("pf_meta", None)
+            lk, vr = (pm or {}).get("lookup"), (pm or {}).get("venue_request")
+            if t.get("role") == "user":
+                asked = t.get("text") or ""   # an old turn's "We don't have X" only when the couple typed X (as live)
             if t.get("role") == "assistant" and t.get("filters"):
                 last_f = t["filters"]      # a "Show 3 more" turn reads the latest search before it, as the live tap does
             if t.get("role") == "assistant" and (t.get("text") or t.get("cards")) and not any(
                     isinstance(w, dict) and w.get("type") in (whole_wedding.PROPOSAL, "ww_context") for w in t.get("widgets") or []):
                 got = photo_first.apply({"text": t.get("text") or "", "cards": t.get("cards") or [], "lookup": lk,
-                                         "venue_request": vr, "widgets": t.get("widgets") or [],
+                                         "venue_request": vr, "widgets": t.get("widgets") or [], "pf_stored": pm is not None,
+                                         "unmatched_name": (pm or {}).get("unmatched_name"), "last_user": asked,
                                          "search_filters": t.get("filters") or last_f, "price_locked": not access}, lvl, prof,
                                         reopened=True)
                 t.update({k: got[k] for k in ("text", "cards", "photo_first", "understood")})

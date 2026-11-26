@@ -28,6 +28,7 @@ import free_mode
 # photoFirst prop is on). Every other Assistant instance (the vendor-page bubble...) gets today's answer even with the switch on.
 REQ = contextvars.ContextVar("rec_photo_first", default=False)
 PF_ONLY_KEYS = ("setting_tags", "rental_source")   # card keys only photo-first adds (stripped for every other request)
+PF_ONLY_TOP = ("unmatched_name",)                   # response keys only photo-first adds
 
 
 def on():
@@ -43,7 +44,7 @@ def strip(out):
     is today's response."""
     if not isinstance(out, dict):
         return out
-    res = dict(out)
+    res = {k: v for k, v in out.items() if k not in PF_ONLY_TOP}
     for k in ("cards", "more_cards"):
         if isinstance(res.get(k), list):
             res[k] = strip_cards(res[k])
@@ -178,15 +179,36 @@ def first_sentence(text):
     return (m.group(1) if m else t).strip()
 
 
-def _area(out, cards):
+def _state_of(c):
+    st = c.get("state")
+    return st if isinstance(st, str) else (st[0] if isinstance(st, list) and len(st) == 1 else "")
+
+
+def _place_phrase(out, cards):
+    """("in"|"near", place) or ("", ""). A state or city is named only when EVERY card is in it; a radius search says
+    "near <town>"; otherwise no place (QA 2026-11-26: "in Jersey City" over three New York venues)."""
     f = out.get("search_filters") or {}
-    if f.get("city"):
-        return str(f["city"]).split(",")[0].strip()
+    city = str(f.get("city") or "").split(",")[0].strip()
+    if city and cards:
+        in_city = re.compile(r"(?<![A-Za-z])%s(?![A-Za-z])" % re.escape(city), re.I)
+        if all(in_city.search(str(c.get("address") or "")) for c in cards):
+            return "in", city
+        if f.get("radius_miles") or any(c.get("distance_miles") is not None for c in cards):
+            return "near", city
+    if city and not cards:
+        return "in", city
+    states = {_state_of(c) for c in cards}
     st = f.get("states") or []
-    if len(st) == 1 and st[0] != "International":     # "3 in International" says nothing: no place then
-        return str(st[0])
-    states = {c.get("state") for c in cards if isinstance(c.get("state"), str) and c.get("state")} - {"International"}
-    return states.pop() if len(states) == 1 else ""
+    cand = st[0] if len(st) == 1 else (states.copy().pop() if len(states) == 1 else "")
+    if cand and cand != "International" and cards and states == {cand}:
+        return "in", cand
+    if cand and cand != "International" and not cards:
+        return "in", cand
+    return "", ""
+
+
+def _area(out, cards):
+    return _place_phrase(out, cards)[1]
 
 
 def _guests(out, profile):
@@ -195,36 +217,157 @@ def _guests(out, profile):
     cg = {_int(c.get("estimate_guests")) for c in out.get("cards") or [] if isinstance(c, dict) and _int(c.get("estimate_guests"))}
     if len(cg) == 1:
         return cg.pop()
+    if len(cg) > 1:
+        return 0       # priced for different counts: no one count is true for all of them
     return _int((out.get("search_filters") or {}).get("guests")) or _int((profile or {}).get("Wedding_Guest_Count"))
 
 
 _OUTSIDE = re.compile(r"[Ii]t['\u2019]s outside ([^.,;]+?), where you['\u2019]re planning")
-# A vendor the couple named that we don't list, in the model's own words (any category; live and reopened).
-_NAME = r"((?:[A-Z0-9][\w'\u2019&.-]*)(?:\s+(?:[A-Z0-9][\w'\u2019&.-]*|of|the|and|at|on|in|by|&))*)"
-_NOT_LISTED = (re.compile(r"\bWe (?:still )?don['\u2019]t have " + _NAME),
-               re.compile(_NAME + r",? (?:isn['\u2019]t|is not) (?:in Tulle['\u2019]s listings|listed on Tulle|on Tulle|in Tulle)"),
-               re.compile(r"\bTulle (?:doesn['\u2019]t|does not) (?:have|list) " + _NAME))
-_NOT_A_NAME = {"A", "An", "The", "Pricing", "Prices", "Any", "That", "This", "It", "One", "Their", "Its", "Your", "Exact", "Tulle",
-               "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "January", "February", "March",
-               "April", "May", "June", "July", "August", "September", "October", "November", "December", "PDF", "PDFs"}
+# A vendor we don't list, in the model's own words (any category). Read live by agent.unmatched_name (after a search's
+# own mark, and only for a name the couple typed) and for turns stored before the switch.
+_CAP = r"(?:The\s+)?[A-Z0-9][\w'\u2019&.-]*(?:\s+(?:[A-Z0-9][\w'\u2019&.-]*|of|the|and|at|on|by|&))*"
+_LOW = r"[a-z][\w'\u2019&-]*(?:\s+[a-z][\w'\u2019&-]*){1,4}"
+_END = r"(?=\s+(?:in|among|on|yet|at|anywhere|here)\b|[.,;!?]|$)"
+_NOT_LISTED = (
+    re.compile(r"\bWe (?:still )?don['\u2019]t (?:have|list) (?:an? )?(" + _CAP + r")"),
+    re.compile(r"\b(?:we|I) (?:still )?(?:can['\u2019]t|couldn['\u2019]t|could not|cannot) find (?:an? |any )?(" + _CAP + r")"),
+    re.compile(r"\b(?:we|I) (?:still )?(?:can['\u2019]t|couldn['\u2019]t|could not|cannot) find (?:an? |any )?(" + _LOW + r")" + _END),
+    re.compile(r"\b(?i:we) (?:still )?don['\u2019]t (?:have|list) (" + _LOW + r")" + _END),   # only "we" ignores case
+    re.compile(r"(" + _CAP + r"),? (?:isn['\u2019]t|is not) (?:in Tulle['\u2019]s listings|listed on Tulle|on Tulle|in Tulle|one of the (?:venues|vendors))"),
+    re.compile(r"\bTulle (?:doesn['\u2019]t|does not) (?:have|list) (?:an? )?(" + _CAP + r")"))
+_NOT_A_NAME = {"a", "an", "the", "pricing", "prices", "price", "any", "that", "this", "it", "one", "their", "its", "your", "exact",
+               "tulle", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february",
+               "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "pdf", "pdfs",
+               "dj", "djs", "band", "bands", "florist", "florists", "photographer", "photographers", "caterer", "caterers",
+               "planner", "planners", "venue", "venues", "vendor", "vendors", "music", "catering", "flowers", "data", "info",
+               "information", "details", "numbers", "figures", "rates", "rate", "availability", "dates", "date", "room",
+               "rooms", "space", "spaces", "package", "packages", "menu", "menus", "reviews", "photos", "many", "much",
+               "enough", "more", "those", "these", "them", "there", "anything", "something", "everything", "every", "all"}
+
+
+def _bad_name(name):
+    """A year, a category, a place, an acronym or a need is never 'a vendor we don't have'."""
+    ws = name.split()
+    first = ws[0].lower().strip("'\u2019")
+    if first in _NOT_A_NAME or re.fullmatch(r"(?:19|20)\d\ds?", first):
+        return True
+    if len(ws) == 1 and (re.fullmatch(r"[A-Z0-9&]{2,5}", ws[0]) or ws[0].lower() in _NOT_A_NAME):
+        return True        # NYC, BYOB, AV, DJ
+    if all(w.lower() in _NOT_A_NAME or re.fullmatch(r"[A-Z0-9&]{2,5}|\d+", w) for w in ws):
+        return True
+    return not name_like(name)
 
 
 def not_listed(text):
-    """'X' when the answer says we don't list a vendor the couple named, else ''."""
+    """'X' when the answer says we don't have / can't find / don't list a vendor by name, else ''. Whether the couple
+    named it is checked by the callers (typed_not_listed)."""
     t = " ".join(str(text or "").split())
     for rx in _NOT_LISTED:
-        m = rx.search(t)
-        if m:
+        for m in rx.finditer(t):
             name = m.group(1).strip(" .,'\u2019")
-            name = re.sub(r"\s+(?:yet|in|on|at|by|and|the|of)$", "", name)
-            if name and name.split()[0] not in _NOT_A_NAME and len(name.split()) <= 8:
+            name = re.sub(r"(?:\s+(?:yet|in|on|at|by|and|the|of|among|anywhere|here))+$", "", name)
+            if name and len(name.split()) <= 8 and not _bad_name(name):
                 return name
     return ""
+
+
+# Words that say what KIND of vendor or place, or where, never which one (with lookup's GENERIC / DESCRIPTORS / NON_VENUE).
+_KIND = {"outdoor", "indoor", "rustic", "modern", "industrial", "boho", "bohemian", "vintage", "classic", "elegant", "luxury",
+         "luxurious", "intimate", "small", "large", "big", "cheap", "affordable", "romantic", "unique", "cozy", "charming",
+         "beautiful", "pretty", "nice", "fancy", "upscale", "casual", "local", "nearby", "best", "top", "wedding", "weddings",
+         "reception", "ceremony", "photo", "photography", "videographer", "videography", "makeup", "hair", "entertainment",
+         "live", "under", "over", "near", "around", "with", "for", "that", "cap", "budget"}
+_GEO_END = {"valley", "valleys", "mountains", "mountain", "mtns", "hills", "coast", "shore", "region", "area", "countryside",
+            "country", "keys", "islands", "peninsula", "county", "parish", "metro", "upstate", "downstate", "downtown",
+            "uptown", "midtown", "suburbs", "city", "town", "state"}
+
+
+def name_like(name, min_words=1):
+    """Could this name ONE vendor? min_words name words, at least one of them distinctive (not a kind / style / need /
+    category word), not ending in a region word ("Napa Valley"), and not a place, a style or a need to lookup."""
+    import lookup   # lazy: lookup pulls in more of the service
+    ts = lookup.tokens(name)
+    if len(ts) < min_words or not ts:
+        return False
+    plain = lookup.GENERIC | lookup.DESCRIPTORS | lookup.NON_VENUE | _KIND | _NOT_A_NAME
+    if not any(t not in plain and not t.isdigit() for t in ts) or ts[-1] in _GEO_END:
+        return False
+    try:
+        return not (lookup._place(name) or lookup._descriptive_only(name) or lookup.non_venue_name(name))
+    except Exception:
+        return False
+
+
+def couple_typed(name, last_user, min_words=2):
+    """The part of `name` the couple typed themselves, when it could name one vendor (name_like), else ''. All of it when they
+    typed all of it; else its leading words they typed when only the words after them are not theirs ("Giando on the Water
+    Brooklyn" -> "Giando on the Water" for "giando on the water williamsburg": the model added the borough)."""
+    import lookup
+    said = lookup.key(last_user)
+    ws = " ".join(str(name or "").split()).split(" ")
+    strip = lambda run: " ".join(run).strip(" ,.;:-")
+    whole = strip(ws)
+    if lookup.key(whole) and lookup.key(whole) in said:
+        return whole if name_like(whole, min_words) else ""
+    for j in range(len(ws) - 1, 0, -1):     # longest typed lead whose tail the couple did not type
+        run = ws[:j]
+        while run and lookup.norm(run[-1]) in lookup.STOP:
+            run = run[:-1]
+        lead, tail = strip(run), strip(ws[j:])
+        if lead and lookup.key(lead) in said and lookup.key(tail) not in said:
+            return lead if name_like(lead, min_words) else ""
+    return ""
+
+
+def holds_name(name, names):
+    """Any of `names` is (or may be) the vendor they named: the same key, one key inside the other (5+ letters), or a
+    lookup score at the "which one did you mean?" level. Errs on the side of yes: a wrong "We don't have X" over a card
+    that IS X is worse than no "We don't have"."""
+    import lookup
+    k = lookup.key(name)
+    for n in names or []:
+        n = re.sub(r"\s*\([^)]*\)\s*$", "", str(n or ""))      # "Name (State)", as find_by_name lists close names
+        nk = lookup.key(n)
+        if not nk or not k:
+            continue
+        if nk == k or (min(len(nk), len(k)) >= 5 and (k in nk or nk in k)) or lookup.score(name, n) >= lookup.MID:
+            return True
+    return False
+
+
+def typed_not_listed(text, last_user, shown=()):
+    """The vendor the answer says we don't have / can't find (not_listed), when the couple typed that name themselves and
+    no card shown may be it; else ''. last_user None = not known (a turn read back without its question): wording only."""
+    name = not_listed(text)
+    if not name:
+        return ""
+    if last_user is not None:
+        name = couple_typed(name, last_user, min_words=1)
+    return name if name and not holds_name(name, shown) else ""
+
+
 _NOT_IN = re.compile(r"We don't have one in (.+?) - this is the")
 
 
-def short_line(out, profile=None):
-    """The one line above the cards. Says only what the cards can't."""
+_HERES = re.compile(r"^Here['\u2019]s (.+?) in [^.]+\.")
+_VERB = re.compile(r"\b(?:is|are|was|were|be|been|has|have|had|do|does|did|can|will|would|should|could|may|might|must|need|"
+                   r"needs|charge|charges|cost|costs|seat|seats|include|includes|offer|offers|ask|asks|play|plays|bring|"
+                   r"brings|run|runs|start|starts|get|gets|see|look|open|try|show|shows|make|makes|go|goes|take|takes|give|"
+                   r"gives|add|adds|depend|depends|vary|varies|book|books|hold|holds|fit|fits|list|lists|let|lets|want|"
+                   r"come|comes|keep|keeps|find|pay|pays|plan|work|works|\w+ed|\w+ing|\w+['\u2019](?:s|re|ll|ve|d))\b", re.I)
+_PRICEY = re.compile(free_mode._FIGURE.pattern + r"|\$", re.I)
+
+
+def _usable(s):
+    """A no-card line worth showing: 5+ words, a verb, no price figure (any level - a figure only ever rides on a sourced
+    price line), no price-as-quality word, not the free fallback."""
+    return bool(s) and len(s.split()) >= 5 and bool(_VERB.search(s)) and not _PRICEY.search(s) \
+        and not _BANNED.search(s) and not s.startswith("Here are picks")
+
+
+def short_line(out, profile=None, legacy=False):
+    """The one line above the cards. Says only what the cards can't. legacy: a turn stored before the switch (no
+    structural marks stored with it): the text fallbacks apply."""
     cards = [c for c in out.get("cards") or [] if isinstance(c, dict)]
     lk = out.get("lookup") or {}
     status, name = lk.get("status"), str(lk.get("query") or "").strip()
@@ -245,24 +388,29 @@ def short_line(out, profile=None):
         if "Tulle covers US venues" in text:
             return "We don't have %s. Tulle covers US venues." % name
         return "We don't have %s." % name if name else "We don't have that one."
-    miss = not_listed(text)
+    miss = out.get("unmatched_name") or (typed_not_listed(text, out.get("last_user"), [c.get("name") for c in cards])
+                                         if legacy else "")
+    if legacy and len(cards) == 1:   # an old single-venue lookup ("Here's X in Y. ...")
+        m = _HERES.match(" ".join(text.split()))
+        if m and re.sub(r"\W", "", m.group(1).lower()) == re.sub(r"\W", "", str(cards[0].get("name") or "").lower()):
+            return "The one you asked about"
     if miss:     # lead with the no: the cards are what we do have
         head = "We don't have %s." % miss
-        rest = short_line(dict(out, text=""), profile) if cards else ""
+        rest = short_line(dict(out, text="", unmatched_name=""), profile) if cards else ""
         return head + " " + rest if rest and len((head + " " + rest).split()) <= MAX_WORDS else head
     if cards:
         cat = cards[0].get("category") or "Venue"
         n = len(cards)
         noun = (_NOUN1 if n == 1 else _NOUNS).get(cat, "")
-        area, g = _area(out, cards), _guests(out, profile)
+        (prep, area), g = _place_phrase(out, cards), _guests(out, profile)
         line = ("%d %s" % (n, noun)).strip() if noun else ("One" if n == 1 else str(n))
         if area:
-            line += " in %s" % area
+            line += " %s %s" % (prep, area)
         if g and cat == "Venue":
             line += " for %d guests" % g
         return line if (area or g or noun) else ("Here it is" if n == 1 else "%d to look at" % n)
     s = clip(first_sentence(text))
-    if not s or _BANNED.search(s) or s.startswith("Here are picks"):   # free fallback text with nothing shown
+    if not _usable(s):
         return NEUTRAL_WIDGET if out.get("widgets") else NEUTRAL_TEXT
     return s
 
@@ -287,15 +435,17 @@ def clip(s, n=MAX_WORDS):
 _REOPEN_KEEP = re.compile(r"\bwe (?:still )?don['\u2019]t have\b", re.I)
 
 
-def reopen_line(text):
+def reopen_line(text, last_user=None, shown=()):
     """A turn stored before the switch (no lookup kept with it): 'outside X, where you're planning' anywhere in it, or a
-    'We don't have ...' first sentence, is the line, since the card can't say it. None = shape as usual."""
+    'We don't have ...' first sentence (a vendor the couple typed, as live: typed_not_listed) is the line, since the card
+    can't say it. None = shape as usual. last_user None = the question is not known: the wording alone."""
     m = _OUTSIDE.search(" ".join(str(text or "").split()))
     if m:
         return "Outside %s, where you're planning" % m.group(1)
     s = first_sentence(text)
-    if s and _REOPEN_KEEP.search(s) and not _BANNED.search(s):
-        return clip(s) or None
+    if s and _REOPEN_KEEP.search(s):
+        name = typed_not_listed(s, last_user, shown)
+        return ("We don't have %s." % name) if name else None   # "We don't have 2027 pricing" -> the normal line
     return None
 
 
@@ -327,8 +477,11 @@ def apply(out, level, profile=None, reopened=False):
     if not isinstance(out, dict) or out.get("stopped"):
         return out
     free = level == "free" or bool(out.get("price_locked"))
-    line = (reopen_line(out.get("text")) if reopened and not out.get("lookup") else None) or short_line(out, profile)
-    if (free and not _free_safe(line)) or _BANNED.search(line):
+    legacy = reopened and not out.get("pf_stored")      # stored before the switch: no structural marks with it
+    shown = [c.get("name") for c in out.get("cards") or [] if isinstance(c, dict)]
+    line = (reopen_line(out.get("text"), out.get("last_user"), shown) if legacy else None) \
+        or short_line(out, profile, legacy=legacy)
+    if (free and not _free_safe(line)) or _BANNED.search(line) or _PRICEY.search(line):
         line = "Here are some to look at" if out.get("cards") else NEUTRAL_TEXT
     cards = []
     for c in out.get("cards") or []:
@@ -343,6 +496,8 @@ def apply(out, level, profile=None, reopened=False):
     # The full answer is not sent (QA 2026-11-26: today's paragraph judges price in 13 of 30 member answers); it is still
     # what is stored and what the model reads back.
     res = dict(out, text=line, cards=cards, photo_first=True, understood=understood(out, profile))
+    res.pop("pf_stored", None)
+    res.pop("last_user", None)
     lk, vr = out.get("lookup") or {}, out.get("venue_request")
     if vr and lk.get("status") not in ("found", "best", "choices", "dym", "elsewhere"):
         res["not_found"] = {"name": vr.get("name") or lk.get("query") or "", "question": QUESTION_NEAR, "chip": CHIP_QUOTE}

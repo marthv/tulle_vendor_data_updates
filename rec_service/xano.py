@@ -1461,10 +1461,9 @@ def parse_message_row(r):
             "sources": list(smeta.get("sources") or []) if smeta else []}
     if meta and isinstance(meta.get("filters"), dict):
         turn["filters"] = meta["filters"]
-    lmeta = next((c for c in (r.get("cards") or []) if isinstance(c, dict) and c.get("meta") == "lookup"), None)   # REC_PHOTO_FIRST rows only
-    if lmeta and isinstance(lmeta.get("lookup"), dict):
-        turn["lookup"] = lmeta["lookup"]
-        turn["venue_request"] = lmeta.get("venue_request")
+    pmeta = next((c for c in (r.get("cards") or []) if isinstance(c, dict) and c.get("meta") == "pf"), None)   # REC_PHOTO_FIRST rows only
+    if pmeta:
+        turn["pf_meta"] = {k: pmeta.get(k) for k in ("lookup", "venue_request", "unmatched_name")}
     return turn
 
 
