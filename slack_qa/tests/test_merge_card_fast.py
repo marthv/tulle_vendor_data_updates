@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 
+import pytest
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,7 +33,7 @@ class MetaXano:
     root, token = "https://x/api:meta/workspace/1", "t"
 
     def __init__(self, pdfs):
-        self.http, self.gets, self.posts = self, 0, 0
+        self.http, self.gets, self.posts, self.sizes = self, 0, 0, 0
         self.lock = threading.Lock()
         self.t = {10: [dict(id=i, Vendor_ID=f"VX{i % 5000}", PDF_ID=f"P{i}") for i in range(1, 21763)],
                   36: [dict(id=i, VENDOR_ID=f"VX{i % 5000}", PDF_ID=f"P{i}", VENUE_NAME="x") for i in range(1, 45362)]}
@@ -49,11 +50,16 @@ class MetaXano:
         return ([], False)
 
     def get(self, path, params=None, **kw):                # RefIndex: xano.get("/table/<t>/content", page)
-        with self.lock:
-            self.gets += 1
         t = int(re.search(r"/table/(\d+)/content", path).group(1))
         rows = self.t.get(t, [])
         p, n = int(params["page"]), int(params["per_page"])
+        with self.lock:
+            if n == 1:                                       # the fast path's row count, not a page of the scan
+                self.sizes += 1
+            else:
+                self.gets += 1
+        if n == 1:
+            return {"items": rows[:1], "nextPage": 2 if len(rows) > 1 else None, "itemsTotal": len(rows)}
         chunk = rows[(p - 1) * n: p * n]
         return {"items": chunk, "nextPage": p + 1 if p * n < len(rows) else None}
 
@@ -99,7 +105,7 @@ def test_fast_named_card_is_the_same_card_from_one_read_instead_of_sixty_pages(m
     old, old_card, ox, _ = _named_card(monkeypatch, fast=False)
     new, new_card, nx, _ = _named_card(monkeypatch, fast=True)
     assert ox.gets == 60 and ox.posts == 0                 # the default budget, all spent; t36 never finished
-    assert nx.gets == 0 and nx.posts == 1                  # one filtered read of t10
+    assert nx.gets == 0 and nx.posts == 1 and nx.sizes == 2      # one filtered read of t10 + two 1-row counts
     for k in ("survivor", "losers", "counts", "total", "tables", "row_ids", "why_survivor", "snapshots", "counters",
               "visibility", "origin"):
         assert new["payload"][k] == old["payload"][k], k
@@ -116,10 +122,35 @@ def test_fast_falls_back_to_paging_when_the_filtered_read_fails(monkeypatch):
 
 
 def test_fast_is_not_used_when_the_page_budget_could_finish_t36(monkeypatch):
-    monkeypatch.setenv("FEEDBACK_PAGE_BUDGET", str(dedupe.RefIndex.FULL_10_36_PAGES))
+    monkeypatch.setenv("FEEDBACK_PAGE_BUDGET", "135")      # 44 + 91 pages: the paged build finishes both tables
     p, _, x, _ = _named_card(monkeypatch, fast=True)
     assert x.posts == 0 and x.gets == 135
     assert {t["table"]: t["status"] for t in p["payload"]["tables"]}[36] == "counted"
+
+
+@pytest.mark.parametrize("budget", ["30", "44"])
+def test_fast_is_not_used_when_the_page_budget_might_not_finish_t10(monkeypatch, budget):
+    """QA 11-26: below t10's pages + 1 the paged build may end with t10 "not counted"; the fast path must not count it
+    where the old one wouldn't. It falls back, and the card equals the flag-off card at the same budget."""
+    monkeypatch.setenv("FEEDBACK_PAGE_BUDGET", budget)
+    old, old_card, ox, _ = _named_card(monkeypatch, fast=False)
+    monkeypatch.setenv("FEEDBACK_PAGE_BUDGET", budget)
+    new, new_card, nx, _ = _named_card(monkeypatch, fast=True)
+    assert nx.posts == 0 and nx.gets == ox.gets == int(budget)
+    assert new["payload"]["tables"] == old["payload"]["tables"] and new_card == old_card
+    if budget == "30":
+        assert {t["table"]: t["status"] for t in new["payload"]["tables"]}[10] == "not_counted"
+
+
+def test_fast_page_counts_come_from_the_live_tables(monkeypatch):
+    """The bounds use the live row counts, not typed-in sizes: a smaller t36 that the budget can finish -> paging."""
+    monkeypatch.setenv("DEDUPE_PAGE_DELAY", "0")
+    x = MetaXano({"V9": 2})
+    x.t[36] = x.t[36][:5000]                              # 10 pages: 44 + 10 < 60
+    r = dedupe.RefIndex(x, max_pages=60, only={10, 36})
+    assert r.build_named_fast({"V9", "V10"}) is False and x.posts == 0
+    x.t[36] = x.t[36] + [dict(id=99999 + i, VENDOR_ID="VX", PDF_ID="P") for i in range(20000)]   # 50 pages: 94 > 60
+    assert r.build_named_fast({"V9", "V10"}) is True and r.counts[10]["V9"] == 2
 
 
 def test_flag_is_off_by_default(monkeypatch):
@@ -129,8 +160,10 @@ def test_flag_is_off_by_default(monkeypatch):
     assert config.merge_card_fast() is True and mc._budget()[0] == mc.PATIENT_SECONDS
 
 
-def test_price_passes_the_patient_timeouts_only_when_on(monkeypatch):
-    seen = []
+def test_price_passes_the_patient_timeouts_only_when_building_a_card(monkeypatch):
+    """QA 11-26: the longer reads are for building a card (pv="fetch"); the Approve re-check
+    (interactions: price(xano, pl, pv=old.get("preview"))) keeps 35 s and 8/12 s, with the flag on or off."""
+    seen, joins = [], []
 
     def compute(xano, s, losers, **kw):
         seen.append(kw)
@@ -138,10 +171,29 @@ def test_price_passes_the_patient_timeouts_only_when_on(monkeypatch):
     monkeypatch.setattr(price_impact, "compute", compute)
     monkeypatch.setattr(price_impact, "blocks", lambda r: {"extra_blocks": [], "confirm_text": None, "alert": False})
     monkeypatch.delenv("XANO_MERGE_URL", raising=False)
-    monkeypatch.delenv("MERGE_CARD_FAST", raising=False)
-    mc._compute(object(), {"survivor": "V1", "losers": ["V2"]}, [], pv=None)
-    monkeypatch.setenv("MERGE_CARD_FAST", "1")
-    mc._compute(object(), {"survivor": "V1", "losers": ["V2"]}, [], pv=None)
-    assert seen[0] == {"preview": None, "hidden_pdfs": [], "deadline": mc.SECONDS}
-    assert seen[1] == {"preview": None, "hidden_pdfs": [], "deadline": mc.PATIENT_SECONDS,
-                       "timeouts": price_impact.PATIENT_TIMEOUTS}
+    real_join = threading.Thread.join
+
+    def join(self, timeout=None):
+        if self.name == "price-check":
+            joins.append(timeout)
+        return real_join(self, timeout)
+    monkeypatch.setattr(threading.Thread, "join", join)
+
+    class X:
+        token, http = "t", object()
+    pl = {"survivor": "V1", "losers": ["V2"]}
+    pv = {"survivor": "V1", "losers": ["V2"], "hide_pdf_ids": []}
+    old = {"preview": None, "hidden_pdfs": [], "deadline": mc.SECONDS}
+    for on in (False, True):
+        if on:
+            monkeypatch.setenv("MERGE_CARD_FAST", "1")
+        else:
+            monkeypatch.delenv("MERGE_CARD_FAST", raising=False)
+        seen.clear(), joins.clear()
+        mc.price(X(), pl)                                   # card building / Check price again
+        mc.price(X(), pl, pv=pv)                            # Approve, preview stored on the card
+        mc.price(X(), pl, pv=None)                          # Approve, card built without a preview
+        build = dict(old, deadline=mc.PATIENT_SECONDS, timeouts=price_impact.PATIENT_TIMEOUTS) if on else old
+        assert seen == [build, dict(old, preview=pv), old], on
+        assert joins == [(mc.PATIENT_SECONDS if on else mc.SECONDS) + mc.PREVIEW_TIMEOUT + 10,
+                         mc.SECONDS + mc.PREVIEW_TIMEOUT + 10, mc.SECONDS + mc.PREVIEW_TIMEOUT + 10], on

@@ -203,3 +203,96 @@ def test_recorded_pairs_price_section_is_unchanged(monkeypatch, lat):
         assert outs[0] == outs[1], g
         seen += not outs[0][3]
     assert seen >= len(groups) * 0.9            # the comparison is of real prices, not two "can't compute"s
+
+
+# ------------------------------------------------------- the queue: three cards and an Approve (QA 11-26, item 2)
+# Real threads and the real queue, real time scaled down 20x (1 simulated second = 0.05 s): every merge_checks /
+# price_impact time limit is scaled with it, so the semaphore wait, the deadlines and the timeouts meet as they would.
+
+REAL_SUBMIT = mc.submit          # conftest makes submit inline per test; the queue itself is under test here
+SCALE = 0.05
+
+
+def _scaled(monkeypatch):
+    for k in ("WAIT", "PREVIEW_TIMEOUT", "SECONDS", "PATIENT_SECONDS", "BREATH"):
+        monkeypatch.setattr(mc, k, getattr(mc, k) * SCALE)
+    monkeypatch.setattr(pi, "TIMEOUTS", tuple(x * SCALE for x in pi.TIMEOUTS))
+    monkeypatch.setattr(pi, "PATIENT_TIMEOUTS", tuple(x * SCALE for x in pi.PATIENT_TIMEOUTS))
+
+
+def _queue_run(monkeypatch, preview_s, read_s, seed):
+    import random
+    rnd, lock = random.Random(seed), threading.Lock()
+
+    def draw(lo, hi):
+        with lock:
+            return rnd.uniform(lo, hi)
+    monkeypatch.setenv("MERGE_CARD_FAST", "1")
+    _scaled(monkeypatch)
+
+    def preview(payload, hide):                      # ep578's preview: slow, and cut off at PREVIEW_TIMEOUT like _post
+        time.sleep(min(draw(*preview_s) * SCALE, mc.PREVIEW_TIMEOUT))
+        return None
+    monkeypatch.setattr(mc, "preview", preview)
+
+    class Slow(tpi.Fake):
+        def _wait(self, timeout):
+            d = draw(*read_s) * SCALE
+            if timeout is not None and d > timeout:
+                time.sleep(timeout)
+                raise requests.ReadTimeout("read timed out")
+            time.sleep(d)
+
+        def get(self, url, params=None, headers=None, timeout=None):
+            self._wait(timeout)
+            return super().get(url, params, headers, timeout)
+
+        def post(self, url, json=None, headers=None, timeout=None):
+            self._wait(timeout)
+            return super().post(url, json, headers, timeout)
+    w, pl = tpi.world(), {"survivor": "V1", "losers": ["V2"]}
+    out, done = {}, threading.Event()
+    t0 = time.monotonic()
+
+    def card(i):
+        def job():
+            out[f"card{i}"] = (mc.price(Slow(w), pl), (time.monotonic() - t0) / SCALE)
+            if sum(k.startswith("card") for k in out) == 3:
+                done.set()
+        return job
+    for i in (1, 2, 3):
+        REAL_SUBMIT(card(i))
+    time.sleep(5 * SCALE)                            # Approve pressed on an older card while the first is computing
+
+    def approve():
+        out["approve"] = (mc.price(Slow(w), pl, pv={"survivor": "V1", "losers": ["V2"], "hide_pdf_ids": []}),
+                          (time.monotonic() - t0) / SCALE)
+    a = threading.Thread(target=approve)
+    a.start()
+    a.join(600 * SCALE)
+    done.wait(1200 * SCALE)
+    return out
+
+
+def _report(out):
+    return {k: (round(at), r["status"], r.get("cant"), json.dumps(r.get("extra_blocks"))[:160]) for k, (r, at) in out.items()}
+
+
+def test_three_queued_cards_and_an_approve_on_a_slow_preview(monkeypatch, toy):
+    """ep578 preview 20-60 s, Xano reads 2-5 s (11-25 was ~2-3x slow). All three cards and the Approve get a price;
+    the Approve waits behind at most the one check that is running (well under WAIT = 240 s)."""
+    out = _queue_run(monkeypatch, (20, 60), (2, 5), seed=1)
+    assert sorted(out) == ["approve", "card1", "card2", "card3"], _report(out)
+    for k, (r, at) in out.items():
+        assert r["status"] == "ok" and not r["cant"], _report(out)
+    assert out["approve"][1] < 240, _report(out)
+
+
+def test_reads_of_twenty_to_sixty_seconds_are_the_limit(monkeypatch, toy):
+    """Every read 20-60 s (and the preview too): eleven reads cannot fit in 90 s, so each card says can't compute and
+    Approve's 8/12 s reads time out. Pinned so the limit is known, not hidden. The queue itself never refuses ("other
+    price checks were still running"): queued cards wait in the queue, not on the 240 s lock."""
+    out = _queue_run(monkeypatch, (20, 60), (20, 60), seed=2)
+    assert sorted(out) == ["approve", "card1", "card2", "card3"], _report(out)
+    for k, (r, at) in out.items():
+        assert r["cant"] and "other price checks were still running" not in json.dumps(r), _report(out)

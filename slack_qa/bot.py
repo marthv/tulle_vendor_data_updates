@@ -441,8 +441,7 @@ class Bot:
             byid = {v["id"]: v for v in vendors}
             refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
                                    page_delay=config.dedupe_page_delay(), only={10, 36})
-            fast = (config.merge_card_fast() and config.feedback_page_budget() < dedupe.RefIndex.FULL_10_36_PAGES
-                    and refs.build_named_fast(set(vids)))
+            fast = config.merge_card_fast() and refs.build_named_fast(set(vids))     # checks the page budget itself
             if not fast:
                 refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
             pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,

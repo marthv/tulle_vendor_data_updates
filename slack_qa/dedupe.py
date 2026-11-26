@@ -882,17 +882,25 @@ class RefIndex:
     def pdfs(self) -> dict[str, int]:
         return dict(self.counts.get(10, {}))
 
-    # t10 + t36 as whole pages on 2026-11-25: 21,762 + 45,361 rows = 44 + 91 pages. Below this budget the paged build
-    # (only={10, 36}) can never finish t36, so it ends with t10 counted and t36 "not counted".
-    FULL_10_36_PAGES = 135
+    def _pages(self, tid: int) -> int:
+        """Whole 500-row pages the paged build needs for this table, from the live row count (one 1-row read)."""
+        d = self.xano.get(f"/table/{tid}/content", {"page": 1, "per_page": 1})
+        n = int(d["itemsTotal"])
+        return max(1, -(-n // 500))
 
     def build_named_fast(self, wanted: set[str]) -> bool:
-        """MERGE_CARD_FAST: the same result the paged build gives a named merge (only={10, 36}, budget below
-        FULL_10_36_PAGES): t10 counted for these vendors, every other table "not counted". One filtered read of t10
-        instead of ~60 whole pages. False = it couldn't (caller falls back to build())."""
+        """MERGE_CARD_FAST: the same result the paged build gives a named merge (only={10, 36}), from one filtered read
+        of t10 instead of ~60 whole pages. Used only when, at today's table sizes (read live, not typed in; 2026-11-25:
+        t10 21,762 rows = 44 pages, t36 45,361 = 91), the paged build would have finished t10 (budget >= t10 pages + 1)
+        and could not have finished t36 (budget < t10 + t36 pages): then it ends with t10 counted and every other
+        table "not counted", and so does this. False = not used or it couldn't (caller falls back to build())."""
         import xano_search
         vids = sorted({str(v).strip() for v in wanted if str(v).strip()})
         try:
+            p10, p36 = self._pages(10), self._pages(36)
+            if not (p10 + 1 <= self.max_pages < p10 + p36):
+                log.info("filtered PDF count not used: budget %s pages, t10 %s, t36 %s", self.max_pages, p10, p36)
+                return False
             got = xano_search.search(self.xano, 10, "Vendor_ID", vids)
         except Exception as e:  # noqa: BLE001 - the paged build still works
             log.info("filtered PDF count failed, paging instead: %s", type(e).__name__)
@@ -905,7 +913,7 @@ class RefIndex:
                     rws[vid].append([row.get("id"), "Vendor_ID"])
         self.counts, self.rows = {10: c}, {10: dict(rws)}
         self.not_counted = {t for t, *_ in REF_TABLES if t != 10}
-        self.pages_used = 1
+        self.pages_used = 3                  # two 1-row counts and the filtered read
         return True
 
 

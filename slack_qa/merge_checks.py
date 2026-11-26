@@ -21,7 +21,8 @@ import pdf_dupes
 log = logging.getLogger("slack_qa.merge_checks")
 
 SECONDS = 35.0             # price_impact's own budget for one card
-PATIENT_SECONDS = 90.0     # MERGE_CARD_FAST: room for two slow reads in a row (price_impact.PATIENT_TIMEOUTS)
+PATIENT_SECONDS = 90.0     # MERGE_CARD_FAST, card building only: room for two slow reads (price_impact.PATIENT_TIMEOUTS)
+BREATH = 2.0               # seconds between queued jobs
 WAIT = 240.0               # how long a check waits for the one before it
 PREVIEW_TIMEOUT = 90.0     # measured 14-65 s live on 2026-11-22 (it counts every reference)
 _ONE = threading.Semaphore(1)
@@ -43,7 +44,7 @@ def _work() -> None:
             fn()
         except Exception:  # noqa: BLE001
             log.exception("queued price check failed")
-        _STOP.wait(2)                       # a breath between jobs, so a person's click gets in between
+        _STOP.wait(BREATH)                  # a breath between jobs, so a person's click gets in between
 
 
 def submit(fn) -> None:
@@ -129,18 +130,20 @@ def slim(pv: dict | None) -> dict | None:
             "refusals": [str(x) for x in pv.get("refusals") or []]}
 
 
-def _budget() -> tuple[float, tuple]:
-    """(seconds for one card, per-read timeouts): MERGE_CARD_FAST gives a slow Xano read more time; off = as before."""
+def _budget(building: bool = True) -> tuple[float, tuple]:
+    """(seconds for one check, per-read timeouts). MERGE_CARD_FAST gives a slow Xano read more time, but only while a
+    card is being built (pv == "fetch"); the Approve re-check keeps the old 35 s and 8/12 s. Off = as before."""
     import price_impact
-    if config.merge_card_fast():
+    if building and config.merge_card_fast():
         return PATIENT_SECONDS, price_impact.PATIENT_TIMEOUTS
     return SECONDS, price_impact.TIMEOUTS
 
 
 def _compute(xano, payload: dict, hide: list[str], pv="fetch") -> dict:
     import price_impact
-    pv = slim(preview(payload, hide)) if pv == "fetch" else pv
-    secs, timeouts = _budget()
+    building = pv == "fetch"
+    pv = slim(preview(payload, hide)) if building else pv
+    secs, timeouts = _budget(building)
     kw = {"timeouts": timeouts} if timeouts != price_impact.TIMEOUTS else {}      # off: the very same call as before
     r = price_impact.compute(xano, payload.get("survivor"), list(payload.get("losers") or []), preview=pv,
                              hidden_pdfs=hide, deadline=secs, **kw)
@@ -225,7 +228,7 @@ def price(xano, payload: dict, seconds: float | None = None, wait: float = WAIT,
 
     t = threading.Thread(target=run, name="price-check", daemon=True)
     t.start()
-    t.join((seconds if seconds is not None else _budget()[0]) + PREVIEW_TIMEOUT + 10)
+    t.join((seconds if seconds is not None else _budget(pv == "fetch")[0]) + PREVIEW_TIMEOUT + 10)
     return box.get("r") or _failed("the check took too long", payload, hide)
 
 
