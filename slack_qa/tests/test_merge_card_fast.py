@@ -160,9 +160,9 @@ def test_flag_is_off_by_default(monkeypatch):
     assert config.merge_card_fast() is True and mc._budget()[0] == mc.PATIENT_SECONDS
 
 
-def test_price_passes_the_patient_timeouts_only_when_building_a_card(monkeypatch):
-    """QA 11-26: the longer reads are for building a card (pv="fetch"); the Approve re-check
-    (interactions: price(xano, pl, pv=old.get("preview"))) keeps 35 s and 8/12 s, with the flag on or off."""
+def test_price_passes_the_patient_timeouts_on_building_and_approve(monkeypatch):
+    """Owner 11-26 option A: with the flag on, building a card (pv="fetch") AND the Approve re-check
+    (interactions: price(xano, pl, pv=old.get("preview"))) get 90 s and 20/30 s; flag off = 35 s and 8/12 s for all three."""
     seen, joins = [], []
 
     def compute(xano, s, losers, **kw):
@@ -193,7 +193,7 @@ def test_price_passes_the_patient_timeouts_only_when_building_a_card(monkeypatch
         mc.price(X(), pl)                                   # card building / Check price again
         mc.price(X(), pl, pv=pv)                            # Approve, preview stored on the card
         mc.price(X(), pl, pv=None)                          # Approve, card built without a preview
-        build = dict(old, deadline=mc.PATIENT_SECONDS, timeouts=price_impact.PATIENT_TIMEOUTS) if on else old
-        assert seen == [build, dict(old, preview=pv), old], on
-        assert joins == [(mc.PATIENT_SECONDS if on else mc.SECONDS) + mc.PREVIEW_TIMEOUT + 10,
-                         mc.SECONDS + mc.PREVIEW_TIMEOUT + 10, mc.SECONDS + mc.PREVIEW_TIMEOUT + 10], on
+        base = dict(old, deadline=mc.PATIENT_SECONDS, timeouts=price_impact.PATIENT_TIMEOUTS) if on else old
+        assert seen == [base, dict(base, preview=pv), base], on
+        j = (mc.PATIENT_SECONDS if on else mc.SECONDS) + mc.PREVIEW_TIMEOUT + 10
+        assert joins == [j, j, j], on

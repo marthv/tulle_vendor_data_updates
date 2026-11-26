@@ -21,7 +21,7 @@ import pdf_dupes
 log = logging.getLogger("slack_qa.merge_checks")
 
 SECONDS = 35.0             # price_impact's own budget for one card
-PATIENT_SECONDS = 90.0     # MERGE_CARD_FAST, card building only: room for two slow reads (price_impact.PATIENT_TIMEOUTS)
+PATIENT_SECONDS = 90.0     # MERGE_CARD_FAST, card building and Approve: room for two slow reads (price_impact.PATIENT_TIMEOUTS)
 BREATH = 2.0               # seconds between queued jobs
 WAIT = 240.0               # how long a check waits for the one before it
 PREVIEW_TIMEOUT = 90.0     # measured 14-65 s live on 2026-11-22 (it counts every reference)
@@ -131,10 +131,11 @@ def slim(pv: dict | None) -> dict | None:
 
 
 def _budget(building: bool = True) -> tuple[float, tuple]:
-    """(seconds for one check, per-read timeouts). MERGE_CARD_FAST gives a slow Xano read more time, but only while a
-    card is being built (pv == "fetch"); the Approve re-check keeps the old 35 s and 8/12 s. Off = as before."""
+    """(seconds for one check, per-read timeouts). MERGE_CARD_FAST gives a slow Xano read more time, both while a card
+    is being built and on the Approve re-check (owner 2026-11-26, option A: a slow read on Approve showed "can't
+    compute" and blocked the merge). `building` is kept for callers; it no longer changes the answer. Off = as before."""
     import price_impact
-    if building and config.merge_card_fast():
+    if config.merge_card_fast():
         return PATIENT_SECONDS, price_impact.PATIENT_TIMEOUTS
     return SECONDS, price_impact.TIMEOUTS
 
