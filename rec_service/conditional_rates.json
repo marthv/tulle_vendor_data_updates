@@ -178,6 +178,7 @@
 "kind": "unclear"
 },
 "415": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "5300": {
@@ -220,27 +221,35 @@
 },
 "V12777": {
 "160": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "240": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "275": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "30": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "40": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "430": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "50": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "55": {
+"condition": "non-profits",
 "kind": "not_private"
 }
 },
@@ -284,6 +293,7 @@
 },
 "V13288": {
 "1990": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "2156": {
@@ -291,6 +301,7 @@
 "kind": "conditional"
 },
 "660": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "704": {
@@ -306,15 +317,19 @@
 },
 "V13476": {
 "150": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "200": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "250": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "350": {
+"condition": "businesses",
 "kind": "not_private"
 }
 },
@@ -365,42 +380,55 @@
 },
 "V14164": {
 "105": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "115": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "125": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "135": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "165": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "55": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "60": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "65": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "70": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "80": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "85": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "90": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "95": {
+"condition": "businesses",
 "kind": "not_private"
 }
 },
@@ -519,21 +547,27 @@
 },
 "V2745": {
 "1000": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "200": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "300": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "400": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "600": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "800": {
+"condition": "non-profits",
 "kind": "not_private"
 }
 },
@@ -698,6 +732,7 @@
 },
 "V4809": {
 "100": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "150": {
@@ -709,6 +744,7 @@
 "kind": "conditional"
 },
 "300": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "425": {
@@ -716,6 +752,7 @@
 "kind": "conditional"
 },
 "450": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "625": {
@@ -797,9 +834,11 @@
 },
 "V5442": {
 "450": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "525": {
+"condition": "non-profits",
 "kind": "not_private"
 }
 },
@@ -896,9 +935,11 @@
 "kind": "conditional"
 },
 "515": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "900": {
+"condition": "non-profits",
 "kind": "not_private"
 }
 },
@@ -946,26 +987,33 @@
 },
 "V7704": {
 "5200": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "6000": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "8800": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "9600": {
+"condition": "businesses",
 "kind": "not_private"
 }
 },
 "V7766": {
 "1000": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "2000": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "2500": {
+"condition": "non-profits",
 "kind": "not_private"
 }
 },
@@ -975,6 +1023,7 @@
 "kind": "conditional"
 },
 "500": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "750": {
@@ -1050,35 +1099,45 @@
 },
 "V8450": {
 "1200": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "1500": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "1900": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "2300": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "2800": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "3200": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "5000": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "6500": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "7800": {
+"condition": "businesses",
 "kind": "not_private"
 }
 },
 "V8549": {
 "7385": {
+"condition": "non-profits",
 "kind": "not_private"
 }
 },
@@ -1100,9 +1159,11 @@
 },
 "V8736": {
 "2005": {
+"condition": "non-profits",
 "kind": "not_private"
 },
 "3715": {
+"condition": "non-profits",
 "kind": "not_private"
 }
 },
@@ -1118,9 +1179,11 @@
 "kind": "conditional"
 },
 "550": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "719": {
+"condition": "businesses",
 "kind": "not_private"
 },
 "93": {

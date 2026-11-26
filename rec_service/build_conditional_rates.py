@@ -9,8 +9,9 @@ The extraction keeps the condition in the row's Notes. For each stored rate (row
                      ("Mon-Thu rate $80/hr (resident $55/hr)")
   both               the rate is for residents AND the everyone-else rate is in the same note -> "Rental $35 for county
                      residents ($75 otherwise), from its PDF"
-  conditional        the rate is for residents / members and no everyone-else rate is stored -> no rental line
-  not_private        a business / non-profit / organization rate -> no rental line
+  conditional        the rate is for residents / members and no everyone-else rate is stored -> "Rental $7,480 ... for
+                     county residents, from its PDF" (owner bar 12.6a #1: shown, labelled - never hidden)
+  not_private        a business / non-profit / organization rate -> "... for non-profits" / "... for businesses"
   unclear            a residents / members rate is named but which one this row is can't be told -> no rental line
 
 Usage: python build_conditional_rates.py rows.json > conditional_rates.json, where rows.json is {id: table-37 row} for the
@@ -58,6 +59,11 @@ def _label(t):
     return "residents"
 
 
+def _biz(t):
+    """A business / non-profit rate, with the words the note uses: "non-profits" or "businesses"."""
+    return {"kind": "not_private", "condition": "non-profits" if re.search(r"non-?profit|charit", t, re.I) else "businesses"}
+
+
 def classify(notes, fee):
     """One stored rate: None, or {"kind", "condition"?, "other"?} (see the module docstring)."""
     notes = " ".join(str(notes or "").split())
@@ -66,7 +72,7 @@ def classify(notes, fee):
     t = _STD.sub(lambda m: "NONMEM" if "member" in m.group(0).lower() else "NONRES", notes)
     lead = re.split(r"[.;]\s", t, maxsplit=1)[0]
     if "NONRES" in lead or "NONMEM" in lead:            # "Non-resident Saturday rate ...": what everyone else pays
-        return {"kind": "not_private"} if _BIZ.search(lead) and not _PRIVATE.search(lead) else None
+        return _biz(lead) if _BIZ.search(lead) and not _PRIVATE.search(lead) else None
     if re.search(r"\bsame (?:pricing|price|rate)s?\b", t, re.I):
         return None
     rest, lead2 = _DISC.sub(" ", t), _DISC.sub(" ", lead)
@@ -79,7 +85,7 @@ def classify(notes, fee):
     if figs and all(f != fee for f in figs) and not named:
         return None
     if _BIZ.search(lead2) and re.search(r"\b(?:rate|pricing|price|group)\b", lead2, re.I) and not _PRIVATE.search(lead2):
-        return {"kind": "not_private"}
+        return _biz(lead2)
     if _WHO_RX.search(lead2) or _REQUIRED.search(rest):
         lab = _label(lead2 if _WHO_RX.search(lead2) else "member")
         other = sorted({num(m.group(1)) for m in _OTHER.finditer(t)} - {None})

@@ -150,7 +150,8 @@ def test_classify_reads_the_stored_condition():
                        ("Peak season Saturday, 8 hours", 9000), ("", 9000)):
         assert c(notes, fee) is None, notes
     assert c("Trustees of Reservations Membership required: $140", 7500)["kind"] == "conditional"
-    assert c("Commercial Rate; includes architectural lighting", 2800)["kind"] == "not_private"
+    assert c("Commercial Rate; includes architectural lighting", 2800) == {"kind": "not_private", "condition": "businesses"}
+    assert c("Non-Profit Rate; includes architectural lighting", 2300) == {"kind": "not_private", "condition": "non-profits"}
     # a note that also prices businesses never pairs two figures (V8994: "Commercial Non-Resident: $550/hr")
     assert c("Private Resident rate: $93/hr. Commercial Non-Resident: $550/hr.", 93)["kind"] == "conditional"
 
@@ -169,15 +170,40 @@ def _member(vid, fee):
 
 
 def test_member_line_for_a_conditional_rate(monkeypatch):
+    # Owner bar 12.6a #1: a conditional rate is SHOWN with whose rate it is, never hidden; only "unclear" drops the line.
     monkeypatch.setattr(pf, "_COND", {"V2118": {"7480": {"kind": "conditional", "condition": "county residents"}},
                                       "V9": {"7480": {"kind": "both", "condition": "county residents", "other": 9724}},
+                                      "V7": {"2300": {"kind": "not_private", "condition": "non-profits"},
+                                             "2800": {"kind": "not_private", "condition": "businesses"}},
+                                      "V6": {"5000": {"kind": "conditional", "condition": "members"}},
                                       "V8": {"500": {"kind": "unclear"}}})
-    assert pf.price_line(_member("V2118", 7480), "full") is None        # only the residents' rate stored: no line at all
-    assert pf.price_line(_member("V9", 7480), "full")["text"] == \
-        "Rental $7,480 on a peak-season Saturday for county residents ($9,724 otherwise), from its PDF"
-    assert pf.price_line(_member("V8", 500), "full") is None
-    assert pf.price_line(_member("V8", 6000), "full")["text"] == "Rental $6,000 on a peak-season Saturday, from its PDF"
-    assert pf.price_line(_member("V1", 7000), "full")["text"] == "Rental $7,000 on a peak-season Saturday, from its PDF"
+    line = lambda vid, fee, **kw: (pf.price_line(dict(_member(vid, fee), **kw), "full") or {}).get("text")
+    assert line("V2118", 7480) == "Rental $7,480 on a peak-season Saturday for county residents, from its PDF"
+    assert line("V9", 7480) == "Rental $7,480 on a peak-season Saturday for county residents ($9,724 otherwise), from its PDF"
+    assert line("V7", 2300) == "Rental $2,300 on a peak-season Saturday for non-profits, from its PDF"
+    assert line("V7", 2800) == "Rental $2,800 on a peak-season Saturday for businesses, from its PDF"
+    assert line("V6", 5000) == "Rental $5,000 on a peak-season Saturday for members, from its PDF"
+    # no peak-Saturday rental line: the estimate built on that rental names its basis
+    assert line("V2118", 7480, rental_when=None) == (
+        "About $29,300 for 100 guests before tax and tip using the county-resident rental, an estimate")
+    assert line("V6", 5000, rental_source="estimate") == (
+        "About $29,300 for 100 guests before tax and tip using the members' rental, an estimate")
+    assert line("V7", 2300, rental_when=None).endswith("using the non-profit rental, an estimate")
+    # unclear: no rental line, and its estimate has no basis we can name -> no line
+    assert line("V8", 500) is None and line("V8", 500, rental_when=None) is None
+    assert line("V8", 6000) == "Rental $6,000 on a peak-season Saturday, from its PDF"        # another fee: as today
+    assert line("V1", 7000) == "Rental $7,000 on a peak-season Saturday, from its PDF"
+    # light (a plan without exact figures): the band names the basis too
+    band = {"label": "around $25K-$30K all in"}
+    assert pf.price_line(dict(_member("V2118", 7480), price_band=band), "light")["text"] == (
+        "Around $25K-$30K all in using the county-resident rental, an estimate")
+    assert pf.price_line(dict(_member("V8", 500), price_band=band), "light") is None
+
+
+def test_basis_words():
+    assert [pf.basis_words(w) for w in ("county residents", "city residents", "township residents", "residents", "members",
+                                         "non-profits", "businesses")] == [
+        "county-resident", "city-resident", "township-resident", "resident", "members'", "non-profit", "business"]
 
 
 def test_canary_without_the_data_newton_white_mansion_shows_the_residents_rate_as_everyones(monkeypatch):
@@ -210,6 +236,11 @@ def test_cost_lines_conditional_rate(monkeypatch):
     monkeypatch.setattr(compare, "_cost", lambda e, inp: {"total": 29317, "lines": [
         {"key": "rental", "amount": 7480, "source": "pdf"}]})
     monkeypatch.setattr(pf, "_COND", {"V2118": {"7480": {"kind": "conditional", "condition": "county residents"}}})
+    w = pf.build_cost_lines(_CostXano(7480), "t", {}, "V2118", access=True)
+    rent = [r for r in w["lines"] if r["key"] == "rental"][0]
+    assert w["level"] == "full" and rent["note"] == "For county residents, from the PDF"
+    assert w["total_note"].endswith("with the rental for county residents")
+    monkeypatch.setattr(pf, "_COND", {"V2118": {"7480": {"kind": "unclear"}}})
     w = pf.build_cost_lines(_CostXano(7480), "t", {}, "V2118", access=True)
     assert w["level"] == "words" and "total" not in w and not any("amount" in r for r in w["lines"])
     monkeypatch.setattr(pf, "_COND", {"V2118": {"7480": {"kind": "both", "condition": "county residents", "other": 9724}}})
