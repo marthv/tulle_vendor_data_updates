@@ -359,3 +359,20 @@ def test_pick_off_is_venues_only(picks, monkeypatch):
     monkeypatch.setattr(config, "COMPARE_ANY_CATEGORY", False)
     with pytest.raises(LookupError):
         compare.set_pick(xano, 7, "P1")
+
+
+def test_get_pick_by_category(picks, monkeypatch):
+    monkeypatch.setattr(config, "COMPARE_ANY_CATEGORY", True)
+    monkeypatch.setattr(config, "COMPARE_PICK", True)
+    monkeypatch.setattr(config, "COMPARE_DECIDE", True)
+    monkeypatch.setattr(config, "COMPARE_USER_IDS", {7})
+    monkeypatch.setattr(config, "COMPARE_AB_PCT", 0)
+    monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7}))
+    c = TestClient(app.app)
+    h = {"Authorization": "Bearer t"}
+    assert c.post("/rec/compare/pick", json={"vendor_id": "P1"}, headers=h).json()["pick"]["vendor_id"] == "P1"
+    assert c.get("/rec/compare/pick?category=Photography", headers=h).json()["pick"]["vendor_id"] == "P1"
+    assert c.get("/rec/compare/pick", headers=h).json()["pick"] is None      # the venue pick is its own
+    r = c.post("/rec/compare/pick", json={"vendor_id": "", "expect": "P1", "category": "Photography"}, headers=h)
+    assert r.json()["ok"] and r.json()["pick"] is None

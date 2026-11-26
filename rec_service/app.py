@@ -1838,6 +1838,9 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
             if any(isinstance(w, dict) and w.get("type") == compare.TYPE for w in t.get("widgets") or []):
                 t["widgets"] = [compare.lock(dict(w, reason="member")) if isinstance(w, dict) and w.get("type") == compare.TYPE
                                 else w for w in t["widgets"]]
+            if any(isinstance(w, dict) and w.get("type") == photo_first.COST_TYPE for w in t.get("widgets") or []):
+                t["widgets"] = [photo_first.lock_cost(w) if isinstance(w, dict) and w.get("type") == photo_first.COST_TYPE
+                                else w for w in t["widgets"]]
     if xano.has_paid_access(user) and _detail(xano.beta_member(user), True) != "full":
         # A plan without full figures reopening a whole-wedding proposal made with them (2026-11-16): that card and
         # the sentences around it are re-locked. A chat with no such card is returned exactly as before.
@@ -2071,11 +2074,17 @@ def _pick_stored(user):
 
 
 @app.get("/rec/compare/pick")
-def compare_pick_get(authorization: str = Header(None)):
-    """What is stored: the page asks after a save it can't be sure of."""
+def compare_pick_get(category: str = "", authorization: str = Header(None)):
+    """What is stored: the page asks after a save it can't be sure of. ?category= (REC_COMPARE_ANY_CATEGORY only): that
+    category's pick; ignored when the switch is off."""
     _, user = _auth(authorization)
     if not (config.COMPARE_DECIDE and compare.arm(user.get("id")) == "compare"):
         raise HTTPException(404, {"status": "off"})
+    if config.COMPARE_ANY_CATEGORY and category.strip():
+        try:
+            return {"pick": compare.pick_of(xano, user["id"], category.strip()[:40])}
+        except Exception:
+            raise HTTPException(502, {"status": "error"})
     got = _pick_stored(user)
     if not got:
         raise HTTPException(502, {"status": "error"})
