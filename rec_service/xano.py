@@ -360,8 +360,21 @@ def _venue_result(d):
             "food_minimum": it.get("min_fb_min_peak_sat") or 0,
             "at_a_glance": it.get("flt_glance"), "image": it.get("image_1"),
             "description": (it.get("Description") or "")[:300],
+            **({"setting_tags": glance_tags(it.get("flt_glance"))} if config.PHOTO_FIRST else {}),
         })
     return {"total_matches": d.get("itemsTotal"), "venues": out}
+
+
+def glance_tags(g):
+    """REC_PHOTO_FIRST: setting words from flt_glance - the venue's types and attributes (spaces' attributes are joined with
+    ';'), never its offerings (all-inclusive and the like) and never a guest minimum."""
+    g = g if isinstance(g, dict) else {}
+    out = []
+    for x in list(g.get("venue_types") or []) + [p for a in g.get("venue_attributes") or [] for p in str(a or "").split(";")]:
+        x = str(x or "").strip()
+        if x and x not in out and "inclusive" not in x.lower():
+            out.append(x)
+    return out[:12]
 
 
 # ---------------------------------------------------------------- near a town (radius search)
@@ -1438,6 +1451,10 @@ def parse_message_row(r):
             "sources": list(smeta.get("sources") or []) if smeta else []}
     if meta and isinstance(meta.get("filters"), dict):
         turn["filters"] = meta["filters"]
+    lmeta = next((c for c in (r.get("cards") or []) if isinstance(c, dict) and c.get("meta") == "lookup"), None)   # REC_PHOTO_FIRST rows only
+    if lmeta and isinstance(lmeta.get("lookup"), dict):
+        turn["lookup"] = lmeta["lookup"]
+        turn["venue_request"] = lmeta.get("venue_request")
     return turn
 
 

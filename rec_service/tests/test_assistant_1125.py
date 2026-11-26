@@ -22,8 +22,10 @@ CARDS = {"V1": {"vendor_id": "V1", "name": "Wythe Hotel", "category": "Venue"},
          "V5": {"vendor_id": "V5", "name": "Photo Co", "category": "Photography"}}
 
 
-@pytest.fixture
-def plan90(monkeypatch):
+@pytest.fixture(params=[False, True], ids=["venues_only", "any_category"])
+def plan90(monkeypatch, request):
+    # Every pick safety rule is proven twice: venues only (today) and with REC_COMPARE_ANY_CATEGORY on (2026-11-26).
+    monkeypatch.setattr(config, "COMPARE_ANY_CATEGORY", request.param)
     rows = [{"id": 1, "user_id": 7, "slot": "Venue", "vendor_id": "V2", "vendor_name": "Celestine", "source": "planner_card",
              "status": "active"}]      # a card added in the old plan: never a pick, never touched
 
@@ -45,6 +47,7 @@ def plan90(monkeypatch):
     monkeypatch.setattr(xano, "plan_add", add)
     monkeypatch.setattr(xano, "plan_remove", remove)
     monkeypatch.setattr(xano, "listed_venue", lambda v: CARDS.get(v) if (CARDS.get(v) or {}).get("category") == "Venue" else None)
+    monkeypatch.setattr(xano, "listed_vendor", lambda v: CARDS.get(v))      # any listed vendor (REC_COMPARE_ANY_CATEGORY)
     monkeypatch.setattr(xano, "mp_track", lambda *a, **k: None)
     monkeypatch.setattr(config, "COMPARE_PICK", True)
     monkeypatch.setattr(config, "COMPARE_DECIDE", True)
@@ -66,7 +69,8 @@ def test_pick_change_clear(plan90):
     assert [(r["vendor_id"], r["status"]) for r in plan90 if r["source"] == "pick"] == [("V1", "removed"), ("V2", "active")]
     assert post("").json()["pick"] is None
     assert plan90[0]["status"] == "active"                                    # the old plan row is left alone
-    assert app._pick_status({"id": 7}) == {"compare_decide": True, "compare_pick": None}
+    assert app._pick_status({"id": 7}) == dict({"compare_decide": True, "compare_pick": None},
+                                               **({"compare_picks": {}} if config.COMPARE_ANY_CATEGORY else {}))
 
 
 def test_pick_of_a_merged_duplicate_is_the_kept_venue(plan90):
@@ -75,7 +79,23 @@ def test_pick_of_a_merged_duplicate_is_the_kept_venue(plan90):
 
 @pytest.mark.parametrize("vid", ["V5", "V404", "<script>"])
 def test_only_a_listed_venue_can_be_picked(plan90, vid):
+    if vid == "V5" and config.COMPARE_ANY_CATEGORY:
+        return      # a listed photographer IS pickable then - in its own slot (next test)
     assert post(vid).status_code == 404 and not any(r["source"] == "pick" for r in plan90)
+
+
+def test_any_category_a_photographer_is_its_own_pick(plan90):
+    if not config.COMPARE_ANY_CATEGORY:
+        return
+    post("V1")
+    assert post("V5").json()["pick"] == {"vendor_id": "V5", "name": "Photo Co"}
+    assert [(r["slot"], r["vendor_id"], r["status"]) for r in plan90 if r["source"] == "pick"] == [
+        ("Venue", "V1", "active"), ("Photography", "V5", "active")]           # the venue pick is untouched
+    assert compare.pick_of(xano, 7)["vendor_id"] == "V1"
+    assert app._pick_status({"id": 7})["compare_picks"] == {"Venue": {"vendor_id": "V1", "name": "Wythe Hotel"},
+                                                           "Photography": {"vendor_id": "V5", "name": "Photo Co"}}
+    for vid in ("V404", "<script>"):
+        assert post(vid).status_code == 404
 
 
 def test_flag_off_or_control_arm(plan90, monkeypatch):

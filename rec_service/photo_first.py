@@ -2,14 +2,14 @@
 runs and every response is exactly as before.
 
 When on, app._pf() passes each answer through apply():
-  text        one short line ("3 in Brooklyn for 100 guests"), never a paragraph. The full answer stays in
-              detail_text (already price-guarded for free couples) and is what is stored and what the model reads back.
+  text        one short line ("3 in Brooklyn for 100 guests"), never a paragraph. The full answer is not sent; it is
+              still what is stored and what the model reads back.
   cards       each card gains `facts` - icons + words the card can show: Seats N and up to two setting tags we hold for
               the WHOLE venue (venue type, vibes). Never a guest minimum (that belongs to one room and season), never a
               pricing style (all-inclusive and the like are left out).
-              Members (level full) also get `price_line` {text, source}: one line naming where it came from -
-              "Rental $7,000, from its PDF" or "About $38,100 for 100 guests, an estimate". Light: the rounded band,
-              marked as an estimate. Free: no price line, and no price digit anywhere.
+              Members (level full) also get `price_line` {text, source} on VENUE cards: one line naming where it came
+              from - "Rental $7,000, from its PDF" or "About $38,100 for 100 guests, an estimate". Light: the rounded
+              band, marked as an estimate. Free: no price line, and no price digit anywhere. Other vendors: no price line.
   understood  {place, guests, date} - what we searched with, as chips the couple can change.
   not_found   {name, question, chip} when we don't hold the venue they named.
 Nothing is ranked or judged: no best / lowest / cheapest words are added here.
@@ -18,13 +18,45 @@ Also the "cost_lines" quick action (POST /rec/tool {tool: "cost_lines", args: {v
 lines (Rental, Food and drink, Ceremony, Service charge - the design's "Admin fee"; the PDF line is a service charge) with the room named, each "From the PDF" or "Estimate" (full), or for
 everyone else only WHERE each part is ("In the PDF" / "Not in this PDF") with no digits.
 Pure except build_cost_lines (xano is passed in)."""
+import contextvars
 import re
 
+import config
 import free_mode
+
+# Per request (QA 2026-11-26): only a page that ASKS for photo-first gets it (?photo_first=1, sent by the component when its
+# photoFirst prop is on). Every other Assistant instance (the vendor-page bubble...) gets today's answer even with the switch on.
+REQ = contextvars.ContextVar("rec_photo_first", default=False)
+PF_ONLY_KEYS = ("setting_tags", "rental_source")   # card keys only photo-first adds (stripped for every other request)
+
+
+def on():
+    return bool(config.PHOTO_FIRST and REQ.get())
+
+
+def strip_cards(cards):
+    return [{k: v for k, v in c.items() if k not in PF_ONLY_KEYS} if isinstance(c, dict) else c for c in cards or []]
+
+
+def strip(out):
+    """A response for a request that did not ask for photo-first: the card keys the switch adds are taken out again, so it
+    is today's response."""
+    if not isinstance(out, dict):
+        return out
+    res = dict(out)
+    for k in ("cards", "more_cards"):
+        if isinstance(res.get(k), list):
+            res[k] = strip_cards(res[k])
+    return res
 
 COST_TOOL = "cost_lines"
 COST_TYPE = "cost_lines"
 MAX_WORDS = 15
+# Price framed as quality never reaches the line (owner bar: no best / lowest / cheapest ...).
+_BANNED = re.compile(r"\b(best|lowest|highest|cheapest|cheaper|priciest|bargain|expensive|pricey|overpriced|affordable|"
+                     r"good value|great value|value for money|fits? best|top pick|steal|splurge)\b", re.I)
+NEUTRAL_WIDGET = "Here it is"
+NEUTRAL_TEXT = "Ask about a venue or a town to see photos"
 QUESTION_NEAR = "Which town is it near?"
 CHIP_QUOTE = "Check their quote or pricing PDF"
 
@@ -88,8 +120,9 @@ def setting_tags(card, limit=2):
     return out
 
 
-def facts(card):
-    """Icon facts for one card (at most 3). Venues: seats + setting. Other vendors: their style words only."""
+def facts(card, free=False):
+    """Icon facts for one card (at most 3). Venues: seats + setting. Other vendors: their style words only. free: a word with
+    a digit in it is dropped unless it is the seat count."""
     cat = card.get("category") or "Venue"
     out = []
     if cat == "Venue":
@@ -103,6 +136,8 @@ def facts(card):
                 out.append({"icon": "tag", "label": w[:40]})
         if card.get("packages_label"):
             out.append({"icon": "list", "label": str(card["packages_label"])[:40]})
+    if free:
+        out = [f for f in out if f["icon"] in ("seat", "people") or not _DIGIT.search(f["label"])]
     return out[:3]
 
 
@@ -111,20 +146,21 @@ def _usd(n):
 
 
 def price_line(card, level):
-    """{"text", "source"} or None. source: "pdf" | "estimate". Free: always None."""
-    if level == "free" or card.get("price_locked"):
+    """{"text", "source"} or None. source: "pdf" | "estimate". Free: always None. Venues only."""
+    if level == "free" or card.get("price_locked") or (card.get("category") or "Venue") != "Venue":
         return None
     if level == "full":
         fee = (card.get("venue_fee_range") or [None])[0]
         if isinstance(fee, (int, float)) and fee > 0 and card.get("rental_source") == "pdf":
             return {"text": "Rental %s, from its PDF" % _usd(fee), "source": "pdf"}
         tot, g = card.get("estimate_total"), _int(card.get("estimate_guests"))
-        if isinstance(tot, (int, float)) and tot > 0:
-            return {"text": "About %s for %d guests, an estimate" % (_usd(round(tot, -2)), g) if g
-                    else "About %s, an estimate" % _usd(round(tot, -2)), "source": "estimate"}
-        pr = card.get("price_range") or []
-        if pr and isinstance(pr[0], (int, float)) and pr[0] > 0:   # photographer / band: the PDF's package prices
-            return {"text": "Packages from %s, from its PDF" % _usd(pr[0]), "source": "pdf"}
+        if isinstance(tot, (int, float)) and tot > 0 and (card.get("category") or "Venue") == "Venue":
+            t = "About %s for %d guests, an estimate" % (_usd(round(tot, -2)), g) if g else "About %s, an estimate" % _usd(round(tot, -2))
+            if "minimum spend" in str(card.get("estimate_label") or ""):   # the stored caveat stays
+                t += "; food at its minimum spend, may cost more"
+            return {"text": t, "source": "estimate"}
+        # Photographers, bands, florists...: no price line (QA 2026-11-26: the stored starting price can be the wrong
+        # package - V5338 $800 is an engagement session, the PDF's wedding coverage starts at $9,500). Their PDF has it.
         return None
     band = card.get("price_band") or {}
     if band.get("label"):
@@ -144,9 +180,9 @@ def _area(out, cards):
     if f.get("city"):
         return str(f["city"]).split(",")[0].strip()
     st = f.get("states") or []
-    if len(st) == 1:
+    if len(st) == 1 and st[0] != "International":     # "3 in International" says nothing: no place then
         return str(st[0])
-    states = {c.get("state") for c in cards if isinstance(c.get("state"), str) and c.get("state")}
+    states = {c.get("state") for c in cards if isinstance(c.get("state"), str) and c.get("state")} - {"International"}
     return states.pop() if len(states) == 1 else ""
 
 
@@ -191,7 +227,10 @@ def short_line(out, profile=None):
         if g and cat == "Venue":
             line += " for %d guests" % g
         return line if (area or g or noun) else ("Here it is" if n == 1 else "%d to look at" % n)
-    return first_sentence(text)
+    s = first_sentence(text)
+    if not s or len(s.split()) > MAX_WORDS or _BANNED.search(s):
+        return NEUTRAL_WIDGET if out.get("widgets") else NEUTRAL_TEXT
+    return s
 
 
 def understood(out, profile=None):
@@ -222,20 +261,21 @@ def apply(out, level, profile=None):
         return out
     free = level == "free" or bool(out.get("price_locked"))
     line = short_line(out, profile)
-    if free and not _free_safe(line):
-        line = "Here are some to look at" if out.get("cards") else "Open a pricing PDF on Tulle for exact prices"
+    if (free and not _free_safe(line)) or _BANNED.search(line):
+        line = "Here are some to look at" if out.get("cards") else NEUTRAL_TEXT
     cards = []
     for c in out.get("cards") or []:
         if not isinstance(c, dict):
             cards.append(c)
             continue
-        c2 = dict(c, facts=facts(c))
+        c2 = dict(c, facts=facts(c, free))
         pl = None if free else price_line(c, level)
         if pl:
             c2["price_line"] = pl
         cards.append(c2)
-    res = dict(out, text=line, detail_text=out.get("text") or "", cards=cards, photo_first=True,
-               understood=understood(out, profile))
+    # The full answer is not sent (QA 2026-11-26: today's paragraph judges price in 13 of 30 member answers); it is still
+    # what is stored and what the model reads back.
+    res = dict(out, text=line, cards=cards, photo_first=True, understood=understood(out, profile))
     lk, vr = out.get("lookup") or {}, out.get("venue_request")
     if vr and lk.get("status") not in ("found", "best", "choices", "dym", "elsewhere"):
         res["not_found"] = {"name": vr.get("name") or lk.get("query") or "", "question": QUESTION_NEAR, "chip": CHIP_QUOTE}

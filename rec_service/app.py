@@ -124,15 +124,18 @@ class _UserAgentToSheetLog:
             from urllib.parse import parse_qs
             q = parse_qs((scope.get("query_string") or b"").decode("latin-1"))
             surface = str((q.get("surface") or [""])[0])[:80]
+            pf = str((q.get("photo_first") or [""])[0]) == "1"    # the page asked for photo-first (REC_PHOTO_FIRST)
         except Exception:
-            surface = ""
+            surface, pf = "", False
         tok = sheet_log.UA.set(ua)
         stok = xano.SURFACE.set(surface)
+        ptok = photo_first.REQ.set(pf)
         try:
             await self.asgi(scope, receive, send)
         finally:
             sheet_log.UA.reset(tok)
             xano.SURFACE.reset(stok)
+            photo_first.REQ.reset(ptok)
 
 
 app.add_middleware(_UserAgentToSheetLog)
@@ -228,12 +231,19 @@ def _pf(out, user):
     A new dict: the full answer (out["text"]) is still what is stored and what the model reads back."""
     if not config.PHOTO_FIRST or not isinstance(out, dict):
         return out
+    if not photo_first.REQ.get() or _is_ww(out):   # not asked for (the bubble...) or a whole-wedding answer: today's response
+        return photo_first.strip(out)
     try:
         profile = xano.profile_of(user or {})
     except Exception:
         profile = {}
     level = "free" if (out.get("price_locked") or not out.get("has_access")) else _detail(out.get("paid"), True)
     return photo_first.apply(out, level, profile)
+
+
+def _is_ww(out):
+    return bool(out.get("ww")) or any(isinstance(w, dict) and w.get("type") in (whole_wedding.PROPOSAL, "ww_context")
+                                      for w in out.get("widgets") or [])
 
 
 def _stored_cards(out):
@@ -253,6 +263,9 @@ def _stored_cards(out):
         stored.append({"meta": "upsell", "reason": out["upsell_prompt"].get("reason")})
     if out.get("sources"):     # 2026-11-07: a reopened chat shows the same sources under the answer
         stored.append({"meta": "sources", "sources": out["sources"]})
+    if config.PHOTO_FIRST and isinstance(out.get("lookup"), dict):   # a reopened photo-first chat keeps "Outside X" lines
+        stored.append({"meta": "lookup", "lookup": {k: out["lookup"].get(k) for k in ("status", "query")},
+                       "venue_request": out.get("venue_request")})
     return stored
 
 
@@ -1852,7 +1865,13 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
                 t["text"] = free_mode.sanitize_text(t.get("text") or "")[0]
     left = _more_left(turns)
     last = max((i for i, t in enumerate(turns) if t["role"] == "assistant"), default=None)
-    if config.PHOTO_FIRST:   # a reopened chat looks like a new answer: short line + card facts (full text in detail_text)
+    if config.PHOTO_FIRST and not photo_first.on():   # not asked for: today's turns
+        for t in turns:
+            t.pop("lookup", None)
+            t.pop("venue_request", None)
+            if t.get("cards"):
+                t["cards"] = photo_first.strip_cards(t["cards"])
+    if photo_first.on():   # a reopened chat looks like a new answer: short line + card facts
         access = xano.has_paid_access(user)
         lvl = "free" if not access else _detail(xano.beta_member(user), True)
         try:
@@ -1860,10 +1879,15 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
         except Exception:
             prof = {}
         for t in turns:
-            if t.get("role") == "assistant" and (t.get("text") or t.get("cards")):
-                got = photo_first.apply({"text": t.get("text") or "", "cards": t.get("cards") or [],
+            lk, vr = t.pop("lookup", None), t.pop("venue_request", None)
+            if t.get("role") == "assistant" and (t.get("text") or t.get("cards")) and not any(
+                    isinstance(w, dict) and w.get("type") in (whole_wedding.PROPOSAL, "ww_context") for w in t.get("widgets") or []):
+                got = photo_first.apply({"text": t.get("text") or "", "cards": t.get("cards") or [], "lookup": lk,
+                                         "venue_request": vr, "widgets": t.get("widgets") or [],
                                          "search_filters": t.get("filters") or {}, "price_locked": not access}, lvl, prof)
-                t.update({k: got[k] for k in ("text", "detail_text", "cards", "photo_first", "understood")})
+                t.update({k: got[k] for k in ("text", "cards", "photo_first", "understood")})
+                if got.get("not_found"):
+                    t["not_found"] = got["not_found"]
     for i, t in enumerate(turns):
         t.pop("more_cards", None)         # unrevealed extras stay on the server until a question is spent
         t.pop("filters", None)            # server-side search state
@@ -1972,7 +1996,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         raise HTTPException(503, {"status": "killed"})
     name = (body.tool or "").strip()
     picked = name == compare.TOOL and compare.arm(user.get("id")) == "compare"
-    pf_cost = name == photo_first.COST_TOOL and config.PHOTO_FIRST   # "What it costs" (REC_PHOTO_FIRST only)
+    pf_cost = name == photo_first.COST_TOOL and photo_first.on()   # "What it costs" (REC_PHOTO_FIRST + a photo-first page)
     if name not in cost_tools.TOOLS and not picked and not pf_cost:
         raise HTTPException(400, {"status": "unknown_tool", "tools": list(cost_tools.TOOLS)})
     if picked:
@@ -3182,7 +3206,7 @@ def _ww_refine(token, user, body, background, tracker):
         sheet_log.event(user, "Whole wedding: %s" % (action if step == "proposal" else step), say, out.get("text"),
                         chat["id"], None, None, "" if out.get("widgets") else sheet_log.flag_of(out), ms)
     background.add_task(persist)
-    return _public(_pf(out, user), chat_id=chat["id"])
+    return _public(photo_first.strip(out) if config.PHOTO_FIRST else out, chat_id=chat["id"])   # whole wedding: not photo-first
 
 
 class WwAddBody(BaseModel):
@@ -3339,7 +3363,7 @@ def status(authorization: str = Header(None)):
             "card_totals": bool(paid and xano.pi_entitled(user) and config.on_for(config.CARD_TOTALS, user.get("id"))),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or []),
             # Photo-first Assistant + compare in any category (2026-11-26): keys present only when the switch is on.
-            **({"photo_first": True} if config.PHOTO_FIRST else {}),
+            **({"photo_first": True} if photo_first.on() else {}),
             **({"compare_any_category": True, "saved_by_category": _saved_by_category(user)}
                if config.COMPARE_ANY_CATEGORY and compare.arm(user.get("id")) == "compare" else {})}
 

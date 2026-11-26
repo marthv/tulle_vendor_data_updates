@@ -42,7 +42,7 @@ def test_results_line_is_short_and_names_place_and_guests():
     out = pf.apply(answer(), "full", {})
     assert out["text"] == "3 in Brooklyn for 100 guests"
     assert len(out["text"].split()) <= pf.MAX_WORDS
-    assert out["detail_text"].startswith("99 Scott")          # the full answer is kept, not lost
+    assert "detail_text" not in out and "99 Scott" not in json.dumps(out)   # today's paragraph is not sent
     assert out["photo_first"] is True
 
 
@@ -69,6 +69,38 @@ def test_other_categories_name_the_kind():
 def test_no_cards_keeps_only_the_first_sentence():
     out = pf.apply(answer(cards=[], text="A DJ usually plays four hours. Most add a ceremony set. Ask about travel."), "full", {})
     assert out["text"] == "A DJ usually plays four hours."
+
+
+@pytest.mark.parametrize("text", [
+    "The Foundry has the lowest rental of the three, with food at a typical rate for New York venues.",
+    "Wythe fits best.", "That one is expensive.", "A bargain.", "Good value for a Saturday.",
+    "This sentence has far more than fifteen words in it so it can never be the one short line here."])
+def test_no_card_line_is_short_and_never_judges_price(text):
+    line = pf.apply(answer(cards=[], text=text), "full", {})["text"]
+    assert len(line.split()) <= pf.MAX_WORDS and not QUALITY.search(line) and line in (pf.NEUTRAL_TEXT, pf.NEUTRAL_WIDGET)
+
+
+def test_international_is_never_a_place():
+    a = answer(cards=[venue(state="International")] * 3, search_filters={"states": ["International"], "guests": 110})
+    assert pf.apply(a, "full", {})["text"] == "3 for 110 guests"
+
+
+def test_member_estimate_keeps_the_minimum_caveat():
+    c = venue(rental_source="estimate", estimate_label="About $38,115 for 100 guests before tax and gratuity, with food at its "
+                                                       "minimum spend (it may cost more)")
+    assert pf.price_line(c, "full")["text"].endswith("food at its minimum spend, may cost more")
+
+
+def test_free_facts_drop_digit_words_but_keep_seats():
+    c = {"vendor_id": "P1", "name": "Snap", "category": "Photography", "venue_type": "Documentary", "packages_label": "3 packages"}
+    assert [f["label"] for f in pf.facts(c, free=True)] == ["Documentary"]
+    assert pf.facts(venue(), free=True)[0]["label"] == "Seats 220"
+
+
+def test_other_vendors_never_get_a_price_line():
+    c = {"vendor_id": "P1", "name": "Abby Leigh", "category": "Photography", "price_range": [800, 9500], "estimate_total": 9000}
+    for lvl in ("full", "light"):
+        assert pf.price_line(c, lvl) is None
 
 
 def test_outside_their_state_is_the_one_line():
@@ -181,9 +213,62 @@ def test_pf_off_returns_the_same_object(monkeypatch):
 def test_pf_on_level_from_tier(monkeypatch):
     monkeypatch.setattr(config, "PHOTO_FIRST", True)
     monkeypatch.setattr(xano, "profile_of", lambda u: {})
+    pf.REQ.set(True)
     assert app._pf(answer(), {"id": 1})["cards"][0]["price_line"]["source"] == "pdf"
     free = app._pf(answer(has_access=False, paid=False), {"id": 1})
     assert all("price_line" not in c for c in free["cards"])
+    pf.REQ.set(False)
+
+
+def test_a_page_that_did_not_ask_gets_todays_answer_with_the_switch_on(monkeypatch):
+    """The vendor-page bubble (no photoFirst prop, so no ?photo_first=1) with REC_PHOTO_FIRST=1: today's full answer."""
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    monkeypatch.setattr(xano, "profile_of", lambda u: {})
+    today = answer(cards=[{k: v for k, v in venue(vid).items() if k != "rental_source"} for vid in ("V1", "V2")])
+    with_keys = answer(cards=[dict(c, setting_tags=["Waterfront"], rental_source="pdf") for c in today["cards"]])
+    pf.REQ.set(False)
+    got = app._pf(with_keys, {"id": 1})
+    assert json.dumps(got, sort_keys=True) == json.dumps(today, sort_keys=True)
+    assert got["text"].startswith("99 Scott") and "photo_first" not in got
+
+
+def test_the_request_flag_comes_from_the_query(monkeypatch):
+    if not any(getattr(r, "path", "") == "/_pf_probe" for r in app.app.routes):
+        app.app.get("/_pf_probe")(lambda: {"pf": pf.REQ.get()})
+    c = TestClient(app.app)
+    assert c.get("/_pf_probe").json() == {"pf": False}
+    assert c.get("/_pf_probe?surface=bubble&photo_first=1").json() == {"pf": True}
+    assert c.get("/_pf_probe?photo_first=0").json() == {"pf": False}
+    monkeypatch.setattr(config, "PHOTO_FIRST", False)
+    pf.REQ.set(True)
+    assert not pf.on()
+    pf.REQ.set(False)
+
+
+def test_whole_wedding_answers_are_never_shaped(monkeypatch):
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    pf.REQ.set(True)
+    a = answer(widgets=[{"type": "wedding_proposal", "total": 50862}], text="About $50,862 in all.")
+    assert app._pf(a, {"id": 1})["text"] == "About $50,862 in all."
+    pf.REQ.set(False)
+
+
+def test_reopened_chat_keeps_the_lookup(monkeypatch):
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    out = answer(cards=[venue()], lookup={"status": "elsewhere", "query": "bbg"}, venue_request=None)
+    stored = app._stored_cards(out)
+    turn = xano.parse_message_row({"id": 1, "role": "assistant", "content": "x", "cards": stored})
+    assert turn["lookup"] == {"status": "elsewhere", "query": "bbg"} and len(turn["cards"]) == 1
+    monkeypatch.setattr(config, "PHOTO_FIRST", False)
+    assert not any(c.get("meta") == "lookup" for c in app._stored_cards(out))
+
+
+def test_glance_tags_are_whole_venue_settings_never_offerings():
+    g = {"venue_types": ["Hotel / Resort"], "venue_offerings": ["All-Inclusive"],
+         "venue_attributes": ["Rooftop / Skyline Views; Waterfront", "Natural Light / Large Windows"], "min_guests": 150}
+    tags = xano.glance_tags(g)
+    assert tags == ["Hotel / Resort", "Rooftop / Skyline Views", "Waterfront", "Natural Light / Large Windows"]
+    assert [f["label"] for f in pf.facts(venue(venue_type="", setting_tags=tags))] == ["Seats 220", "Waterfront", "Rooftop"]
 
 
 # ---------------------------------------------------------------- What it costs
@@ -287,11 +372,11 @@ def test_any_category_off_needs_venues(monkeypatch):
     assert compare.build(AnyXano(), "t", {"id": 1}, ["P1", "P2"], access=True) is None
 
 
-def test_photographers_compare_with_sourced_price_for_members(monkeypatch):
+def test_photographers_compare_without_a_price(monkeypatch):
     monkeypatch.setattr(config, "COMPARE_ANY_CATEGORY", True)
     w = compare.build(AnyXano(), "t", {"id": 1}, ["P1", "P2"], access=True)
     assert w["category"] == "Photography" and [v["name"] for v in w["venues"]] == ["Snap", "Lens"]
-    assert w["venues"][0]["price_from"]["label"] == "Packages from $3,200, from its PDF"
+    assert "price_from" not in json.dumps(w) and "$" not in json.dumps(w) and "3200" not in json.dumps(w)
     assert w["venues"][0]["style"] == ["Documentary"] and w["venues"][0]["seats"] is None
     assert "guests" not in compare.summary_text(w)
 

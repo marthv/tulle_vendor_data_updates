@@ -245,8 +245,8 @@ def _safe(f, *a):
 
 
 def _one_other(xano, token, card, full):
-    """A photographer, band, florist... (REC_COMPARE_ANY_CATEGORY): only what we hold for the whole vendor - its style words,
-    its pricing PDFs, and for full members the PDF's starting package price with its source named. No invented fields."""
+    """A photographer, band, florist... (REC_COMPARE_ANY_CATEGORY): only what we hold for the whole vendor - its style words
+    and its pricing PDFs. No price (QA 2026-11-26: the stored starting price can be the wrong package), no invented fields."""
     vid = card.get("vendor_id")
     pdfs = _safe(lambda v: xano.pdf_summary(xano.pdf_rows(token, v)), vid) or {}
     cat = _cat(card)
@@ -255,9 +255,6 @@ def _one_other(xano, token, card, full):
          "image": _image(card.get("image")), "category": cat, "room": None, "pdf_count": _int(pdfs.get("count")),
          "pdf_year": (pdfs.get("years") or [None])[0], "setting": [], "style": style, "seats": None, "seats_is_room": False,
          "offering": None, "rating": None, "reviews": None, "guest_minimum": None, "fits": {"seats": None, "minimum": None}}
-    pr = card.get("price_range") or []
-    if full and pr and isinstance(pr[0], (int, float)) and pr[0] > 0:
-        v["price_from"] = {"amount": int(pr[0]), "source": "pdf", "label": "Packages from %s, from its PDF" % _money(pr[0])}
     if not full:
         v["words"] = []
     return v
