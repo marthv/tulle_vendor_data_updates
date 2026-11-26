@@ -184,7 +184,7 @@ def sanitize_text(text, allow_verdicts=False):
 # the card shape later stays hidden from free users by default.
 CARD_KEYS = ("vendor_id", "vendor_idx", "name", "state", "address", "category", "venue_type",
              "max_capacity_seated", "image", "package_count", "packages_label", "hours_label", "more", "via_more",
-             "budget_fit")   # budget_fit: a VERDICTS key, never a figure (REC_FREE_BUDGET_FIT; absent when off)
+             "budget_fit", "setting_tags")   # setting_tags: vibe words (REC_PHOTO_FIRST only); budget_fit: a VERDICTS key, never a figure (REC_FREE_BUDGET_FIT; absent when off)
 
 
 def card(c):
@@ -264,6 +264,9 @@ def widget(w):
     if isinstance(w, dict) and w.get("type") == "venue_side_by_side":   # 2026-11-22: words only, rebuilt from a whitelist
         import compare
         return compare.lock(w)
+    if isinstance(w, dict) and w.get("type") == "cost_lines":   # REC_PHOTO_FIRST: where each part is, no digits
+        import photo_first
+        return photo_first.lock_cost(w)
     if not isinstance(w, dict) or w.get("type") in _FREE_WIDGETS:
         return w
     if w.get("type") != "venue_compare":   # a type nobody has checked for prices: nothing of it reaches a free couple

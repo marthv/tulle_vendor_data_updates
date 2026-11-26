@@ -295,6 +295,10 @@ def _with_rental(v, p, guests=0, budget=0):
     amt = _rental_amount(p)
     if amt:
         v = dict(v, venue_fee_range=[amt, amt])
+        if config.PHOTO_FIRST:   # the member price line names its source: the PDF only when the venue's own line says so
+            src = next((l.get("source") for l in (p or {}).get("lines") or [] if l.get("line") == "Rental fee"
+                        and isinstance(l.get("amount"), (int, float)) and l["amount"] > 0), None)
+            v["rental_source"] = "pdf" if src == "venue" else "estimate"
     elif _rental_not_disclosed(p) and not any(v.get("venue_fee_range") or []):
         v = dict(v, venue_fee_range=[None, None])
     e = estimate.compute((p or {}).get("cost_inputs"), guests)

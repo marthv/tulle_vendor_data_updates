@@ -68,6 +68,7 @@ import plan
 import wedding
 import notify
 import opening_reuse
+import photo_first
 import re as _re
 
 import prefs
@@ -220,6 +221,19 @@ def _public(out, **extra):
     # questions / upsell_prompt (2026-10-26): always present ([] / null by default), so the page can bind them.
     return dict(resp, more_available=n if n >= agent.MORE_STEP else 0, widgets=list(out.get("widgets") or []),
                 questions=list(out.get("questions") or []), upsell_prompt=out.get("upsell_prompt"), **extra)
+
+
+def _pf(out, user):
+    """REC_PHOTO_FIRST (photo_first.py): one short line, card facts and a sourced price line for members. Off = `out` as is.
+    A new dict: the full answer (out["text"]) is still what is stored and what the model reads back."""
+    if not config.PHOTO_FIRST or not isinstance(out, dict):
+        return out
+    try:
+        profile = xano.profile_of(user or {})
+    except Exception:
+        profile = {}
+    level = "free" if (out.get("price_locked") or not out.get("has_access")) else _detail(out.get("paid"), True)
+    return photo_first.apply(out, level, profile)
 
 
 def _stored_cards(out):
@@ -1433,7 +1447,7 @@ def _opening(token, user, background, tracker):
         if out.get("questions"):
             out["chips"] = [o["label"] for o in out["questions"][0]["options"]][:4]
         _open_ended(out)
-        return _public(out, chat_id=same)   # the page's second mount: same chat, nothing stored or logged twice
+        return _public(_pf(out, user), chat_id=same)   # the page's second mount: same chat, nothing stored or logged twice
     out["chips"] = _opening_chips(out.get("text") or "", out.get("chips") or [], user, bool(out.get("price_locked")))
     if out.get("questions"):
         # The first question's answers are the chips, so the current page already shows them as taps; a tap is
@@ -1446,7 +1460,7 @@ def _opening(token, user, background, tracker):
     background.add_task(xano.add_message, chat["id"], "assistant", out["text"], _stored_cards(out), out["chips"])
     background.add_task(sheet_log.event, user, "Planner's first message", "(opened the Planner)", out.get("text"),
                         chat["id"], out.get("cards"), out.get("search_filters"), sheet_log.flag_of(out))
-    return _public(out, chat_id=chat["id"])
+    return _public(_pf(out, user), chat_id=chat["id"])
 
 
 # ---------------------------------------------------------------- prewarm (owner 2026-11-02, time-to-value)
@@ -1597,7 +1611,7 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None, quote=Non
         sheet_log.event(user, action, text, out.get("text"), chat["id"], out.get("cards"), out.get("search_filters"),
                         sheet_log.flag_of(out), int((time.time() - t0) * 1000))
     background.add_task(persist)
-    return _public(out, chat_id=chat["id"])
+    return _public(_pf(out, user), chat_id=chat["id"])
 
 
 RECENT_CHAT_MS = 30 * 60 * 1000
@@ -1778,7 +1792,7 @@ def _refine(token, user, body, background, tracker):
         sheet_log.event(user, "Typed a question", text, out.get("text"), chat["id"], out.get("cards"),
                         out.get("search_filters"), sheet_log.flag_of(out))
     background.add_task(persist)
-    return _public(out, chat_id=chat["id"])
+    return _public(_pf(out, user), chat_id=chat["id"])
 
 
 @app.get("/rec/progress/{request_id}")
@@ -1835,6 +1849,18 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
                 t["text"] = free_mode.sanitize_text(t.get("text") or "")[0]
     left = _more_left(turns)
     last = max((i for i, t in enumerate(turns) if t["role"] == "assistant"), default=None)
+    if config.PHOTO_FIRST:   # a reopened chat looks like a new answer: short line + card facts (full text in detail_text)
+        access = xano.has_paid_access(user)
+        lvl = "free" if not access else _detail(xano.beta_member(user), True)
+        try:
+            prof = xano.profile_of(user)
+        except Exception:
+            prof = {}
+        for t in turns:
+            if t.get("role") == "assistant" and (t.get("text") or t.get("cards")):
+                got = photo_first.apply({"text": t.get("text") or "", "cards": t.get("cards") or [],
+                                         "search_filters": t.get("filters") or {}, "price_locked": not access}, lvl, prof)
+                t.update({k: got[k] for k in ("text", "detail_text", "cards", "photo_first", "understood")})
     for i, t in enumerate(turns):
         t.pop("more_cards", None)         # unrevealed extras stay on the server until a question is spent
         t.pop("filters", None)            # server-side search state
@@ -1913,9 +1939,9 @@ def _show_more(user, body, background, tracker):
         sheet_log.event(user, "Tapped Show more", "Show 3 more", text, chat["id"], picks)
     background.add_task(persist)
     left = reply["left"]
-    return dict(text=text, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
-                more_available=left if left >= agent.MORE_STEP else 0, widgets=[], questions=[], upsell_prompt=None,
-                **_counters("refine", paid, rows, counted_free, feedback_given, access))
+    return _pf(dict(text=text, cards=picks, chips=chips, chat_id=chat["id"], paid=paid, has_access=access,
+                    more_available=left if left >= agent.MORE_STEP else 0, widgets=[], questions=[], upsell_prompt=None,
+                    **_counters("refine", paid, rows, counted_free, feedback_given, access)), user)
 
 
 class ToolBody(BaseModel):
@@ -1927,7 +1953,7 @@ class ToolBody(BaseModel):
 # What the chat shows as the couple's side of a quick action (stored as the user turn, so the history alternates).
 TOOL_LABELS = {"estimate_cost": "Estimate my cost", "split_budget": "Split my budget",
                "compare_venues": "Compare my venues", "budget_status": "Budget check",
-               compare.TOOL: "Compare these venues"}
+               compare.TOOL: "Compare these venues", photo_first.COST_TOOL: "What it costs"}
 
 
 @app.post("/rec/tool")
@@ -1943,11 +1969,15 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         raise HTTPException(503, {"status": "killed"})
     name = (body.tool or "").strip()
     picked = name == compare.TOOL and compare.arm(user.get("id")) == "compare"
-    if name not in cost_tools.TOOLS and not picked:
+    pf_cost = name == photo_first.COST_TOOL and config.PHOTO_FIRST   # "What it costs" (REC_PHOTO_FIRST only)
+    if name not in cost_tools.TOOLS and not picked and not pf_cost:
         raise HTTPException(400, {"status": "unknown_tool", "tools": list(cost_tools.TOOLS)})
     if picked:
-        ids = (compare.saved_venue_ids(xano, user) if (body.args or {}).get("saved") else
-               compare.clean_ids((body.args or {}).get("vendor_ids")))
+        if (body.args or {}).get("saved"):
+            ids = (compare.saved_ids(xano, user, (body.args or {}).get("category")) if config.COMPARE_ANY_CATEGORY
+                   else compare.saved_venue_ids(xano, user))
+        else:
+            ids = compare.clean_ids((body.args or {}).get("vendor_ids"))
         if len(ids) < compare.MIN_VENUES:
             raise HTTPException(400, {"status": "need_two_venues"})
         if not compare.spend(user["id"], ids):
@@ -1969,16 +1999,24 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
             d = cost_tools.profile_defaults(user)
             out = {"widget": compare.build(xano, token, user, ids, access=access, guests=(body.args or {}).get("guests"),
                                            default_guests=d["guests"], budget=d["budget"])}
+        elif pf_cost:
+            d = cost_tools.profile_defaults(user)
+            out = {"widget": photo_first.build_cost_lines(xano, token, user, (body.args or {}).get("vendor_id"), access=access,
+                                                          guests=(body.args or {}).get("guests"), default_guests=d["guests"])}
         else:
             out = cost_tools.run_tool(name, body.args or {}, token, user, access=access, xano=xano)
     except Exception as e:
         _submit_usage(dict(base, status="error", error=str(e)[:500]))
         raise HTTPException(502, {"status": "error"})
+    if pf_cost and not out["widget"]:
+        _submit_usage(dict(base, status="error", error="cost_lines: not a venue we list"))
+        raise HTTPException(404, {"status": "venue_not_found"})
     if picked and not out["widget"]:
         _submit_usage(dict(base, status="error", error="compare: fewer than two venues found"))
         raise HTTPException(404, {"status": "venues_not_found"})
     widget = out["widget"] if access else free_mode.widget(out["widget"])
-    text = compare.summary_text(widget) if picked else cost_tools.summary_text(widget)
+    text = (compare.summary_text(widget) if picked else photo_first.cost_summary(widget) if pf_cost
+            else cost_tools.summary_text(widget))
     # Next-step chips (owner 2026-10-25), computed in code like the widget - flag-independent, as /rec/tool is.
     # No chat history is read here (one more Xano call per tap); the next typed reply's de-dupe sees these chips.
     chips = tool_chips(name, free=not access, widget=widget)
@@ -1989,10 +2027,13 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         "has_access": access, "source": "rec_service", "cost_usd": 0, "latency_s": round(ms / 1000.0, 1),
         "widget": widget.get("type"), "locked": bool(widget.get("locked")), "chat_id": int(body.chat_id or 0),
         "search_arm": railway_search.arm(user.get("id"))})
-    sheet_log.event(user, "Used a quick action", TOOL_LABELS[name], text, int(body.chat_id or 0))
+    label = TOOL_LABELS[name]
+    if picked and (widget.get("category") or "Venue") != "Venue":   # REC_COMPARE_ANY_CATEGORY: not "venues"
+        label = "Compare these"
+    sheet_log.event(user, "Used a quick action", label, text, int(body.chat_id or 0))
     if chat:
         def persist():   # same order as a typed question: the quick action, then the answer with its widget
-            xano.add_message(chat["id"], "user", TOOL_LABELS[name])
+            xano.add_message(chat["id"], "user", label)
             xano.add_message(chat["id"], "assistant", text, [{"meta": "widget", "widget": widget}], chips)
             xano.touch_chat(chat)
         background.add_task(persist)
@@ -2003,6 +2044,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
 class PickBody(BaseModel):
     vendor_id: Optional[str] = None        # "" clears the pick; a body without it (or only spaces) is refused
     expect: str = ""                       # a clear: the venue the page showed as the pick
+    category: str = ""                     # REC_COMPARE_ANY_CATEGORY: a clear's category (default Venue); ignored when off
     chat_id: int = 0
 
 
@@ -2011,6 +2053,9 @@ def _pick_status(user):
     if not (config.COMPARE_DECIDE and compare.arm(user.get("id")) == "compare"):
         return {"compare_decide": False, "compare_pick": None}
     try:
+        if config.COMPARE_ANY_CATEGORY:   # one pick per category; compare_pick stays the venue one
+            picks = compare.picks_of(xano, user["id"])
+            return {"compare_decide": True, "compare_pick": picks.get(compare.PICK_SLOT), "compare_picks": picks}
         return {"compare_decide": True, "compare_pick": compare.pick_of(xano, user["id"])}
     except Exception as e:      # could not be read: say nothing about it (the page keeps what it has)
         print("compare_pick status:", repr(e)[:160])
@@ -2048,7 +2093,8 @@ def compare_pick(body: PickBody, authorization: str = Header(None)):
     if body.vendor_id is None or (body.vendor_id and not body.vendor_id.strip()):
         raise HTTPException(400, {"status": "no_vendor"})
     try:
-        ok, got = compare.set_pick(xano, user["id"], body.vendor_id.strip(), body.chat_id, body.expect.strip())
+        ok, got = compare.set_pick(xano, user["id"], body.vendor_id.strip(), body.chat_id, body.expect.strip(),
+                                   (body.category or "").strip())
     except LookupError:
         raise HTTPException(404, {"status": "venue_not_found", **_pick_stored(user)})
     except Exception as e:
@@ -3127,7 +3173,7 @@ def _ww_refine(token, user, body, background, tracker):
         sheet_log.event(user, "Whole wedding: %s" % (action if step == "proposal" else step), say, out.get("text"),
                         chat["id"], None, None, "" if out.get("widgets") else sheet_log.flag_of(out), ms)
     background.add_task(persist)
-    return _public(out, chat_id=chat["id"])
+    return _public(_pf(out, user), chat_id=chat["id"])
 
 
 class WwAddBody(BaseModel):
@@ -3282,7 +3328,19 @@ def status(authorization: str = Header(None)):
             # 1-week card can carry a total when REC_BETA_AUDIENCE is "paid".
             "card_facts": config.on_for(config.CARD_FACTS, user.get("id")),
             "card_totals": bool(paid and xano.pi_entitled(user) and config.on_for(config.CARD_TOTALS, user.get("id"))),
-            "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or [])}
+            "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or []),
+            # Photo-first Assistant + compare in any category (2026-11-26): keys present only when the switch is on.
+            **({"photo_first": True} if config.PHOTO_FIRST else {}),
+            **({"compare_any_category": True, "saved_by_category": _saved_by_category(user)}
+               if config.COMPARE_ANY_CATEGORY and compare.arm(user.get("id")) == "compare" else {})}
+
+
+def _saved_by_category(user):
+    try:
+        return compare.saved_by_category(xano, user)
+    except Exception as e:
+        print("saved_by_category:", repr(e)[:160])
+        return {}
 
 
 @app.get("/health")

@@ -83,6 +83,34 @@ def clean_ids(raw):
     return out[:MAX_VENUES]
 
 
+def _cat(card):
+    return (card or {}).get("category") or "Venue"
+
+
+def saved_ids(xano, user, category=None):
+    """REC_COMPARE_ANY_CATEGORY: the couple's most recent saved vendors of ONE category (never mixed). category: the one
+    asked for; none = the category of the newest saved vendor that has at least one other saved in the same category."""
+    recent = list(dict.fromkeys(str(v).strip() for v in reversed((user or {}).get("favorited_vendors") or []) if str(v or "").strip()))[:24]
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        cards = [c for c in pool.map(lambda v: _safe(xano.cached_vendor_card, v), recent) if c and c.get("vendor_id")]
+    cats = [_cat(c) for c in cards]
+    want = str(category or "").strip()
+    if not want:
+        want = next((k for k in cats if cats.count(k) >= MIN_VENUES), cats[0] if cats else "Venue")
+    return list(dict.fromkeys(c["vendor_id"] for c in cards if _cat(c) == want))[:MAX_VENUES]
+
+
+def saved_by_category(xano, user):
+    """{category: count} of the couple's saved vendors (the page offers "Compare 2 photographers" per category)."""
+    recent = list(dict.fromkeys(str(v).strip() for v in reversed((user or {}).get("favorited_vendors") or []) if str(v or "").strip()))[:24]
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        cards = [c for c in pool.map(lambda v: _safe(xano.cached_vendor_card, v), recent) if c]
+    out = {}
+    for c in cards:
+        out[_cat(c)] = out.get(_cat(c), 0) + 1
+    return out
+
+
 def saved_venue_ids(xano, user):
     """The couple's most recently saved VENUES (favorited_vendors is in save order; photographers etc. are left out)."""
     recent = list(dict.fromkeys(str(v).strip() for v in reversed((user or {}).get("favorited_vendors") or []) if str(v or "").strip()))[:12]
@@ -216,8 +244,29 @@ def _safe(f, *a):
         return None
 
 
+def _one_other(xano, token, card, full):
+    """A photographer, band, florist... (REC_COMPARE_ANY_CATEGORY): only what we hold for the whole vendor - its style words,
+    its pricing PDFs, and for full members the PDF's starting package price with its source named. No invented fields."""
+    vid = card.get("vendor_id")
+    pdfs = _safe(lambda v: xano.pdf_summary(xano.pdf_rows(token, v)), vid) or {}
+    cat = _cat(card)
+    style = [x for x in _list(card.get("venue_type")) if x.lower() != cat.lower() and "inclusive" not in x.lower()][:3]
+    v = {"vendor_id": vid, "vendor_idx": card.get("vendor_idx"), "name": card.get("name") or "", "place": _place(card),
+         "image": _image(card.get("image")), "category": cat, "room": None, "pdf_count": _int(pdfs.get("count")),
+         "pdf_year": (pdfs.get("years") or [None])[0], "setting": [], "style": style, "seats": None, "seats_is_room": False,
+         "offering": None, "rating": None, "reviews": None, "guest_minimum": None, "fits": {"seats": None, "minimum": None}}
+    pr = card.get("price_range") or []
+    if full and pr and isinstance(pr[0], (int, float)) and pr[0] > 0:
+        v["price_from"] = {"amount": int(pr[0]), "source": "pdf", "label": "Packages from %s, from its PDF" % _money(pr[0])}
+    if not full:
+        v["words"] = []
+    return v
+
+
 def _one(xano, token, user, vid, guests, full):
     card = _safe(xano.cached_vendor_card, vid)
+    if card and _cat(card) != "Venue" and config.COMPARE_ANY_CATEGORY:
+        return _one_other(xano, token, card, full)
     if not card or (card.get("category") or "Venue") != "Venue":
         return None
     vid = card.get("vendor_id") or vid       # a merged duplicate: the kept vendor for every read below, never a mix
@@ -324,36 +373,49 @@ PICK_SLOT = "Venue"
 _PICK_LOCKS = [threading.Lock() for _ in range(64)]
 
 
-def _pick_rows(xano, user_id):
-    return [r for r in xano.plan_items(user_id, picks=True) if r.get("slot") == PICK_SLOT]
+def _pick_rows(xano, user_id, slot=PICK_SLOT):
+    return [r for r in xano.plan_items(user_id, picks=True) if r.get("slot") == slot]
 
 
-def pick_of(xano, user_id):
-    """{"vendor_id", "name"} the couple picked, or None. The newest active row."""
-    rows = _pick_rows(xano, user_id)
+def pick_of(xano, user_id, slot=PICK_SLOT):
+    """{"vendor_id", "name"} the couple picked, or None. The newest active row (of that category's slot)."""
+    rows = _pick_rows(xano, user_id, slot)
     return {"vendor_id": rows[-1].get("vendor_id") or "", "name": rows[-1].get("vendor_name") or ""} if rows else None
 
 
-def set_pick(xano, user_id, vendor_id, chat_id=0, expect=""):
+def picks_of(xano, user_id):
+    """REC_COMPARE_ANY_CATEGORY: {category: pick} - one pick per category."""
+    out = {}
+    for r in xano.plan_items(user_id, picks=True):
+        if r.get("slot"):
+            out[r["slot"]] = {"vendor_id": r.get("vendor_id") or "", "name": r.get("vendor_name") or ""}   # newest last
+    return out
+
+
+def set_pick(xano, user_id, vendor_id, chat_id=0, expect="", category=""):
     """Set (a venue id) or clear ("") the pick. Returns (ok, pick as stored now): ok only when what is stored is what was asked.
     The new row is written before the old one is marked removed, so a failure half way never loses a pick, and a row that
     could not be marked removed is older than the new one (pick_of reads the newest). LookupError = not a venue we list. expect: a
     clear is for that venue only, so a stale tab never clears a newer pick. Everything runs inside the couple's lock: taps
-    are stored in the order they arrive."""
+    are stored in the order they arrive.
+    REC_COMPARE_ANY_CATEGORY: any listed vendor; its own category is the slot, one pick per category (a clear names the
+    category in `category`, default Venue). Off: venues only, exactly as before."""
+    anyc = config.COMPARE_ANY_CATEGORY
     with _PICK_LOCKS[int(user_id) % len(_PICK_LOCKS)]:
         card = None
         if vendor_id:
             ids = clean_ids([vendor_id])
-            card = xano.listed_venue(ids[0]) if ids else None
+            card = (xano.listed_vendor if anyc else xano.listed_venue)(ids[0]) if ids else None
             if not card:
-                raise LookupError("venue")
-        old = _pick_rows(xano, user_id)
+                raise LookupError("vendor" if anyc else "venue")
+        slot = (_cat(card) if card else (str(category or "").strip()[:40] or PICK_SLOT)) if anyc else PICK_SLOT
+        old = _pick_rows(xano, user_id, slot)
         if not vendor_id and expect and old and old[-1].get("vendor_id") != expect:
-            return False, pick_of(xano, user_id)
+            return False, pick_of(xano, user_id, slot)
         vid = str((card or {}).get("vendor_id") or "")
         newest = old[-1].get("vendor_id") if old else ""
         if vid and newest != vid:
-            xano.plan_add({"user_id": user_id, "slot": PICK_SLOT, "vendor_id": vid, "vendor_name": (card.get("name") or "")[:200],
+            xano.plan_add({"user_id": user_id, "slot": slot, "vendor_id": vid, "vendor_name": (card.get("name") or "")[:200],
                            "est_cost": 0, "note": "", "source": xano.PICK_SOURCE, "chat_id": int(chat_id or 0), "status": "active"})
             drop = old
         else:
@@ -361,7 +423,7 @@ def set_pick(xano, user_id, vendor_id, chat_id=0, expect=""):
         for r in drop:       # oldest first, and clearing stops at the first failure: an older pick must never come back
             if not _safe(xano.plan_remove, user_id, r.get("id")) and not vid:
                 break
-        got = pick_of(xano, user_id)
+        got = pick_of(xano, user_id, slot)
         return str((got or {}).get("vendor_id") or "") == vid, got
 
 
@@ -429,11 +491,15 @@ def build(xano, token, user, vendor_ids, *, access, guests=0, default_guests=0, 
     for v in venues:     # a merged duplicate picked with its kept vendor is one venue
         by_id.setdefault(v["vendor_id"] or id(v), v)
     venues = list(by_id.values())
+    if config.COMPARE_ANY_CATEGORY and venues:      # one category per compare, never mixed: the first one picked decides
+        venues = [v for v in venues if v.get("category") == venues[0].get("category")]
     if len(venues) < MIN_VENUES:
         return None
     w = {"type": TYPE, "v": V, "level": "full" if full else "words",
          "reason": None if full else ("member" if access else "plan"), "guests": g, "guests_known": known,
          "budget": _int(budget) or None, "venues": venues, "differences": differences(venues, g, full)}
+    if config.COMPARE_ANY_CATEGORY:
+        w["category"] = venues[0].get("category") or "Venue"
     return w if full else lock(w)
 
 
@@ -453,13 +519,18 @@ def lock(w):
     diffs = [d for d in w.get("differences") or [] if "$" not in d] if w.get("level") == "words" else (
         differences([dict(v, fits=v.get("fits") or {"seats": None, "minimum": None}, setting=v.get("setting") or [])
                      for v in vs], w.get("guests") or 100, False))
-    return {"type": TYPE, "v": V, "level": "words", "reason": w.get("reason") or "plan", "guests": w.get("guests"),
-            "guests_known": w.get("guests_known"), "budget": None, "venues": vs, "differences": diffs}
+    out = {"type": TYPE, "v": V, "level": "words", "reason": w.get("reason") or "plan", "guests": w.get("guests"),
+           "guests_known": w.get("guests_known"), "budget": None, "venues": vs, "differences": diffs}
+    if w.get("category"):       # REC_COMPARE_ANY_CATEGORY widgets only
+        out["category"] = str(w["category"])[:40]
+    return out
 
 
 def summary_text(w):
     """The line stored with the widget (no model); later turns of the chat read it."""
     names = [v["name"] for v in w["venues"]]
+    if (w.get("category") or "Venue") != "Venue":   # REC_COMPARE_ANY_CATEGORY: no guest count for a photographer
+        return "Here are %s side by side.%s" % (_and(names), "" if w["level"] == "full" else " Their exact prices are in each one's pricing PDF.")
     if w["level"] == "full":
         est = any((v.get("cost") or {}).get("estimated") for v in w["venues"])
         return "Here are %s side by side for %d guests.%s" % (_and(names), w["guests"], " Estimated parts are marked." if est else "")

@@ -458,6 +458,7 @@ def venues_near(lat, lng, radius, *, guests=0, max_venue_fee=0, max_food_per_per
             "at_a_glance": None, "image": it.get("image_1"),
             "description": (it.get("Description") or "")[:300],
             "distance_miles": round(d, 1),
+            **({"setting_tags": list(it.get("flt_venue_attributes") or [])} if config.PHOTO_FIRST else {}),
         })
     out.sort(key=lambda v: v["distance_miles"])
     return {"total_matches": len(out), "venues": out}
@@ -1116,6 +1117,15 @@ def listed_venue(vendor_id):
     return card_from_row(it)
 
 
+def listed_vendor(vendor_id):
+    """listed_venue for ANY category (REC_COMPARE_ANY_CATEGORY): the card of a vendor couples can see, or None."""
+    rows = [r for r in _search_all(11, [{"Vendor_ID": vendor_id}]) if r.get("Vendor_ID") == vendor_id]
+    it = follow_merge(rows[0]) if rows else None
+    if not it or not it.get("Category") or str(it.get("Validated_Data")) != "1":
+        return None
+    return card_from_row(it)
+
+
 def card_from_row(it):
     """A table-11 row -> the card shape vendor_card returns (venue or photographer / entertainer)."""
     img = it.get("image_1")
@@ -1137,7 +1147,8 @@ def card_from_row(it):
             "venue_type": it.get("flt_venue_types") or it.get("Venue_Type"),
             "max_capacity_seated": it.get("Max_Capacity_Seated"),
             "venue_fee_range": [it.get("flt_min_venue_fee"), it.get("flt_max_venue_fee")],
-            "image": img, "description": (it.get("Description") or "")[:300]}
+            "image": img, "description": (it.get("Description") or "")[:300],
+            **({"setting_tags": list(it.get("flt_venue_attributes") or [])} if config.PHOTO_FIRST else {})}
 
 
 NAME_SEARCH_PAGE = 20   # venues per name search

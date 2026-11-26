@@ -354,6 +354,14 @@ def on_for(flag, user_id):
     except (TypeError, ValueError):
         return False
 COMPARE_VENUES_PER_DAY = max(3, int(os.environ.get("REC_COMPARE_VENUES_PER_DAY", "30") or 30))
+# PHOTO-FIRST ASSISTANT (owner 2026-11-26, "more pictures, less wording"; photo_first.py): the answer text becomes one
+# short line, each card carries icon facts (seats, setting tags held for the WHOLE venue) and, for members, one price line
+# naming its source; the response also says what was understood (place, guests, date). Adds the "cost_lines" quick action.
+# OFF by default: with REC_PHOTO_FIRST=0 every response is exactly as before and the tool answers unknown_tool.
+PHOTO_FIRST = os.environ.get("REC_PHOTO_FIRST", "0").strip() == "1"
+# COMPARE ANY CATEGORY (owner 2026-11-26): Compare and Our pick work within ANY one category (photographers with
+# photographers, florists with florists...), never mixed. Needs the compare arm like the rest. 0 = venues only, as before.
+COMPARE_ANY_CATEGORY = os.environ.get("REC_COMPARE_ANY_CATEGORY", "0").strip() == "1"
 # SOURCED ANSWERS (owner 2026-11-07: "I really really don't want to hallucinate, so I want very clear sources"): venue
 # questions beyond price are answered from venue_details (PDF facts, vibes, description, Google reviews) and, for full
 # members, the web; every answer lists its sources and a web source must be a URL the search returned this request.
