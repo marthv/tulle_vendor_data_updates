@@ -21,6 +21,7 @@ import pdf_dupes
 log = logging.getLogger("slack_qa.merge_checks")
 
 SECONDS = 35.0             # price_impact's own budget for one card
+PATIENT_SECONDS = 90.0     # MERGE_CARD_FAST: room for two slow reads in a row (price_impact.PATIENT_TIMEOUTS)
 WAIT = 240.0               # how long a check waits for the one before it
 PREVIEW_TIMEOUT = 90.0     # measured 14-65 s live on 2026-11-22 (it counts every reference)
 _ONE = threading.Semaphore(1)
@@ -128,11 +129,21 @@ def slim(pv: dict | None) -> dict | None:
             "refusals": [str(x) for x in pv.get("refusals") or []]}
 
 
+def _budget() -> tuple[float, tuple]:
+    """(seconds for one card, per-read timeouts): MERGE_CARD_FAST gives a slow Xano read more time; off = as before."""
+    import price_impact
+    if config.merge_card_fast():
+        return PATIENT_SECONDS, price_impact.PATIENT_TIMEOUTS
+    return SECONDS, price_impact.TIMEOUTS
+
+
 def _compute(xano, payload: dict, hide: list[str], pv="fetch") -> dict:
     import price_impact
     pv = slim(preview(payload, hide)) if pv == "fetch" else pv
+    secs, timeouts = _budget()
+    kw = {"timeouts": timeouts} if timeouts != price_impact.TIMEOUTS else {}      # off: the very same call as before
     r = price_impact.compute(xano, payload.get("survivor"), list(payload.get("losers") or []), preview=pv,
-                             hidden_pdfs=hide, deadline=SECONDS)
+                             hidden_pdfs=hide, deadline=secs, **kw)
     b = short(r, price_impact.blocks(r))
     extra = list(b["extra_blocks"])
     # refusals a person can answer on the card (hidden / gold / unhide) have their own buttons there
@@ -190,7 +201,7 @@ def short(r: dict, b: dict) -> dict:
     return {"extra_blocks": out, "confirm_text": confirm, "detail": "\n\n".join(texts)[:5500]}
 
 
-def price(xano, payload: dict, seconds: float = SECONDS, wait: float = WAIT, pv="fetch") -> dict:
+def price(xano, payload: dict, seconds: float | None = None, wait: float = WAIT, pv="fetch") -> dict:
     """Never raises and never hangs. Always an alert when it can't be sure. pv: "fetch" asks ep578 for a preview (slow:
     card building only); the Approve click passes the one the card was built with and re-reads the price rows."""
     try:
@@ -214,7 +225,7 @@ def price(xano, payload: dict, seconds: float = SECONDS, wait: float = WAIT, pv=
 
     t = threading.Thread(target=run, name="price-check", daemon=True)
     t.start()
-    t.join(seconds + PREVIEW_TIMEOUT + 10)
+    t.join((seconds if seconds is not None else _budget()[0]) + PREVIEW_TIMEOUT + 10)
     return box.get("r") or _failed("the check took too long", payload, hide)
 
 

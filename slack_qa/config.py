@@ -256,6 +256,12 @@ def feedback_page_budget() -> int:     # pages read to count references on a dup
     return int(_f("FEEDBACK_PAGE_BUDGET", 60))
 
 
+def merge_card_fast() -> bool:         # MERGE_CARD_FAST=1: "@Tulle Bot merge X into Y" counts PDFs with one filtered read
+    # instead of paging all of t10/t36 (60 pages, ~1 min per card, minutes when several arrive together), and the price
+    # check gives a slow Xano read more time (20 s, then 30 s; 90 s per card) before it says "can't compute". Off = as before.
+    return _flag("MERGE_CARD_FAST", False)
+
+
 def ondemand_scan_cooldown_min() -> int:
     return int(_f("DEDUPE_ONDEMAND_COOLDOWN_MIN", 30))
 

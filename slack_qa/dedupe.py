@@ -882,6 +882,32 @@ class RefIndex:
     def pdfs(self) -> dict[str, int]:
         return dict(self.counts.get(10, {}))
 
+    # t10 + t36 as whole pages on 2026-11-25: 21,762 + 45,361 rows = 44 + 91 pages. Below this budget the paged build
+    # (only={10, 36}) can never finish t36, so it ends with t10 counted and t36 "not counted".
+    FULL_10_36_PAGES = 135
+
+    def build_named_fast(self, wanted: set[str]) -> bool:
+        """MERGE_CARD_FAST: the same result the paged build gives a named merge (only={10, 36}, budget below
+        FULL_10_36_PAGES): t10 counted for these vendors, every other table "not counted". One filtered read of t10
+        instead of ~60 whole pages. False = it couldn't (caller falls back to build())."""
+        import xano_search
+        vids = sorted({str(v).strip() for v in wanted if str(v).strip()})
+        try:
+            got = xano_search.search(self.xano, 10, "Vendor_ID", vids)
+        except Exception as e:  # noqa: BLE001 - the paged build still works
+            log.info("filtered PDF count failed, paging instead: %s", type(e).__name__)
+            return False
+        c, rws = collections.Counter(), collections.defaultdict(list)
+        for row in sorted(got, key=lambda r: int(r.get("id") or 0)):          # the paged build reads in id order
+            for vid in self._hits(row.get("Vendor_ID"), "id", set(vids), {}):
+                c[vid] += 1
+                if len(rws[vid]) < self.MAX_ROW_IDS:
+                    rws[vid].append([row.get("id"), "Vendor_ID"])
+        self.counts, self.rows = {10: c}, {10: dict(rws)}
+        self.not_counted = {t for t, *_ in REF_TABLES if t != 10}
+        self.pages_used = 1
+        return True
+
 
 # --- proposal content -------------------------------------------------------------------------------------
 def _loc(r: dict) -> str:

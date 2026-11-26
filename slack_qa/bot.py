@@ -441,7 +441,10 @@ class Bot:
             byid = {v["id"]: v for v in vendors}
             refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
                                    page_delay=config.dedupe_page_delay(), only={10, 36})
-            refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
+            fast = (config.merge_card_fast() and config.feedback_page_budget() < dedupe.RefIndex.FULL_10_36_PAGES
+                    and refs.build_named_fast(set(vids)))
+            if not fast:
+                refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
             pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
                                        survivor_vid=vids[-1] if req["into"] else "",
                                        why_text=mr.asked_why(vendors) + self._others_note(mr, vids))
