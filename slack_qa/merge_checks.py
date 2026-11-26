@@ -237,8 +237,9 @@ def computing(payload: dict) -> dict:
     return {"status": "computing", "alert": True, "cant": True, "stamp": "computing", "after_total": None, "hide": [],
             "survivor": payload.get("survivor"), "refusals": [], "confirm_text": None, "extra_blocks": [
                 {"type": "context", "elements": [{"type": "mrkdwn", "text": (
-                    ":hourglass_flowing_sand: Working out the price couples would see (up to a minute). Approve comes "
-                    "back when it's done.")}]}]}
+                    ":hourglass_flowing_sand: Working out the price couples would see ("
+                    + ("up to a few minutes" if config.merge_card_fast() else "up to a minute")
+                    + "). Approve comes back when it's done.")}]}]}
 
 
 def current(payload: dict) -> bool:

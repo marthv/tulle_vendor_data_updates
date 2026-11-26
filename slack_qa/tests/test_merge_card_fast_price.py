@@ -290,7 +290,7 @@ def test_three_queued_cards_and_an_approve_on_a_slow_preview(monkeypatch, toy):
 
 def test_reads_of_twenty_to_sixty_seconds_are_the_limit(monkeypatch, toy):
     """Every read 20-60 s (and the preview too): eleven reads cannot fit in 90 s, so each card says can't compute and
-    Approve's 8/12 s reads time out. Pinned so the limit is known, not hidden. The queue itself never refuses ("other
+    so does Approve (20/30 s reads since 8d432d3). Pinned so the limit is known, not hidden. The queue itself never refuses ("other
     price checks were still running"): queued cards wait in the queue, not on the 240 s lock."""
     out = _queue_run(monkeypatch, (20, 60), (20, 60), seed=2)
     assert sorted(out) == ["approve", "card1", "card2", "card3"], _report(out)

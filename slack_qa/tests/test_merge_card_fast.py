@@ -98,6 +98,7 @@ def _named_card(monkeypatch, fast: bool):
     secs = time.monotonic() - t0
     [p] = store.all()
     card = json.dumps(slack.of("chat.postMessage")[-1]["blocks"]).replace(p["id"], "<id>")
+    card = card.replace("up to a few minutes", "up to a minute")   # the waiting line differs by flag on purpose (QA 11-26)
     return p, card, b.xano, secs
 
 
@@ -197,3 +198,33 @@ def test_price_passes_the_patient_timeouts_on_building_and_approve(monkeypatch):
         assert seen == [base, dict(base, preview=pv), base], on
         j = (mc.PATIENT_SECONDS if on else mc.SECONDS) + mc.PREVIEW_TIMEOUT + 10
         assert joins == [j, j, j], on
+
+
+def test_flag_off_keeps_todays_literal_limits(monkeypatch):
+    """QA 11-26: pinned as numbers, not as mc.SECONDS, so the flag-off limits can't drift unnoticed."""
+    monkeypatch.delenv("MERGE_CARD_FAST", raising=False)
+    assert mc.SECONDS == 35.0 and price_impact.TIMEOUTS == (8.0, 12.0)
+    assert mc._budget(True) == (35.0, (8.0, 12.0)) and mc._budget(False) == (35.0, (8.0, 12.0))
+    assert mc.SECONDS + mc.PREVIEW_TIMEOUT + 10 == 135.0
+    assert "up to a minute" in str(mc.computing({"survivor": "V1"}))
+
+
+def test_flag_on_waiting_text_says_minutes(monkeypatch):
+    monkeypatch.setenv("MERGE_CARD_FAST", "1")
+    assert "up to a few minutes" in str(mc.computing({"survivor": "V1"}))
+
+
+def test_fast_count_gives_up_after_the_cap(monkeypatch):
+    """QA 11-26: a stalled fast read falls back to paging within FAST_CAP, and changes nothing on the index."""
+    import time as _t
+    import xano_search
+    monkeypatch.setattr(dedupe.RefIndex, "FAST_CAP", 0.3)
+
+    class X:
+        def get(self, path, params=None):
+            _t.sleep(2)
+            return {"itemsTotal": 100}
+    r = dedupe.RefIndex(X(), max_pages=60, only={10, 36})
+    t0 = _t.time()
+    assert r.build_named_fast({"V1"}) is False
+    assert _t.time() - t0 < 1.5 and r.counts == {} and r.pages_used == 0
