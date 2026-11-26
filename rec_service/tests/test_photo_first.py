@@ -54,7 +54,7 @@ def test_apply_never_changes_what_is_stored():
 
 
 def test_guests_fall_back_to_the_profile_and_date_is_understood():
-    a = answer(search_filters={"states": ["Texas"]})
+    a = answer(cards=[venue("V%d" % i, estimate_guests=None) for i in range(3)], search_filters={"states": ["Texas"]})
     out = pf.apply(a, "full", {"Wedding_Guest_Count": 120, "Wedding_Date": "2027-09-18"})
     assert out["text"] == "3 in Texas for 120 guests"
     assert out["understood"] == {"place": "Texas", "guests": 120, "date": "Sep 2027"}
@@ -88,7 +88,7 @@ def test_a_long_no_card_answer_is_clipped_not_replaced():
 
 
 def test_international_is_never_a_place():
-    a = answer(cards=[venue(state="International")] * 3, search_filters={"states": ["International"], "guests": 110})
+    a = answer(cards=[venue(state="International", estimate_guests=110)] * 3, search_filters={"states": ["International"], "guests": 110})
     assert pf.apply(a, "full", {})["text"] == "3 for 110 guests"
 
 
@@ -110,12 +110,13 @@ def test_one_of_a_kind_is_singular():
 
 @pytest.mark.parametrize("text,line", [
     ("We don't have Ben Conger Inn yet. Tell me the city.", "We don't have Ben Conger Inn yet."),
-    ("Here's Brooklyn Botanic Garden in Brooklyn, New York. It's outside California.", None),
-    ("It's outside California, where you're planning - tell me if you meant another. More.", "It's outside California, where you're planning - tell me if you meant another."),
+    ("Here's Brooklyn Botanic Garden in Brooklyn, New York. It's outside California.", None),   # no "where you're planning"
+    ("Here's Brooklyn Botanic Garden in Brooklyn, New York. It's outside California, where you're planning - tell me.",
+     "Outside California, where you're planning"),
 ])
 def test_reopened_turns_stored_before_the_switch_keep_what_cards_cant_say(text, line):
     out = pf.apply({"text": text, "cards": [venue()], "search_filters": {}}, "full", {}, reopened=True)
-    assert out["text"] == (line or "One in New York")
+    assert out["text"] == (line or "One in New York for 100 guests")
 
 
 def test_show_more_line_uses_the_search_guests(monkeypatch):
@@ -124,7 +125,7 @@ def test_show_more_line_uses_the_search_guests(monkeypatch):
     monkeypatch.setattr(app, "_chat_used", lambda *a: None)
     monkeypatch.setattr(xano, "get_chat", lambda u, c: {"id": c})
     hist = [{"role": "assistant", "text": "x", "cards": [], "filters": {"states": ["New York"], "city": "Brooklyn", "guests": 150},
-             "more_cards": [venue("V%d" % i) for i in range(5)]}]
+             "more_cards": [venue("V%d" % i, estimate_guests=150) for i in range(5)]}]
     monkeypatch.setattr(xano, "get_messages", lambda c: hist)
     monkeypatch.setattr(app, "_gate", lambda *a, **k: (True, True, [], True, False, {}))
     monkeypatch.setattr(xano, "log_usage", lambda *a, **k: None)
@@ -526,3 +527,76 @@ def test_get_pick_by_category(picks, monkeypatch):
     assert c.get("/rec/compare/pick", headers=h).json()["pick"] is None      # the venue pick is its own
     r = c.post("/rec/compare/pick", json={"vendor_id": "", "expect": "P1", "category": "Photography"}, headers=h)
     assert r.json()["ok"] and r.json()["pick"] is None
+
+
+# ---------------------------------------------------------------- QA round 3
+
+def test_outside_is_found_anywhere_and_bare_outside_is_not():
+    t = ("Here's Lodge on the Desert in Tucson, Arizona. It's outside Pennsylvania, where you're planning - tell me if "
+         "you meant a different one.")
+    assert pf.reopen_line(t) == "Outside Pennsylvania, where you're planning"
+    assert pf.reopen_line("Outside catering is not allowed here. The rental includes tables.") is None
+
+
+@pytest.mark.parametrize("text,name", [
+    ("Lasting Impressions Event Decor isn\u2019t in Tulle\u2019s listings, but here are florists in New Hampshire.", "Lasting Impressions Event Decor"),
+    ("We don't have Ben Conger Inn yet. Here are venues near Long Beach.", "Ben Conger Inn"),
+    ("We don't have Saturday availability in the PDF.", ""),
+    ("We don't have pricing for that room.", ""),
+])
+def test_a_named_vendor_we_dont_list(text, name):
+    assert pf.not_listed(text) == name
+
+
+def test_not_listed_leads_the_line_live_and_reopened():
+    cards = [{"vendor_id": "F%d" % i, "name": "F", "category": "Flowers", "state": "New Hampshire"} for i in range(3)]
+    t = "Lasting Impressions Event Decor isn't in Tulle's listings. Here are florists in New Hampshire."
+    for reopened in (False, True):
+        out = pf.apply({"text": t, "cards": cards, "search_filters": {"states": ["New Hampshire"]}}, "free", {}, reopened=reopened)
+        assert out["text"] == "We don't have Lasting Impressions Event Decor. 3 florists in New Hampshire"
+
+
+def test_clip_never_cuts_inside_a_price_or_parenthesis():
+    assert pf.clip("The Foundry comes to about $38,913 (Tulle's state benchmark puts it near the middle) for 100 guests.") == ""
+    line = pf.apply(answer(cards=[], text="The Foundry comes to about $38,913 (Tulle's state benchmark puts it near the "
+                                         "middle) for 100 guests."), "full", {})["text"]
+    assert line == pf.NEUTRAL_TEXT
+    assert pf.clip("Most venues in the area ask for a deposit, about $5,000 from the PDF, when you sign the contract.") \
+        == "Most venues in the area ask for a deposit\u2026"
+
+
+def test_free_fallback_with_nothing_shown_is_neutral():
+    res = free_mode.sanitize_result(answer(cards=[], text=free_mode.FALLBACK_TEXT))
+    assert pf.apply(res, "free", {})["text"] == pf.NEUTRAL_TEXT
+
+
+def test_headline_guests_match_the_cards_price_line():
+    cards = [venue("V%d" % i, estimate_guests=250) for i in range(3)]
+    out = pf.apply(answer(cards=cards, search_filters={"states": ["Pennsylvania"], "city": "Philadelphia", "guests": 200}), "full", {})
+    assert out["text"] == "3 in Philadelphia for 250 guests"
+    est = pf.apply(answer(cards=[venue("V1", estimate_guests=250, rental_source="estimate")] * 3,
+                          search_filters={"city": "Philadelphia", "guests": 200}), "full", {})
+    assert est["text"] == "3 in Philadelphia for 250 guests" and "for 250 guests" in est["cards"][0]["price_line"]["text"]
+
+
+def test_a_show_more_batch_stores_its_search_with_the_switch_on(monkeypatch):
+    saved = []
+    monkeypatch.setattr(config, "PHOTO_FIRST", True)
+    monkeypatch.setattr(app, "_auth", lambda a: ("tok", {"id": 7}))
+    monkeypatch.setattr(app, "_chat_used", lambda *a: None)
+    monkeypatch.setattr(xano, "get_chat", lambda u, c: {"id": c})
+    f = {"states": ["Pennsylvania"], "city": "Philadelphia", "guests": 250}
+    monkeypatch.setattr(xano, "get_messages", lambda c: [{"role": "assistant", "text": "x", "cards": [], "filters": f,
+                                                          "more_cards": [venue("V%d" % i) for i in range(5)]}])
+    monkeypatch.setattr(app, "_gate", lambda *a, **k: (True, True, [], True, False, {}))
+    for n in ("log_usage", "mp_track", "touch_chat"):
+        monkeypatch.setattr(xano, n, lambda *a, **k: None)
+    monkeypatch.setattr(xano, "add_message", lambda cid, role, text, cards=None, chips=None: saved.append(cards))
+    monkeypatch.setattr(app.sheet_log, "event", lambda *a, **k: None)
+    TestClient(app.app).post("/rec/more", json={"chat_id": 3}, headers={"Authorization": "Bearer t"})
+    assert {"meta": "search", "filters": f} in saved[-1]
+    turn = xano.parse_message_row({"id": 1, "role": "assistant", "content": "x", "cards": saved[-1]})
+    assert turn["filters"] == f and len(turn["cards"]) == 3
+    monkeypatch.setattr(config, "PHOTO_FIRST", False)
+    TestClient(app.app).post("/rec/more", json={"chat_id": 3}, headers={"Authorization": "Bearer t"})
+    assert not any(c.get("meta") for c in saved[-1])

@@ -190,10 +190,36 @@ def _area(out, cards):
 
 
 def _guests(out, profile):
+    """The count the cards were priced for when they carry one (so the headline matches their price line), else the
+    search's, else the profile's."""
+    cg = {_int(c.get("estimate_guests")) for c in out.get("cards") or [] if isinstance(c, dict) and _int(c.get("estimate_guests"))}
+    if len(cg) == 1:
+        return cg.pop()
     return _int((out.get("search_filters") or {}).get("guests")) or _int((profile or {}).get("Wedding_Guest_Count"))
 
 
-_OUTSIDE = re.compile(r"It's outside (.+?), where you're planning")
+_OUTSIDE = re.compile(r"[Ii]t['\u2019]s outside ([^.,;]+?), where you['\u2019]re planning")
+# A vendor the couple named that we don't list, in the model's own words (any category; live and reopened).
+_NAME = r"((?:[A-Z0-9][\w'\u2019&.-]*)(?:\s+(?:[A-Z0-9][\w'\u2019&.-]*|of|the|and|at|on|in|by|&))*)"
+_NOT_LISTED = (re.compile(r"\bWe (?:still )?don['\u2019]t have " + _NAME),
+               re.compile(_NAME + r",? (?:isn['\u2019]t|is not) (?:in Tulle['\u2019]s listings|listed on Tulle|on Tulle|in Tulle)"),
+               re.compile(r"\bTulle (?:doesn['\u2019]t|does not) (?:have|list) " + _NAME))
+_NOT_A_NAME = {"A", "An", "The", "Pricing", "Prices", "Any", "That", "This", "It", "One", "Their", "Its", "Your", "Exact", "Tulle",
+               "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "January", "February", "March",
+               "April", "May", "June", "July", "August", "September", "October", "November", "December", "PDF", "PDFs"}
+
+
+def not_listed(text):
+    """'X' when the answer says we don't list a vendor the couple named, else ''."""
+    t = " ".join(str(text or "").split())
+    for rx in _NOT_LISTED:
+        m = rx.search(t)
+        if m:
+            name = m.group(1).strip(" .,'\u2019")
+            name = re.sub(r"\s+(?:yet|in|on|at|by|and|the|of)$", "", name)
+            if name and name.split()[0] not in _NOT_A_NAME and len(name.split()) <= 8:
+                return name
+    return ""
 _NOT_IN = re.compile(r"We don't have one in (.+?) - this is the")
 
 
@@ -219,6 +245,11 @@ def short_line(out, profile=None):
         if "Tulle covers US venues" in text:
             return "We don't have %s. Tulle covers US venues." % name
         return "We don't have %s." % name if name else "We don't have that one."
+    miss = not_listed(text)
+    if miss:     # lead with the no: the cards are what we do have
+        head = "We don't have %s." % miss
+        rest = short_line(dict(out, text=""), profile) if cards else ""
+        return head + " " + rest if rest and len((head + " " + rest).split()) <= MAX_WORDS else head
     if cards:
         cat = cards[0].get("category") or "Venue"
         n = len(cards)
@@ -231,26 +262,40 @@ def short_line(out, profile=None):
             line += " for %d guests" % g
         return line if (area or g or noun) else ("Here it is" if n == 1 else "%d to look at" % n)
     s = clip(first_sentence(text))
-    if not s or _BANNED.search(s):
+    if not s or _BANNED.search(s) or s.startswith("Here are picks"):   # free fallback text with nothing shown
         return NEUTRAL_WIDGET if out.get("widgets") else NEUTRAL_TEXT
     return s
 
 
 def clip(s, n=MAX_WORDS):
-    """At most n words; a cut sentence ends with an ellipsis."""
+    """At most n words; a cut sentence ends with an ellipsis. A cut never leaves an unfinished parenthesis or a price
+    without its source: that clause is dropped, and '' (= the neutral line) when too little is left."""
     w = str(s or "").split()
-    return " ".join(w) if len(w) <= n else " ".join(w[:n]).rstrip(",;:-") + "…"
+    if len(w) <= n:
+        return " ".join(w)
+    t = " ".join(w[:n])
+    if t.count("(") > t.count(")"):
+        t = t[:t.rfind("(")]
+    if "$" in t:
+        d = t.find("$")
+        cut = max(t.rfind(", ", 0, d), t.rfind("; ", 0, d), t.rfind(" - ", 0, d))
+        t = t[:cut] if cut > 0 else ""
+    t = t.rstrip(" ,;:-")
+    return t + "\u2026" if len(t.split()) >= 4 else ""
 
 
-_REOPEN_KEEP = re.compile(r"we don.t have|we still don.t have|\boutside\b", re.I)
+_REOPEN_KEEP = re.compile(r"\bwe (?:still )?don['\u2019]t have\b", re.I)
 
 
 def reopen_line(text):
-    """A turn stored before the switch (no lookup kept with it): a 'We don't have X' / 'outside X' first sentence is the
-    line, since the card can't say it. None = shape as usual."""
+    """A turn stored before the switch (no lookup kept with it): 'outside X, where you're planning' anywhere in it, or a
+    'We don't have ...' first sentence, is the line, since the card can't say it. None = shape as usual."""
+    m = _OUTSIDE.search(" ".join(str(text or "").split()))
+    if m:
+        return "Outside %s, where you're planning" % m.group(1)
     s = first_sentence(text)
     if s and _REOPEN_KEEP.search(s) and not _BANNED.search(s):
-        return clip(s)
+        return clip(s) or None
     return None
 
 

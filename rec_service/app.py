@@ -1878,13 +1878,16 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
             prof = xano.profile_of(user)
         except Exception:
             prof = {}
+        last_f = {}
         for t in turns:
             lk, vr = t.pop("lookup", None), t.pop("venue_request", None)
+            if t.get("role") == "assistant" and t.get("filters"):
+                last_f = t["filters"]      # a "Show 3 more" turn reads the latest search before it, as the live tap does
             if t.get("role") == "assistant" and (t.get("text") or t.get("cards")) and not any(
                     isinstance(w, dict) and w.get("type") in (whole_wedding.PROPOSAL, "ww_context") for w in t.get("widgets") or []):
                 got = photo_first.apply({"text": t.get("text") or "", "cards": t.get("cards") or [], "lookup": lk,
                                          "venue_request": vr, "widgets": t.get("widgets") or [],
-                                         "search_filters": t.get("filters") or {}, "price_locked": not access}, lvl, prof,
+                                         "search_filters": t.get("filters") or last_f, "price_locked": not access}, lvl, prof,
                                         reopened=True)
                 t.update({k: got[k] for k in ("text", "cards", "photo_first", "understood")})
                 if got.get("not_found"):
@@ -1950,6 +1953,7 @@ def _show_more(user, body, background, tracker):
         return _stopped("refine", paid, access, rows, feedback_given, chat_id=chat["id"])
     reply = _more_reply(history, access)
     picks, chips, text = reply["cards"], reply["chips"], reply["text"]
+    filters = _active_filters(history)
     xano.log_usage(dict(base, status="ok", counted_as_free=counted_free, model="none", input_tokens=0,
                         cache_read_tokens=0, cache_write_tokens=0, output_tokens=0, tool_calls=0,
                         cost_usd=0, latency_ms=0))
@@ -1962,7 +1966,9 @@ def _show_more(user, body, background, tracker):
 
     def persist():   # same order as a typed question: user turn, assistant turn, bump the chat
         xano.add_message(chat["id"], "user", "Show 3 more")
-        xano.add_message(chat["id"], "assistant", text, [dict(c, via_more=True) for c in picks], chips)
+        # REC_PHOTO_FIRST: the batch keeps its search's filters, so a reopened chat names the same place and guests
+        meta = [{"meta": "search", "filters": filters}] if config.PHOTO_FIRST and filters else []
+        xano.add_message(chat["id"], "assistant", text, [dict(c, via_more=True) for c in picks] + meta, chips)
         xano.touch_chat(chat)
         sheet_log.event(user, "Tapped Show more", "Show 3 more", text, chat["id"], picks)
     background.add_task(persist)
@@ -1971,7 +1977,7 @@ def _show_more(user, body, background, tracker):
                more_available=left if left >= agent.MORE_STEP else 0, widgets=[], questions=[], upsell_prompt=None,
                **_counters("refine", paid, rows, counted_free, feedback_given, access))
     if config.PHOTO_FIRST:   # the line names the search's own place and guests (server-side state, never sent)
-        res = _pf(dict(res, search_filters=_active_filters(history)), user)
+        res = _pf(dict(res, search_filters=filters), user)
         res.pop("search_filters", None)
     return res
 
