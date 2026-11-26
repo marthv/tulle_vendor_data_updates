@@ -6883,6 +6883,13 @@
       ],
       "source": "xano",
       "ref": "task11"
+    },
+    {
+      "date": "2026-11-26",
+      "what": "Tulle Bot merge cards: MERGE_CARD_FAST on (push a39e769 14:41 UTC, switch on 14:42 UTC): a named merge card counts PDFs with one filtered read; price checks wait 20/30 s per read, 90 s in all, on card and Approve. Internal tool, couples see nothing.",
+      "affects": "internal duplicate-merge flow only",
+      "source": "github+railway",
+      "ref": "tulle_vendor_data_updates a39e769; tulle-slack-qa MERGE_CARD_FAST=1"
     }
   ]
 }
