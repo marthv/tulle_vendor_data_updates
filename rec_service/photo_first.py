@@ -10,6 +10,9 @@ When on, app._pf() passes each answer through apply():
               Members (level full) also get `price_line` {text, source} on VENUE cards: one line naming where it came
               from - "Rental $7,000 on a peak-season Saturday, from its PDF" or "About $38,100 for 100 guests, an estimate". Light: the rounded
               band, marked as an estimate. Free: no price line, and no price digit anywhere. Other vendors: no price line.
+              A rental only some couples pay (conditional_rates.json, from stored table-37 Notes): "Rental $X ... for
+              county residents ($Y otherwise), from its PDF" when both are stored, else no price line.
+              Free, no cards, a price question or a cost widget held back: UPGRADE_LINE + the existing upgrade card.
   understood  {place, guests, date} - what we searched with, as chips the couple can change.
   not_found   {name, question, chip} when we don't hold the venue they named.
 Nothing is ranked or judged: no best / lowest / cheapest words are added here.
@@ -19,6 +22,8 @@ lines (Rental, Food and drink, Ceremony, Service charge - the design's "Admin fe
 everyone else only WHERE each part is ("In the PDF" / "Not in this PDF") with no digits.
 Pure except build_cost_lines (xano is passed in)."""
 import contextvars
+import json
+import os
 import re
 
 import config
@@ -50,7 +55,11 @@ def strip(out):
             res[k] = strip_cards(res[k])
     return res
 
-FREE_HIDDEN_WIDGETS = ("cost_estimate",)   # the "typical cost" widget (cost_tools estimate_cost): members only here
+# Owner ruling T0-53 (2026-11-26): no dollar figure reaches a free couple anywhere in photo-first. The cost tools' widgets
+# carry figures (market tiers, their own budget split, their own quotes): members only here. Their place: UPGRADE_LINE + the
+# product's existing upgrade card (upsell.prompt(): "See the exact prices" / "See plans").
+FREE_HIDDEN_WIDGETS = ("cost_estimate", "budget_split", "budget_status", "venue_compare")
+UPGRADE_LINE = "See real prices with full access"
 COST_TOOL = "cost_lines"
 COST_TYPE = "cost_lines"
 MAX_WORDS = 15
@@ -149,12 +158,42 @@ def _usd(n):
     return "$" + format(int(round(n)), ",")
 
 
+# Rates only some couples pay (owner ruling T0-54, 2026-11-26): V2118 Newton White Mansion's stored $7,480 is the county
+# residents' rate; its PDF's $9,724 for everyone else is stored nowhere. conditional_rates.json is built OFFLINE from the
+# stored table-37 Notes by build_conditional_rates.py ({vendor_id: {fee: {kind, condition?, other?}}}); nothing reads a PDF.
+_COND = None
+
+
+def conditional_rate(vendor_id, fee):
+    """The stored condition on this venue's rental fee, or None (the rate everyone pays, or not one we found)."""
+    global _COND
+    if _COND is None:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "conditional_rates.json"), encoding="utf-8") as f:
+                _COND = json.load(f)
+        except (OSError, ValueError) as e:
+            print("conditional_rates.json not read:", repr(e)[:160])
+            _COND = {}
+    if not isinstance(fee, (int, float)) or fee <= 0:
+        return None
+    return (_COND.get(str(vendor_id or "")) or {}).get(str(int(round(fee))))
+
+
 def price_line(card, level):
     """{"text", "source"} or None. source: "pdf" | "estimate". Free: always None. Venues only."""
     if level == "free" or card.get("price_locked") or (card.get("category") or "Venue") != "Venue":
         return None
     if level == "full":
         fee = (card.get("venue_fee_range") or [None])[0]
+        cond = conditional_rate(card.get("vendor_id"), fee)
+        if cond:
+            # Both rates and the condition stored: say both. Otherwise (only the conditional rate, a business rate, or a
+            # condition we can't tell apart): no line at all - the estimate is built on that same rental.
+            if cond.get("kind") == "both" and cond.get("condition") and cond.get("other") and \
+                    card.get("rental_source") == "pdf" and card.get("rental_when") == "peak_saturday":
+                return {"text": "Rental %s on a peak-season Saturday for %s (%s otherwise), from its PDF"
+                        % (_usd(fee), cond["condition"], _usd(cond["other"])), "source": "pdf"}
+            return None
         # The PDF's rental only with the date it is for: the panel quotes ONE scenario, a peak-season Saturday, and a
         # venue's other days cost less (QA round 5: V82 "Rental $6,800" where the PDF says "$3,900 to $6,800" Fri-Sun).
         # We don't hold the low end per card, so the line says which end it is; without that, no rental line.
@@ -481,9 +520,32 @@ def understood(out, profile=None):
     return u
 
 
+def price_answer(text):
+    """An answer about price for a free couple: price talk, a figure, or the plan line the price-question rule adds."""
+    t = str(text or "")
+    return free_mode.has_price_talk(t) or bool(_PRICEY.search(t)) or bool(re.search(r"\bForever\b", t)) \
+        or t.strip() == UPGRADE_LINE or free_mode.FALLBACK_TEXT in t or free_mode.PDF_STEER in t
+
+
+def upgrade_prompt():
+    """The product's existing upgrade card (upsell.prompt: "See the exact prices", CTA "See plans"), for a couple with no plan."""
+    import upsell
+    return upsell.prompt(has_plan=False)
+
+
+def tool_upgrade(name, chips=()):
+    """POST /rec/tool for a free couple on a photo-first page (T0-53): a cost tool whose widget carries figures is not run;
+    the answer is the upgrade line and the existing upgrade card. Chips: only ones with no price talk."""
+    return {"tool": name, "text": UPGRADE_LINE, "widgets": [], "photo_first": True, "upsell_prompt": upgrade_prompt(),
+            "chips": [c for c in chips or [] if not price_answer(c if isinstance(c, str) else json.dumps(c))]}
+
+
 def _free_safe(text):
     """A line a free couple may read: no price talk; guest counts are fine."""
     return not free_mode.has_price_talk(text or "")
+
+
+_PRICED_FOR = re.compile(r"\bfor ([\d,]+) guests\b")
 
 
 def apply(out, level, profile=None, reopened=False):
@@ -492,9 +554,10 @@ def apply(out, level, profile=None, reopened=False):
     if not isinstance(out, dict) or out.get("stopped"):
         return out
     free = level == "free" or bool(out.get("price_locked"))
-    if free and any(isinstance(w, dict) and w.get("type") in FREE_HIDDEN_WIDGETS for w in out.get("widgets") or []):
-        # Owner ruling 2026-11-26: in a photo-first answer a free couple does not see the "typical cost" widget (market-
-        # average dollar tiers, e.g. msgs 6686 / 6031). Members, and every answer with the switch off, keep it.
+    hid = free and any(isinstance(w, dict) and w.get("type") in FREE_HIDDEN_WIDGETS for w in out.get("widgets") or [])
+    if hid:
+        # Owner rulings 2026-11-26 / T0-53: in a photo-first answer a free couple does not see a cost widget (market-
+        # average dollar tiers, e.g. msgs 6686 / 6031; their budget split). Members, and every answer with the switch off, keep it.
         out = dict(out, widgets=[w for w in out["widgets"] if not (isinstance(w, dict) and w.get("type") in FREE_HIDDEN_WIDGETS)])
     legacy = reopened and not out.get("pf_stored")      # stored before the switch: no structural marks with it
     shown = [c.get("name") for c in out.get("cards") or [] if isinstance(c, dict)]
@@ -502,6 +565,14 @@ def apply(out, level, profile=None, reopened=False):
         or short_line(out, profile, legacy=legacy)
     if (free and not _free_safe(line)) or _BANNED.search(line) or _PRICEY.search(line):
         line = "Here are some to look at" if out.get("cards") else NEUTRAL_TEXT
+    # T0-53: a free couple who asked what something costs (a cost widget held back, the price-question card, or an answer
+    # about price) gets the upgrade line and the upgrade card, not "Ask about a venue or a town to see photos". Only in
+    # place of that non-answer: a "We don't have X." or any other line of its own stays.
+    named = bool(out.get("lookup") or out.get("unmatched_name")) or line.startswith(("We don't have", "Outside "))
+    upgrade = free and not out.get("cards") and not named and (hid or bool(out.get("upsell_prompt")) or (
+        price_answer(out.get("text")) and (line in (NEUTRAL_TEXT, NEUTRAL_WIDGET, UPGRADE_LINE) or "Forever" in line)))
+    if upgrade:
+        line = UPGRADE_LINE
     cards = []
     for c in out.get("cards") or []:
         if not isinstance(c, dict):
@@ -512,9 +583,20 @@ def apply(out, level, profile=None, reopened=False):
         if pl:
             c2["price_line"] = pl
         cards.append(c2)
+    # One guest count on screen (QA round 6, row 4562 / msg 5068: "3 near New York for 300 guests" over member lines "About
+    # $141,200 for 250 guests" - Show 3 more's stored estimates were priced at 250). Re-pricing at the headline's count needs
+    # every venue's panel again; the cards' figures are what we hold. So when a shown price line is for another count, the
+    # headline names none ("3 near New York"); each line still names the count ITS figure is for. Free: no price lines.
+    g = _guests(out, profile)
+    if g and any(_PRICED_FOR.search(str((c.get("price_line") or {}).get("text") or "")) and
+                 _int(_PRICED_FOR.search(str(c["price_line"]["text"])).group(1).replace(",", "")) != g
+                 for c in cards if isinstance(c, dict)):
+        line = line.replace(" for %d guests" % g, "")
     # The full answer is not sent (QA 2026-11-26: today's paragraph judges price in 13 of 30 member answers); it is still
     # what is stored and what the model reads back.
     res = dict(out, text=line, cards=cards, photo_first=True, understood=understood(out, profile))
+    if upgrade:
+        res["upsell_prompt"] = out.get("upsell_prompt") or upgrade_prompt()
     res.pop("pf_stored", None)
     res.pop("last_user", None)
     lk, vr = out.get("lookup") or {}, out.get("venue_request")
@@ -576,6 +658,12 @@ def build_cost_lines(xano, token, user, vendor_id, *, access, guests=0, default_
         return lock_cost(dict(base, room=None, lines=_where_rows(p)))
     c = compare._cost(e, inp)
     by = {l["key"]: l for l in c["lines"]}
+    # A rental only some couples pay (T0-54): both rates stored -> the rental row says both and the total says whose it is;
+    # anything less -> the words-only version (the total is built on that rental).
+    rent = by.get("rental") or {}
+    cond = conditional_rate(vid, rent.get("amount")) if rent.get("source") == "pdf" else None
+    if cond and not (cond.get("kind") == "both" and cond.get("condition") and cond.get("other")):
+        return lock_cost(dict(base, room=None, lines=_where_rows(p)))
     lines = []
     for key, label, icon in _COST_ROWS:
         l = by.get(key)
@@ -589,10 +677,14 @@ def build_cost_lines(xano, token, user, vendor_id, *, access, guests=0, default_
             row["note"] = "Included" + (", from the PDF" if src == "pdf" else "")
         if key == "service" and l.get("pct"):
             row["pct"] = l["pct"]
+        if key == "rental" and cond:
+            row["note"] = "For %s (%s otherwise), from the PDF" % (cond["condition"], _usd(cond["other"]))
         lines.append(row)
+    note = "%s%d guests, before tax and tip" % ((e.get("space") + ", ") if e.get("space") else "", g)
+    if cond:
+        note += ", with the rental for %s" % cond["condition"]
     return dict(base, level="full", room=e.get("space") or None, lines=lines, total=c["total"],
-                estimated=[r["label"] for r in lines if r["source"] == "estimate" and r["amount"]],
-                total_note="%s%d guests, before tax and tip" % ((e.get("space") + ", ") if e.get("space") else "", g))
+                estimated=[r["label"] for r in lines if r["source"] == "estimate" and r["amount"]], total_note=note)
 
 
 def cost_summary(w):

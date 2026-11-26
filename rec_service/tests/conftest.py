@@ -80,3 +80,12 @@ def _plan_ab_off(monkeypatch):
     import plan
     monkeypatch.setattr(plan, "PLAN_AB_PCT", 0)
     monkeypatch.setattr(plan, "ALWAYS_PLAN", set())
+
+
+@pytest.fixture(autouse=True)
+def _listed_vendor_follows_listed_venue(monkeypatch):
+    # REC_COMPARE_ANY_CATEGORY (2026-11-26) makes the pick / compare read xano.listed_vendor instead of listed_venue. A test
+    # written before it mocks only listed_venue, so with the switch on it reached the real Xano (QA round 6: the
+    # 8b37c6c test_assistant_1125 pick tests, "XANO_METADATA_TOKEN not set" -> 502). Default: listed_vendor asks the
+    # test's listed_venue (venues only, as those tests expect); a test that covers other categories mocks it itself.
+    monkeypatch.setattr(xano, "listed_vendor", lambda vendor_id: xano.listed_venue(vendor_id))

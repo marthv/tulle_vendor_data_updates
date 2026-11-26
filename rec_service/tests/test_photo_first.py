@@ -573,9 +573,19 @@ def test_clip_never_cuts_inside_a_price_or_parenthesis():
         == "Most venues in the area ask for a deposit\u2026"
 
 
-def test_free_fallback_with_nothing_shown_is_neutral():
+def test_free_fallback_with_nothing_shown_is_the_upgrade_line():
+    # T0-53: free_mode puts FALLBACK_TEXT where the whole answer was price talk; with no cards that answer was about price,
+    # so the couple gets the upgrade line and the existing upgrade card (round 5: the neutral line, "not an answer").
     res = free_mode.sanitize_result(answer(cards=[], text=free_mode.FALLBACK_TEXT))
-    assert pf.apply(res, "free", {})["text"] == pf.NEUTRAL_TEXT
+    out = pf.apply(res, "free", {})
+    assert out["text"] == pf.UPGRADE_LINE and out["upsell_prompt"]["cta"] == "See plans"
+
+
+def test_free_no_card_line_that_is_not_about_price_stays_neutral():
+    for text, line in (("Tell me which town you're planning in.", "Tell me which town you're planning in."),
+                       ("Hello there!", pf.NEUTRAL_TEXT)):
+        out = pf.apply(answer(cards=[], text=text, paid=False, has_access=False), "free", {})
+        assert out["text"] == line and not out.get("upsell_prompt")
 
 
 def test_headline_guests_are_the_searchs_and_the_price_line_names_its_own():
@@ -585,7 +595,9 @@ def test_headline_guests_are_the_searchs_and_the_price_line_names_its_own():
                    address="1 Main St, Philadelphia, PA 19107") for i in range(3)]
     f = {"states": ["Pennsylvania"], "city": "Philadelphia", "guests": 200}
     out = pf.apply(answer(cards=cards, search_filters=f), "full", {})
-    assert out["text"] == "3 in Philadelphia for 200 guests" and out["understood"]["guests"] == 200
+    # QA round 6 (row 4562): a headline count the member's figures don't use is not said - "3 in Philadelphia"; the chip
+    # keeps what was searched and each price line names its own count.
+    assert out["text"] == "3 in Philadelphia" and out["understood"]["guests"] == 200
     assert "for 250 guests" in out["cards"][0]["price_line"]["text"]
 
 
@@ -847,7 +859,9 @@ def test_r5_member_and_free_lines_agree_on_the_guest_count():
     m = pf.apply(answer(cards=full, search_filters=f), "full", {"Wedding_Guest_Count": 100})
     fr = pf.apply(answer(cards=free, search_filters=f, price_locked=True, paid=False, has_access=False), "free",
                   {"Wedding_Guest_Count": 100})
-    assert m["text"] == fr["text"] == "2 near Atlanta for 200 guests"
+    # QA round 6: the member's figures are for 100, so the member headline names no count (it can't claim 200 over lines
+    # for 100); the free view has no figures, so its headline keeps the search's count. Both chips say what was searched.
+    assert m["text"] == "2 near Atlanta" and fr["text"] == "2 near Atlanta for 200 guests"
     assert m["understood"]["guests"] == fr["understood"]["guests"] == 200
     # the member's price line is honest about the count ITS figure is for
     assert all("for 100 guests" in c["price_line"]["text"] and "estimate" in c["price_line"]["text"] for c in m["cards"])
