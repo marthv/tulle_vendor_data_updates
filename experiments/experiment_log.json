@@ -6328,7 +6328,7 @@
       "bucket": "planner_engagement",
       "in_rotation": false,
       "tldr": "Planner answers with venue cards lead with a bigger first photo and one short line instead of a paragraph; members keep one labelled price line (from the PDF or an estimate), free couples see 0 price digits. Question: with far fewer words, do couples still open pricing PDFs and keep asking?",
-      "what_changed": "rec-engine REC_PHOTO_FIRST=1 (rec_service/photo_first.py) + ww-planner-chat photo-first prop: first photo bigger (broken ones skipped, no-photo placeholder labelled), seats line, one line of text (pass bar: median <= 20 words), members one PDF-sourced or labelled-estimate price line, free couples 0 price digits (market-average tiers hidden, T0-52/53), PDF nudge stays until that venue's PDF is opened; no all-inclusive, guest-minimum or distance labels; no rental line (T0-55) and no per-card estimate on 'Show 3 more' (T0-56). Arm 'photo_first' only; 50/50 by account via REC_PHOTO_FIRST_AB_PCT.",
+      "what_changed": "rec-engine REC_PHOTO_FIRST=1 (rec_service/photo_first.py) + ww-planner-chat photo-first prop: first photo bigger (broken ones skipped, no-photo placeholder labelled), seats line, one line of text (pass bar: median <= 20 words), members one PDF-sourced or labelled-estimate price line, free couples 0 price digits (market-average tiers hidden, T0-52/53), PDF nudge stays until that venue's PDF is opened; no all-inclusive, guest-minimum or distance labels; no rental line (T0-55) and no per-card estimate on 'Show 3 more' (T0-56). 100% of couples (owner 2026-11-27: 'just do 100% and call it a sequential test, and accept some data dirtiness'): REC_PHOTO_FIRST_AB_PCT=100 with the photoFirst prop on, from the production publish.",
       "surfaces": [
         "rec-engine",
         "weweb:planner",
@@ -6351,7 +6351,7 @@
       },
       "hypothesis": "If Planner answers lead with a bigger photo and one short line instead of 50-110 words, then couples open a pricing PDF from the Planner within 24 h at least as often as today (31%) and ask a second question no less often, because the photo and the PDF nudge carry the answer and the extra words were mostly repeats (80% of words repeat or could be drawn).",
       "tests": "Do photo-first answers keep PDF opens and follow-up questions at today's level while cutting the words?",
-      "goal": "Bar written BEFORE launch (2026-11-27, from T4-7 / DECISION_CARD): this is a does-it-hurt test, not a win test. KEEP photo-first on if, at about 125 couples per arm (about 4-5 weeks at ~60 couples a week), (1) PDF opened from a Planner card within 24 h of the couple's first Planner use in the window is not 16+ points below control (baseline 31%, 42 of 134; smaller drops can't be seen at this size) and (2) a second Planner answer within 1 h of the first is not more than 20% (relative) below control. STOP early (REC_PHOTO_FIRST_AB_PCT=0) the same day if PDF opens are 16+ points below control at 125 per arm, or any free couple is shown a price digit. Otherwise (between the lines) keep running to max_days and call it inconclusive. Purchases watched only (too few to read per arm). Owner yes T4-7 (2026-11-25: build behind a flag, launch only after QA and when a slot is free) and 2026-11-27 ('keep the photo-first answers on').",
+      "goal": "Bar written BEFORE launch (2026-11-27). Sequential, does-it-hurt: KEEP photo-first if, over the first 28 days after the production publish vs the 14 days before, (1) PDF opened from a Planner card within 24 h of the couple's first Planner use is not 16+ points below the before-period rate (baseline 31%, 42 of 134) and (2) a second Planner answer within 1 h of the first is not more than 20% (relative) below the before period. TURN OFF the same day (photoFirst prop off / REC_PHOTO_FIRST_AB_PCT=0) if any free couple is shown a venue price digit, or if after 14 days PDF opens are 16+ points below before. Confounded by other launches in the same publish (see assignment.note): a drop is a reason to look, not proof. Owner yes T4-7 (2026-11-25) and 2026-11-27 ('keep the photo-first answers on'; '100%, sequential test').",
       "metric": {
         "key": "planner_pdf_open_rate",
         "params": {
@@ -6384,11 +6384,18 @@
       ],
       "guardrail": "PDF opens (31% baseline) not down 16+ points at 125 per arm (stop rule); second answer within 1 h not down 20%+; free couples 0 price digits; purchases watched only",
       "assignment": {
-        "type": "split",
-        "rule": "hash_pct",
-        "salt": "photo-first-2026-11",
-        "pct": 50,
-        "note": "Rule and salt checked against the shipped split code (pf-split-1127 5330849, rec_service/config.py:365-367 and photo_first.arm): switch REC_PHOTO_FIRST_AB_PCT, salt REC_PHOTO_FIRST_AB_SALT default 'photo-first-2026-11', arm 'photo_first' when int(sha256('<salt>:<user_id>')[:8], 16) % 100 < pct (same shape as compare.arm and the engine's hash_bucket). Internal testers in REC_PHOTO_FIRST_USER_IDS are always put in the photo_first arm: exclude them from the read. The arm only applies when the page asks (?photo_first=1); photo_first-arm couples on a surface that doesn't ask get control answers, so confirm the Planner page and the bubble both send it before launch, or read only the surfaces that do. Independent of the compare and context-first splits. Arm in the readout: assign each user's arm from the SERVER's rec_* Mixpanel events, which carry pf_arm (rec_service xano.py mp_track). Do NOT use the component's rec_page_viewed or rec_home_shown to assign arms: they fire before /rec/status answers and carry no pf_arm."
+        "type": "pre_post",
+        "pre": [
+          "2026-11-20",
+          "2026-12-03"
+        ],
+        "post_start": "2026-12-04T15:00Z",
+        "note": "Sequential (before/after), owner 2026-11-27, replacing the planned 50/50 (~60 couples/week: a 50/50 could only see a 16+ point drop after 4-5 weeks). PROVISIONAL dates: pre = the 14 days before the production publish, post_start = the publish time; reset to the real publish when it ships. Data dirtiness accepted: the same publish ships onboarding, Compare (100%), the Assistant rename and the PDF-limit popup, and December is wedding-planning season, so a before/after change cannot be credited to photo-first alone.",
+        "arm_rule": {
+          "rule": "hash_pct",
+          "salt": "photo-first-2026-11",
+          "live_pct": 100
+        }
       },
       "decision_rule": {
         "ship_p": 0.9,
