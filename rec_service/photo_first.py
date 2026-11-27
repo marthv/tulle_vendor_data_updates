@@ -512,9 +512,34 @@ def _free_safe(text):
 _PRICED_FOR = re.compile(r"\bfor ([\d,]+) guests\b")
 
 
-def apply(out, level, profile=None, reopened=False):
+def today_shows_price(card, level, card_totals=False):
+    """Owner ruling T0-56 (2026-11-26): on a "Show 3 more" card photo-first shows a price line only when today's
+    (switch-off) card shows that same figure. Today's card can show it in three places: the per-card total (REC_CARD_TOTALS,
+    `card_totals` = the /rec/status flag for this couple), the band line (light: price_band, hidden when the reason quotes a
+    figure) and the code-written reason (agent.why_lines falls back to the estimate sentence when there is no rental range)."""
+    if level == "full":
+        tot = card.get("estimate_total")
+        if not (isinstance(tot, (int, float)) and tot > 0):
+            return False
+        return bool(card_totals) or _usd(tot) in str(card.get("reason") or "")
+    if level == "light":
+        b = card.get("price_band") or {}
+        return bool(b.get("label")) and _num(b.get("high")) > 0 and not re.search(r"[$€£]\s?\d", str(card.get("reason") or ""))
+    return False
+
+
+def _num(x):
+    try:
+        return float(x or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def apply(out, level, profile=None, reopened=False, card_totals=False):
     """The photo-first version of one answer (a new dict; `out` itself is not changed, so what is stored is the full text).
-    reopened: a stored turn read back (chat_detail); one stored before the switch has no lookup with it."""
+    reopened: a stored turn read back (chat_detail); one stored before the switch has no lookup with it.
+    out["is_more"]: a "Show 3 more" answer (T0-56: a card's price line only when today's card shows that figure;
+    card_totals = REC_CARD_TOTALS on for this couple, as /rec/status reports it)."""
     if not isinstance(out, dict) or out.get("stopped"):
         return out
     free = level == "free" or bool(out.get("price_locked"))
@@ -544,6 +569,8 @@ def apply(out, level, profile=None, reopened=False):
             continue
         c2 = dict(c, facts=facts(c, free))
         pl = None if free else price_line(c, level)
+        if pl and out.get("is_more") and not today_shows_price(c, level, card_totals):
+            pl = None
         if pl:
             c2["price_line"] = pl
         cards.append(c2)
@@ -633,12 +660,22 @@ def build_cost_lines(xano, token, user, vendor_id, *, access, guests=0, default_
         if l.get("included"):
             row["included"] = True
             row["note"] = "Included" + (", from the PDF" if src == "pdf" else "")
+        elif key == "food" and l.get("minimum_applies"):
+            # QA round 8: held at the venue's minimum, worded as Compare words it ("minimum spend"; a PDF that gives only
+            # a minimum "may cost more", compare.differences / price_line)
+            row["note"] += ", minimum spend" + (", may cost more" if l.get("minimum_only") else "")
+            row["minimum_applies"] = True
+            if l.get("minimum_only"):
+                row["minimum_only"] = True
         if key == "service" and l.get("pct"):
             row["pct"] = l["pct"]
         lines.append(row)
-    return dict(base, level="full", room=e.get("space") or None, lines=lines, total=c["total"],
-                estimated=[r["label"] for r in lines if r["source"] == "estimate" and r["amount"]],
-                total_note="%s%d guests, before tax and tip" % ((e.get("space") + ", ") if e.get("space") else "", g))
+    est = [r["label"] for r in lines if r["source"] == "estimate" and r["amount"]]
+    # QA round 8: the total is marked the way Compare's total is (VenueCompare subLine): "food may be more" when the food
+    # is only the PDF's minimum, "est." when any row with an amount is an estimate.
+    marks = (", food may be more" if any(r.get("minimum_only") for r in lines) else "") + (", est." if est else "")
+    return dict(base, level="full", room=e.get("space") or None, lines=lines, total=c["total"], estimated=est,
+                total_note="%s%d guests, before tax and tip%s" % ((e.get("space") + ", ") if e.get("space") else "", g, marks))
 
 
 def cost_summary(w):

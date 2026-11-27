@@ -238,7 +238,12 @@ def _pf(out, user):
     except Exception:
         profile = {}
     level = "free" if (out.get("price_locked") or not out.get("has_access")) else _detail(out.get("paid"), True)
-    return photo_first.apply(out, level, profile)
+    return photo_first.apply(out, level, profile, card_totals=out.get("is_more") and _card_totals(user, level))
+
+
+def _card_totals(user, level):
+    """Today's per-card total on (the /rec/status card_totals rule): a full member, REC_CARD_TOTALS for them, entitled."""
+    return bool(level == "full" and config.on_for(config.CARD_TOTALS, (user or {}).get("id")) and xano.pi_entitled(user))
 
 
 def _is_ww(out):
@@ -1893,8 +1898,9 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
                 got = photo_first.apply({"text": t.get("text") or "", "cards": t.get("cards") or [], "lookup": lk,
                                          "venue_request": vr, "widgets": t.get("widgets") or [], "pf_stored": pm is not None,
                                          "unmatched_name": (pm or {}).get("unmatched_name"), "last_user": asked,
-                                         "search_filters": t.get("filters") or last_f, "price_locked": not access}, lvl, prof,
-                                        reopened=True)
+                                         "search_filters": t.get("filters") or last_f, "price_locked": not access,
+                                         "is_more": bool(t.get("is_more"))}, lvl, prof,
+                                        reopened=True, card_totals=bool(t.get("is_more")) and _card_totals(user, lvl))
                 t.update({k: got[k] for k in ("text", "cards", "photo_first", "understood", "widgets")})   # widgets: free hides "typical cost"
                 if got.get("upsell_prompt") and not access:   # T0-53: a reopened price answer keeps the upgrade card
                     t["upsell_prompt"] = got["upsell_prompt"]
@@ -1985,8 +1991,9 @@ def _show_more(user, body, background, tracker):
                more_available=left if left >= agent.MORE_STEP else 0, widgets=[], questions=[], upsell_prompt=None,
                **_counters("refine", paid, rows, counted_free, feedback_given, access))
     if config.PHOTO_FIRST:   # the line names the search's own place and guests (server-side state, never sent)
-        res = _pf(dict(res, search_filters=filters), user)
+        res = _pf(dict(res, search_filters=filters, is_more=True), user)   # is_more: T0-56, photo_first.today_shows_price
         res.pop("search_filters", None)
+        res.pop("is_more", None)
     return res
 
 
