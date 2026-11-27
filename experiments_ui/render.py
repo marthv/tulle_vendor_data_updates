@@ -35,6 +35,7 @@ NOTE_CALLS = ("ship", "revert", "shelve", "inconclusive", "keep_running", "resum
 NOTE_MAX_CHARS = 2000   # the engine refuses longer (notes.MAX_TEXT)
 SNAPSHOT_TOKEN = "/*__SNAPSHOT__*/null"
 THEME_TOKEN = "/*__THEME__*/null"
+FOCUS_TOKEN = "/*__FOCUS__*/null"
 THEMES = ("light", "sepia", "dark")
 DEFAULT_HEIGHT = 1150
 
@@ -70,14 +71,16 @@ def _template():
         return f.read()
 
 
-def build_html(snapshot, theme_mode=None):
-    """The tab page with the snapshot (and theme) injected."""
+def build_html(snapshot, theme_mode=None, focus=None):
+    """The tab page with the snapshot (and theme) injected. focus = experiment id to open (?exp= deep link)."""
     html = _template()
     theme = theme_mode if theme_mode in THEMES else None
     if SNAPSHOT_TOKEN not in html:
         raise RuntimeError("component/index.html is missing the snapshot placeholder")
     html = html.replace(SNAPSHOT_TOKEN, embed_json(snapshot if isinstance(snapshot, dict) else {}), 1)
     html = html.replace(THEME_TOKEN, embed_json(theme), 1)
+    if focus:
+        html = html.replace(FOCUS_TOKEN, embed_json(str(focus)), 1)
     return html
 
 
@@ -283,7 +286,7 @@ def _component():
 
 def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, theme_mode=None,
                               height=DEFAULT_HEIGHT, history_by_id=None, degraded_reason=None,
-                              on_note=None, author=None):
+                              on_note=None, author=None, focus=None):
     """Render the Experiments tab.
 
     snapshot_or_none   engine snapshot dict (FRAMEWORK section 5), or None
@@ -300,6 +303,7 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
     on_note            callable(exp_id, body) -> (ok, error) that saves a note (the engine's
                        POST /experiments/{id}/notes); None makes notes read-only
     author             name of the logged-in dash user, stamped on every note
+    focus              experiment id from a ?exp= deep link: that experiment opens on load
     """
     import streamlit as st
     import streamlit.components.v1 as components
@@ -320,7 +324,7 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
                                      + (prior[prior.index(" (engine import failed"):] if " (engine import failed" in prior else ""))
     if snap.get("exp_tab_v2") or _v2_on():
         from experiments_ui import cards
-        return cards.render(snap, theme_mode, on_note=on_note, author=author)
+        return cards.render(snap, theme_mode, on_note=on_note, author=author, focus=focus)
     if history_by_id:
         snap = attach_history(dict(snap), history_by_id)
     degraded = bool(snap.get("degraded"))
@@ -336,7 +340,8 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
                 why = ""
             value = _component()(snapshot=_clean(snap), theme=theme_mode if theme_mode in THEMES else None,
                                  can_write=can_write, write_note=why, note_results=dict(state),
-                                 sig=snapshot_sig(snap), key="tulle_experiments_tab", default=None,
+                                 sig=snapshot_sig(snap), focus=focus or None,
+                                 key="tulle_experiments_tab", default=None,
                                  height=int(height or DEFAULT_HEIGHT))
             if handle_note_value(value, on_note if can_write else None, author, state):
                 st.rerun()
@@ -345,7 +350,7 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
             if type(exc).__name__ in ("RerunException", "StopException"):
                 raise
     try:
-        html = build_html(snap, theme_mode)
+        html = build_html(snap, theme_mode, focus=focus)
     except Exception as exc:
         st.error(f"Experiments tab could not render: {type(exc).__name__}: {exc}")
         return

@@ -728,6 +728,7 @@ details.seven>summary:hover{color:var(--ink)}
 <script>
 window.__SNAPSHOT__ = /*__SNAPSHOT__*/null;
 window.__THEME__ = /*__THEME__*/null;
+window.__FOCUS__ = /*__FOCUS__*/null;
 </script>
 <script>
 (function(){
@@ -740,7 +741,7 @@ window.__THEME__ = /*__THEME__*/null;
    being saved) lives outside boot(). */
 var KEEP = {ST: null, openId: null, scroll: 0, drafts: {}, kind: {}, call: {}};
 var PENDING = {};          // note_id -> {exp_id, note}  optimistic notes not yet in the snapshot
-var CTX = {canWrite: false, writeNote: "", results: {}, inSt: false};
+var CTX = {canWrite: false, writeNote: "", results: {}, inSt: false, focus: null};
 var CUR = {};              // current boot's closeDrawer/drawer for the once-only document listeners
 function stSend(type, data){ try { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data || {}), "*"); } catch (err) {} }
 function freshNode(id){ var o = document.getElementById(id); var n = o.cloneNode(false); o.parentNode.replaceChild(n, o); return n; }
@@ -751,6 +752,7 @@ window.addEventListener("message", function(ev){
   CTX.inSt = true;
   var a = d.args || {};
   CTX.canWrite = !!a.can_write; CTX.writeNote = a.write_note || ""; CTX.results = a.note_results || {};
+  CTX.focus = a.focus ? String(a.focus) : null;   // ?exp= deep link from the dash URL
   var sig = String(a.sig || "") + "|" + JSON.stringify(CTX.results) + "|" + CTX.canWrite;
   if (sig === lastSig) { if (CUR.fitFrame) CUR.fitFrame(); return; }
   lastSig = sig;
@@ -2016,8 +2018,8 @@ if (!firstBoot && KEEP.openId) {
   // a re-render (note saved, dash rerun) keeps the drawer where it was
   openDrawer(KEEP.openId, null, true);
   try { drawer.querySelector(".dw-b").scrollTop = KEEP.scroll || 0; } catch (err) {}
-} else if (firstBoot && H.exp) {
-  openDrawer(H.exp);
+} else if (firstBoot && (H.exp || CTX.focus || window.__FOCUS__)) {
+  openDrawer(H.exp || CTX.focus || String(window.__FOCUS__));
   if (H.sec === "notes") setTimeout(function(){ var nn = drawer.querySelector(".notes"); if (nn) drawer.querySelector(".dw-b").scrollTop = nn.offsetTop - 70; }, 60);
   else if (H.sec) setTimeout(function(){ var sx = drawer.querySelectorAll(".ds")[+H.sec - 1]; if (sx) drawer.querySelector(".dw-b").scrollTop = sx.offsetTop - 70; }, 60);
 }
