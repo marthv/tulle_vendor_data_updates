@@ -22,7 +22,7 @@ def v2_entry(**over):
     """A complete framework_version 2 split-test entry, live 14 days on TODAY."""
     e = {
         "id": "EXP-2026-11-test-split", "name": "Test split", "status": "live", "tier": "ux",
-        "themes": ["planner"], "category": "Planner", "what_changed": "Button copy changed.",
+        "themes": ["planner"], "category": "Assistant", "what_changed": "Button copy changed.",
         "surfaces": ["weweb:planner"],
         "audience": {"segment": "free couples", "est_daily_exposed": 1000},
         "hypothesis": "If we change the copy, then clicks rise 20%, because it is clearer.",

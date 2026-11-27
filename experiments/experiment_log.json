@@ -354,7 +354,7 @@
         }
       ],
       "id": "EXP-2026-10-assistant-forever-beta",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Tulle Assistant beta: Forever members only",
       "status": "concluded",
       "themes": [
@@ -957,7 +957,7 @@
     },
     {
       "id": "EXP-2026-10-free-assistant",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Tulle Assistant free questions for free users",
       "status": "concluded",
       "themes": [
@@ -1522,7 +1522,7 @@
     },
     {
       "id": "EXP-2026-10-chat-cost-cards",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Cost cards inside Tulle Planner chat answers (estimate / split / compare / budget)",
       "status": "shipped",
       "themes": [
@@ -1616,7 +1616,7 @@
     },
     {
       "id": "EXP-2026-10-next-step-chips",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
       "status": "shelved",
       "themes": [
@@ -1707,7 +1707,7 @@
     },
     {
       "id": "EXP-2026-10-stop-progress",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Live progress labels + Stop button on planner answers",
       "status": "shipped",
       "themes": [
@@ -1797,7 +1797,7 @@
     },
     {
       "id": "EXP-2026-10-planner-name-lookup",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: instant venue lookup by name (no model)",
       "status": "shipped",
       "themes": [
@@ -1893,7 +1893,7 @@
     },
     {
       "id": "EXP-2026-10-planner-price-upsell",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: free users' price questions -> answer + PDF first + upgrade card (no refusal); no-views users get the card on the first answer",
       "status": "inconclusive",
       "themes": [
@@ -1973,7 +1973,7 @@
     },
     {
       "id": "EXP-2026-10-planner-profile-questions",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
       "status": "shelved",
       "themes": [
@@ -2062,7 +2062,7 @@
     },
     {
       "id": "EXP-2026-10-planner-listings",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: florists, hair & makeup, caterers, planners as listings (no prices)",
       "status": "shipped",
       "themes": [
@@ -2147,7 +2147,7 @@
     },
     {
       "id": "EXP-2026-10-planner-speed-v3",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner speed: pricing cache (1 h, tier-safe) + Railway search 50% + per-turn timing",
       "status": "shipped",
       "themes": [
@@ -2308,7 +2308,7 @@
     },
     {
       "id": "EXP-2026-10-planner-speed-2a",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner speed 2a: prefetch caches (benchmarks + saved cards) + Railway search 100% with breaker + reuse today's opening",
       "status": "shipped",
       "themes": [
@@ -2555,7 +2555,7 @@
     },
     {
       "id": "EXP-2026-11-planner-my-wedding-plan",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner 'My wedding' plan (launch to everyone, no holdout)",
       "status": "reverted",
       "themes": [
@@ -2763,7 +2763,7 @@
     },
     {
       "id": "EXP-2026-11-free-daily-question",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: free couples get 3 questions for life, then 1 free question a day (no accumulation)",
       "status": "shelved",
       "themes": [
@@ -3067,7 +3067,7 @@
     },
     {
       "id": "EXP-2026-11-ask-tulle-bubble",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "'Ask Tulle' floating Planner chat on Discovery (Map | Ask Tulle phone dock), Membership and My wedding; empty-results banner",
       "status": "inconclusive",
       "themes": [
@@ -3278,7 +3278,7 @@
     },
     {
       "id": "EXP-2026-11-planner-pdf-count-link",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner venue cards: centered 'N Pricing PDFs' link under the button",
       "status": "shipped",
       "themes": [
@@ -3367,7 +3367,7 @@
     },
     {
       "id": "EXP-2026-11-free-question-limit-note",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: clear 'free question used' note for free couples (pay for more, or come back tomorrow for one more)",
       "status": "shipped",
       "themes": [
@@ -3460,7 +3460,7 @@
     },
     {
       "id": "EXP-2026-11-quote-check-everyone",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner quote check open to every signed-in couple (was Forever only); 'Got a quote?' home card, one-tap check, 'Save this quote to My wedding'",
       "status": "shipped",
       "themes": [
@@ -3554,7 +3554,7 @@
     },
     {
       "id": "EXP-2026-11-planner-context-first",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner context-first 50/50 test: starter chips + preference questions first, 'Does X fit our N guests?' chip after venue lookups",
       "status": "live",
       "themes": [
@@ -3677,7 +3677,7 @@
     },
     {
       "id": "EXP-2026-11-whole-wedding-planner",
-      "category": "Planner",
+      "category": "Assistant",
       "what": "Planner 'Plan my wedding' (whole-wedding proposal) for every couple, no holdout",
       "status": "shipped",
       "themes": [
@@ -3899,7 +3899,7 @@
     },
     {
       "id": "EXP-2026-11-planner-venue-fixes",
-      "category": "Planner",
+      "category": "Assistant",
       "what": "Planner venue fixes for every couple, no holdout: did-you-mean + state hints (REC_DID_YOU_MEAN), non-venue text kept out of the name lookup (REC_LOOKUP_GUARD), vendor-page bubble knows 'this venue' (REC_PAGE_VENUE), fast lookups never limit-blocked or counted (REC_LOOKUP_NO_LIMIT), plus the venue lookup log (REC_VENUE_LOG, Xano table 91) to measure it",
       "status": "shipped",
       "themes": [
@@ -4001,7 +4001,7 @@
     },
     {
       "id": "EXP-2026-11-planner-open-week",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner open week: free couples 10 lifetime questions / 40 a day, looser gating",
       "status": "shelved",
       "themes": [
@@ -4072,7 +4072,7 @@
     },
     {
       "id": "EXP-2026-11-planner-open-ended-replies",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner open-ended replies: no closing question, no suggested-reply chips, no profile questions",
       "status": "inconclusive",
       "themes": [
@@ -4139,7 +4139,7 @@
     },
     {
       "id": "EXP-2026-11-planner-five-fixes",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner subscription-readiness fixes: dead ends, no Forever in openings, light price bands, florist pricing, returning-couple shortlist + date flex",
       "status": "inconclusive",
       "themes": [
@@ -4717,7 +4717,7 @@
     },
     {
       "id": "EXP-2026-11-estimate-card-whatif",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner estimate card what-if (guests + state on the card) + 'What will my wedding cost?' on the Planner home",
       "status": "shipped",
       "themes": [
@@ -4790,7 +4790,7 @@
     },
     {
       "id": "EXP-2026-11-ww-service-prices",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Plan my wedding: catering / hair & makeup / planner rows priced from the vendors' own PDFs",
       "status": "shipped",
       "themes": [
@@ -4866,7 +4866,7 @@
     },
     {
       "id": "EXP-2026-11-planner-home-screen",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner home screen: no automatic opening, blank start with starter questions",
       "status": "shelved",
       "themes": [
@@ -5309,7 +5309,7 @@
     },
     {
       "id": "EXP-2026-11-planner-next-step",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: 'Next for your wedding' suggestion back on, never the category just asked about",
       "status": "planned",
       "framework_version": 2,
@@ -5390,7 +5390,7 @@
     },
     {
       "id": "EXP-2026-11-free-budget-fit",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: free couples get in / about at / over your budget per venue (no figures)",
       "status": "live",
       "framework_version": 2,
@@ -5549,7 +5549,7 @@
     },
     {
       "id": "EXP-2026-11-planner-compare",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: compare 2-3 venues side by side, then save to My Wedding",
       "status": "planned",
       "framework_version": 2,
@@ -5913,7 +5913,7 @@
     },
     {
       "id": "EXP-2026-11-bubble-context-first",
-      "category": "Planner",
+      "category": "Assistant",
       "status": "planned",
       "framework_version": 2,
       "owner": "Vivek",
@@ -5986,7 +5986,7 @@
     },
     {
       "id": "EXP-2026-11-planner-links-q",
-      "category": "Planner",
+      "category": "Assistant",
       "status": "planned",
       "framework_version": 2,
       "owner": "Vivek",
@@ -6411,7 +6411,7 @@
     },
     {
       "id": "EXP-2026-12-photo-first",
-      "category": "Planner",
+      "category": "Assistant",
       "name": "Planner: photo-first answers (bigger photo, one short line, one labelled price line for members)",
       "status": "planned",
       "framework_version": 2,

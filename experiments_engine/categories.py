@@ -9,7 +9,7 @@ To add a category: add it here, assign it in experiments/experiment_log.json, ru
 from __future__ import annotations
 
 CATEGORIES = (
-    "Planner",
+    "Assistant",
     "Onboarding",
     "Pricing & payments",
     "Paywall & PDF limit",

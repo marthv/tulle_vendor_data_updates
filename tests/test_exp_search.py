@@ -43,11 +43,11 @@ def _block():
 ROWS = [
     {"id": "EXP-a-price-report", "name": "Tulle Price Report replaces the PI card", "category": "Price Report & PI card"},
     {"id": "EXP-b-only-tests", "name": "Alpha", "tests": "Does the zebra banner lift unlocks?", "category": "Paywall & PDF limit"},
-    {"id": "EXP-c-only-hyp", "name": "Beta", "hypothesis": "If couples see a giraffe, they stay", "category": "Planner"},
+    {"id": "EXP-c-only-hyp", "name": "Beta", "hypothesis": "If couples see a giraffe, they stay", "category": "Assistant"},
     {"id": "EXP-d-only-goal", "name": "Gamma", "goal": "More Okapi opens", "category": "Onboarding"},
-    {"id": "EXP-e-only-tldr", "name": "Delta", "tldr": "narwhal wins", "category": "Planner"},
-    {"id": "EXP-f-verdict-tldr", "name": "Epsilon", "verdict": {"tldr": "Quokka looks better"}, "category": "Planner"},
-    {"id": "EXP-g-unsearched", "name": "Zeta", "what_changed": "pangolin", "decision": "pangolin", "category": "Planner"},
+    {"id": "EXP-e-only-tldr", "name": "Delta", "tldr": "narwhal wins", "category": "Assistant"},
+    {"id": "EXP-f-verdict-tldr", "name": "Epsilon", "verdict": {"tldr": "Quokka looks better"}, "category": "Assistant"},
+    {"id": "EXP-g-unsearched", "name": "Zeta", "what_changed": "pangolin", "decision": "pangolin", "category": "Assistant"},
     {"id": "EXP-h-no-category", "name": "Planner photo test"},
     {"id": "EXP-2026-11-search-box-fit", "name": "Discovery search box", "category": "Search & Discovery"},
     {"id": "EXP-i-nulls", "name": None, "tests": None, "category": None},
@@ -67,11 +67,11 @@ CASES = [
     ("pangolin", [], []),                                                # what_changed / decision are not searched
     ("search-box", [], ["EXP-2026-11-search-box-fit"]),                  # id text
     ("exp-2026-11-search", [], ["EXP-2026-11-search-box-fit"]),
-    ("", ["Planner"], ["EXP-c-only-hyp", "EXP-e-only-tldr", "EXP-f-verdict-tldr", "EXP-g-unsearched"]),
-    ("", ["Planner", "Onboarding"], ["EXP-c-only-hyp", "EXP-d-only-goal", "EXP-e-only-tldr", "EXP-f-verdict-tldr",
+    ("", ["Assistant"], ["EXP-c-only-hyp", "EXP-e-only-tldr", "EXP-f-verdict-tldr", "EXP-g-unsearched"]),
+    ("", ["Assistant", "Onboarding"], ["EXP-c-only-hyp", "EXP-d-only-goal", "EXP-e-only-tldr", "EXP-f-verdict-tldr",
                                      "EXP-g-unsearched"]),               # multi-select = either category
     ("", ["Other"], ["EXP-h-no-category", "EXP-i-nulls"]),               # no category counts as Other
-    ("planner", ["Planner"], []),                                        # 'Planner photo test' is Other: AND, not OR
+    ("planner", ["Assistant"], []),                                        # 'Planner photo test' is Other: AND, not OR
     ("planner", ["Other"], ["EXP-h-no-category"]),
     ("giraffe", ["Onboarding"], []),
     ("", ["Growth & ads"], []),
@@ -82,7 +82,7 @@ const rows = %s, cases = %s;
 const out = cases.map(([q, cats]) => filterExps(rows, q, cats).map(r => r.id));
 // never throws on junk
 filterExps([null, 3, "x", {}], "a", []); filterExps(null, null, null); matchesSearch(undefined, "a", ["Other"]);
-out.push([filterActive({q: " ", cats: []}), filterActive({q: "a", cats: []}), filterActive({q: "", cats: ["Planner"]}), filterActive(null)]);
+out.push([filterActive({q: " ", cats: []}), filterActive({q: "a", cats: []}), filterActive({q: "", cats: ["Assistant"]}), filterActive(null)]);
 console.log(JSON.stringify(out));
 """
 
@@ -133,10 +133,10 @@ def test_every_entry_has_one_known_category():
 
 
 def test_category_problem():
-    assert problem({"category": "Planner"}) is None
+    assert problem({"category": "Assistant"}) is None
     assert "No category" in problem({})
     assert "No category" in problem({"category": ""})
-    assert "Unknown category" in problem({"category": "planner"})       # exact label, case matters
+    assert "Unknown category" in problem({"category": "assistant"})       # exact label, case matters
     assert problem(None)
 
 
@@ -173,9 +173,9 @@ def test_validate_fails_without_a_known_category(tmp_path, value):
 def test_attach_categories_and_row_fill():
     snap = render.attach_categories({"experiments": [{"id": "A"}], "decided": [{"id": "B", "category": "Other"}]})
     assert snap["categories"] == list(CATEGORIES)
-    snap = render.attach_plain_fields(snap, {"experiments": [{"id": "A", "category": "Planner", "tldr": "t"},
-                                                             {"id": "B", "category": "Planner"}]})
-    assert snap["experiments"][0]["category"] == "Planner" and snap["experiments"][0]["tldr"] == "t"
+    snap = render.attach_plain_fields(snap, {"experiments": [{"id": "A", "category": "Assistant", "tldr": "t"},
+                                                             {"id": "B", "category": "Assistant"}]})
+    assert snap["experiments"][0]["category"] == "Assistant" and snap["experiments"][0]["tldr"] == "t"
     assert snap["decided"][0]["category"] == "Other"                    # never overrides the engine
     assert render.attach_categories(None) is None
 
