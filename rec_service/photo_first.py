@@ -169,7 +169,7 @@ def price_line(card, level):
             t = ("About %s for %d guests before tax and tip, an estimate" % (_usd(round(tot, -2)), g) if g
                  else "About %s before tax and tip, an estimate" % _usd(round(tot, -2)))
             if "minimum spend" in str(card.get("estimate_label") or ""):   # the stored caveat stays
-                t += "; food at its minimum spend, may cost more"
+                t += "; food may be more"   # Compare's words for a food minimum-only total (VenueCompare subLine)
             return {"text": t, "source": "estimate"}
         # Photographers, bands, florists...: no price line (QA 2026-11-26: the stored starting price can be the wrong
         # package - V5338 $800 is an engagement session, the PDF's wedding coverage starts at $9,500). Their PDF has it.
@@ -661,9 +661,9 @@ def build_cost_lines(xano, token, user, vendor_id, *, access, guests=0, default_
             row["included"] = True
             row["note"] = "Included" + (", from the PDF" if src == "pdf" else "")
         elif key == "food" and l.get("minimum_applies"):
-            # QA round 8: held at the venue's minimum, worded as Compare words it ("minimum spend"; a PDF that gives only
-            # a minimum "may cost more", compare.differences / price_line)
-            row["note"] += ", minimum spend" + (", may cost more" if l.get("minimum_only") else "")
+            # QA round 8: held at the venue's minimum, in the Compare table's own words (VenueCompare part()): "minimum
+            # spend", or "minimum, may be more" when the PDF gives only a minimum
+            row["note"] += ", minimum, may be more" if l.get("minimum_only") else ", minimum spend"
             row["minimum_applies"] = True
             if l.get("minimum_only"):
                 row["minimum_only"] = True

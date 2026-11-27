@@ -96,7 +96,7 @@ def test_member_estimate_keeps_the_minimum_caveat():
     c = venue(rental_source="estimate", estimate_label="About $38,115 for 100 guests before tax and gratuity, with food at its "
                                                        "minimum spend (it may cost more)")
     t = pf.price_line(c, "full")["text"]
-    assert t == "About $38,100 for 100 guests before tax and tip, an estimate; food at its minimum spend, may cost more"
+    assert t == "About $38,100 for 100 guests before tax and tip, an estimate; food may be more"
 
 
 def test_member_estimate_says_before_tax_and_tip():

@@ -4,7 +4,8 @@ than today's Compare does for the same figures.
    Compare marks its total "est." when any row with an amount is an estimate (VenueCompare subLine / isEst), and
    "food may be more" when the food is only the PDF's minimum.
 2. A food row held at the venue's minimum (Pendry $50,000, Roundhouse $45,000) said only "From the PDF". Compare says
-   "minimum spend", and the server's Compare / card wording adds "may cost more" when the PDF gives only a minimum.
+   "minimum spend", or "minimum, may be more" when the PDF gives only a minimum (VenueCompare part()). One wording
+   throughout, the product's own: no "may cost more" anywhere in photo-first output.
 Real estimate.compute + compare._cost, no network. Each canary below fails on 4034f98."""
 import pathlib
 import sys
@@ -70,12 +71,12 @@ def test_canary_food_held_at_minimum_says_minimum_spend():
     assert w["total_note"] == "Ballroom, 100 guests, before tax and tip"     # a minimum that applies is not a floor
 
 
-def test_canary_food_only_a_minimum_says_may_cost_more(monkeypatch):
+def test_canary_food_only_a_minimum_says_may_be_more(monkeypatch):
     monkeypatch.setattr(config, "MIN_FOOD_ONLY", True)
     w = _w(MIN_ONLY, name="Roundhouse")
     f = _food(w)
     assert f["amount"] == 45000 and f["source"] == "pdf"
-    assert f["note"] == "From the PDF, minimum spend, may cost more"
+    assert f["note"] == "From the PDF, minimum, may be more"
     assert w["total_note"] == "Main Hall, 100 guests, before tax and tip, food may be more"
 
 
@@ -186,3 +187,15 @@ def test_reopened_show_more_turn_gets_the_same_rule(monkeypatch):
     r = TestClient(app.app).get(path.split("{")[0] + "3?photo_first=1", headers={"Authorization": "Bearer t"})
     turn = [t for t in r.json()["turns"] if t["role"] == "assistant"][-1]
     assert turn["cards"] and all("price_line" not in c for c in turn["cards"]), _j.dumps(turn)[:400]
+
+
+def test_canary_no_may_cost_more_anywhere_in_photo_first_output(monkeypatch):
+    # one wording, the product's: the member card line and the cost widget both use Compare's words
+    monkeypatch.setattr(config, "MIN_FOOD_ONLY", True)
+    w = _w(MIN_ONLY, name="Roundhouse")
+    c = venue("V1", rental_source="estimate", estimate_label="About $38,115 for 100 guests before tax and gratuity, with food "
+                                                            "at its minimum spend (it may cost more)")
+    out = pf.apply({"text": "x", "cards": [c], "search_filters": {"guests": 100}, "paid": True, "has_access": True}, "full", {})
+    texts = [l["note"] for l in w["lines"]] + [w["total_note"], out["cards"][0]["price_line"]["text"]]
+    assert not any("cost more" in t for t in texts), texts
+    assert out["cards"][0]["price_line"]["text"].endswith("; food may be more")
