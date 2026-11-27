@@ -461,6 +461,14 @@ def test_no_person_key_when_switch_is_off(monkeypatch):
 
 # --------------------------------------------------------------------------------------- 5 assignment and settings
 
+def _arm_rule(entry):
+    """The hash rule at 50%. Compare became a 100% before/after rollout (2026-11-27) and keeps its arm rule in
+    assignment.arm_rule (so the engine does not read it as a split); compare.arm still uses that salt."""
+    a = entry["assignment"]
+    r = a.get("arm_rule") or a
+    return {"type": "split", "rule": r["rule"], "salt": r["salt"], "pct": 50}
+
+
 def test_engine_arm_matches_shipped_code_for_20000_ids():
     with open(os.path.join(ROOT, "experiments", "experiment_log.json"), encoding="utf-8") as f:
         reg = {e["id"]: e for e in json.load(f)["experiments"]}
@@ -468,7 +476,7 @@ def test_engine_arm_matches_shipped_code_for_20000_ids():
     parity = reg["EXP-2026-11-planner-context-first"]["assignment"]          # component: id % 2 === 0 ? 'context'
     assert all((metrics.split_arm(i, parity) == "treatment") == (i % 2 == 0) for i in ids)
     for eid in ("EXP-2026-11-planner-compare", "EXP-2026-11-price-report-v2"):
-        a = reg[eid]["assignment"]
+        a = _arm_rule(reg[eid])
         for i in ids:
             h = int(hashlib.sha256(f"{a['salt']}:{i}".encode()).hexdigest()[:8], 16) % 100
             assert (metrics.split_arm(i, a) == "treatment") == (h < 50)
@@ -479,7 +487,7 @@ def test_engine_arm_matches_shipped_code_for_20000_ids():
     if got.returncode:
         pytest.skip("rec_service not importable here: " + got.stderr[-200:])
     salt, arms = got.stdout.split()
-    a = reg["EXP-2026-11-planner-compare"]["assignment"]
+    a = _arm_rule(reg["EXP-2026-11-planner-compare"])
     assert salt == a["salt"] and arms == "".join("1" if metrics.split_arm(i, a) == "treatment" else "0" for i in ids)
 
 

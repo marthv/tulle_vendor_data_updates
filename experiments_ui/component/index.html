@@ -1552,12 +1552,17 @@ function fourTimeline(e){
   var tail = left == null ? "" : left > 0 ? left + " day" + (left === 1 ? "" : "s") + " left" : left === 0 ? "decision due today" : (-left) + " day" + (left === -1 ? "" : "s") + " past the decision date";
   return "Launched " + fd(s, true) + " · " + dl + (dr != null ? " · " + dr + " day" + (dr === 1 ? "" : "s") + " running" : "") + (tail ? ", " + tail : "");
 }
+/* QA 2026-11-27: no raw event / engine names on the card. A metric label with a code-style token
+   (snake_case, ->) is left off (the "What's being tested" row says it in words); engine errors become one plain phrase. */
+var RAW_RE = /[a-z0-9]+_[a-z0-9_]+|->|\bcatalog\b|\bparam\b|\bxano\b|\bep\d+/i;
+function plainLabel(t){ t = String(t || "").trim(); return t && !RAW_RE.test(t) ? t : ""; }
+function plainWhy(e){ var w = noStartWhy(e); return RAW_RE.test(w) || /metric|runner|error|failed/i.test(w) ? "not measured automatically yet" : w; }
 function fourNumbers(e){
-  var m = metricOf(e), lbl = m.label ? '<div class="f4-m">' + esc(m.label) + '</div>' : "";
+  var m = metricOf(e), ml = plainLabel(m.label), lbl = ml ? '<div class="f4-m">' + esc(ml) + '</div>' : "";
   if (e.result_hidden) return lbl + '<div class="f4-none">' + esc(e.result_text || "Result hidden until its read date") + '</div>';
   if (atypeOf(e) === "rollout") return lbl + '<div class="f4-none">Rolled out to everyone, so there is no before/after comparison.</div>';
   var sp = beforeNow(e);
-  if (!sp.hasB && !sp.hasA) return lbl + '<div class="f4-none">' + (isDecidedRow(e) ? "No before/after numbers were recorded" : "No data yet: " + esc(noStartWhy(e))) + '</div>';
+  if (!sp.hasB && !sp.hasA) return lbl + '<div class="f4-none">' + (isDecidedRow(e) ? "No before/after numbers were recorded" : "No data yet: " + esc(plainWhy(e))) + '</div>';
   var side = function(label, has, val, cnt, extra){
     return '<span class="f4-arm"><span class="k">' + esc(label) + '</span> ' + (has ? '<b class="num">' + esc(val) + '</b>' + (cnt ? ' <span class="c num">(' + esc(cnt) + ')</span>' : "") : '<span class="c">no data yet</span>') + (extra ? ' <span class="c">' + esc(extra) + '</span>' : "") + '</span>';
   };

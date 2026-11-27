@@ -2,6 +2,10 @@
 
 Draws ``row["card"]`` from the snapshot (experiments_engine/v2_cards.py). It computes nothing and fetches nothing.
 Colour is used for one thing only: the health of the test (green / amber / red). Results and prices are plain ink.
+
+NOTE (2026-11-27): this EXP_TAB_V2 view does NOT have the owner's four-item layout (what's being tested / timeline /
+before vs after / conclusion) that component/index.html got in d8aa271. EXP_TAB_V2 is off in production; port that
+layout here before anyone switches EXP_TAB_V2 on, or the owner gets the old, busier view back.
 """
 from __future__ import annotations
 

@@ -5518,11 +5518,11 @@
         "params": {},
         "direction": "increase",
         "baseline": 0.03,
-        "baseline_note": "3% of the 141 couples who saw 2+ cards in a Planner answer saved one (sheet, 11-08..11-21; free phone 3% of 79, free desktop 0 of 29, paid phone 7% of 14, paid desktop 5% of 19). Baseline to re-measure for the 14 days before the publish, members only, same definition as the after window; mde_rel kept from the 11-22 3% -> 12% bar.",
+        "baseline_note": "3% of the 141 couples (free and paid) who saw 2+ cards in a Planner answer saved one (sheet, 11-08..11-21; free phone 3% of 79, free desktop 0 of 29, paid phone 7% of 14, paid desktop 5% of 19). This baseline is ALL couples; members alone were 2 of 33 (~6%). Re-measure both for the 14 days before the publish, same definitions as the after window.",
         "mde_rel": 3.0,
-        "label": "members: saved or picked 1+ venue within 24 h of an Assistant answer with venue cards (14 days before vs 14 days after the publish)"
+        "label": "all Planner couples who saw 2+ venue cards: saved 1+ venue within 24 h (14 days before vs 14 days after the publish)"
       },
-      "primary_metric": "Before/after, 14 days before the production publish vs 14 days after, unique couples, internal excluded (Mixpanel 3963130 + table 79): (1) free couples: Open pricing PDF taps per Assistant answer with venue cards - not lower after than before; (2) members: share who save (rec_vendor_saved saved=true) or pick (compare_picked) a venue within 24 h of an answer with venue cards - higher after than before. Not a test: other launches in the same publish (onboarding, the rename, the PDF-limit popup) also move these, so a change is a hint, not proof.",
+      "primary_metric": "Before/after, 14 days before the production publish vs 14 days after, unique couples, internal excluded (Mixpanel 3963130 + table 79): (1) free couples: Open pricing PDF taps per Assistant answer with venue cards - not lower after than before; (2) all couples (members also shown on their own, baseline ~6%, 2 of 33): share who save (rec_vendor_saved saved=true) or pick (compare_picked) a venue within 24 h of an answer with venue cards - higher after than before. Not a test: other launches in the same publish (onboarding, the rename, the PDF-limit popup) also move these, so a change is a hint, not proof.",
       "guardrails": [
         {
           "key": "planner_pdf_open_rate",
@@ -5537,7 +5537,7 @@
           "max_drop_rel": 0.3
         }
       ],
-      "guardrail": "PDF opens (27% baseline) not down 10+ points at 4 weeks; purchases watched only (too few to test)",
+      "guardrail": "PDF opens (27% baseline) not down 10+ points in the 14 days after the publish vs the 14 before; purchases watched only (too few to test)",
       "assignment": {
         "type": "pre_post",
         "pre": [
@@ -5545,7 +5545,12 @@
           "2026-12-03"
         ],
         "post_start": "2026-12-04T15:00Z",
-        "note": "100% of couples from the production publish that ships ww-planner-chat 506015f+ (owner 2026-11-27). PROVISIONAL dates: pre = the 14 days before the publish and post_start = the publish time; both reset to the real publish (read back live) when it ships. REC_COMPARE_AB_PCT=100 since 18:39 UTC 11-27 exposes no couple until then. Testers in REC_COMPARE_USER_IDS are internal and excluded."
+        "note": "100% of couples from the production publish that ships ww-planner-chat 506015f+ (owner 2026-11-27). PROVISIONAL dates: pre = the 14 days before the publish and post_start = the publish time; both reset to the real publish (read back live) when it ships. REC_COMPARE_AB_PCT=100 since 18:39 UTC 11-27 exposes no couple until then. Testers in REC_COMPARE_USER_IDS are internal and excluded. Arm rule kept on record (assignment.arm_rule; not 'rule'/'salt' so the engine reads this as before/after, not a split): compare.arm still hashes sha256('compare-2026-11:<user_id>') first 8 hex % 100 < REC_COMPARE_AB_PCT (now 100, so every account is in the 'compare' arm); not read as a split.",
+        "arm_rule": {
+          "rule": "hash_pct",
+          "salt": "compare-2026-11",
+          "live_pct": 100
+        }
       },
       "decision_rule": {
         "ship_p": 0.9,
@@ -5588,7 +5593,7 @@
           "bubble"
         ]
       },
-      "goal_bar": "Bar (owner 2026-11-27, 100% rollout, before/after 14 + 14 days): members' save-or-pick within 24 h of an answer with venue cards higher after than before; free couples' Open pricing PDF taps per answer with venue cards not lower after than before. Kill early if, after 100 exposed couples, under 10% open a comparison or under 10% of openers save. Earlier 50/50 bar (3% -> 12%, ~133 per arm) replaced by the owner's 100% decision."
+      "goal_bar": "Bar (owner 2026-11-27, 100% rollout, before/after 14 + 14 days): save-or-pick within 24 h of an answer with venue cards higher after than before (all couples, baseline 3%; members ~6% shown apart); free couples' Open pricing PDF taps per answer with venue cards not lower after than before. Kill early if, after 100 exposed couples, under 10% open a comparison or under 10% of openers save. Earlier 50/50 bar (3% -> 12%, ~133 per arm) replaced by the owner's 100% decision."
     },
     {
       "id": "EXP-2026-11-onboarding-try-it",
@@ -5649,7 +5654,7 @@
       "decision_rule": {
         "ship_p": 0.9,
         "stop_p": 0.1,
-        "owner_bar_2026_11_25": "Owner-approved 2026-11-25 (the only bar): turn OFF if under 92% finish after 300 sign-ups (baseline 96.8%; finish = guests saved, Xano table 1, same definition before and after). KEEP if 1-PDF and 3-PDF opens within 1 day are not clearly below 63.9% / 27.7%, and paid within 7 days >= 1.5% (baseline 2.05%). 'Clearly below' = the upper end of the 95% interval of the after rate is below the baseline.",
+        "owner_bar_2026_11_25": "Owner-approved 2026-11-25 (the only bar): turn OFF if under 92% finish after 300 sign-ups (baseline 96.8%; finish = guests saved, Xano table 1, same definition before and after). KEEP if 1-PDF and 3-PDF opens within 1 day are not clearly below 63.9% / 27.7%, and paid within 7 days >= 1.5% (baseline 2.05%). [T0's interpretation, pending owner confirmation - not the owner's words: 'clearly below' = the upper end of the 95% interval of the after rate is below the baseline.]",
         "clearly_below_note": "T0's interpretation, pending owner confirmation: 'clearly below' means the upper end of the 95% interval of the after rate is below the baseline (63.9% for 1 PDF, 27.7% for 3 PDFs). Looked at every Monday; before/after is evidence, not proof."
       },
       "start_date": null,
@@ -6383,7 +6388,7 @@
         "rule": "hash_pct",
         "salt": "photo-first-2026-11",
         "pct": 50,
-        "note": "Rule and salt checked against the shipped split code (pf-split-1127 5330849, rec_service/config.py:365-367 and photo_first.arm): switch REC_PHOTO_FIRST_AB_PCT, salt REC_PHOTO_FIRST_AB_SALT default 'photo-first-2026-11', arm 'photo_first' when int(sha256('<salt>:<user_id>')[:8], 16) % 100 < pct (same shape as compare.arm and the engine's hash_bucket). Internal testers in REC_PHOTO_FIRST_USER_IDS are always put in the photo_first arm: exclude them from the read. The arm only applies when the page asks (?photo_first=1); photo_first-arm couples on a surface that doesn't ask get control answers, so confirm the Planner page and the bubble both send it before launch, or read only the surfaces that do. Independent of the compare and context-first splits."
+        "note": "Rule and salt checked against the shipped split code (pf-split-1127 5330849, rec_service/config.py:365-367 and photo_first.arm): switch REC_PHOTO_FIRST_AB_PCT, salt REC_PHOTO_FIRST_AB_SALT default 'photo-first-2026-11', arm 'photo_first' when int(sha256('<salt>:<user_id>')[:8], 16) % 100 < pct (same shape as compare.arm and the engine's hash_bucket). Internal testers in REC_PHOTO_FIRST_USER_IDS are always put in the photo_first arm: exclude them from the read. The arm only applies when the page asks (?photo_first=1); photo_first-arm couples on a surface that doesn't ask get control answers, so confirm the Planner page and the bubble both send it before launch, or read only the surfaces that do. Independent of the compare and context-first splits. Arm in the readout: assign each user's arm from the SERVER's rec_* Mixpanel events, which carry pf_arm (rec_service xano.py mp_track). Do NOT use the component's rec_page_viewed or rec_home_shown to assign arms: they fire before /rec/status answers and carry no pf_arm."
       },
       "decision_rule": {
         "ship_p": 0.9,

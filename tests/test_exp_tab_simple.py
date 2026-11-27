@@ -180,3 +180,24 @@ def test_phone_width_no_horizontal_scroll(page_for):
     pg = page_for(_fixture(), width=390)
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390
     pg.close()
+
+
+def test_no_raw_event_names_on_cards(page_for):
+    # QA 2026-11-27: "Before vs after" showed raw names (planner_upsell_card ..., "metric not in catalog yet")
+    import re
+    snap = _fixture()
+    pg = page_for(snap)
+    raw = re.compile(r"[a-z0-9]+_[a-z0-9_]+|->|\bcatalog\b")
+    for c in _cards(pg):
+        vals = dict(zip(c["labels"], c["values"]))
+        assert not raw.search(vals["Before vs after"]), (c["id"], vals["Before vs after"])
+        assert not raw.search(vals["Timeline"]) and not raw.search(vals["Conclusion"].split(" - ")[0]), c["id"]
+    pg.close()
+    # canary: a planted raw label and engine error must not reach the card
+    base = {"generated_at": "2026-11-27T12:00:00Z", "today": "2026-11-27", "decided": [], "changes": []}
+    row = {"id": "EXP-x-raw", "name": "Raw", "health": "on_track", "tests": "Does X?", "start_date": "2026-11-20",
+           "metric": {"label": "foo_bar shown -> clicked"}, "readout": {"error": "metric failed: unsupported param: zz_top"}}
+    pg = page_for(dict(base, experiments=[row]))
+    v = dict(zip(*[_cards(pg)[0][k] for k in ("labels", "values")]))["Before vs after"]
+    assert v == "No data yet: not measured automatically yet", v
+    pg.close()
