@@ -151,7 +151,7 @@ def test_validate_passes_on_the_registry():
     assert "No category" not in r.stdout and "Unknown category" not in r.stdout
 
 
-@pytest.mark.parametrize("value", [None, "Assistant"])
+@pytest.mark.parametrize("value", [None, "Planner"])   # "Planner" = the old name, no longer a category
 def test_validate_fails_without_a_known_category(tmp_path, value):
     reg = _registry()
     # a decided entry: the category rule applies to every entry, not only live/planned ones
