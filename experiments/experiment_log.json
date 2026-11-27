@@ -6371,7 +6371,7 @@
       "assignment": {
         "type": "split",
         "rule": "hash_pct",
-        "salt": "photo-first-2026-12",
+        "salt": "photo-first-2026-11",
         "pct": 50,
         "note": "PROVISIONAL: the split switch is being built in a parallel build; name REC_PHOTO_FIRST_AB_PCT assumed and salt assumed. Before launch, copy the exact rule/salt from the shipped code (pattern of compare.arm: sha256('<salt>:<user_id>') first 8 hex % 100 < pct) and the arm field that table 79 / Mixpanel carries. Testers are internal and excluded. Independent of the compare and context-first splits."
       },
