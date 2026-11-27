@@ -6,6 +6,7 @@ search for duplicates and bring up a bunch at a time").
   @Tulle Bot Rose Hall and Rose Hall Barn are the same venue
   @Tulle Bot find duplicates of Gramercy Mansion  /  is Rose Hall listed twice?
   @Tulle Bot scan duplicates 20                                         (batch; handled in bot.capabilities)
+  @Tulle Bot merge Fresno Fields                                        (one name: find its duplicate group; owner 11-27)
 
 Every request ends in the SAME merge card the nightly scan posts (dedupe.build_proposal): nothing moves until an
 approver presses Approve, and while DEDUPE_DRY_RUN is on (the Xano merge endpoint isn't built yet) Approve only
@@ -31,6 +32,18 @@ MAX_VENDORS = 4          # the merge endpoint takes at most 3 duplicates per kep
 MAX_CARDS = 5
 
 
+POLITE_TAIL = re.compile(r"[\s,]+(?:please|pls|plz|thanks|thank\s+you|thx|for\s+me)\s*$", re.I)
+
+
+def _strip_tail(t: str) -> str:
+    """'Fresno Fields please' -> 'Fresno Fields' (owner 11-27)."""
+    while True:
+        u = POLITE_TAIL.sub("", t).strip(" ,.!?")
+        if u == t:
+            return t
+        t = u
+
+
 def _clean(t: str) -> str:
     t = re.sub(r"<[^|>]+\|([^>]+)>", r"\1", t or "")
     t = re.sub(r"^(?:the\s+)?(?:venues?|vendors?|listings?)\s+", "", t.strip(), flags=re.I)
@@ -46,7 +59,7 @@ def parse(question: str) -> dict | None:
         return {"kind": "dupes_of", "target": t} if t and len(t.split()) <= 8 else None
     m = MERGE.match(q) or SAME.match(q)
     if m:
-        rest = m.group("rest").rstrip("?").strip()
+        rest = _strip_tail(m.group("rest").rstrip("?").strip())
         if not SEP.search(rest):                         # "merge V12" alone: nothing to merge it with
             return {"kind": "merge_incomplete", "target": _clean(rest)}
         into = [s for s in SEP.findall(rest) if s.lower() == "into"]
@@ -206,3 +219,141 @@ def same_name_others(rows: list[dict], vendor: dict) -> list[dict]:
     n = dedupe.norm(vendor.get("Name"))
     return [r for r in rows if r is not vendor and r.get("Vendor_ID") != vendor.get("Vendor_ID")
             and n and dedupe.norm(r.get("Name")) == n]
+
+
+# --- "merge <one name>": find that name's duplicate group (owner 2026-11-27: "name based merges: build it") ---------
+NOT_A_NAME = {"these", "those", "them", "this", "that", "it", "both", "all", "everything", "duplicates", "dupes"}
+
+
+def looks_like_name(t: str) -> bool:
+    """'merge Nowhere Barn' is about a venue even when nothing matches; 'can you merge these?' is not (normal Q&A)."""
+    words = re.findall(r"[A-Za-z0-9'&]+", t or "")
+    if not words or all(w.lower() in NOT_A_NAME | {"the", "a", "two", "venues", "listings", "cards"} for w in words):
+        return False
+    return any(w[0].isupper() or w[0].isdigit() for w in words if w.lower() not in ("the", "a"))
+
+
+def name_seeds(rows: list[dict], target: str) -> tuple[list[dict], list[dict]]:
+    """(exact, loose). exact = listings named exactly `target` (keeping 'the'; 'the X' <-> 'X' only when the exact
+    spelling finds nothing). loose = every word present, used only to list close names, never for a card."""
+    import pdf_list as pl
+    live = [r for r in rows if not str(r.get("merged_into") or "").strip()]
+    t = pl._exact(target)
+    if not t:
+        return [], []
+    exact = [r for r in live if pl._exact(r.get("Name")) == t]
+    if not exact:
+        alt = t[4:] if t.startswith("the ") else "the " + t
+        exact = [r for r in live if pl._exact(r.get("Name")) == alt]
+    if exact:
+        return exact, []
+    words = dedupe.norm(target).split()
+    loose = [r for r in live if words and all(w in dedupe.norm(r.get("Name")).split() for w in words)]
+    return [], loose[:8]
+
+
+def by_name(rows: list[dict], seeds: list[dict]) -> dict:
+    """What 'merge <name>' should do with these seed listings, by the scan's own rules (dedupe.find_groups: same Google
+    Place ID, same name + address, near-identical name + same website nearby). Pure, no I/O.
+      {"kind": "card", "group": g, "others": [...]}   exactly one strong group of exactly 2 listings
+      {"kind": "list", "groups": [...], "weak": [...]} several groups, a group of 3+, or only weak (same-name) matches
+      {"kind": "none"}                                  one listing, nothing that looks like it
+    `others` / `weak` = same-name listings the scan did NOT link (different place, state, category, or hidden)."""
+    byid = {r["id"]: r for r in rows}
+    vids = {str(s.get("Vendor_ID")) for s in seeds}
+    groups = dupes_of(rows, vids)
+    grouped = {i for g in groups for i in g["ids"]}
+    names = {dedupe.norm(s.get("Name")) for s in seeds} - {""}
+    seen, weak = set(), []
+    for r in list(seeds) + held_hidden(rows, vids) + [r for r in rows if dedupe.norm(r.get("Name")) in names]:
+        if r["id"] in grouped or r["id"] in seen or str(r.get("merged_into") or "").strip():
+            continue
+        seen.add(r["id"])
+        weak.append(r)
+    if len(groups) == 1 and len(groups[0]["ids"]) == 2 and not weak_sets(weak):
+        return {"kind": "card", "group": groups[0], "others": weak,
+                "members": [byid[i] for i in groups[0]["ids"]]}
+    if groups or len(weak) >= 2:
+        return {"kind": "list", "groups": [dict(g, members=[byid[i] for i in g["ids"]]) for g in groups],
+                "weak": weak}
+    return {"kind": "none", "weak": weak}
+
+
+def _line(r: dict) -> str:
+    where = ", ".join(x for x in (dedupe.city(str(r.get("Address") or "")).title(), str(r.get("State") or "").strip())
+                      if x)
+    clicks = int(float(r.get("Clicks_on_Venue") or 0))
+    return (f"• {esc(r.get('Name'))} ({r.get('Vendor_ID')})" + (f", {esc(where)}" if where else "")
+            + f", {clicks} click{'s' if clicks != 1 else ''}" + (", hidden from couples" if dedupe.is_hidden(r) else "")
+            + (f", {esc(r.get('Category'))}" if r.get("Category") else ""))
+
+
+def weak_sets(weak: list[dict]) -> list[list[dict]]:
+    """Same-name listings that could still be one venue: same category AND same state AND same place (same city or
+    within 2 km) AND no pair conflict (different Google listings, far apart). Anything else is never offered as a merge
+    (owner rule: never merge across categories or locations)."""
+    buckets: dict[tuple, list[dict]] = {}
+    for r in weak:
+        k = (str(r.get("Category") or "").strip().lower(), dedupe.norm(r.get("State")))
+        buckets.setdefault(k, []).append(r)
+    out = []
+    for b in buckets.values():
+        if not 2 <= len(b) <= MAX_VENDORS or not same_place(b):
+            continue
+        ps = dedupe.prepare(b)
+        if any(dedupe.pair_conflict(x, y) for i, x in enumerate(ps) for y in ps[i + 1:]):
+            continue
+        out.append(b)
+    return out
+
+
+def _cmd(members: list[dict]) -> str:
+    return "`@Tulle Bot merge " + " and ".join(str(m.get("Vendor_ID")) for m in members) + "`"
+
+
+def candidates_reply(target: str, res: dict, handled: set[str]) -> str:
+    """The 'which one?' reply for 'merge <name>' when there isn't exactly one strong pair. No card."""
+    groups, weak = res.get("groups") or [], res.get("weak") or []
+    lines = [f"I won't pick for you: “{esc(target)}” matches more than one possible merge, so here they are."]
+    for n, g in enumerate(groups, 1):
+        best = next((r for r in ("A", "B", "C") if r in g.get("rules", [])), None)
+        why = dedupe.WHY_PLAIN.get(best, "The scan's rules match them.").rstrip(".").lower()
+        vids = [str(m.get("Vendor_ID")) for m in g["members"]]
+        had = " (already has a card)" if dedupe.group_key(vids) in handled else ""
+        lines.append(f"*Group {n}* ({why}, {len(vids)} listings){had}:")
+        lines += [_line(m) for m in g["members"]]
+        lines.append(f"To merge them: {_cmd(g['members'])}")
+    if weak:
+        sets = weak_sets(weak)
+        lines.append(("*Same name, not linked by the scan*" if groups else
+                      "*Same name, but the scan's checks (same Google listing, same address, same website) don't link "
+                      "them*") + ":")
+        lines += [_line(r) for r in weak[:8]]
+        for s in sets:
+            lines.append(f"These are in the same place, so they might be one venue. Compare the addresses first, then: "
+                         f"{_cmd(s)}")
+        if not sets:
+            lines.append("They're in different places or categories, so they look like different venues. I won't "
+                         "suggest merging them.")
+    lines.append("I keep the right listing by the usual rule (gold chip, the one couples can see, more PDFs, more "
+                 "clicks); add `into V…` at the end to choose. Nothing changes until an approver presses Approve.")
+    return "\n".join(lines)
+
+
+SURVIVOR_WHY = {"it's the one couples can see": "it's the one couples can see",
+                "it has more PDFs": "it has more PDFs", "couples click it more": "couples click it more",
+                "it has the Google Place ID": "it's linked to Google", "it's the older record": "it's the older record",
+                dedupe.WHY_GOLD: dedupe.WHY_GOLD}
+
+
+def card_lead(target: str, payload: dict, others: list[dict]) -> str:
+    """One line before the card: which listing is kept and why."""
+    s, losers = payload.get("survivor"), payload.get("losers") or []
+    why = SURVIVOR_WHY.get(payload.get("why_survivor"), payload.get("why_survivor") or "the usual rule")
+    out = (f"Found one duplicate pair for “{esc(target)}”: keeping {s} because {why}; {', '.join(losers)} would merge "
+           "into it. Nothing changes until an approver presses Approve.")
+    if others:
+        out += (" Not included (same name, but a different place, category, or hidden): "
+                + ", ".join(f"{o.get('Vendor_ID')}" + (f" ({esc(o.get('State'))})" if o.get("State") else "")
+                            for o in others[:6]) + ".")
+    return out
