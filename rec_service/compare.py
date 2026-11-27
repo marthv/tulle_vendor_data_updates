@@ -7,6 +7,7 @@ question used, no new table. Two levels, decided HERE and never by the page:
           price is ever in the payload; couples open the pricing PDF for the numbers.
 A 1-week member has a plan but not ep230 (needs $50+ paid), so they are "words" with reason "member" - their PDFs open.
 Nothing is ranked: venues come back in the order the couple picked them. REC_COMPARE_PICK=0 (default) = off."""
+import contextvars
 import hashlib
 import re
 import threading
@@ -541,8 +542,13 @@ _ASK_RE = re.compile(
 _ASK_BARE = re.compile(r"^\s*(?:compare|compare saved|side by side|venue compare|compare tool)\s*[.!?]*\s*$", re.I)
 
 
+# Per request: only a page that can DRAW the picker asks for it (?compare_ask=1, sent by the component from 11-27). An older
+# component (or the vendor-page bubble on an old version) keeps today's answer, so the server can ship first.
+REQ = contextvars.ContextVar("rec_compare_ask", default=False)
+
+
 def ask_on(user):
-    return bool(config.COMPARE_ASK) and arm((user or {}).get("id")) == "compare"
+    return bool(config.COMPARE_ASK) and bool(REQ.get()) and arm((user or {}).get("id")) == "compare"
 
 
 def is_ask(text):

@@ -86,7 +86,7 @@ def _types(j):
                                   "Yes, compare my saved venues", "Compare my last saved venues", "compare",
                                   "can you compare our favorite venues?", "Compare saved"])
 def test_typed_compare_asks_with_a_picker_not_the_old_table(api, text):
-    r = api["c"].post("/rec/refine", json={"chat_id": 9, "message": text})
+    r = api["c"].post("/rec/refine?compare_ask=1", json={"chat_id": 9, "message": text})
     assert r.status_code == 200, r.text
     j = r.json()
     assert _types(j) == ["compare_picker"] and "venue_compare" not in r.text
@@ -100,14 +100,14 @@ def test_typed_compare_asks_with_a_picker_not_the_old_table(api, text):
 @pytest.mark.parametrize("text", ["compare Alpha Hall and Beta Loft", "which is cheaper, Alpha or Beta?",
                                   "compare the food at Oheka Castle", "find venues in Brooklyn"])
 def test_a_named_compare_or_other_question_still_goes_to_the_model(api, text):
-    r = api["c"].post("/rec/refine", json={"chat_id": 9, "message": text})
+    r = api["c"].post("/rec/refine?compare_ask=1", json={"chat_id": 9, "message": text})
     assert r.status_code == 200 and api["model_calls"] == 1 and "compare_picker" not in r.text
 
 
 @pytest.mark.parametrize("access", [False, True])
 def test_no_venue_price_digit_in_the_picker_for_anyone(api, access):
     api["access"] = access
-    j = api["c"].post("/rec/refine", json={"chat_id": 9, "message": "compare venues"}).json()
+    j = api["c"].post("/rec/refine?compare_ask=1", json={"chat_id": 9, "message": "compare venues"}).json()
     blob = json.dumps(j)
     assert not FIGURE.search(json.dumps({k: j.get(k) for k in ("text", "widgets", "chips")})), blob
     for p in PLANTED:
@@ -122,14 +122,14 @@ def test_chat_venues_are_offered_too(api):
     api["history"] = [{"role": "user", "text": "venues in brooklyn"},
                       {"role": "assistant", "text": "Here.", "cards": [dict(CARDS["V2"]), dict(CARDS["V1"]),
                                                                         {"vendor_id": "V9", "name": "Gamma", "category": "Venue"}]}]
-    j = api["c"].post("/rec/refine", json={"chat_id": 9, "message": "compare venues"}).json()
+    j = api["c"].post("/rec/refine?compare_ask=1", json={"chat_id": 9, "message": "compare venues"}).json()
     vs = j["widgets"][0]["venues"]
     assert [(v["vendor_id"], v["saved"]) for v in vs] == [("V1", True), ("V2", False), ("V9", False)]
 
 
 def test_fewer_than_two_says_so_and_offers_find_or_look_up(api):
     api["user"] = {"id": 7, "favorited_vendors": ["V1", "P1"]}
-    j = api["c"].post("/rec/tool", json={"tool": "compare_venues", "args": {}}).json()
+    j = api["c"].post("/rec/tool?compare_ask=1", json={"tool": "compare_venues", "args": {}}).json()
     w = j["widgets"][0]
     assert w["type"] == "compare_picker" and w["enough"] is False and len(w["venues"]) == 1
     assert j["text"] == _mods()[2].FEW_TEXT
@@ -137,34 +137,45 @@ def test_fewer_than_two_says_so_and_offers_find_or_look_up(api):
 
 
 def test_tools_menu_compare_venues_returns_the_picker(api):
-    r = api["c"].post("/rec/tool", json={"tool": "compare_venues", "args": {}, "chat_id": 9})
+    r = api["c"].post("/rec/tool?compare_ask=1", json={"tool": "compare_venues", "args": {}, "chat_id": 9})
     assert r.status_code == 200 and _types(r.json()) == ["compare_picker"] and api["old_tool"] == 0
     assert "venue_compare" not in r.text
     assert api["added"][-1][1] == "assistant" and api["added"][-1][3][0]["widget"]["type"] == "compare_picker"   # stored
 
 
 def test_new_conversation_typed_compare_gets_the_picker(api):
-    j = api["c"].post("/rec/refine", json={"messages": [{"role": "user", "content": "compare venues"}],
+    j = api["c"].post("/rec/refine?compare_ask=1", json={"messages": [{"role": "user", "content": "compare venues"}],
                                            "message": "compare venues"}).json()
     assert _types(j) == ["compare_picker"] and j["chat_id"] == 51 and api["model_calls"] == 0
 
 
 def test_model_tool_compare_venues_gets_the_picker_too(api):
     _, _, compare, _, cost_tools, _, xano = _mods()
-    out = cost_tools.run_tool("compare_venues", {}, "tok", api["user"], access=False, xano=xano)
+    tok = compare.REQ.set(True)
+    try:
+        out = cost_tools.run_tool("compare_venues", {}, "tok", api["user"], access=False, xano=xano)
+    finally:
+        compare.REQ.reset(tok)
     assert out["widget"]["type"] == "compare_picker" and "venues_to_pick" in out["facts"]
+
+
+def test_an_older_page_that_cannot_draw_the_picker_gets_todays_answer(api):
+    r = api["c"].post("/rec/refine", json={"chat_id": 9, "message": "compare venues"})     # no ?compare_ask=1
+    assert api["model_calls"] == 1 and "compare_picker" not in r.text
+    r = api["c"].post("/rec/tool", json={"tool": "compare_venues", "args": {}})
+    assert _types(r.json()) == ["venue_compare"] and api["old_tool"] == 1
 
 
 def test_switch_off_or_control_arm_is_exactly_as_before(api, monkeypatch):
     config = _mods()[3]
     monkeypatch.setattr(config, "COMPARE_ASK", False, raising=False)
-    r = api["c"].post("/rec/refine", json={"chat_id": 9, "message": "compare venues"})
+    r = api["c"].post("/rec/refine?compare_ask=1", json={"chat_id": 9, "message": "compare venues"})
     assert api["model_calls"] == 1 and "compare_picker" not in r.text
-    r = api["c"].post("/rec/tool", json={"tool": "compare_venues", "args": {}})
+    r = api["c"].post("/rec/tool?compare_ask=1", json={"tool": "compare_venues", "args": {}})
     assert _types(r.json()) == ["venue_compare"] and api["old_tool"] == 1
     monkeypatch.setattr(config, "COMPARE_ASK", True, raising=False)
     monkeypatch.setattr(config, "COMPARE_USER_IDS", set())       # not in the compare arm: compare_picked is refused
-    r = api["c"].post("/rec/refine", json={"chat_id": 9, "message": "compare venues"})
+    r = api["c"].post("/rec/refine?compare_ask=1", json={"chat_id": 9, "message": "compare venues"})
     assert api["model_calls"] == 2 and "compare_picker" not in r.text
 
 

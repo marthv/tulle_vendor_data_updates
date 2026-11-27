@@ -125,12 +125,14 @@ class _UserAgentToSheetLog:
             q = parse_qs((scope.get("query_string") or b"").decode("latin-1"))
             surface = str((q.get("surface") or [""])[0])[:80]
             pf = str((q.get("photo_first") or [""])[0]) == "1"    # the page asked for photo-first (REC_PHOTO_FIRST)
+            ca = str((q.get("compare_ask") or [""])[0]) == "1"   # the page can draw the compare picker (REC_COMPARE_ASK)
         except Exception:
-            surface, pf = "", False
+            surface, pf, ca = "", False, False
         tok = sheet_log.UA.set(ua)
         stok = xano.SURFACE.set(surface)
         ptok = photo_first.REQ.set(pf)
         wtok = photo_first.WHO.set({})   # filled by _auth: the account for the photo-first 50/50
+        ctok = compare.REQ.set(ca)
         try:
             await self.asgi(scope, receive, send)
         finally:
@@ -138,6 +140,7 @@ class _UserAgentToSheetLog:
             xano.SURFACE.reset(stok)
             photo_first.REQ.reset(ptok)
             photo_first.WHO.reset(wtok)
+            compare.REQ.reset(ctok)
 
 
 app.add_middleware(_UserAgentToSheetLog)
