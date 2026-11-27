@@ -6162,7 +6162,7 @@
       },
       "hypothesis": "If free couples see the full fee-by-fee report with the numbers blurred and the button above it, then the share tapping upgrade within 7 days rises from 17.1% to 21.7%+, because they can see exactly what they would get.",
       "tests": "Does a visible but blurred report get more free couples to tap upgrade than today's compact locked card?",
-      "goal": "Owner + Des + Kate 2026-11-24: preview it without giving the data away, like the locked filters. Keep v2 only if clearly better; stop early only for clear harm; otherwise 'no difference' and the owner chooses on design.",
+      "goal": "Owner + Des + Kate 2026-11-24: preview it without giving the data away, like the locked filters. Keep v2 only if clearly better; stop early only for clear harm; otherwise 'no difference' and the owner chooses on design. | 2026-11-27 owner change: everyone on v2, sequential. Bar for the sequential read: keep v2 unless Price Report unlock clicks per vendor-page visitor fall by 20%+ (relative) in the 14 days after the publish vs the 14 days before; turn v2 off (testMode='off') the same day if a free couple can read a venue price digit in the blurred view. Confounded as noted in assignment.note - a drop is a reason to look, not proof.",
       "primary_metric": "Couples tapping the card's upgrade button within 7 days of first seeing the card / free couples who saw it, once per couple, by arm (new card-seen event fires when the header shows, both arms)",
       "metric": {
         "key": "manual",
@@ -6187,11 +6187,19 @@
         "stop_p": 0.05
       },
       "assignment": {
-        "type": "split",
-        "rule": "hash_pct",
-        "salt": "price-report-v2",
-        "pct": 50,
-        "note": "sha256('price-report-v2:'+user id), first 8 hex digits mod 100 < 50 = v2. Independent of the Planner parity test. No user id = control and excluded."
+        "type": "pre_post",
+        "pre": [
+          "2026-11-20",
+          "2026-12-03"
+        ],
+        "post_start": "2026-12-04T15:00Z",
+        "note": "Owner 2026-11-27: everyone on version 2 (ww-price-report testMode='v2' on Venue page element 9568da51, set in the WeWeb editor 2026-11-27 ~20:15 UTC; goes live with the next production publish), read before vs after instead of the planned 50/50. PROVISIONAL dates: pre = 14 days before the production publish, post_start = the publish time; reset to the real publish when it ships. DATA DIRTINESS (owner accepted): the same publish ships onboarding, Compare (100%), photo-first (100%), the Assistant rename and the PDF-limit popup, and the Price Report sits on the path to payment, so (1) this read cannot be credited to v2 alone and (2) it also blurs the open payment-rate question from the week of 11-20 (Thanksgiving vs the 11-19 /pricing changes; payment_rate_1127). Tracking gap: v2's new events (card-seen, late-id, row-nudged) have no WeWeb workflow yet, so the read uses existing events: clicked_membership_for_pricing_venue_price_report per vendor-page visitor (and price_report_locked_shown only if v2 still emits locked-shown - UNVERIFIED).",
+        "arm_rule": {
+          "rule": "hash_pct",
+          "salt": "price-report-v2",
+          "live_pct": 100,
+          "via": "testMode v2 (all accounts)"
+        }
       },
       "start_date": null,
       "planned_days": 28,
@@ -6208,7 +6216,21 @@
       "links": [
         "design: https://claude.ai/artifact/Av9BJ2BNHPtu5YDG2Kmyg1",
         "pass bar: tulletogether .claude/price_report_v2_2026-11-25/PASS_BAR.md"
-      ]
+      ],
+      "changes": [
+        {
+          "date": "2026-11-27",
+          "what": "Design changed from 50/50 split to everyone-on-v2 before/after (owner). testMode='v2' set in the WeWeb editor; not live until the production publish.",
+          "by": "T0"
+        }
+      ],
+      "exposure": {
+        "source": "mixpanel:viewed_vendor_page",
+        "surfaces": [
+          "venue_page"
+        ],
+        "note": "Denominator = vendor-page visitors (all see the report); v2 card-seen not wired yet."
+      }
     },
     {
       "id": "EXP-2026-11-welcome-subject",
