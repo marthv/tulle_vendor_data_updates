@@ -37,6 +37,8 @@ log = logging.getLogger("slack_qa.price_impact")
 ALERT_PCT = 10.0
 WORKERS = 2                # reads in flight at once per card (4 brought brief 502s 2026-11-22; merge_checks also runs one card at a time)
 DEADLINE = 25.0            # seconds for one card, everything included
+TIMEOUTS = (8.0, 12.0)     # one read: first try, the one retry
+PATIENT_TIMEOUTS = (20.0, 30.0)   # MERGE_CARD_FAST: 11-25, five cards' reads timed out at 8 s then 12 s while Xano was slow
 GUESTS = (100, 50, 150, 200)   # 100 = what the page opens on (the fn56 default); the others catch hidden changes
 ORDERS = 5                 # row orders tried for the after-price
 MAX_LISTINGS = 4           # ep578: one survivor + up to three losers
@@ -76,10 +78,11 @@ class Reader:
     """The only network code here. Three shapes of request, nothing else: GET one of three functions' source, POST a
     filtered row SEARCH (a read) on ten tables by one fixed column, GET the public page endpoint."""
 
-    def __init__(self, xano, deadline: float, http=None):
+    def __init__(self, xano, deadline: float, http=None, timeouts=TIMEOUTS):
         self.root, self.token = xano.root, getattr(xano, "token", "")
         self.http = http or xano.http
         self.deadline = deadline
+        self.timeouts = tuple(timeouts)
         self.calls = 0
 
     def _send(self, method, url, **kw):
@@ -90,7 +93,7 @@ class Reader:
                 raise CantCompute("ran out of time")
             self.calls += 1
             try:
-                r = getattr(self.http, method)(url, timeout=min(8.0 if i == 0 else 12.0, left), **kw)
+                r = getattr(self.http, method)(url, timeout=min(self.timeouts[i], left), **kw)
             except OSError as e:          # requests exceptions are OSErrors
                 if i == 1:
                     raise CantCompute(f"Xano did not answer ({type(e).__name__})") from e
@@ -437,7 +440,7 @@ def _overlay_keys(code56: str) -> set:
 
 
 def compute(xano, survivor: str, losers: list[str], *, preview: dict | None = None, hidden_pdfs=(),
-            deadline: float = DEADLINE, live_check: bool = True) -> dict:
+            deadline: float = DEADLINE, live_check: bool = True, timeouts=TIMEOUTS) -> dict:
     """The full impact record. Never raises: anything that can't be reproduced is in `cant` and forces the alert.
     preview: ep578 preview response for the SAME survivor, losers and hide_pdf_ids (best: its own plan is used).
     hidden_pdfs: PDF_IDs the merge hides. Hiding can change which PDF stays Primary, so recompute when a choice changes.
@@ -448,7 +451,7 @@ def compute(xano, survivor: str, losers: list[str], *, preview: dict | None = No
            "after": None, "rooms": [], "filters": None, "assumptions": [], "lost_rules": []}
     reader = None
     try:
-        reader = Reader(xano, t0 + deadline)
+        reader = Reader(xano, t0 + deadline, timeouts=timeouts)
         _compute(reader, out, survivor, list(losers), preview, list(hidden_pdfs), live_check)
     except CantCompute as e:
         out["cant"].append(str(e))

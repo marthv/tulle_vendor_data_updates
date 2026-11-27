@@ -377,7 +377,9 @@ class Bot:
             say("Which two (or more) should I merge? e.g. `@Tulle Bot merge Rose Hall and Rose Hall Barn` or "
                 "`@Tulle Bot merge V13433 into V105` (\"into\" keeps the second one).")
             return "merge:incomplete"
-        if not self.limiter.allow(channel):
+        # owner ruling T0-57 (2026-11-26): approvers' merges skip the per-channel hourly cap (and don't use it up), so a
+        # duplicate-merge pilot isn't refused. Same list that may press Approve. No model call on this path.
+        if ev.get("user") not in config.approvers() and not self.limiter.allow(channel):
             say("Too many requests in this channel just now. Try again in a minute.")
             return "merge:rate-limited"
         if not getattr(self.xano, "enabled", False):
@@ -441,7 +443,9 @@ class Bot:
             byid = {v["id"]: v for v in vendors}
             refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
                                    page_delay=config.dedupe_page_delay(), only={10, 36})
-            refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
+            fast = config.merge_card_fast() and refs.build_named_fast(set(vids))     # checks the page budget itself
+            if not fast:
+                refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
             pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
                                        survivor_vid=vids[-1] if req["into"] else "",
                                        why_text=mr.asked_why(vendors) + self._others_note(mr, vids))

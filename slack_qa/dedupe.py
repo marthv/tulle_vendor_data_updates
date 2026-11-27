@@ -882,6 +882,56 @@ class RefIndex:
     def pdfs(self) -> dict[str, int]:
         return dict(self.counts.get(10, {}))
 
+    FAST_CAP = 15.0                      # seconds for the whole filtered count (row counts + search) before paging instead
+
+    def _pages(self, tid: int) -> int:
+        """Whole 500-row pages the paged build needs for this table, from the live row count (one 1-row read)."""
+        d = self.xano.get(f"/table/{tid}/content", {"page": 1, "per_page": 1})
+        n = int(d["itemsTotal"])
+        return max(1, -(-n // 500))
+
+    def build_named_fast(self, wanted: set[str]) -> bool:
+        """MERGE_CARD_FAST: the same result the paged build gives a named merge (only={10, 36}), from one filtered read
+        of t10 instead of ~60 whole pages. Used only when, at today's table sizes (read live, not typed in; 2026-11-25:
+        t10 21,762 rows = 44 pages, t36 45,361 = 91), the paged build would have finished t10 (budget >= t10 pages + 1)
+        and could not have finished t36 (budget < t10 + t36 pages): then it ends with t10 counted and every other
+        table "not counted", and so does this. False = not used or it couldn't (caller falls back to build())."""
+        import threading
+        import xano_search
+        vids = sorted({str(v).strip() for v in wanted if str(v).strip()})
+        box: dict = {}
+
+        def run():                       # works on locals only: a read that outlives the cap changes nothing here
+            try:
+                p10, p36 = self._pages(10), self._pages(36)
+                if not (p10 + 1 <= self.max_pages < p10 + p36):
+                    box["skip"] = (p10, p36)
+                    return
+                box["got"] = xano_search.search(self.xano, 10, "Vendor_ID", vids)
+            except Exception as e:  # noqa: BLE001 - the paged build still works
+                box["err"] = type(e).__name__
+        t = threading.Thread(target=run, name="pdf-count-fast", daemon=True)
+        t.start()
+        t.join(self.FAST_CAP)            # QA 11-26: a slow fast path must not add minutes before the fallback
+        if "got" not in box:
+            if "skip" in box:
+                log.info("filtered PDF count not used: budget %s pages, t10/t36 pages %s", self.max_pages, box["skip"])
+            else:
+                log.info("filtered PDF count failed or took over %ss, paging instead: %s", self.FAST_CAP,
+                         box.get("err", "timeout"))
+            return False
+        got = box["got"]
+        c, rws = collections.Counter(), collections.defaultdict(list)
+        for row in sorted(got, key=lambda r: int(r.get("id") or 0)):          # the paged build reads in id order
+            for vid in self._hits(row.get("Vendor_ID"), "id", set(vids), {}):
+                c[vid] += 1
+                if len(rws[vid]) < self.MAX_ROW_IDS:
+                    rws[vid].append([row.get("id"), "Vendor_ID"])
+        self.counts, self.rows = {10: c}, {10: dict(rws)}
+        self.not_counted = {t for t, *_ in REF_TABLES if t != 10}
+        self.pages_used = 3                  # two 1-row counts and the filtered read
+        return True
+
 
 # --- proposal content -------------------------------------------------------------------------------------
 def _loc(r: dict) -> str:

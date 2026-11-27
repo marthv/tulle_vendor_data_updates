@@ -21,6 +21,8 @@ import pdf_dupes
 log = logging.getLogger("slack_qa.merge_checks")
 
 SECONDS = 35.0             # price_impact's own budget for one card
+PATIENT_SECONDS = 90.0     # MERGE_CARD_FAST, card building and Approve: room for two slow reads (price_impact.PATIENT_TIMEOUTS)
+BREATH = 2.0               # seconds between queued jobs
 WAIT = 240.0               # how long a check waits for the one before it
 PREVIEW_TIMEOUT = 90.0     # measured 14-65 s live on 2026-11-22 (it counts every reference)
 _ONE = threading.Semaphore(1)
@@ -42,7 +44,7 @@ def _work() -> None:
             fn()
         except Exception:  # noqa: BLE001
             log.exception("queued price check failed")
-        _STOP.wait(2)                       # a breath between jobs, so a person's click gets in between
+        _STOP.wait(BREATH)                  # a breath between jobs, so a person's click gets in between
 
 
 def submit(fn) -> None:
@@ -128,11 +130,24 @@ def slim(pv: dict | None) -> dict | None:
             "refusals": [str(x) for x in pv.get("refusals") or []]}
 
 
+def _budget(building: bool = True) -> tuple[float, tuple]:
+    """(seconds for one check, per-read timeouts). MERGE_CARD_FAST gives a slow Xano read more time, both while a card
+    is being built and on the Approve re-check (owner 2026-11-26, option A: a slow read on Approve showed "can't
+    compute" and blocked the merge). `building` is kept for callers; it no longer changes the answer. Off = as before."""
+    import price_impact
+    if config.merge_card_fast():
+        return PATIENT_SECONDS, price_impact.PATIENT_TIMEOUTS
+    return SECONDS, price_impact.TIMEOUTS
+
+
 def _compute(xano, payload: dict, hide: list[str], pv="fetch") -> dict:
     import price_impact
-    pv = slim(preview(payload, hide)) if pv == "fetch" else pv
+    building = pv == "fetch"
+    pv = slim(preview(payload, hide)) if building else pv
+    secs, timeouts = _budget(building)
+    kw = {"timeouts": timeouts} if timeouts != price_impact.TIMEOUTS else {}      # off: the very same call as before
     r = price_impact.compute(xano, payload.get("survivor"), list(payload.get("losers") or []), preview=pv,
-                             hidden_pdfs=hide, deadline=SECONDS)
+                             hidden_pdfs=hide, deadline=secs, **kw)
     b = short(r, price_impact.blocks(r))
     extra = list(b["extra_blocks"])
     # refusals a person can answer on the card (hidden / gold / unhide) have their own buttons there
@@ -190,7 +205,7 @@ def short(r: dict, b: dict) -> dict:
     return {"extra_blocks": out, "confirm_text": confirm, "detail": "\n\n".join(texts)[:5500]}
 
 
-def price(xano, payload: dict, seconds: float = SECONDS, wait: float = WAIT, pv="fetch") -> dict:
+def price(xano, payload: dict, seconds: float | None = None, wait: float = WAIT, pv="fetch") -> dict:
     """Never raises and never hangs. Always an alert when it can't be sure. pv: "fetch" asks ep578 for a preview (slow:
     card building only); the Approve click passes the one the card was built with and re-reads the price rows."""
     try:
@@ -214,7 +229,7 @@ def price(xano, payload: dict, seconds: float = SECONDS, wait: float = WAIT, pv=
 
     t = threading.Thread(target=run, name="price-check", daemon=True)
     t.start()
-    t.join(seconds + PREVIEW_TIMEOUT + 10)
+    t.join((seconds if seconds is not None else _budget(pv == "fetch")[0]) + PREVIEW_TIMEOUT + 10)
     return box.get("r") or _failed("the check took too long", payload, hide)
 
 
@@ -222,8 +237,9 @@ def computing(payload: dict) -> dict:
     return {"status": "computing", "alert": True, "cant": True, "stamp": "computing", "after_total": None, "hide": [],
             "survivor": payload.get("survivor"), "refusals": [], "confirm_text": None, "extra_blocks": [
                 {"type": "context", "elements": [{"type": "mrkdwn", "text": (
-                    ":hourglass_flowing_sand: Working out the price couples would see (up to a minute). Approve comes "
-                    "back when it's done.")}]}]}
+                    ":hourglass_flowing_sand: Working out the price couples would see ("
+                    + ("up to a few minutes" if config.merge_card_fast() else "up to a minute")
+                    + "). Approve comes back when it's done.")}]}]}
 
 
 def current(payload: dict) -> bool:
