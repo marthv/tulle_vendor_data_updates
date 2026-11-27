@@ -2,6 +2,10 @@
 
 Draws ``row["card"]`` from the snapshot (experiments_engine/v2_cards.py). It computes nothing and fetches nothing.
 Colour is used for one thing only: the health of the test (green / amber / red). Results and prices are plain ink.
+
+NOTE (2026-11-27): this EXP_TAB_V2 view does NOT have the owner's four-item layout (what's being tested / timeline /
+before vs after / conclusion) that component/index.html got in d8aa271. EXP_TAB_V2 is off in production; port that
+layout here before anyone switches EXP_TAB_V2 on, or the owner gets the old, busier view back.
 """
 from __future__ import annotations
 
@@ -161,8 +165,9 @@ def _notes(rows):
     return f'<details class="in"><summary>Notes ({len(rows)})</summary>{items}</details>'
 
 
-def card_html(row, notes=None):
-    """One short row; tap for the detail. Nothing in the row is repeated in the detail."""
+def card_html(row, notes=None, open_=False):
+    """One short row; tap for the detail. Nothing in the row is repeated in the detail.
+    open_=True renders it expanded (the ?exp= deep link)."""
     card = row.get("card") or fallback_card(row)
     light = card.get("light") if card.get("light") in LIGHT_WORDS else None
     dot = f'<i class="dot {light or "none"}" role="img" aria-label="{_e(LIGHT_WORDS.get(light, "Not running"))}"></i>'
@@ -185,7 +190,7 @@ def card_html(row, notes=None):
             + _overlaps(card) + _history(card) + _notes(notes)
             + (f'<details class="in"><summary>Technical notes</summary><p class="small">{_e(card.get("name"))}</p>'
                f'<p class="small">{_e(card["changed"])}</p></details>' if card.get("changed") else ""))
-    return (f'<details class="row" id="{_e(card.get("id"))}"><summary>{dot}<span class="nm">{_e(card.get("plain_name") or card.get("name"))}'
+    return (f'<details class="row" id="{_e(card.get("id"))}"{" open" if open_ else ""}><summary>{dot}<span class="nm">{_e(card.get("plain_name") or card.get("name"))}'
             f'</span><span class="nt">{_e(note)}</span><span class="meta"><span>{_e(couples)}</span><span>{_e(when)}</span></span>'
             f'</summary><div class="in">{body}</div></details>')
 
@@ -221,7 +226,28 @@ def _unlogged(snap):
     return f'<details class="sec"><summary>Shipped changes not in the registry ({len(rows)})</summary>{items}</details>'
 
 
-def build_html(snapshot, theme_mode=None):
+def _decided_html(d):
+    return (f'<div class="plainrow"><b>{_e(d.get("name") or d.get("id"))}</b><br>{_e(d.get("outcome") or d.get("status"))}'
+            f'{" · " + _e(d.get("decided_on")) if d.get("decided_on") else ""}'
+            f'{"<br>" + _e(str(d.get("takeaway"))[:400]) if d.get("takeaway") else ""}</div>')
+
+
+def _focus_html(rows, decided, notes, focus):
+    """The deep-linked experiment, open, above everything else ('' when the id is not in the snapshot)."""
+    if not focus:
+        return ""
+    hit = next((r for r in rows if r.get("id") == focus), None)
+    if hit is not None:
+        body = card_html(hit, notes.get(hit.get("id")), open_=True)
+    else:
+        d = next((d for d in decided if d.get("id") == focus), None)
+        if d is None:
+            return ""
+        body = _decided_html(d)
+    return f'<h2>Linked</h2><div class="rows focus">{body}</div>'
+
+
+def build_html(snapshot, theme_mode=None, focus=None):
     snap = snapshot if isinstance(snapshot, dict) else {}
     rows = [r for r in snap.get("experiments") or [] if isinstance(r, dict) and not r.get("folded_into")]
     notes = snap.get("notes_by_id") or {}
@@ -241,6 +267,7 @@ def build_html(snapshot, theme_mode=None):
              f'Tap a row for detail. As of {_e(when)} UTC.</p>']
     if snap.get("degraded"):
         parts.append(f'<div class="warn">{_e(snap.get("degraded_note") or "Engine not reachable: registry only.")}</div>')
+    parts.append(_focus_html(rows, decided, notes, focus))
     parts.append("<h2>Running</h2>" + (f'<div class="rows">{"".join(card_html(r, notes.get(r.get("id"))) for r in running)}</div>'
                                        if running else '<p class="sub">Nothing is running.</p>'))
     if planned:
@@ -248,9 +275,7 @@ def build_html(snapshot, theme_mode=None):
                      f'{"".join(card_html(r, notes.get(r.get("id"))) for r in planned)}</div></details>')
     if decided:
         parts.append(f'<details class="sec"><summary>Decided ({len(decided)})</summary>' + "".join(
-            f'<div class="plainrow"><b>{_e(d.get("name") or d.get("id"))}</b><br>{_e(d.get("outcome") or d.get("status"))}'
-            f'{" · " + _e(d.get("decided_on")) if d.get("decided_on") else ""}'
-            f'{"<br>" + _e(str(d.get("takeaway"))[:400]) if d.get("takeaway") else ""}</div>' for d in decided) + "</details>")
+            _decided_html(d) for d in decided) + "</details>")
     parts += [_scorecard(snap), _unlogged(snap)]
     theme = theme_mode if theme_mode in _r.THEMES else "light"
     return (f'<!doctype html><html lang="en" data-theme="{theme}"><head><meta charset="utf-8">'
@@ -297,7 +322,7 @@ def note_form(st, snap, on_note, author):
             st.error(f"Not saved: {err or 'unknown error'}")
 
 
-def render(snapshot, theme_mode=None, on_note=None, author=None, height=1150):
+def render(snapshot, theme_mode=None, on_note=None, author=None, height=1150, focus=None):
     import streamlit as st
     if theme_mode is None:
         try:
@@ -306,7 +331,7 @@ def render(snapshot, theme_mode=None, on_note=None, author=None, height=1150):
             theme_mode = None
     try:
         snap = safe_snapshot(snapshot)
-        page = build_html(_r._clean(snap), theme_mode)
+        page = build_html(_r._clean(snap), theme_mode, focus=focus)
     except Exception as exc:  # noqa: BLE001 - never fall back to the unlocked page
         st.error(f"Experiments tab could not render: {type(exc).__name__}: {exc}")
         return

@@ -52,7 +52,8 @@ from cohorts import render_cohorts_tab
 from endpoint_health import render_endpoint_health
 from perf_digest import render_perf_digest, render_health_report
 from drive_protect import render_drive_protect_panel
-from experiments_tab import render_experiments_tab
+from experiments_tab import (auth_url_params, callback_keep, focus_exp_id, render_experiments_tab,
+                             tab_order)
 import theme
 
 
@@ -384,17 +385,20 @@ if _USE_GOOGLE_AUTH:
         _cookies = None
 
 
-def _build_google_auth_url() -> str:
-    """Return a Google OAuth2 authorization URL."""
+def _build_google_auth_url(exp_id: str | None = None) -> str:
+    """Return a Google OAuth2 authorization URL.
+
+    exp_id: the ?exp= experiment deep link (2026-11-27). redirect_uri must match the
+    registered one exactly, so the id rides in `state`, which Google hands back unchanged."""
     from urllib.parse import urlencode
-    params = {
+    params = auth_url_params({
         "client_id":     _GOOGLE_CLIENT_ID,
         "redirect_uri":  _APP_URL,
         "response_type": "code",
         "scope":         "openid email profile",
         "access_type":   "online",
         "prompt":        "select_account",
-    }
+    }, exp_id)
     return f"{_GOOGLE_AUTH_URI}?{urlencode(params)}"
 
 
@@ -454,23 +458,25 @@ if (_USE_GOOGLE_AUTH and not st.session_state.authenticated and _cookies is not 
 if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
     qp = st.query_params
     if "code" in qp:
+        # ?exp= deep link: back from Google it is in `state` (or still on the URL); keep it past the clears
+        _keep = callback_keep(qp)
         try:
             id_info = _exchange_google_code(qp["code"])
             email   = id_info.get("email", "").lower()
             if _ALLOWED_EMAILS and email not in _ALLOWED_EMAILS:
                 st.error(f"Access denied for **{email}**. Ask your admin to add your email to `ALLOWED_EMAILS`.")
-                theme.preserve_on_clear()   # a blanket clear() would drop ?theme= on every sign-in
+                theme.preserve_on_clear(_keep)   # a blanket clear() would drop ?theme= on every sign-in
                 st.stop()
             st.session_state.authenticated  = True
             st.session_state.user_email     = email
             st.session_state.user_name      = id_info.get("name", email)
             st.session_state.user_picture   = id_info.get("picture", "")
             st.session_state.pop("_signed_out", None)
-            theme.preserve_on_clear()   # a blanket clear() would drop ?theme= on every sign-in
+            theme.preserve_on_clear(_keep)   # a blanket clear() would drop ?theme= on every sign-in
             st.rerun()
         except Exception as e:
             st.error(f"Google sign-in failed: {e}")
-            theme.preserve_on_clear()   # a blanket clear() would drop ?theme= on every sign-in
+            theme.preserve_on_clear(_keep)   # a blanket clear() would drop ?theme= on every sign-in
             st.stop()
 
 # ── Show login screen if not yet authenticated ────────────────────────────────
@@ -493,7 +499,7 @@ if not st.session_state.authenticated:
         """, unsafe_allow_html=True)
 
     if _USE_GOOGLE_AUTH:
-        auth_url = _build_google_auth_url()
+        auth_url = _build_google_auth_url(focus_exp_id())
         _, btn_col, _ = st.columns([2, 3, 2])
         with btn_col:
             # Same-tab sign-in: st.link_button always renders target="_blank", which
@@ -744,14 +750,18 @@ EXPORT_SECRET = os.environ.get(
 # and feedback_triage.py). tab_vp below is Venue Pricing — a different, long-standing tab.
 # The 🗺️ Roadmap Orders tab was removed 2026-09-27 — the Budget Roadmap offer was killed.
 # roadmap_orders.py is kept on disk so it can be re-wired if the offer ever comes back.
-tab_co, tab_exp, tab_vp, tab2, tab5, tab_health = st.tabs([
-    "📈 Cohorts", "🧪 Experiments",
-    "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction", "🩺 Health",
-])
+_TAB_LABELS = ["📈 Cohorts", "🧪 Experiments",
+               "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction", "🩺 Health"]
+# ?exp=<EXPERIMENT_ID> (2026-11-27, Slack links): Streamlit can't pick the open tab, so the
+# Experiments tab goes first (st.tabs opens the first one) and opens that experiment.
+_exp_focus = focus_exp_id()
+_tab_order = tab_order(_TAB_LABELS, _exp_focus)
+_tabs_by_label = dict(zip(_tab_order, st.tabs(_tab_order)))
+tab_co, tab_exp, tab_vp, tab2, tab5, tab_health = (_tabs_by_label[t] for t in _TAB_LABELS)
 
 # Experiment registry (2026-10-25): reads experiments/experiment_log.json only, no network calls.
 with tab_exp:
-    render_experiments_tab()
+    render_experiments_tab(focus=_exp_focus)
 
 # Health lives in its own tab (2026-09-27, was above every tab). All three panels are
 # collapsed and button-driven: they page Xano's request history, which is too expensive to

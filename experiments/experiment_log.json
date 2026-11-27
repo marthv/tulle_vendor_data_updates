@@ -5498,8 +5498,8 @@
       ],
       "bucket": "planner_engagement",
       "in_rotation": false,
-      "tldr": "'Compare these' under Planner venue cards opens a side by side (members: totals; free couples: Below/Typical/Above words). Redesigned 11-23 on the Hotels.com phone shape: two venues plus a sliver, photo, total, seats, Open pricing PDF, the venue cards' own heart; details folded. Question: do more couples save a venue, without fewer PDF opens?",
-      "what_changed": "rec-engine /rec/tool compare_picked + ww-planner-chat VenueCompare v3: Compare button and checkboxes on venue cards, 'Compare with another venue' under a single result, add or swap any venue by name, hearts on the photos (same as venue cards), 'N saved in My wedding' link, itemised details folded. Arm 'compare' only.",
+      "tldr": "'Compare these' under Planner venue cards opens a side by side (members: totals; free couples: Below/Typical/Above words). Redesigned 11-23 on the Hotels.com phone shape: two venues plus a sliver, photo, total, seats, Open pricing PDF, the venue cards' own heart; details folded. Goes to every couple at the production publish (owner 2026-11-27). Question, read before vs after: do more couples save or pick a venue, without fewer PDF opens?",
+      "what_changed": "rec-engine /rec/tool compare_picked + ww-planner-chat VenueCompare v3: Compare button and checkboxes on venue cards, 'Compare with another venue' under a single result, add or swap any venue by name, hearts on the photos (same as venue cards), 'N saved in My wedding' link, itemised details folded. 100% rollout (owner 2026-11-27: every couple, not 50/50). REC_COMPARE_AB_PCT=100 set on rec-engine 18:39 UTC 2026-11-27 (rec-engine deploy 51d125fb); the live production component (2958c5a) has no Compare UI, so couples see it only from the production WeWeb publish that ships ww-planner-chat 506015f or later (editor/staging accounts see it now).",
       "surfaces": [
         "rec-engine",
         "weweb:planner",
@@ -5510,7 +5510,7 @@
         "est_daily_exposed": 8,
         "est_note": "39-70 couples/week: 141 in 14 days from the sheet (11-08..21), 102 from Mixpanel; not measured inside the new build"
       },
-      "hypothesis": "If couples can line up 2-3 venues from a Planner answer and save from there, then the share saving a venue within 24h of seeing 2+ cards rises from 3% to 12%, because choosing between a few beats hearting one card at a time.",
+      "hypothesis": "If every Planner couple can line up 2-3 venues from an answer and save from there, then after the publish more couples save or pick a venue within 24 h of an answer with venue cards than in the 14 days before, without free couples opening fewer pricing PDFs per answer with venue cards, because choosing between a few beats hearting one card at a time.",
       "tests": "Does a side by side with Save on it get more Planner couples to save a venue?",
       "goal": "Owner ask 2026-11-22: make the Planner useful for comparing and deciding, and push couples to save venues to My Wedding.",
       "metric": {
@@ -5518,11 +5518,11 @@
         "params": {},
         "direction": "increase",
         "baseline": 0.03,
-        "baseline_note": "3% of the 141 couples who saw 2+ cards in a Planner answer saved one (sheet, 11-08..11-21; free phone 3% of 79, free desktop 0 of 29, paid phone 7% of 14, paid desktop 5% of 19)",
+        "baseline_note": "3% of the 141 couples (free and paid) who saw 2+ cards in a Planner answer saved one (sheet, 11-08..11-21; free phone 3% of 79, free desktop 0 of 29, paid phone 7% of 14, paid desktop 5% of 19). This baseline is ALL couples; members alone were 2 of 33 (~6%). Re-measure both for the 14 days before the publish, same definitions as the after window.",
         "mde_rel": 3.0,
-        "label": "saved 1+ venue within 24h of first seeing 2+ venue cards in a Planner answer"
+        "label": "all Planner couples who saw 2+ venue cards: saved 1+ venue within 24 h (14 days before vs 14 days after the publish)"
       },
-      "primary_metric": "Mixpanel: first rec_compare_eligible (both arms, carries arm) -> rec_vendor_saved saved=true within 24h, unique couples, internal excluded",
+      "primary_metric": "Before/after, 14 days before the production publish vs 14 days after, unique couples, internal excluded (Mixpanel 3963130 + table 79): (1) free couples: Open pricing PDF taps per Assistant answer with venue cards - not lower after than before; (2) all couples (members also shown on their own, baseline ~6%, 2 of 33): share who save (rec_vendor_saved saved=true) or pick (compare_picked) a venue within 24 h of an answer with venue cards - higher after than before. Not a test: other launches in the same publish (onboarding, the rename, the PDF-limit popup) also move these, so a change is a hint, not proof.",
       "guardrails": [
         {
           "key": "planner_pdf_open_rate",
@@ -5537,29 +5537,44 @@
           "max_drop_rel": 0.3
         }
       ],
-      "guardrail": "PDF opens (27% baseline) not down 10+ points at 4 weeks; purchases watched only (too few to test)",
+      "guardrail": "PDF opens (27% baseline) not down 10+ points in the 14 days after the publish vs the 14 before; purchases watched only (too few to test)",
       "assignment": {
-        "type": "split",
-        "rule": "hash_pct",
-        "salt": "compare-2026-11",
-        "pct": 50,
-        "note": "PROVISIONAL: mirrors compare.arm: sha256('compare-2026-11:<user_id>') first 8 hex digits % 100 < REC_COMPARE_AB_PCT; testers in REC_COMPARE_USER_IDS are internal and excluded. Independent of the parity split of planner-context-first."
+        "type": "pre_post",
+        "pre": [
+          "2026-11-20",
+          "2026-12-03"
+        ],
+        "post_start": "2026-12-04T15:00Z",
+        "note": "100% of couples from the production publish that ships ww-planner-chat 506015f+ (owner 2026-11-27). PROVISIONAL dates: pre = the 14 days before the publish and post_start = the publish time; both reset to the real publish (read back live) when it ships. REC_COMPARE_AB_PCT=100 since 18:39 UTC 11-27 exposes no couple until then. Testers in REC_COMPARE_USER_IDS are internal and excluded. Arm rule kept on record (assignment.arm_rule; not 'rule'/'salt' so the engine reads this as before/after, not a split): compare.arm still hashes sha256('compare-2026-11:<user_id>') first 8 hex % 100 < REC_COMPARE_AB_PCT (now 100, so every account is in the 'compare' arm); not read as a split.",
+        "arm_rule": {
+          "rule": "hash_pct",
+          "salt": "compare-2026-11",
+          "live_pct": 100
+        }
       },
       "decision_rule": {
         "ship_p": 0.9,
         "stop_p": 0.1
       },
       "start_date": null,
-      "planned_days": 35,
-      "max_days": 49,
-      "review_date": "2027-01-04",
+      "planned_days": 14,
+      "max_days": 28,
+      "review_date": "2026-12-18",
       "reporting": "manual",
       "rollback": "REC_COMPARE_AB_PCT=0 or REC_COMPARE_PICK=0 on rec-engine (~2 min); the component then shows nothing.",
-      "dates_note": "About 133 couples per arm for 3% -> 12% (about 5 weeks). Kill early if, after 100 exposed test couples, under 10% open a comparison or under 10% of openers save. Best started after planner-context-first is called (12-01) and after the old page's unseen openings are removed, so the sheet is readable.",
+      "dates_note": "Read 14 days after the production publish (review_date PROVISIONAL = 12-04 + 14 days; reset to the real publish + 14). CONFOUNDED: the same publish ships onboarding (EXP-2026-11-onboarding-try-it), the rename and the PDF-limit popup, which all move PDF opens and saves; read the before/after as a hint, by tier and device. Kill early if, after 100 exposed couples, under 10% open a comparison or under 10% of openers save. PRECONDITION (kept): one tester compare event (rec_compare_shown / rec_compare_eligible) confirmed landing in Mixpanel project 3963130 before the publish is counted as the start. In the last 30 days rec_compare_shown/_picked/_fold/_pdf/_season = 0 rows AND rec_source_clicked (sent the same way, through the component's track()) = 0, while planner_bubble_opened = 167, so the tracking is UNPROVEN; without it the metric can't be read.",
       "results": [
         {
           "date": "2026-11-22",
           "note": "Planned. Counter-evidence kept on record: almost nobody types a comparison (0-20 of 877 questions by strict/loose reading); Baymard 2022: 3 of 38 phone testers used compare."
+        },
+        {
+          "date": "2026-11-27",
+          "note": "Owner 'turn that on': arm at the production publish of ww-planner-chat 506015f with REC_COMPARE_AB_PCT=50, only after one tester compare event is seen in Mixpanel (tracking unproven: compare events and rec_source_clicked both 0 in 30 days). Stays planned, start_date empty, until both are read back."
+        },
+        {
+          "date": "2026-11-27",
+          "note": "Owner: Compare goes to 100% of couples when live, not 50/50. REC_COMPARE_AB_PCT=100 set 18:39 UTC (deploy 51d125fb) (no couple exposure: production component 2958c5a has no Compare UI). Entry switched to a before/after read (14 days before vs after the publish), confounded by the other launches in that publish. start_date stays empty until the publish is read back live and the Mixpanel event precondition is met."
         }
       ],
       "decision": "",
@@ -5570,7 +5585,15 @@
         "tulle_vendor_data_updates branch rec-planner-compare",
         "ww-planner-chat branch planner-compare",
         "tulletogether .claude/planner_compare_2026-11-22/"
-      ]
+      ],
+      "exposure": {
+        "source": "mixpanel:rec_compare_eligible",
+        "surfaces": [
+          "planner",
+          "bubble"
+        ]
+      },
+      "goal_bar": "Bar (owner 2026-11-27, 100% rollout, before/after 14 + 14 days): save-or-pick within 24 h of an answer with venue cards higher after than before (all couples, baseline 3%; members ~6% shown apart); free couples' Open pricing PDF taps per answer with venue cards not lower after than before. Kill early if, after 100 exposed couples, under 10% open a comparison or under 10% of openers save. Earlier 50/50 bar (3% -> 12%, ~133 per arm) replaced by the owner's 100% decision."
     },
     {
       "id": "EXP-2026-11-onboarding-try-it",
@@ -5586,7 +5609,7 @@
       "bucket": "onboarding",
       "in_rotation": false,
       "tldr": "New sign-ups answer Tulle in a chat pop-up, ask it one real question about a venue, instead of two question pop-ups and a tooltip tour. Question: do more open PDFs within a day and come back to the Planner, without fewer finishing?",
-      "what_changed": "BUILT, not live. Everyone who signs up (100%, owner 2026-11-23: sequential before/after, no 50/50) gets a pop-up over the app where the Planner asks stage, source (Other needs details), age, states (all 50 + DC + International + Not Sure), guests (25-500 by 25) and budget ($5K slider + typed, optional), shows three venues, takes one real question (uncounted, once per account, REC_ONBOARDING), then closes. No PDF step (owner 2026-11-24): opening a pricing PDF from a venue card is optional. 'Specific venue' search with a path when Tulle doesn't have it. Replaces both pop-ups and the Discovery tour. ww-planner-chat prop onboardingMode (off | on | preview). Referral step on at launch (owner 2026-11-24); ep270 already credits +3 at the friend's sign-up.",
+      "what_changed": "BUILT, not live. Everyone who signs up (100%, owner 2026-11-23: sequential before/after, no 50/50) gets a pop-up over the app where the Planner asks stage, source (Other needs details), age, states (all 50 + DC + International + Not Sure), guests (25-500 by 25) and budget ($5K slider + typed, optional), shows three venues, takes one real question (uncounted, once per account, REC_ONBOARDING), then closes. No PDF step (owner 2026-11-24): opening a pricing PDF from a venue card is optional. 'Specific venue' search with a path when Tulle doesn't have it. Replaces both pop-ups and the Discovery tour. ww-planner-chat prop onboardingMode (off | on | preview). Referral step on at launch (owner 2026-11-24); ep270 already credits +3 at the friend's sign-up. Launch: at the production WeWeb publish that carries it, with REC_ONBOARDING=1 on rec-engine.",
       "surfaces": [
         "weweb:sign-up",
         "weweb:discovery",
@@ -5597,7 +5620,7 @@
         "est_daily_exposed": 97,
         "est_note": "Xano 2,724 sign-ups ex-internal in 28 days (10-25..11-21) = 97.3/day; Mixpanel sees 88% of them"
       },
-      "hypothesis": "If new couples use the Planner and open a price sheet during onboarding, then first PDF within 1 day rises from 63.9% to 69%+ and 3 PDFs within 1 day from 27.7%, because today the flow ends before anyone sees a price.",
+      "hypothesis": "If new couples are onboarded by the Planner (questions, three venues, one real question; no PDF step), then as many still finish and open pricing PDFs within 1 day (not clearly below 63.9% for 1 PDF and 27.7% for 3 PDFs) and paid within 7 days stays at 1.5%+, because the Planner shows them venues and lets them ask about one before the flow ends.",
       "tests": "Does doing the product inside onboarding get more new couples to open a pricing PDF within a day?",
       "goal": "Owner 2026-11-22: onboarding modelled on Wispr Flow, replacing the two modals and rethinking the tour; everyone must get through onboarding as before, ideally payment rate moves too.",
       "metric": {
@@ -5605,11 +5628,11 @@
         "params": {},
         "direction": "increase",
         "baseline": 0.639,
-        "baseline_note": "viewed_vendor_pdf within 1 day of signed_up, Mixpanel 10-25..11-21 (phone 59.2%, desktop 76.0%). The onboarding PDF counts in the test arm, so read it WITH 3 PDFs in 1 day (27.7%) and a second Planner question after onboarding; first PDF alone is partly self-fulfilling. Pass needs both up.",
+        "baseline_note": "viewed_vendor_pdf within 1 day of signed_up, Mixpanel 10-25..11-21 (phone 59.2%, desktop 76.0%). No PDF step in onboarding (owner 2026-11-24), so a PDF open is the couple's own choice. Read WITH 3 PDFs in 1 day (27.7%).",
         "mde_rel": 0.08,
         "label": "opened 1+ pricing PDF within 1 day of sign-up"
       },
-      "primary_metric": "Co-primary: 3 PDFs within 1 day (27.7%) so a forced first open alone cannot win. Pieces, each with its own bar: (a) real question: Planner question AFTER onboarding within 1 day 8.5% -> 12%+; (b) price sheet: a SECOND sheet within 1 day, above today's share with 2+; (c) 3 venues up front: saved a venue within 1 day 3.3% -> 6%+; (d) specific-venue search: share of misses who still ask or open something 50%+.",
+      "primary_metric": "Owner bar 2026-11-25: (1) finish rate (guests saved, table 1) not under 92% after 300 sign-ups; (2) 1+ PDF within 1 day of sign-up not clearly below 63.9% and 3+ PDFs within 1 day not clearly below 27.7% (clearly below = 95% interval upper end below the baseline); (3) paid within 7 days >= 1.5%. Watched only, no bar: Planner question after onboarding within 1 day (8.5%), saved a venue within 1 day (3.3%), specific-venue misses who still ask or open something.",
       "guardrails": [
         {
           "key": "purchases_per_day",
@@ -5618,7 +5641,7 @@
           "max_drop_rel": 0.25
         }
       ],
-      "guardrail": "Finish rate (guests saved) 96.8%: off if under 92% after 300+ sign-ups. Vendor page 1 d 94.2%; saved a venue 1 d 3.3%; Planner question AFTER onboarding 1 d 8.5%; median time to finish questions 47 s; paid 7 d 2.05% (interval only).",
+      "guardrail": "Finish rate (guests saved, table 1) 96.8%: off if under 92% after 300+ sign-ups, or if any sign-up is reported stuck. Paid 7 d >= 1.5% (baseline 2.05%, 56 payers in 28 days: only a fall of roughly a third is visible). Watched: vendor page 1 d 94.2%; saved a venue 1 d 3.3%; Planner question AFTER onboarding 1 d 8.5%; median time to finish questions 47 s.",
       "assignment": {
         "type": "pre_post",
         "pre": [
@@ -5631,7 +5654,8 @@
       "decision_rule": {
         "ship_p": 0.9,
         "stop_p": 0.1,
-        "sequential": "Week 1 (about 680 sign-ups): turn OFF the same day if finish rate is under 92% after 300+ sign-ups (baseline 96.8%), or if any sign-up is reported stuck. Keep if, over 28 days, 3+ PDFs within 1 day is above 27.7% AND a second price sheet after onboarding is not lower than the old first-sheet rate on the same devices AND paid within 7 days is not below 1.5% (baseline 2.05%, 56 payers in 28 days: only a fall of roughly a third is visible)."
+        "owner_bar_2026_11_25": "Owner-approved 2026-11-25 (the only bar): turn OFF if under 92% finish after 300 sign-ups (baseline 96.8%; finish = guests saved, Xano table 1, same definition before and after). KEEP if 1-PDF and 3-PDF opens within 1 day are not clearly below 63.9% / 27.7%, and paid within 7 days >= 1.5% (baseline 2.05%). [T0's interpretation, pending owner confirmation - not the owner's words: 'clearly below' = the upper end of the 95% interval of the after rate is below the baseline.]",
+        "clearly_below_note": "T0's interpretation, pending owner confirmation: 'clearly below' means the upper end of the 95% interval of the after rate is below the baseline (63.9% for 1 PDF, 27.7% for 3 PDFs). Looked at every Monday; before/after is evidence, not proof."
       },
       "start_date": null,
       "planned_days": 28,
@@ -5648,6 +5672,14 @@
         {
           "date": "2026-11-24",
           "note": "Before launch: forced PDF step removed (owner). The hypothesis, co-primary (b) and the second-sheet keep rule were written for a forced first open; bars NOT changed yet, owner to confirm new ones before launch. Read onboarding_answered@ask with asked=true; count distinct venues in onboarding_pdf_opened."
+        },
+        {
+          "date": "2026-11-27",
+          "note": "Bar confirmed (owner 2026-11-25, replaces the 11-24 open question about the forced-PDF bars): off if under 92% finish after 300; keep if 1-PDF and 3-PDF opens not clearly below 63.9% / 27.7%; paid within 7 days >= 1.5%. Launches at the production publish with REC_ONBOARDING=1; start_date and post_start set to the real publish time."
+        },
+        {
+          "date": "2026-11-27",
+          "note": "QA fix (independent QA 2026-11-27): one bar only, the owner's 2026-11-25 bar. Removed the old sequential keep rule (3+ PDFs above 27.7% and the second-price-sheet rule) and the co-primary pieces written for the removed forced-PDF step; hypothesis and primary rewritten. 'Clearly below' defined as the 95% interval upper end under the baseline - T0's interpretation, pending owner confirmation."
         }
       ],
       "decision": "",
@@ -5660,7 +5692,10 @@
       "links": [
         "tulletogether .claude/onboarding_2026-11-22/LOOMS.md",
         ".claude/planner_compare_2026-11-22/onboarding_baseline.md"
-      ]
+      ],
+      "exposure": {
+        "source": "xano:table1"
+      }
     },
     {
       "id": "EXP-2026-11-search-box-fit",
@@ -6278,6 +6313,121 @@
         },
         "locked_on": "2026-11-25"
       }
+    },
+    {
+      "id": "EXP-2026-12-photo-first",
+      "name": "Planner: photo-first answers (bigger photo, one short line, one labelled price line for members)",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "ux",
+      "themes": [
+        "planner"
+      ],
+      "bucket": "planner_engagement",
+      "in_rotation": false,
+      "tldr": "Planner answers with venue cards lead with a bigger first photo and one short line instead of a paragraph; members keep one labelled price line (from the PDF or an estimate), free couples see 0 price digits. Question: with far fewer words, do couples still open pricing PDFs and keep asking?",
+      "what_changed": "rec-engine REC_PHOTO_FIRST=1 (rec_service/photo_first.py) + ww-planner-chat photo-first prop: first photo bigger (broken ones skipped, no-photo placeholder labelled), seats line, one line of text (pass bar: median <= 20 words), members one PDF-sourced or labelled-estimate price line, free couples 0 price digits (market-average tiers hidden, T0-52/53), PDF nudge stays until that venue's PDF is opened; no all-inclusive, guest-minimum or distance labels; no rental line (T0-55) and no per-card estimate on 'Show 3 more' (T0-56). 100% of couples (owner 2026-11-27: 'just do 100% and call it a sequential test, and accept some data dirtiness'): REC_PHOTO_FIRST_AB_PCT=100 with the photoFirst prop on, from the production publish.",
+      "surfaces": [
+        "rec-engine",
+        "weweb:planner",
+        "weweb:bubble"
+      ],
+      "audience": {
+        "segment": "Planner couples (free and paid) who get an answer with venue cards",
+        "est_daily_exposed": 9,
+        "est_note": "T4-7: about 60 couples a week answered in the Assistant (DECISION_CARD: 60-80/week); not measured inside the new build"
+      },
+      "exposure": {
+        "source": "xano:table79",
+        "surfaces": [
+          "planner",
+          "bubble"
+        ],
+        "kinds": [
+          "refine"
+        ]
+      },
+      "hypothesis": "If Planner answers lead with a bigger photo and one short line instead of 50-110 words, then couples open a pricing PDF from the Planner within 24 h at least as often as today (31%) and ask a second question no less often, because the photo and the PDF nudge carry the answer and the extra words were mostly repeats (80% of words repeat or could be drawn).",
+      "tests": "Do photo-first answers keep PDF opens and follow-up questions at today's level while cutting the words?",
+      "goal": "Bar written BEFORE launch (2026-11-27). Sequential, does-it-hurt: KEEP photo-first if, over the first 28 days after the production publish vs the 14 days before, (1) PDF opened from a Planner card within 24 h of the couple's first Planner use is not 16+ points below the before-period rate (baseline 31%, 42 of 134) and (2) a second Planner answer within 1 h of the first is not more than 20% (relative) below the before period. TURN OFF the same day (photoFirst prop off / REC_PHOTO_FIRST_AB_PCT=0) if any free couple is shown a venue price digit, or if after 14 days PDF opens are 16+ points below before. Confounded by other launches in the same publish (see assignment.note): a drop is a reason to look, not proof. Owner yes T4-7 (2026-11-25) and 2026-11-27 ('keep the photo-first answers on'; '100%, sequential test').",
+      "metric": {
+        "key": "planner_pdf_open_rate",
+        "params": {
+          "days": 1
+        },
+        "direction": "increase",
+        "baseline": 0.31,
+        "baseline_note": "PDF opened in the Assistant within 24 h: 42 of 134 couples (T4 DECISION_CARD, pre-launch read, internal excluded). Higher is better, but this is a does-it-hurt read: at ~125 per arm, 80% power, alpha 0.05, only a drop of ~16 points (52% relative) is detectable (2.8 x sqrt(2 x 0.31 x 0.69 / 125) = 16.4 pts; QA 2026-11-27).",
+        "mde_rel": 0.52,
+        "label": "opened a pricing PDF from the Planner within 24 h"
+      },
+      "primary_metric": "Per arm (by account), as the experiments engine measures it (planner_pdf_open_rate, days=1): share of Planner couples who open a pricing PDF from a Planner card (table 79 kind=pdf) within 24 h of their FIRST Planner use of any kind in the window (opening, refine, lookup or more), internal excluded. GAP: photo-first only changes answers with venue cards; the engine's anchor also counts couples whose first use had no cards, which dilutes both arms equally. An exact read needs the anchor filtered to the first answer that returned venue cards (a 'cards only' param on planner_pdf_open_rate, not built); until then the engine number is the read and a hand read with that filter is the check at the review date. Check: median words per answer (pass bar <= 20) within the first week.",
+      "guardrails": [
+        {
+          "key": "planner_pdf_open_rate",
+          "label": "opened a pricing PDF from the Planner within 24 h (31%)",
+          "params": {
+            "days": 1
+          },
+          "max_drop_rel": 0.52
+        },
+        {
+          "key": "planner_second_question",
+          "label": "a second Planner answer within 1 h",
+          "params": {
+            "days": 0.0417
+          },
+          "max_drop_rel": 0.2
+        }
+      ],
+      "guardrail": "PDF opens (31% baseline) not down 16+ points at 125 per arm (stop rule); second answer within 1 h not down 20%+; free couples 0 price digits; purchases watched only",
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-11-20",
+          "2026-12-03"
+        ],
+        "post_start": "2026-12-04T15:00Z",
+        "note": "Sequential (before/after), owner 2026-11-27, replacing the planned 50/50 (~60 couples/week: a 50/50 could only see a 16+ point drop after 4-5 weeks). PROVISIONAL dates: pre = the 14 days before the production publish, post_start = the publish time; reset to the real publish when it ships. Data dirtiness accepted: the same publish ships onboarding, Compare (100%), the Assistant rename and the PDF-limit popup, and December is wedding-planning season, so a before/after change cannot be credited to photo-first alone.",
+        "arm_rule": {
+          "rule": "hash_pct",
+          "salt": "photo-first-2026-11",
+          "live_pct": 100
+        }
+      },
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "start_date": null,
+      "planned_days": 35,
+      "max_days": 49,
+      "review_date": "2027-01-07",
+      "reporting": "manual",
+      "rollback": "REC_PHOTO_FIRST_AB_PCT=0 (or REC_PHOTO_FIRST=0) on rec-engine, ~2 min; every answer is then exactly as before (pass bar item 6).",
+      "dates_note": "review_date PROVISIONAL = planned switch-on 2026-12-03 (T0-51) + 5 weeks (35 days); reset to the real launch + 35 days when start_date is set at the real switch-on time. About 60 couples a week (T4-7) = ~125 per arm in 4-5 weeks: only drops of ~16 points (or more) in PDF opens are visible. Ships with REC_COMPARE_ANY_CATEGORY (T0-51, same day): log it in changes[] and read with EXP-2026-11-planner-compare in mind (they share couples).",
+      "results": [
+        {
+          "date": "2026-11-27",
+          "note": "Planned. Pass bar (PASS_BAR.md, written before the build) judged by independent QA on 30 held-out questions, rounds 4-10; data issues on the live pricing panel are on a separate fix list. Not live: no start_date until the switch is read back on /rec/status."
+        },
+        {
+          "date": "2026-11-27",
+          "note": "QA fixes (independent QA 2026-11-27): salt/switch no longer 'assumed' (match the shipped split code); primary metric reworded to what the engine measures, with the card-answer gap noted; detectable drop corrected from ~15 to ~16 points (mde_rel 0.48 -> 0.52)."
+        }
+      ],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulletogether .claude/ops_2026-11-25/DECISIONS.md T4-7, T0-51..56",
+        "tulletogether .claude/ops_2026-11-25/t4_visuals/DECISION_CARD.md",
+        "tulletogether .claude/ops_2026-11-25/photo_first/PASS_BAR.md",
+        "tulle_vendor_data_updates branch photo-first-server"
+      ]
     }
   ],
   "changes": [
@@ -6890,6 +7040,15 @@
       "affects": "internal duplicate-merge flow only",
       "source": "github+railway",
       "ref": "tulle_vendor_data_updates a39e769; tulle-slack-qa MERGE_CARD_FAST=1"
+    },
+    {
+      "date": "2026-11-27",
+      "what": "rec-engine REC_COMPARE_AB_PCT=100 (18:39 UTC, rec-engine deploy 51d125fb created 2026-11-27T18:39:26Z; owner 2026-11-27: Compare to 100% of couples, not 50/50). No couple exposure until the production WeWeb publish ships ww-planner-chat 506015f+: live component 2958c5a has no Compare UI; editor/staging accounts see it now.",
+      "affects": [
+        "EXP-2026-11-planner-compare"
+      ],
+      "source": "railway",
+      "ref": "rec-engine REC_COMPARE_AB_PCT=100"
     }
   ]
 }

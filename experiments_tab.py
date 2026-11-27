@@ -16,6 +16,7 @@ import datetime as dt
 import json
 import math
 import os
+import re
 
 import altair as alt
 import pandas as pd
@@ -23,6 +24,100 @@ import streamlit as st
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "experiments", "experiment_log.json")
 STATUSES = ["planned", "live", "reading", "concluded", "reverted"]
+
+
+# ── Deep link (2026-11-27): <dash>/?exp=<EXPERIMENT_ID> opens this tab with that experiment open ──────────────
+# The id survives Google sign-in in the OAuth `state` (dashboard.py), since the redirect_uri carries no params.
+EXP_QUERY_KEY = "exp"
+_STATE_PREFIX = "exp:"
+_EXP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
+def clean_exp_id(value) -> str | None:
+    """A safe experiment id from a URL value (ids look like EXP-2026-11-slug), else None."""
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+    text = str(value or "").strip()
+    return text if _EXP_ID_RE.match(text) else None
+
+
+def exp_to_state(exp_id) -> str | None:
+    """OAuth `state` value that carries the deep-linked id through Google sign-in."""
+    e = clean_exp_id(exp_id)
+    return f"{_STATE_PREFIX}{e}" if e else None
+
+
+def exp_from_state(state) -> str | None:
+    s = str(state or "")
+    return clean_exp_id(s[len(_STATE_PREFIX):]) if s.startswith(_STATE_PREFIX) else None
+
+
+def focus_exp_id() -> str | None:
+    """The ?exp= id on the current URL (None when absent or not a valid id)."""
+    try:
+        return clean_exp_id(st.query_params.get(EXP_QUERY_KEY))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# Pure helpers dashboard.py uses for the ?exp= wiring (QA 2026-11-27: the wiring had no tests; each of
+# these is tested in tests/test_exp_deep_link.py so a lost id or a reordered tab bar fails a test).
+EXP_TAB_LABEL = "🧪 Experiments"
+
+
+def auth_url_params(base: dict, exp_id) -> dict:
+    """Google OAuth params: `base` plus state=exp:<id> when exp_id is a valid id (redirect_uri untouched)."""
+    params = dict(base)
+    state = exp_to_state(exp_id)
+    if state:
+        params["state"] = state
+    return params
+
+
+def callback_keep(query_params) -> dict:
+    """{exp: id} to put back on the URL after the OAuth callback clears it: the id still on the
+    URL, else the one Google hands back in `state`. {exp: None} when there is none."""
+    qp = query_params or {}
+    getter = qp.get if hasattr(qp, "get") else (lambda k: None)
+    return {EXP_QUERY_KEY: clean_exp_id(getter(EXP_QUERY_KEY)) or exp_from_state(getter("state"))}
+
+
+def tab_order(labels, focus) -> list:
+    """Tab labels in display order: unchanged without a focus; Experiments first with one
+    (st.tabs opens the first tab, and Streamlit can't pick the open tab otherwise)."""
+    labels = list(labels)
+    if not clean_exp_id(focus) or EXP_TAB_LABEL not in labels:
+        return labels
+    return [EXP_TAB_LABEL] + [t for t in labels if t != EXP_TAB_LABEL]
+
+
+def resolve_focus(focus, ids) -> str | None:
+    """The deep-linked id when it is a valid id in `ids` ({id: name}), else None (unknown ids are dropped)."""
+    f = clean_exp_id(focus)
+    return f if f and f in (ids or {}) else None
+
+
+def known_ids(registry=None, snapshot=None) -> dict:
+    """{id: name} of every experiment in the registry and the engine snapshot."""
+    out = {}
+    for src in (registry, snapshot):
+        if not isinstance(src, dict):
+            continue
+        for key in ("experiments", "decided"):
+            for e in src.get(key) or []:
+                if isinstance(e, dict) and e.get("id"):
+                    out.setdefault(str(e["id"]), str(e.get("name") or e["id"]))
+    return out
+
+
+def focus_note(focus, ids) -> tuple[str, str] | None:
+    """(kind, text) shown above the tab for a deep link: 'ok' names it, 'missing' says it isn't there."""
+    if not focus:
+        return None
+    if focus in ids:
+        return "ok", f"Opened from a link: **{ids[focus]}** (`{focus}`)."
+    return "missing", (f"No experiment with id `{focus}` in the registry, so nothing is opened. "
+                       "Showing every experiment; check the link's spelling.")
 
 
 def _load() -> dict:
@@ -86,7 +181,7 @@ def _what(change):
     return change.get("what") or change.get("name") or "(no description)"
 
 
-def _render_legacy():
+def _render_legacy(focus=None):
     try:
         log = _load()
     except (OSError, ValueError) as exc:
@@ -102,6 +197,9 @@ def _render_legacy():
     groups = {"Running": ("planned", "live", "reading"), "Past": ("concluded", "reverted"), "All": tuple(STATUSES)}
     pick = st.segmented_control("Show", list(groups), default="Running", key="exp_view") or "All"
     shown = [e for e in exps if e.get("status") in groups[pick]]
+    if focus:   # deep link: that experiment first and open, whatever the filter
+        hit = [e for e in exps if e.get("id") == focus]
+        shown = hit + [e for e in shown if e.get("id") != focus]
 
     # Timeline: experiments as bars, logged changes as dashed rules. Overlap = possible confound.
     rows = []
@@ -141,7 +239,7 @@ def _render_legacy():
 
     for e in shown:
         w = _window(e, today)
-        with st.expander(f"{e['name']}  ·  {e['status']}"):
+        with st.expander(f"{e['name']}  ·  {e['status']}", expanded=bool(focus) and e.get("id") == focus):
             st.markdown(f"**Goal:** {e.get('goal') or '—'}  \n**Primary metric:** {e.get('primary_metric') or '—'}"
                         + (f"  \n**Guardrail:** {e['guardrail']}" if e.get("guardrail") else "")
                         + f"  \n**Design:** {e.get('design') or '—'}"
@@ -262,9 +360,18 @@ def _dash_author() -> str:
     return name or email or "dash user"
 
 
-def render_experiments_tab():
+def render_experiments_tab(focus=None):
+    """focus: an experiment id from ?exp= (dashboard.py); that experiment opens at the top."""
+    focus = clean_exp_id(focus)
     if os.environ.get("EXP_TAB_V2", "1") == "0":
-        return _render_legacy()
+        if focus:
+            try:
+                ids = known_ids(_load())
+            except (OSError, ValueError):
+                ids = {}
+            _show_focus_note(focus, ids)
+            focus = resolve_focus(focus, ids)
+        return _render_legacy(focus)
     from experiments_ui.render import render_experiments_tab_v2
     snap, note = _engine_snapshot(ENGINE_URL, ENGINE_KEY)
     # the reason goes into the page's own degraded banner (one warning, not two)
@@ -275,6 +382,20 @@ def render_experiments_tab():
         reg = _load()
     except (OSError, ValueError):
         pass
+    if focus:
+        ids = known_ids(reg, snap if isinstance(snap, dict) else None)
+        _show_focus_note(focus, ids)
+        focus = resolve_focus(focus, ids)
     render_experiments_tab_v2(dict(snap) if snap else None, reg, history_by_id=history,
                               degraded_reason=None if snap else reason,
-                              on_note=_post_note if snap else None, author=_dash_author())
+                              on_note=_post_note if snap else None, author=_dash_author(), focus=focus)
+
+
+def _show_focus_note(focus, ids):
+    n = focus_note(focus, ids)
+    if not n:
+        return
+    if n[0] == "ok":
+        st.caption(n[1])
+    else:
+        st.info(n[1])

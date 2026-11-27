@@ -159,11 +159,13 @@ def persist_mode(mode: str, cookies=None) -> None:
             pass
 
 
-def preserve_on_clear() -> None:
-    """Clear query params but keep ?theme=.
+def preserve_on_clear(keep: dict | None = None) -> None:
+    """Clear query params but keep ?theme= (and any `keep` {key: value}, e.g. ?exp=).
 
     dashboard.py calls st.query_params.clear() three times while handling the
     Google OAuth callback; a blanket clear would drop the theme on every sign-in.
+    `keep` lets the callback put back other params it must not lose (2026-11-27:
+    the ?exp= experiment deep link, which rides through Google in the OAuth state).
     """
     mode = _clean(st.query_params.get(_QUERY_KEY))
     st.query_params.clear()
@@ -172,6 +174,12 @@ def preserve_on_clear() -> None:
             st.query_params[_QUERY_KEY] = mode
         except Exception:
             pass
+    for key, value in (keep or {}).items():
+        if value:
+            try:
+                st.query_params[key] = value
+            except Exception:
+                pass
 
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
