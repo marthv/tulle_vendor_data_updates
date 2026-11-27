@@ -124,7 +124,7 @@ def _minimal_snapshot(registry, today):
         if status in decided_status:
             res = e.get("results") if isinstance(e.get("results"), list) else []
             last = res[-1] if res and isinstance(res[-1], dict) else {}
-            decided.append({"id": e.get("id"), "name": name, "status": status,
+            decided.append({"id": e.get("id"), "name": name, "status": status, "category": e.get("category"),
                             "outcome": e.get("outcome") or (status if status in ("shipped", "reverted", "shelved", "inconclusive") else None),
                             "decided_on": e.get("decided_on") or e.get("end_date"),
                             "decision": e.get("decision"), "takeaway": e.get("decision") or last.get("note"),
@@ -133,7 +133,7 @@ def _minimal_snapshot(registry, today):
             continue
         sd = _date(e.get("start_date"))
         rd = _date(e.get("review_date"))
-        row = {"id": e.get("id"), "name": name, "status": status,
+        row = {"id": e.get("id"), "name": name, "status": status, "category": e.get("category"),
                "lifecycle": status if status in ("live", "planned", "paused", "draft") else "unknown",
                "themes": e.get("themes") if isinstance(e.get("themes"), list) else [],
                "what_changed": e.get("what_changed") or e.get("what"),
@@ -217,14 +217,16 @@ def attach_history(snapshot, history_by_id):
     return snapshot
 
 
-PLAIN_FIELDS = ("tests", "hypothesis", "goal", "what_changed")
+PLAIN_FIELDS = ("tests", "hypothesis", "goal", "what_changed", "tldr", "category")
 
 
 def attach_plain_fields(snapshot, registry):
     """Copy the registry's plain-language fields (tests / hypothesis / goal / what_changed) onto
     snapshot rows that lack them, by id. The engine's decided[] rows carry none of them, and the
     four-item view (owner 2026-11-27) leads every card with "What's being tested". Fills blanks
-    only (never overrides the engine), reads nothing new (the registry is already loaded)."""
+    only (never overrides the engine), reads nothing new (the registry is already loaded).
+    tldr + category (2026-11-27) feed the main view's keyword search and category filter, so
+    they work before the engine service redeploys with category on its rows."""
     if not isinstance(snapshot, dict) or not isinstance(registry, dict):
         return snapshot
     by_id = {str(e.get("id")): e for e in registry.get("experiments") or [] if isinstance(e, dict) and e.get("id")}
@@ -237,6 +239,19 @@ def attach_plain_fields(snapshot, registry):
                 v = src.get(f)
                 if isinstance(v, str) and v.strip() and not row.get(f):
                     row[f] = v
+    return snapshot
+
+
+def attach_categories(snapshot):
+    """Put the fixed category list (experiments_engine/categories.py, the only copy) on the
+    snapshot for the page's category filter. Never raises."""
+    if not isinstance(snapshot, dict):
+        return snapshot
+    try:
+        from experiments_engine.categories import CATEGORIES
+        snapshot["categories"] = list(CATEGORIES)
+    except Exception:  # noqa: BLE001 - the page falls back to the categories on the rows
+        pass
     return snapshot
 
 
@@ -355,6 +370,7 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
                                    else _load_registry_file())
     except Exception:  # noqa: BLE001 - a missing field must never break the tab
         pass
+    snap = attach_categories(snap)
     degraded = bool(snap.get("degraded"))
     if os.environ.get("EXP_TAB_COMPONENT", "1") != "0":
         try:

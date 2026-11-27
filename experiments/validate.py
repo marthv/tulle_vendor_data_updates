@@ -20,10 +20,14 @@ with a run of at most 14 days (planned_days, or review_date - start_date). ``--i
 entry that breaks either rule; a full-file run prints a warning. A v2 live/planned/paused entry without a
 ``bucket`` gets a warning showing the derived bucket.
 
+Category (owner 2026-11-27): every entry, decided ones included, needs ``category`` set to one of
+experiments_engine/categories.py CATEGORIES (the Experiments tab's category filter). A missing or unknown category
+fails the run.
+
 Exit codes:
     0  ok (legacy entries may still show issues; known gaps never fail the run)
     1  a live/planned/paused framework_version 2 entry has unacknowledged blocking issues, ids are
-       duplicated, or (--id) the entry is missing or has any blocking issue
+       duplicated, an entry has no valid category, or (--id) the entry is missing or has any blocking issue
     2  the registry is missing or not valid JSON / not the expected shape
 """
 from __future__ import annotations
@@ -37,7 +41,7 @@ from collections import Counter
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from experiments_engine import buckets, readlock, spec  # noqa: E402
+from experiments_engine import buckets, categories, readlock, spec  # noqa: E402
 from experiments_engine.snapshot import ROTATION_MAX  # noqa: E402
 
 ROTATION_MAX_DAYS = 14
@@ -235,10 +239,15 @@ def main(argv=None):
         if v2 and enforced and not buckets.derive(raw)[1] == "registry":
             issues.append({"severity": "warn", "question": 2, "field": "bucket",
                            "message": f"No bucket; derived '{buckets.derive(raw)[0]}' (one of {', '.join(buckets.KEYS)})"})
+        cat_why = categories.problem(raw)
+        if cat_why:
+            issues.append({"severity": "error", "question": None, "field": "category", "message": cat_why})
         blocking = spec.blocking(issues)
         if (enforced and v2 or strict) and blocking:
             failures.append(f"{e.get('id')}: {len(blocking)} blocking issue(s): "
                             + "; ".join(sorted({str(b.get('field')) for b in blocking})))
+        elif cat_why:   # a category is required on every entry, decided ones too
+            failures.append(f"{e.get('id')}: {cat_why}")
         counts[(e["_lifecycle"], "v2" if v2 else "legacy",
                 "incomplete" if blocking else "ok")] += 1
         if not args.all and not enforced and not strict:

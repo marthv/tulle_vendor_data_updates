@@ -19,6 +19,7 @@
         }
       ],
       "id": "EXP-2026-08-budget-roadmap",
+      "category": "Pricing & payments",
       "name": "Budget Roadmap: custom budget PDF, $40 one-time",
       "status": "reverted",
       "themes": [
@@ -100,6 +101,7 @@
         }
       ],
       "id": "EXP-2026-08-pdf-warning-view3",
+      "category": "Paywall & PDF limit",
       "name": "\"Last free pricing PDF\" warning on the 3rd free view",
       "status": "shipped",
       "themes": [
@@ -182,6 +184,7 @@
         }
       ],
       "id": "EXP-2026-10-ny-149",
+      "category": "Pricing & payments",
       "name": "NY Forever at $149 (geo test raised arm)",
       "status": "reverted",
       "themes": [
@@ -265,6 +268,7 @@
         }
       ],
       "id": "EXP-2026-10-ca-intl-149",
+      "category": "Pricing & payments",
       "name": "CA + International Forever at $149 with BNPL",
       "status": "concluded",
       "themes": [
@@ -350,6 +354,7 @@
         }
       ],
       "id": "EXP-2026-10-assistant-forever-beta",
+      "category": "Planner",
       "name": "Tulle Assistant beta: Forever members only",
       "status": "concluded",
       "themes": [
@@ -422,6 +427,7 @@
         }
       ],
       "id": "EXP-2026-10-handoff-card",
+      "category": "Onboarding",
       "name": "First-session \"Start here\" PDF handoff card",
       "status": "reverted",
       "themes": [
@@ -499,6 +505,7 @@
         }
       ],
       "id": "EXP-2026-10-after-onboarding-tour",
+      "category": "Onboarding",
       "name": "After-onboarding tour (Discovery card -> vendor PDFs -> Assistant) replacing the 4-step vendor tour",
       "status": "concluded",
       "themes": [
@@ -574,6 +581,7 @@
         }
       ],
       "id": "EXP-2026-10-nps-forced",
+      "category": "Email & feedback",
       "name": "NPS: forced return-from-PDF card (rating + comment required)",
       "status": "concluded",
       "themes": [
@@ -643,6 +651,7 @@
         }
       ],
       "id": "EXP-2026-10-ep119-cache-24h",
+      "category": "Search & Discovery",
       "name": "Search cache lifetime 2h -> 24h (ep119)",
       "status": "concluded",
       "themes": [
@@ -698,6 +707,7 @@
     },
     {
       "id": "EXP-2026-10-pricing-phase2",
+      "category": "Pricing & payments",
       "name": "Pricing phase 2: raised arm vs baseline (daily brief tracker)",
       "status": "concluded",
       "themes": [
@@ -787,6 +797,7 @@
     },
     {
       "id": "EXP-2026-10-ny-tier",
+      "category": "Pricing & payments",
       "name": "NY tier $35/$60/$135",
       "status": "concluded",
       "themes": [
@@ -867,6 +878,7 @@
     },
     {
       "id": "EXP-2026-10-hub-pricing",
+      "category": "Pricing & payments",
       "name": "Rest-of-US + Texas baseline raised to $35/$60/$135 (10-14 bundle)",
       "status": "concluded",
       "themes": [
@@ -945,6 +957,7 @@
     },
     {
       "id": "EXP-2026-10-free-assistant",
+      "category": "Planner",
       "name": "Tulle Assistant free questions for free users",
       "status": "concluded",
       "themes": [
@@ -1023,6 +1036,7 @@
     },
     {
       "id": "EXP-2026-10-signup-checkbox",
+      "category": "Onboarding",
       "name": "Remove T&C checkbox on sign-up ('By clicking Sign up, you agree...')",
       "status": "shipped",
       "themes": [
@@ -1117,6 +1131,7 @@
     },
     {
       "id": "EXP-2026-10-pdf-popup-copy",
+      "category": "Paywall & PDF limit",
       "name": "Softer PDF warning + wall copy, inconspicuous submit-PDF link",
       "status": "reverted",
       "themes": [
@@ -1208,6 +1223,7 @@
     },
     {
       "id": "EXP-2026-10-trustpilot-5star",
+      "category": "Email & feedback",
       "name": "NPS thank-you Trustpilot ask only for 5-star raters (owner test)",
       "status": "shelved",
       "themes": [
@@ -1300,6 +1316,7 @@
     },
     {
       "id": "EXP-2026-10-tours-v2",
+      "category": "Onboarding",
       "name": "Assistant tours reset to v2 keys + Cost tools step",
       "status": "concluded",
       "themes": [
@@ -1375,6 +1392,7 @@
     },
     {
       "id": "EXP-2026-10-search-railway",
+      "category": "Search & Discovery",
       "name": "Venue search on Railway (Meilisearch) with Xano ep119 fallback - assistant + Discovery, 50% of users",
       "status": "shipped",
       "themes": [
@@ -1504,6 +1522,7 @@
     },
     {
       "id": "EXP-2026-10-chat-cost-cards",
+      "category": "Planner",
       "name": "Cost cards inside Tulle Planner chat answers (estimate / split / compare / budget)",
       "status": "shipped",
       "themes": [
@@ -1597,6 +1616,7 @@
     },
     {
       "id": "EXP-2026-10-next-step-chips",
+      "category": "Planner",
       "name": "Next-step planning chips + action chips (Open Cost tools / Open my budget / Add a quote from a PDF)",
       "status": "shelved",
       "themes": [
@@ -1687,6 +1707,7 @@
     },
     {
       "id": "EXP-2026-10-stop-progress",
+      "category": "Planner",
       "name": "Live progress labels + Stop button on planner answers",
       "status": "shipped",
       "themes": [
@@ -1776,6 +1797,7 @@
     },
     {
       "id": "EXP-2026-10-planner-name-lookup",
+      "category": "Planner",
       "name": "Planner: instant venue lookup by name (no model)",
       "status": "shipped",
       "themes": [
@@ -1871,6 +1893,7 @@
     },
     {
       "id": "EXP-2026-10-planner-price-upsell",
+      "category": "Planner",
       "name": "Planner: free users' price questions -> answer + PDF first + upgrade card (no refusal); no-views users get the card on the first answer",
       "status": "inconclusive",
       "themes": [
@@ -1950,6 +1973,7 @@
     },
     {
       "id": "EXP-2026-10-planner-profile-questions",
+      "category": "Planner",
       "name": "Planner: thin profile -> up to 2 tap questions (guests, area, style), answers saved; answering costs no free question",
       "status": "shelved",
       "themes": [
@@ -2038,6 +2062,7 @@
     },
     {
       "id": "EXP-2026-10-planner-listings",
+      "category": "Planner",
       "name": "Planner: florists, hair & makeup, caterers, planners as listings (no prices)",
       "status": "shipped",
       "themes": [
@@ -2122,6 +2147,7 @@
     },
     {
       "id": "EXP-2026-10-planner-speed-v3",
+      "category": "Planner",
       "name": "Planner speed: pricing cache (1 h, tier-safe) + Railway search 50% + per-turn timing",
       "status": "shipped",
       "themes": [
@@ -2204,6 +2230,7 @@
     },
     {
       "id": "EXP-2026-10-vendor-pdf-order",
+      "category": "Data & extraction",
       "name": "Vendor pages list PDFs Primary first, then newest year (was oldest upload first)",
       "status": "shipped",
       "themes": [
@@ -2281,6 +2308,7 @@
     },
     {
       "id": "EXP-2026-10-planner-speed-2a",
+      "category": "Planner",
       "name": "Planner speed 2a: prefetch caches (benchmarks + saved cards) + Railway search 100% with breaker + reuse today's opening",
       "status": "shipped",
       "themes": [
@@ -2379,6 +2407,7 @@
     },
     {
       "id": "EXP-2026-11-texas-only-forever-89",
+      "category": "Pricing & payments",
       "name": "Texas-only Forever $89",
       "status": "shipped",
       "themes": [
@@ -2526,6 +2555,7 @@
     },
     {
       "id": "EXP-2026-11-planner-my-wedding-plan",
+      "category": "Planner",
       "name": "Planner 'My wedding' plan (launch to everyone, no holdout)",
       "status": "reverted",
       "themes": [
@@ -2631,6 +2661,7 @@
     },
     {
       "id": "EXP-2026-11-pi-first-vendor-free",
+      "category": "Price Report & PI card",
       "name": "Pricing Intelligence free on the first vendor only, then locked until a plan",
       "status": "shelved",
       "themes": [
@@ -2732,6 +2763,7 @@
     },
     {
       "id": "EXP-2026-11-free-daily-question",
+      "category": "Planner",
       "name": "Planner: free couples get 3 questions for life, then 1 free question a day (no accumulation)",
       "status": "shelved",
       "themes": [
@@ -2833,6 +2865,7 @@
     },
     {
       "id": "EXP-2026-11-save-offer-60-forever",
+      "category": "Pricing & payments",
       "name": "'Too expensive' save offer: 60% off Forever, 12 h, server-enforced code + email (replaces 20% / 30 min)",
       "status": "shipped",
       "themes": [
@@ -2941,6 +2974,7 @@
     },
     {
       "id": "EXP-2026-11-nps-optional-comment-high-stars",
+      "category": "Email & feedback",
       "name": "NPS return card: comment optional on 4-5 stars (1-3 stars still required)",
       "status": "shipped",
       "themes": [
@@ -3033,6 +3067,7 @@
     },
     {
       "id": "EXP-2026-11-ask-tulle-bubble",
+      "category": "Planner",
       "name": "'Ask Tulle' floating Planner chat on Discovery (Map | Ask Tulle phone dock), Membership and My wedding; empty-results banner",
       "status": "inconclusive",
       "themes": [
@@ -3149,6 +3184,7 @@
     },
     {
       "id": "EXP-2026-11-pricing-page-copy",
+      "category": "Pricing & payments",
       "name": "Pricing page copy: headline 'See what wedding vendors really charge.', outcome subtitles per plan, plain feature lines ('AI wedding planner', 'Unlimited real pricing PDFs', 'No Pricing Intelligence', 'No advanced filters')",
       "status": "shipped",
       "themes": [
@@ -3242,6 +3278,7 @@
     },
     {
       "id": "EXP-2026-11-planner-pdf-count-link",
+      "category": "Planner",
       "name": "Planner venue cards: centered 'N Pricing PDFs' link under the button",
       "status": "shipped",
       "themes": [
@@ -3330,6 +3367,7 @@
     },
     {
       "id": "EXP-2026-11-free-question-limit-note",
+      "category": "Planner",
       "name": "Planner: clear 'free question used' note for free couples (pay for more, or come back tomorrow for one more)",
       "status": "shipped",
       "themes": [
@@ -3422,6 +3460,7 @@
     },
     {
       "id": "EXP-2026-11-quote-check-everyone",
+      "category": "Planner",
       "name": "Planner quote check open to every signed-in couple (was Forever only); 'Got a quote?' home card, one-tap check, 'Save this quote to My wedding'",
       "status": "shipped",
       "themes": [
@@ -3515,6 +3554,7 @@
     },
     {
       "id": "EXP-2026-11-planner-context-first",
+      "category": "Planner",
       "name": "Planner context-first 50/50 test: starter chips + preference questions first, 'Does X fit our N guests?' chip after venue lookups",
       "status": "live",
       "themes": [
@@ -3637,6 +3677,7 @@
     },
     {
       "id": "EXP-2026-11-whole-wedding-planner",
+      "category": "Planner",
       "what": "Planner 'Plan my wedding' (whole-wedding proposal) for every couple, no holdout",
       "status": "shipped",
       "themes": [
@@ -3748,6 +3789,7 @@
     },
     {
       "id": "EXP-2026-11-price-report-vs-pi-card",
+      "category": "Price Report & PI card",
       "what": "Tulle Price Report (ww-price-report) replaces the Pricing Intelligence card on both vendor pages, no holdout",
       "status": "inconclusive",
       "themes": [
@@ -3857,6 +3899,7 @@
     },
     {
       "id": "EXP-2026-11-planner-venue-fixes",
+      "category": "Planner",
       "what": "Planner venue fixes for every couple, no holdout: did-you-mean + state hints (REC_DID_YOU_MEAN), non-venue text kept out of the name lookup (REC_LOOKUP_GUARD), vendor-page bubble knows 'this venue' (REC_PAGE_VENUE), fast lookups never limit-blocked or counted (REC_LOOKUP_NO_LIMIT), plus the venue lookup log (REC_VENUE_LOG, Xano table 91) to measure it",
       "status": "shipped",
       "themes": [
@@ -3958,6 +4001,7 @@
     },
     {
       "id": "EXP-2026-11-planner-open-week",
+      "category": "Planner",
       "name": "Planner open week: free couples 10 lifetime questions / 40 a day, looser gating",
       "status": "shelved",
       "themes": [
@@ -4028,6 +4072,7 @@
     },
     {
       "id": "EXP-2026-11-planner-open-ended-replies",
+      "category": "Planner",
       "name": "Planner open-ended replies: no closing question, no suggested-reply chips, no profile questions",
       "status": "inconclusive",
       "themes": [
@@ -4094,6 +4139,7 @@
     },
     {
       "id": "EXP-2026-11-planner-five-fixes",
+      "category": "Planner",
       "name": "Planner subscription-readiness fixes: dead ends, no Forever in openings, light price bands, florist pricing, returning-couple shortlist + date flex",
       "status": "inconclusive",
       "themes": [
@@ -4162,6 +4208,7 @@
     },
     {
       "id": "EXP-2026-11-ca-forever-135",
+      "category": "Pricing & payments",
       "name": "California Forever $149 -> $135 (1 week $39 / 4 weeks $69 kept; International stays $149)",
       "status": "shipped",
       "themes": [
@@ -4237,6 +4284,7 @@
     },
     {
       "id": "EXP-2026-11-limit-cards-plans-copy",
+      "category": "Paywall & PDF limit",
       "name": "PDF limit + last-PDF warning cards back to 'Check out our plans' (submit-PDF link hidden)",
       "status": "inconclusive",
       "themes": [
@@ -4316,6 +4364,7 @@
     },
     {
       "id": "EXP-2026-11-contextual-pricing-page",
+      "category": "Pricing & payments",
       "name": "Contextual pricing page: Vendor Context Card + src tracking when arriving from a vendor",
       "status": "shipped",
       "themes": [
@@ -4394,6 +4443,7 @@
     },
     {
       "id": "EXP-2026-11-venue-specific-pdf-limit-card",
+      "category": "Paywall & PDF limit",
       "name": "Venue-specific PDF limit card ('Unlock {Venue}'s real pricing.') with plan row",
       "status": "shelved",
       "themes": [
@@ -4464,6 +4514,7 @@
     },
     {
       "id": "EXP-2026-11-discovery-filters-unblurred",
+      "category": "Paywall & PDF limit",
       "name": "Discovery advanced filters unblurred (still locked; click -> upsell)",
       "status": "shipped",
       "themes": [
@@ -4526,6 +4577,7 @@
     },
     {
       "id": "EXP-2026-11-welcome-email-server",
+      "category": "Email & feedback",
       "name": "Welcome email rebuilt: server-side Brevo send with new copy + planning-stage opener",
       "status": "inconclusive",
       "themes": [
@@ -4601,6 +4653,7 @@
     },
     {
       "id": "EXP-2026-11-meta-landing-pages",
+      "category": "Growth & ads",
       "name": "Meta ads landing pages (/lp/real-prices, /lp/new-york, /lp/ask-tulle) + pixel",
       "status": "shipped",
       "themes": [
@@ -4664,6 +4717,7 @@
     },
     {
       "id": "EXP-2026-11-estimate-card-whatif",
+      "category": "Planner",
       "name": "Planner estimate card what-if (guests + state on the card) + 'What will my wedding cost?' on the Planner home",
       "status": "shipped",
       "themes": [
@@ -4736,6 +4790,7 @@
     },
     {
       "id": "EXP-2026-11-ww-service-prices",
+      "category": "Planner",
       "name": "Plan my wedding: catering / hair & makeup / planner rows priced from the vendors' own PDFs",
       "status": "shipped",
       "themes": [
@@ -4811,6 +4866,7 @@
     },
     {
       "id": "EXP-2026-11-planner-home-screen",
+      "category": "Planner",
       "name": "Planner home screen: no automatic opening, blank start with starter questions",
       "status": "shelved",
       "themes": [
@@ -4875,6 +4931,7 @@
     },
     {
       "id": "EXP-2026-11-pdf-limit-soft-redirect",
+      "category": "Paywall & PDF limit",
       "name": "PDF limit -> soft redirect to /pricing?src=pdf_limit with 'Keep browsing'",
       "status": "live",
       "themes": [
@@ -5011,6 +5068,7 @@
     },
     {
       "id": "EXP-2026-11-price-report-locked-compact",
+      "category": "Price Report & PI card",
       "name": "Price Report locked view: compact member layout with blurred numbers + one 'See the Exact Number' CTA",
       "status": "inconclusive",
       "themes": [
@@ -5087,6 +5145,7 @@
     },
     {
       "id": "EXP-2026-12-pdf-limit-popup-plans",
+      "category": "Paywall & PDF limit",
       "name": "PDF limit: popup with the 3 plan cards and direct checkout for everyone (replaces the redirect to /pricing)",
       "status": "shelved",
       "framework_version": 2,
@@ -5174,6 +5233,7 @@
     },
     {
       "id": "EXP-2026-11-pi-card-restore",
+      "category": "Price Report & PI card",
       "name": "Original Pricing Intelligence card restored on both vendor pages (Price Report hidden)",
       "status": "shelved",
       "framework_version": 2,
@@ -5249,6 +5309,7 @@
     },
     {
       "id": "EXP-2026-11-planner-next-step",
+      "category": "Planner",
       "name": "Planner: 'Next for your wedding' suggestion back on, never the category just asked about",
       "status": "planned",
       "framework_version": 2,
@@ -5329,6 +5390,7 @@
     },
     {
       "id": "EXP-2026-11-free-budget-fit",
+      "category": "Planner",
       "name": "Planner: free couples get in / about at / over your budget per venue (no figures)",
       "status": "live",
       "framework_version": 2,
@@ -5411,6 +5473,7 @@
     },
     {
       "id": "EXP-2026-11-planner-package-totals",
+      "category": "Data & extraction",
       "name": "Planner all-in matches the venue card for the 25 package spaces",
       "status": "live",
       "framework_version": 2,
@@ -5486,6 +5549,7 @@
     },
     {
       "id": "EXP-2026-11-planner-compare",
+      "category": "Planner",
       "name": "Planner: compare 2-3 venues side by side, then save to My Wedding",
       "status": "planned",
       "framework_version": 2,
@@ -5597,6 +5661,7 @@
     },
     {
       "id": "EXP-2026-11-onboarding-try-it",
+      "category": "Onboarding",
       "name": "Onboarding: the Planner runs it, instead of two pop-ups and a tour",
       "status": "planned",
       "framework_version": 2,
@@ -5699,6 +5764,7 @@
     },
     {
       "id": "EXP-2026-11-search-box-fit",
+      "category": "Search & Discovery",
       "status": "planned",
       "framework_version": 2,
       "owner": "Vivek",
@@ -5772,6 +5838,7 @@
     },
     {
       "id": "EXP-2026-11-signup-ad-attribution",
+      "category": "Growth & ads",
       "status": "planned",
       "framework_version": 2,
       "owner": "Vivek",
@@ -5846,6 +5913,7 @@
     },
     {
       "id": "EXP-2026-11-bubble-context-first",
+      "category": "Planner",
       "status": "planned",
       "framework_version": 2,
       "owner": "Vivek",
@@ -5918,6 +5986,7 @@
     },
     {
       "id": "EXP-2026-11-planner-links-q",
+      "category": "Planner",
       "status": "planned",
       "framework_version": 2,
       "owner": "Vivek",
@@ -5991,6 +6060,7 @@
     },
     {
       "id": "EXP-2026-12-referral-link",
+      "category": "Growth & ads",
       "status": "planned",
       "framework_version": 2,
       "owner": "Vivek",
@@ -6065,6 +6135,7 @@
     },
     {
       "id": "EXP-2026-11-signup-source-profile",
+      "category": "Growth & ads",
       "status": "live",
       "framework_version": 2,
       "owner": "Vivek",
@@ -6137,6 +6208,7 @@
     },
     {
       "id": "EXP-2026-11-price-report-v2",
+      "category": "Price Report & PI card",
       "name": "Price Report v2 (Des's fee-by-fee design): free couples see the whole report with every number blurred",
       "status": "planned",
       "framework_version": 2,
@@ -6234,6 +6306,7 @@
     },
     {
       "id": "EXP-2026-11-welcome-subject",
+      "category": "Email & feedback",
       "name": "Welcome email subject: 'Your 3 free pricing PDFs are ready' vs 'Welcome to Tulle Together'",
       "status": "live",
       "framework_version": 2,
@@ -6338,6 +6411,7 @@
     },
     {
       "id": "EXP-2026-12-photo-first",
+      "category": "Planner",
       "name": "Planner: photo-first answers (bigger photo, one short line, one labelled price line for members)",
       "status": "planned",
       "framework_version": 2,

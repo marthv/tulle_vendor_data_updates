@@ -40,7 +40,7 @@ def _switch(monkeypatch):
 
 def entry(**over):
     e = {"id": "EXP-2026-11-t", "name": "Test split", "status": "live", "tier": "ux", "themes": [],
-         "what_changed": "Copy changed.", "surfaces": ["weweb:planner"],
+         "category": "Planner", "what_changed": "Copy changed.", "surfaces": ["weweb:planner"],
          "audience": {"segment": "free couples", "est_daily_exposed": 100},
          "hypothesis": "If X then Y because Z.", "tests": "Does it work?",
          "metric": {"key": "new_paid_within_days", "params": {"days": 1}, "direction": "increase", "baseline": 0.1,

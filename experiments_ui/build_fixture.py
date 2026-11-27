@@ -510,7 +510,8 @@ def main():
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump(snap, f, indent=1, ensure_ascii=False)
     with open(os.path.join(HERE, "preview.html"), "w", encoding="utf-8") as f:
-        f.write(render.build_html(snap, theme_mode=None))
+        # the page as the dash serves it: registry wording + category on every row, the category list
+        f.write(render.build_html(render.attach_categories(render.attach_plain_fields(copy.deepcopy(snap), reg)), theme_mode=None))
     print("wrote", out_json, "errors:", snap["errors"][:3])
     print("summary", snap["summary"])
     for r in snap["experiments"]:

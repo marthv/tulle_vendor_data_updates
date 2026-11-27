@@ -218,7 +218,7 @@ def test_frame_is_content_height_not_one_screen():
 def test_jump_links_and_back_to_top():
     html = _page()
     # owner 2026-11-27: main page = four-item cards; the jump row lives inside "More detail"
-    assert "renderHeader() + fourView() + toTopLink() + moreDetail()" in html
+    assert "renderHeader() + fourBar() + fourView() + toTopLink() + moreDetail()" in html   # + search bar (11-27)
     assert "jumpRow() + runningNow()" in html
     for target in ("nw-run-h", "nw-tl-h", "nw-dec-h", "nwdet"):
         assert '"' + target + '"' in html.split("function jumpRow()", 1)[1].split(chr(10) + "}", 1)[0], target

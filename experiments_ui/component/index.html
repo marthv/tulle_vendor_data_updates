@@ -741,6 +741,15 @@ details.seven>summary:hover{color:var(--ink)}
 .f4-rest .f4s{margin-top:8px}
 .f4-det>summary b{font-size:18px}
 .f4-det .jump{margin-top:4px}
+/* -- Search + category filter on the four-item view (owner 2026-11-27) -- */
+.fbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:18px 0 8px}
+.fbar .fq{flex:1 1 320px;min-width:0;height:36px;font-size:14px}
+.fcount{font-size:13px;color:var(--ink-3)}
+.fbar [hidden]{display:none!important}
+.fcats{margin:0 0 4px}
+.fcats .chip .c{margin-left:5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.fcats .chip[aria-pressed="true"] .c{color:inherit}
+.fnone{margin-top:22px}
 @media (max-width:620px){.f4{padding:16px}.f4-l{grid-template-columns:minmax(0,1fr);gap:2px}.f4-l dt{margin-top:8px}.f4-l dt:first-child{margin-top:0}}
 </style>
 </head>
@@ -763,7 +772,7 @@ window.__FOCUS__ = /*__FOCUS__*/null;
    back (the only thing that makes the dash rerun). Everything else stays client-side.
    State that must survive a re-render (tab, filters, open drawer, note drafts, notes still
    being saved) lives outside boot(). */
-var KEEP = {ST: null, openId: null, scroll: 0, drafts: {}, kind: {}, call: {}};
+var KEEP = {ST: null, openId: null, scroll: 0, drafts: {}, kind: {}, call: {}, F: {q: "", cats: []}};
 var PENDING = {};          // note_id -> {exp_id, note}  optimistic notes not yet in the snapshot
 var CTX = {canWrite: false, writeNote: "", results: {}, inSt: false, focus: null};
 var CUR = {};              // current boot's closeDrawer/drawer for the once-only document listeners
@@ -783,6 +792,28 @@ window.addEventListener("message", function(ev){
   boot(a.snapshot || {}, a.theme || null);
 });
 document.addEventListener("keydown", function(ev){ if (CUR.onKey) CUR.onKey(ev); });
+
+/* exp-search:start - keyword search + category filter (owner 2026-11-27). Pure functions, no DOM:
+   tests/test_exp_search.py runs this block in node with planted cases. A query matches when EVERY word
+   (split on spaces, case-insensitive) appears in the id, name, tldr, tests, hypothesis or goal text. An empty
+   category list means all categories; a row with no category counts as "Other". */
+function searchText(e){
+  e = e && typeof e === "object" ? e : {};
+  var v = e.verdict && typeof e.verdict === "object" ? e.verdict : {};
+  return [e.id, e.name, e.plain_name, e.short_name, e.tldr, v.tldr, e.tests, e.hypothesis, e.goal]
+    .filter(function(x){ return typeof x === "string" && x; }).join(" \n ").toLowerCase();
+}
+function queryWords(q){ return String(q == null ? "" : q).toLowerCase().split(/\s+/).filter(Boolean); }
+function categoryOf(e){ var c = e && typeof e.category === "string" ? e.category.trim() : ""; return c || "Other"; }
+function matchesSearch(e, q, cats){
+  var words = queryWords(q);
+  if (words.length) { var t = searchText(e); for (var i = 0; i < words.length; i++) if (t.indexOf(words[i]) < 0) return false; }
+  if (cats && cats.length && cats.indexOf(categoryOf(e)) < 0) return false;
+  return true;
+}
+function filterExps(list, q, cats){ return (Array.isArray(list) ? list : []).filter(function(e){ return matchesSearch(e, q, cats); }); }
+function filterActive(F){ return !!(F && (queryWords(F.q).length || (F.cats && F.cats.length))); }
+/* exp-search:end */
 
 function boot(S, themeArg){
 S = S || {};
@@ -1348,6 +1379,7 @@ var G = {backlog: LIVE.filter(function(e){ return !inRot(e) && !pendingDec(e); }
 function hay(e){ return [nameOf(e), e.id, whatChanged(e), e.hypothesis, e.tests, metricOf(e).label, BUCKET_NAME[bucketOf(e)], themesOf(e).join(" "), tldrOf(e), e.decision].concat(notesFor(e.id).map(function(n){ return n.text; })).join(" ").toLowerCase(); }
 function passes(e, skip){
   if (skip !== "status" && ST.status !== "all" && statusGroup(e) !== ST.status) return false;
+  if (!matchesSearch(e, KEEP.F.q, KEEP.F.cats)) return false;   // the search + categories at the top of the page
   if (ST.bucket && bucketOf(e) !== ST.bucket) return false;
   if (ST.rot && !(inRot(e) && !isDecidedRow(e))) return false;
   var q = ST.q.trim().toLowerCase();
@@ -1596,18 +1628,42 @@ function fourCard(e){
 function fourSection(id, title, sub, list, keepKey, first){
   if (!list.length) return "";
   var head = list.slice(0, first), rest = list.slice(first);
-  return '<section class="nw-sec" aria-labelledby="' + id + '"><div class="nw-h"><h2 id="' + id + '">' + esc(title) + '</h2><span>' + esc(sub) + '</span></div>' +
+  return '<section class="nw-sec" data-f4 aria-labelledby="' + id + '"><div class="nw-h"><h2 id="' + id + '">' + esc(title) + '</h2><span>' + esc(sub) + '</span></div>' +
     (head.length ? '<div class="f4s">' + head.map(fourCard).join("") + '</div>' : "") +
     (rest.length ? '<details class="f4-rest" id="' + id + '-rest"' + (KEEP[keepKey] ? " open" : "") + ' data-keep="' + keepKey + '"><summary>' + (head.length ? "Show " + rest.length + " more" : "Show " + rest.length) + '</summary><div class="f4s">' + rest.map(fourCard).join("") + '</div></details>' : "") + '</section>';
 }
+/* the category list: the snapshot's fixed list (experiments_engine/categories.py) first, then any other
+   category a row carries; only categories that have at least one experiment get a chip */
+function catList(){
+  var have = {}; ALL.forEach(function(e){ have[categoryOf(e)] = (have[categoryOf(e)] || 0) + 1; });
+  var order = arr(S.categories).map(String);
+  Object.keys(have).sort().forEach(function(c){ if (order.indexOf(c) < 0) order.push(c); });
+  return order.filter(function(c){ return have[c]; });
+}
+function fourBar(){
+  var F = KEEP.F, on = filterActive(F);
+  var chips = catList().map(function(c){
+    return '<button class="chip" data-fcat="' + esc(c) + '" aria-pressed="' + (F.cats.indexOf(c) >= 0) + '">' + esc(c) + '<span class="c" data-fcount="' + esc(c) + '">' + filterExps(ALL, F.q, [c]).length + '</span></button>';
+  }).join("");
+  return '<div class="fbar" role="search"><label class="sr" for="fq">Search experiments</label>' +
+    '<input id="fq" class="inp fq" type="search" autocomplete="off" placeholder="Search experiments by keyword or id" value="' + esc(F.q) + '">' +
+    '<span class="fcount" id="fcount" aria-live="polite">' + (on ? filterExps(ALL, F.q, F.cats).length + " of " + ALL.length + " match" : "") + '</span>' +
+    '<button class="linkbtn" data-fclear' + (on ? "" : " hidden") + '>Clear</button></div>' +
+    '<div class="chipbar fcats" role="group" aria-label="Category (pick one or more)">' + chips + '</div>';
+}
 function fourView(){
-  var live = LIVE.slice().sort(function(a, b){ return String(reviewDate(a) || "9").localeCompare(String(reviewDate(b) || "9")); });
-  var planned = PLANNED.slice().sort(function(a, b){ return String(startOf(a) || reviewDate(a) || "9").localeCompare(String(startOf(b) || reviewDate(b) || "9")); });
-  var dec = DECIDED.slice().sort(function(a, b){ return String(decidedOn(b) || "").localeCompare(String(decidedOn(a) || "")); });
-  return (live.length ? fourSection("f4-run", "Running now", live.length + " test" + (live.length === 1 ? "" : "s"), live, "f4RunOpen", live.length)
-           : '<section class="nw-sec"><div class="nw-h"><h2>Running now</h2></div><div class="nw-empty">Nothing is running right now.</div></section>') +
-    fourSection("f4-plan", "Planned", planned.length + " not launched yet", planned, "f4PlanOpen", 0) +
-    fourSection("f4-dec", "Decided", dec.length + " so far · newest first", dec, "f4DecOpen", 5);
+  var F = KEEP.F, on = filterActive(F), keep = function(list){ return on ? filterExps(list, F.q, F.cats) : list; };
+  var sub = function(n, all, word){ return on ? n + " of " + all + " " + word : null; };
+  var liveAll = LIVE.length, planAll = PLANNED.length, decAll = DECIDED.length;
+  var live = keep(LIVE.slice()).sort(function(a, b){ return String(reviewDate(a) || "9").localeCompare(String(reviewDate(b) || "9")); });
+  var planned = keep(PLANNED.slice()).sort(function(a, b){ return String(startOf(a) || reviewDate(a) || "9").localeCompare(String(startOf(b) || reviewDate(b) || "9")); });
+  var dec = keep(DECIDED.slice()).sort(function(a, b){ return String(decidedOn(b) || "").localeCompare(String(decidedOn(a) || "")); });
+  if (on && !live.length && !planned.length && !dec.length)
+    return '<div class="nw-empty fnone" data-f4>No experiment matches. <button class="linkbtn" data-fclear>Clear search and categories</button></div>';
+  return (live.length ? fourSection("f4-run", "Running now", sub(live.length, liveAll, "running") || live.length + " test" + (live.length === 1 ? "" : "s"), live, "f4RunOpen", live.length)
+           : '<section class="nw-sec" data-f4><div class="nw-h"><h2>Running now</h2></div><div class="nw-empty">' + (on && liveAll ? "No running test matches." : "Nothing is running right now.") + '</div></section>') +
+    fourSection("f4-plan", "Planned", sub(planned.length, planAll, "planned") || planned.length + " not launched yet", planned, "f4PlanOpen", on ? planned.length : 0) +
+    fourSection("f4-dec", "Decided", sub(dec.length, decAll, "decided · newest first") || dec.length + " so far · newest first", dec, "f4DecOpen", on ? dec.length : 5);
 }
 function moreDetail(){
   return '<details class="nw-det f4-det" id="nwmore"' + (KEEP.moreOpen ? " open" : "") + '><summary><b>More detail</b><span>timeline chart, the earlier running-now cards, decided list, filters, Planner numbers, engine notes</span></summary>' +
@@ -1682,7 +1738,7 @@ function render(){
   if (ST.view === "changes" || ST.view === "rules") {
     app.innerHTML = renderHeader() + '<div class="back"><button class="linkbtn" data-view="grid">← All experiments</button></div>' + (ST.view === "changes" ? renderChanges() : renderRules()) + toTopLink();
   } else {
-    app.innerHTML = renderHeader() + fourView() + toTopLink() + moreDetail() + toTopLink();
+    app.innerHTML = renderHeader() + fourBar() + fourView() + toTopLink() + moreDetail() + toTopLink();
   }
   wire();
   if (CUR.fitFrame) CUR.fitFrame();
@@ -1701,10 +1757,30 @@ function rerenderResults(){
   wireResults(r);
 }
 function wireResults(root){
-  root.querySelectorAll("[data-clearall]").forEach(function(b){ b.addEventListener("click", function(){ ST.q = ""; ST.status = "all"; ST.bucket = ""; ST.rot = false; saveST(); render(); }); });
+  root.querySelectorAll("[data-clearall]").forEach(function(b){ b.addEventListener("click", function(){ ST.q = ""; ST.status = "all"; ST.bucket = ""; ST.rot = false; KEEP.F = {q: "", cats: []}; saveST(); render(); }); });
   bindRows(root);
 }
+/* search / category change: redraw only the cards (the search box keeps focus and caret) */
+function rerenderFour(){
+  var anchor = app.querySelector(":scope > .fcats"); if (!anchor) return render();
+  var F = KEEP.F, on = filterActive(F);
+  app.querySelectorAll(":scope > [data-f4]").forEach(function(x){ x.remove(); });
+  anchor.insertAdjacentHTML("afterend", fourView());
+  app.querySelectorAll(":scope > [data-f4]").forEach(function(x){ bindRows(x); wireFour(x); });
+  var fc = document.getElementById("fcount"); if (fc) fc.textContent = on ? filterExps(ALL, F.q, F.cats).length + " of " + ALL.length + " match" : "";
+  app.querySelectorAll(".fbar [data-fclear]").forEach(function(x){ x.hidden = !on; });
+  app.querySelectorAll("[data-fcount]").forEach(function(x){ x.textContent = filterExps(ALL, F.q, [x.getAttribute("data-fcount")]).length; });
+  app.querySelectorAll("[data-fcat]").forEach(function(x){ x.setAttribute("aria-pressed", F.cats.indexOf(x.getAttribute("data-fcat")) >= 0); });
+  rerenderResults();
+}
+function wireFour(root){
+  root.querySelectorAll("[data-fclear]").forEach(function(x){ x.addEventListener("click", function(){ KEEP.F = {q: "", cats: []}; var q = document.getElementById("fq"); if (q) q.value = ""; rerenderFour(); }); });
+  root.querySelectorAll("details[data-keep]").forEach(function(d){ d.addEventListener("toggle", function(){ KEEP[d.getAttribute("data-keep")] = d.open; }); });
+}
 function wire(){
+  var fq = document.getElementById("fq"); if (fq) fq.addEventListener("input", function(){ KEEP.F.q = fq.value; rerenderFour(); });
+  app.querySelectorAll("[data-fcat]").forEach(function(b){ b.addEventListener("click", function(){ var c = b.getAttribute("data-fcat"), i = KEEP.F.cats.indexOf(c); KEEP.F.cats = i >= 0 ? KEEP.F.cats.filter(function(x){ return x !== c; }) : KEEP.F.cats.concat([c]); rerenderFour(); }); });
+  app.querySelectorAll(".fbar [data-fclear], :scope > [data-f4] [data-fclear]").forEach(function(x){ x.addEventListener("click", function(){ KEEP.F = {q: "", cats: []}; var q = document.getElementById("fq"); if (q) q.value = ""; rerenderFour(); }); });
   app.querySelectorAll("[data-view]").forEach(function(b){ b.addEventListener("click", function(){ ST.view = b.getAttribute("data-view"); render(); toTop(false); }); });
   app.querySelectorAll("[data-jump]").forEach(function(b){ b.addEventListener("click", function(){ var t = document.getElementById(b.getAttribute("data-jump")); if (!t) return; if (t.tagName === "DETAILS") { t.open = true; KEEP.detOpen = true; } else t = t.closest("section") || t; var pd0 = t.parentElement && t.parentElement.closest("details"); while (pd0) { pd0.open = true; pd0 = pd0.parentElement && pd0.parentElement.closest("details"); } scrollToEl(t); }); });
   app.querySelectorAll("[data-totop]").forEach(function(b){ b.addEventListener("click", function(){ toTop(true); }); });
@@ -2125,6 +2201,7 @@ try { if (KEEP.ro) KEEP.ro.disconnect(); } catch (err) {}
 try { KEEP.ro = new ResizeObserver(function(){ clearTimeout(KEEP.roT); KEEP.roT = setTimeout(function(){ if (CUR.fitFrame) CUR.fitFrame(); }, 60); }); KEEP.ro.observe(app); } catch (err) {}
 
 var firstBoot = !KEEP.booted; KEEP.booted = true;
+if (firstBoot && (H.exp || CTX.focus || window.__FOCUS__)) KEEP.F = {q: "", cats: []};   // a ?exp= link always shows its card
 render();
 if (!firstBoot && KEEP.openId) {
   // a re-render (note saved, dash rerun) keeps the drawer where it was

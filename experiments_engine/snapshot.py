@@ -96,6 +96,7 @@ def _decided_row(e):
     row = {"id": e.get("id"), "name": e.get("name"), "status": e.get("status"),
            "outcome": e.get("_outcome"), "decided_on": e.get("decided_on") or e.get("end_date"),
            "decision": e.get("decision"), "takeaway": takeaway, "themes": e.get("themes") or [],
+           "category": e.get("category"),
            "tier": e.get("tier"), "start_date": e.get("start_date"), "end_date": e.get("end_date"),
            "lifecycle": "decided"}
     row["bucket"], row["bucket_source"] = _buckets.derive(e)
@@ -182,7 +183,7 @@ def build_snapshot(registry_dict, metric_runner=None, history_store=None, today=
                 continue
             row = {"id": eid, "name": e.get("name"), "status": e.get("status"),
                    "lifecycle": e["_lifecycle"], "tier": e.get("tier"),
-                   "tier_effective": spec.tier(e), "themes": e.get("themes") or [],
+                   "tier_effective": spec.tier(e), "themes": e.get("themes") or [], "category": e.get("category"),
                    "framework_version": e["framework_version"], "legacy": e["_legacy"],
                    "assignment_type": e.get("_assignment_type"),
                    "spec_issues": issues, "results": _public_results(e),
