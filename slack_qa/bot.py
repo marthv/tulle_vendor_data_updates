@@ -372,11 +372,15 @@ class Bot:
                 v, hits = pl.resolve_vendor(self.feedback.directory, t) if t else (None, [])
             except Exception:  # noqa: BLE001
                 v, hits = None, []
-            if v is None and not hits and not pl.is_id(t):
+            if pl.is_id(t) and v is None:
+                say("Which two (or more) should I merge? e.g. `@Tulle Bot merge Rose Hall and Rose Hall Barn` or "
+                    "`@Tulle Bot merge V13433 into V105` (\"into\" keeps the second one).")
+                return "merge:incomplete"
+            # owner 2026-11-27: "merge <venue name>" finds that name's duplicate group. Text that names no listing and
+            # doesn't look like a name ("can you merge these?") still goes to normal Q&A.
+            if v is None and not hits and not mr.looks_like_name(t):
                 return None
-            say("Which two (or more) should I merge? e.g. `@Tulle Bot merge Rose Hall and Rose Hall Barn` or "
-                "`@Tulle Bot merge V13433 into V105` (\"into\" keeps the second one).")
-            return "merge:incomplete"
+            req = {"kind": "by_name", "target": t}
         # owner ruling T0-57 (2026-11-26): approvers' merges skip the per-channel hourly cap (and don't use it up), so a
         # duplicate-merge pilot isn't refused. Same list that may press Approve. No model call on this path.
         if ev.get("user") not in config.approvers() and not self.limiter.allow(channel):
@@ -394,77 +398,144 @@ class Bot:
         try:
             if req["kind"] == "dupes_of":
                 return self._dupes_of(req["target"], channel, reply_ts, say, resolve)
+            if req["kind"] == "by_name":
+                return self._merge_by_name(req["target"], ev, channel, reply_ts, say, resolve)
             vendors, err, looked_like_vendors = mr.split_targets(req["rest"], resolve)
             if err:
                 if not looked_like_vendors:     # "merge the planner and cost tools": not vendors -> normal Q&A
                     return None
                 say(err)
                 return "merge:unresolved"
-            gone = [v for v in vendors if str(v.get("merged_into") or "").strip()]
-            if gone:                            # cached list can be a few hours old
-                say(f"{esc_text(gone[0].get('Name'))} ({gone[0].get('Vendor_ID')}) was already merged into "
-                    f"{gone[0].get('merged_into')}. Merge into that one instead.")
-                return "merge:already-merged"
-            why_not = mr.check_group(vendors)
-            if why_not:
-                say(why_not)
-                return "merge:refused"
-            vids = [str(v.get("Vendor_ID")) for v in vendors]
-            no = dedupe.gold_refusal(vendors, vids[-1]) if req["into"] else ""
-            if no:
-                say(f"{no} Ask `@Tulle Bot merge {' and '.join(vids)}` and I'll keep that one.")
-                return "merge:gold-refused"
-            key = dedupe.group_key(vids)
-            # the plain key AND any 'asked again' keys (QA 11-22: otherwise every re-ask made another card)
-            from proposals import is_void
-            prior = [p for p in self.store.all() if p.get("kind") == "merge" and not is_void(p)
-                     and (p.get("key") == key or str(p.get("key", "")).startswith(key + ":asked:"))]
-            open_p = next((p for p in prior if p.get("status") in ("pending", "applying", "unknown", "partial")), None)
-            if open_p:
-                say(f"There's already a card for these: {self._link(open_p)}.")
-                return "merge:duplicate"
-            if any(p.get("status") == "applied" for p in prior):
-                say("These were already merged.")
-                return "merge:already-merged"
-            dry = next((p for p in prior if p.get("status") == "dry_run"), None)
-            if dry:
-                if config.merge_dry_run():
-                    say(f"These were already approved ({self._link(dry)}) in a dry run, and merges are still in dry run, so "
-                        "nothing has moved yet. Once merges are switched on, that card gets an *Apply for real* button "
-                        "(`@Tulle Bot what's waiting for approval?` lists them).")
-                else:                               # merges are on: redraw that card so its button is there now
-                    import cards
-                    if dry.get("channel") and dry.get("ts"):
-                        text, blocks = cards.render(dry)
-                        self.slack.update_message(dry["channel"], dry["ts"], text, blocks)
-                    say(f"These were approved in a dry run, so nothing has moved yet. Merges are on now: press *Apply for "
-                        f"real* on {self._link(dry)}.")
-                return "merge:approved-dry-run"
-            byid = {v["id"]: v for v in vendors}
-            refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
-                                   page_delay=config.dedupe_page_delay(), only={10, 36})
-            fast = config.merge_card_fast() and refs.build_named_fast(set(vids))     # checks the page budget itself
-            if not fast:
-                refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
-            pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
-                                       survivor_vid=vids[-1] if req["into"] else "",
-                                       why_text=mr.asked_why(vendors) + self._others_note(mr, vids))
-            # a person asking again after an earlier Reject or Undo is a new decision: give it its own key
-            k = pr["key"] + (f":asked:{ev.get('ts')}"
-                             if any(p.get("status") in ("rejected", "undone") for p in prior) else "")
-            p = self.store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
-                                  key=k, source=f"mention:{channel}:{ev.get('ts')}", plain=pr["plain"])
-            if p is None:
-                say("There's already a card for these.")
-                return "merge:duplicate"
-            res = post_proposal(self.slack, self.store, channel, p, thread_ts=reply_ts)
-            return "merge:proposed" + ("" if res.get("ok") else f":post-failed:{res.get('error')}")
+            return self._propose_merge(vendors, ev, channel, reply_ts, say,
+                                       survivor_vid=str(vendors[-1].get("Vendor_ID")) if req["into"] else "")
         except Exception:  # noqa: BLE001
             log.exception("merge request failed")
             say("I couldn't read the listings just now. Try again in a few minutes.")
             return "merge:error"
         finally:
             timer.cancel()
+
+    def _propose_merge(self, vendors, ev, channel, reply_ts, say, survivor_vid="", suggested=False, rules=None,
+                       lead=None) -> str:
+        """The one place a merge card is made from a request in Slack (named pair, or 'merge <name>'): already-merged,
+        category, gold chip, open / rejected / dry-run cards, then dedupe.build_proposal and post. suggested=True runs
+        the scan's live re-check (a Held stops it) and the scan's own wording; `lead(payload)` is said before the card."""
+        import dedupe
+        import merge_requests as mr
+        from interactions import post_proposal
+        gone = [v for v in vendors if str(v.get("merged_into") or "").strip()]
+        if gone:                            # cached list can be a few hours old
+            say(f"{esc_text(gone[0].get('Name'))} ({gone[0].get('Vendor_ID')}) was already merged into "
+                f"{gone[0].get('merged_into')}. Merge into that one instead.")
+            return "merge:already-merged"
+        why_not = mr.check_group(vendors)
+        if why_not:
+            say(why_not)
+            return "merge:refused"
+        vids = [str(v.get("Vendor_ID")) for v in vendors]
+        no = dedupe.gold_refusal(vendors, survivor_vid) if survivor_vid else ""
+        if no:
+            say(f"{no} Ask `@Tulle Bot merge {' and '.join(vids)}` and I'll keep that one.")
+            return "merge:gold-refused"
+        key = dedupe.group_key(vids)
+        # the plain key AND any 'asked again' keys (QA 11-22: otherwise every re-ask made another card)
+        from proposals import is_void
+        prior = [p for p in self.store.all() if p.get("kind") == "merge" and not is_void(p)
+                 and (p.get("key") == key or str(p.get("key", "")).startswith(key + ":asked:"))]
+        open_p = next((p for p in prior if p.get("status") in ("pending", "applying", "unknown", "partial")), None)
+        if open_p:
+            say(f"There's already a card for these: {self._link(open_p)}.")
+            return "merge:duplicate"
+        if any(p.get("status") == "applied" for p in prior):
+            say("These were already merged.")
+            return "merge:already-merged"
+        gone_p = next((p for p in prior if p.get("status") in ("rejected", "undone")), None)
+        if suggested and gone_p:            # 'merge <name>' never re-proposes a pair a person turned down
+            say(f"{' and '.join(vids)} were {gone_p.get('status')} before ({self._link(gone_p)}). If that was wrong, "
+                f"`@Tulle Bot merge {' and '.join(vids)}` makes a new card.")
+            return "merge:name-turned-down"
+        dry = next((p for p in prior if p.get("status") == "dry_run"), None)
+        if dry:
+            if config.merge_dry_run():
+                say(f"These were already approved ({self._link(dry)}) in a dry run, and merges are still in dry run, so "
+                    "nothing has moved yet. Once merges are switched on, that card gets an *Apply for real* button "
+                    "(`@Tulle Bot what's waiting for approval?` lists them).")
+            else:                               # merges are on: redraw that card so its button is there now
+                import cards
+                if dry.get("channel") and dry.get("ts"):
+                    text, blocks = cards.render(dry)
+                    self.slack.update_message(dry["channel"], dry["ts"], text, blocks)
+                say(f"These were approved in a dry run, so nothing has moved yet. Merges are on now: press *Apply for "
+                    f"real* on {self._link(dry)}.")
+            return "merge:approved-dry-run"
+        byid = {v["id"]: v for v in vendors}
+        refs = dedupe.RefIndex(self.xano, max_pages=config.feedback_page_budget(),
+                               page_delay=config.dedupe_page_delay(), only={10, 36})
+        fast = config.merge_card_fast() and refs.build_named_fast(set(vids))     # checks the page budget itself
+        if not fast:
+            refs.build(set(vids), rowids={int(v["id"]): str(v.get("Vendor_ID")) for v in vendors})
+        if suggested:                       # nobody named this pair: the scan's own live re-check and wording
+            try:
+                pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": rules or []}, byid, refs,
+                                           suggested=True)
+            except dedupe.Held as e:
+                log.info("merge by name: held on live rows: %s", e)
+                say(f"I held back {' and '.join(vids)}: when I re-read the listings just now they no longer pass my "
+                    f"checks ({esc_text(str(e))}). If they really are the same, `@Tulle Bot merge "
+                    f"{' and '.join(vids)}` makes a card.")
+                return "merge:name-held"
+        else:
+            pr = dedupe.build_proposal({"ids": sorted(byid, key=int), "rules": []}, byid, refs,
+                                       survivor_vid=survivor_vid,
+                                       why_text=mr.asked_why(vendors) + self._others_note(mr, vids))
+        # a person asking again after an earlier Reject or Undo is a new decision: give it its own key
+        k = pr["key"] + (f":asked:{ev.get('ts')}"
+                         if any(p.get("status") in ("rejected", "undone") for p in prior) else "")
+        p = self.store.create("merge", pr["title"], pr["what"], pr["why"], pr["next_steps"], pr["payload"],
+                              key=k, source=f"mention:{channel}:{ev.get('ts')}", plain=pr["plain"])
+        if p is None:
+            say("There's already a card for these.")
+            return "merge:duplicate"
+        if lead:
+            say(lead(pr["payload"]))
+        res = post_proposal(self.slack, self.store, channel, p, thread_ts=reply_ts)
+        return "merge:proposed" + ("" if res.get("ok") else f":post-failed:{res.get('error')}")
+
+    def _merge_by_name(self, target, ev, channel, reply_ts, say, resolve) -> str:
+        """'merge <one name>' (owner 2026-11-27). Exactly one strong duplicate group of 2 (the scan's rules: same Google
+        Place ID, same name + address, near-identical name + same website nearby) -> the normal merge card, survivor by
+        the usual rule, one line saying which is kept and why. Several groups, a group of 3+, or only same-name listings
+        -> the candidates with their IDs and the exact command, no card. Nothing -> say so. Never auto-approves."""
+        import merge_requests as mr
+        import pdf_list as pl
+        rows = self.feedback.directory.rows()
+        if pl.is_id(target):
+            v, _ = resolve(target)
+            seeds, loose = ([v] if v is not None else []), []
+        else:
+            seeds, loose = mr.name_seeds(rows, target)
+        if not seeds:
+            if loose:
+                say(f"No listing is called exactly “{esc_text(target)}”. Close names:\n"
+                    + "\n".join(mr._line(r) for r in loose)
+                    + "\nAsk again with the exact name or the IDs, e.g. "
+                    + f"`@Tulle Bot merge {loose[0].get('Vendor_ID')} and V…`.")
+                return "merge:name-close"
+            say(f"I can't find a listing called “{esc_text(target)}”. Try its exact name or ID (V1234).")
+            return "merge:name-not-found"
+        res = mr.by_name(rows, seeds)
+        if res["kind"] == "none":
+            s = seeds[0]
+            say(f"*{esc_text(s.get('Name'))}* ({s.get('Vendor_ID')}): no duplicates by the scan's rules (same Google "
+                "listing, same name at the same address, or a near-identical name with the same website nearby), "
+                "and no other listing has that name. Nothing to merge.")
+            return "merge:name-none"
+        if res["kind"] == "list":
+            say(mr.candidates_reply(target, res, self.store.handled_keys("merge")))
+            return "merge:name-candidates"
+        members = res["members"]
+        return self._propose_merge(members, ev, channel, reply_ts, say, suggested=True, rules=res["group"].get("rules"),
+                                   lead=lambda payload: mr.card_lead(target, payload, res["others"]))
 
     def _others_note(self, mr, vids) -> str:
         """Another listing the scan would group with these: say so now, so all the duplicates go in one merge (one card, one
