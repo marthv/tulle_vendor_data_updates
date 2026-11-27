@@ -5609,7 +5609,7 @@
         "est_daily_exposed": 97,
         "est_note": "Xano 2,724 sign-ups ex-internal in 28 days (10-25..11-21) = 97.3/day; Mixpanel sees 88% of them"
       },
-      "hypothesis": "If new couples use the Planner and open a price sheet during onboarding, then first PDF within 1 day rises from 63.9% to 69%+ and 3 PDFs within 1 day from 27.7%, because today the flow ends before anyone sees a price.",
+      "hypothesis": "If new couples are onboarded by the Planner (questions, three venues, one real question; no PDF step), then as many still finish and open pricing PDFs within 1 day (not clearly below 63.9% for 1 PDF and 27.7% for 3 PDFs) and paid within 7 days stays at 1.5%+, because the Planner shows them venues and lets them ask about one before the flow ends.",
       "tests": "Does doing the product inside onboarding get more new couples to open a pricing PDF within a day?",
       "goal": "Owner 2026-11-22: onboarding modelled on Wispr Flow, replacing the two modals and rethinking the tour; everyone must get through onboarding as before, ideally payment rate moves too.",
       "metric": {
@@ -5617,11 +5617,11 @@
         "params": {},
         "direction": "increase",
         "baseline": 0.639,
-        "baseline_note": "viewed_vendor_pdf within 1 day of signed_up, Mixpanel 10-25..11-21 (phone 59.2%, desktop 76.0%). The onboarding PDF counts in the test arm, so read it WITH 3 PDFs in 1 day (27.7%) and a second Planner question after onboarding; first PDF alone is partly self-fulfilling. Pass needs both up.",
+        "baseline_note": "viewed_vendor_pdf within 1 day of signed_up, Mixpanel 10-25..11-21 (phone 59.2%, desktop 76.0%). No PDF step in onboarding (owner 2026-11-24), so a PDF open is the couple's own choice. Read WITH 3 PDFs in 1 day (27.7%).",
         "mde_rel": 0.08,
         "label": "opened 1+ pricing PDF within 1 day of sign-up"
       },
-      "primary_metric": "Co-primary: 3 PDFs within 1 day (27.7%) so a forced first open alone cannot win. Pieces, each with its own bar: (a) real question: Planner question AFTER onboarding within 1 day 8.5% -> 12%+; (b) price sheet: a SECOND sheet within 1 day, above today's share with 2+; (c) 3 venues up front: saved a venue within 1 day 3.3% -> 6%+; (d) specific-venue search: share of misses who still ask or open something 50%+.",
+      "primary_metric": "Owner bar 2026-11-25: (1) finish rate (guests saved, table 1) not under 92% after 300 sign-ups; (2) 1+ PDF within 1 day of sign-up not clearly below 63.9% and 3+ PDFs within 1 day not clearly below 27.7% (clearly below = 95% interval upper end below the baseline); (3) paid within 7 days >= 1.5%. Watched only, no bar: Planner question after onboarding within 1 day (8.5%), saved a venue within 1 day (3.3%), specific-venue misses who still ask or open something.",
       "guardrails": [
         {
           "key": "purchases_per_day",
@@ -5630,7 +5630,7 @@
           "max_drop_rel": 0.25
         }
       ],
-      "guardrail": "Finish rate (guests saved) 96.8%: off if under 92% after 300+ sign-ups. Vendor page 1 d 94.2%; saved a venue 1 d 3.3%; Planner question AFTER onboarding 1 d 8.5%; median time to finish questions 47 s; paid 7 d 2.05% (interval only).",
+      "guardrail": "Finish rate (guests saved, table 1) 96.8%: off if under 92% after 300+ sign-ups, or if any sign-up is reported stuck. Paid 7 d >= 1.5% (baseline 2.05%, 56 payers in 28 days: only a fall of roughly a third is visible). Watched: vendor page 1 d 94.2%; saved a venue 1 d 3.3%; Planner question AFTER onboarding 1 d 8.5%; median time to finish questions 47 s.",
       "assignment": {
         "type": "pre_post",
         "pre": [
@@ -5643,8 +5643,8 @@
       "decision_rule": {
         "ship_p": 0.9,
         "stop_p": 0.1,
-        "sequential": "Week 1 (about 680 sign-ups): turn OFF the same day if finish rate is under 92% after 300+ sign-ups (baseline 96.8%), or if any sign-up is reported stuck. Keep if, over 28 days, 3+ PDFs within 1 day is above 27.7% AND a second price sheet after onboarding is not lower than the old first-sheet rate on the same devices AND paid within 7 days is not below 1.5% (baseline 2.05%, 56 payers in 28 days: only a fall of roughly a third is visible).",
-        "owner_bar_2026_11_25": "Owner-approved 2026-11-25: turn OFF if under 92% finish after 300 sign-ups (baseline 96.8%). KEEP if 1-PDF and 3-PDF opens within 1 day are not clearly below 63.9% / 27.7%, and paid within 7 days >= 1.5% (baseline 2.05%)."
+        "owner_bar_2026_11_25": "Owner-approved 2026-11-25 (the only bar): turn OFF if under 92% finish after 300 sign-ups (baseline 96.8%; finish = guests saved, Xano table 1, same definition before and after). KEEP if 1-PDF and 3-PDF opens within 1 day are not clearly below 63.9% / 27.7%, and paid within 7 days >= 1.5% (baseline 2.05%). 'Clearly below' = the upper end of the 95% interval of the after rate is below the baseline.",
+        "clearly_below_note": "T0's interpretation, pending owner confirmation: 'clearly below' means the upper end of the 95% interval of the after rate is below the baseline (63.9% for 1 PDF, 27.7% for 3 PDFs). Looked at every Monday; before/after is evidence, not proof."
       },
       "start_date": null,
       "planned_days": 28,
@@ -5665,6 +5665,10 @@
         {
           "date": "2026-11-27",
           "note": "Bar confirmed (owner 2026-11-25, replaces the 11-24 open question about the forced-PDF bars): off if under 92% finish after 300; keep if 1-PDF and 3-PDF opens not clearly below 63.9% / 27.7%; paid within 7 days >= 1.5%. Launches at the production publish with REC_ONBOARDING=1; start_date and post_start set to the real publish time."
+        },
+        {
+          "date": "2026-11-27",
+          "note": "QA fix (independent QA 2026-11-27): one bar only, the owner's 2026-11-25 bar. Removed the old sequential keep rule (3+ PDFs above 27.7% and the second-price-sheet rule) and the co-primary pieces written for the removed forced-PDF step; hypothesis and primary rewritten. 'Clearly below' defined as the 95% interval upper end under the baseline - T0's interpretation, pending owner confirmation."
         }
       ],
       "decision": "",
@@ -6336,7 +6340,7 @@
       },
       "hypothesis": "If Planner answers lead with a bigger photo and one short line instead of 50-110 words, then couples open a pricing PDF from the Planner within 24 h at least as often as today (31%) and ask a second question no less often, because the photo and the PDF nudge carry the answer and the extra words were mostly repeats (80% of words repeat or could be drawn).",
       "tests": "Do photo-first answers keep PDF opens and follow-up questions at today's level while cutting the words?",
-      "goal": "Bar written BEFORE launch (2026-11-27, from T4-7 / DECISION_CARD): this is a does-it-hurt test, not a win test. KEEP photo-first on if, at about 125 couples per arm (about 4-5 weeks at ~60 couples a week), (1) PDF opened from the Planner within 24 h of the first answer with venue cards is not 15+ points below control (baseline 31%, 42 of 134; smaller drops can't be seen at this size) and (2) a second Planner answer within 1 h of the first is not more than 20% (relative) below control. STOP early (REC_PHOTO_FIRST_AB_PCT=0) the same day if PDF opens are 15+ points below control at 125 per arm, or any free couple is shown a price digit. Otherwise (between the lines) keep running to max_days and call it inconclusive. Purchases watched only (too few to read per arm). Owner yes T4-7 (2026-11-25: build behind a flag, launch only after QA and when a slot is free) and 2026-11-27 ('keep the photo-first answers on').",
+      "goal": "Bar written BEFORE launch (2026-11-27, from T4-7 / DECISION_CARD): this is a does-it-hurt test, not a win test. KEEP photo-first on if, at about 125 couples per arm (about 4-5 weeks at ~60 couples a week), (1) PDF opened from a Planner card within 24 h of the couple's first Planner use in the window is not 16+ points below control (baseline 31%, 42 of 134; smaller drops can't be seen at this size) and (2) a second Planner answer within 1 h of the first is not more than 20% (relative) below control. STOP early (REC_PHOTO_FIRST_AB_PCT=0) the same day if PDF opens are 16+ points below control at 125 per arm, or any free couple is shown a price digit. Otherwise (between the lines) keep running to max_days and call it inconclusive. Purchases watched only (too few to read per arm). Owner yes T4-7 (2026-11-25: build behind a flag, launch only after QA and when a slot is free) and 2026-11-27 ('keep the photo-first answers on').",
       "metric": {
         "key": "planner_pdf_open_rate",
         "params": {
@@ -6344,11 +6348,11 @@
         },
         "direction": "increase",
         "baseline": 0.31,
-        "baseline_note": "PDF opened in the Assistant within 24 h: 42 of 134 couples (T4 DECISION_CARD, pre-launch read, internal excluded). Higher is better, but this is a does-it-hurt read: at ~125 per arm only a drop of ~15 points (48% relative) is detectable (T4-7: 'catches only large drops').",
-        "mde_rel": 0.48,
+        "baseline_note": "PDF opened in the Assistant within 24 h: 42 of 134 couples (T4 DECISION_CARD, pre-launch read, internal excluded). Higher is better, but this is a does-it-hurt read: at ~125 per arm, 80% power, alpha 0.05, only a drop of ~16 points (52% relative) is detectable (2.8 x sqrt(2 x 0.31 x 0.69 / 125) = 16.4 pts; QA 2026-11-27).",
+        "mde_rel": 0.52,
         "label": "opened a pricing PDF from the Planner within 24 h"
       },
-      "primary_metric": "Per arm (by account): share of couples whose first answer with venue cards in the window is followed by a pricing PDF opened from the Planner within 24 h (table 79 kind=pdf), internal excluded. Check: median words per answer (pass bar <= 20) within the first week.",
+      "primary_metric": "Per arm (by account), as the experiments engine measures it (planner_pdf_open_rate, days=1): share of Planner couples who open a pricing PDF from a Planner card (table 79 kind=pdf) within 24 h of their FIRST Planner use of any kind in the window (opening, refine, lookup or more), internal excluded. GAP: photo-first only changes answers with venue cards; the engine's anchor also counts couples whose first use had no cards, which dilutes both arms equally. An exact read needs the anchor filtered to the first answer that returned venue cards (a 'cards only' param on planner_pdf_open_rate, not built); until then the engine number is the read and a hand read with that filter is the check at the review date. Check: median words per answer (pass bar <= 20) within the first week.",
       "guardrails": [
         {
           "key": "planner_pdf_open_rate",
@@ -6356,7 +6360,7 @@
           "params": {
             "days": 1
           },
-          "max_drop_rel": 0.48
+          "max_drop_rel": 0.52
         },
         {
           "key": "planner_second_question",
@@ -6367,13 +6371,13 @@
           "max_drop_rel": 0.2
         }
       ],
-      "guardrail": "PDF opens (31% baseline) not down 15+ points at 125 per arm (stop rule); second answer within 1 h not down 20%+; free couples 0 price digits; purchases watched only",
+      "guardrail": "PDF opens (31% baseline) not down 16+ points at 125 per arm (stop rule); second answer within 1 h not down 20%+; free couples 0 price digits; purchases watched only",
       "assignment": {
         "type": "split",
         "rule": "hash_pct",
         "salt": "photo-first-2026-11",
         "pct": 50,
-        "note": "PROVISIONAL: the split switch is being built in a parallel build; name REC_PHOTO_FIRST_AB_PCT assumed and salt assumed. Before launch, copy the exact rule/salt from the shipped code (pattern of compare.arm: sha256('<salt>:<user_id>') first 8 hex % 100 < pct) and the arm field that table 79 / Mixpanel carries. Testers are internal and excluded. Independent of the compare and context-first splits."
+        "note": "Rule and salt checked against the shipped split code (pf-split-1127 5330849, rec_service/config.py:365-367 and photo_first.arm): switch REC_PHOTO_FIRST_AB_PCT, salt REC_PHOTO_FIRST_AB_SALT default 'photo-first-2026-11', arm 'photo_first' when int(sha256('<salt>:<user_id>')[:8], 16) % 100 < pct (same shape as compare.arm and the engine's hash_bucket). Internal testers in REC_PHOTO_FIRST_USER_IDS are always put in the photo_first arm: exclude them from the read. The arm only applies when the page asks (?photo_first=1); photo_first-arm couples on a surface that doesn't ask get control answers, so confirm the Planner page and the bubble both send it before launch, or read only the surfaces that do. Independent of the compare and context-first splits."
       },
       "decision_rule": {
         "ship_p": 0.9,
@@ -6385,11 +6389,15 @@
       "review_date": "2027-01-07",
       "reporting": "manual",
       "rollback": "REC_PHOTO_FIRST_AB_PCT=0 (or REC_PHOTO_FIRST=0) on rec-engine, ~2 min; every answer is then exactly as before (pass bar item 6).",
-      "dates_note": "review_date PROVISIONAL = planned switch-on 2026-12-03 (T0-51) + 5 weeks (35 days); reset to the real launch + 35 days when start_date is set at the real switch-on time. About 60 couples a week (T4-7) = ~125 per arm in 4-5 weeks: only drops of ~10-15 points in PDF opens are visible. Ships with REC_COMPARE_ANY_CATEGORY (T0-51, same day): log it in changes[] and read with EXP-2026-11-planner-compare in mind (they share couples).",
+      "dates_note": "review_date PROVISIONAL = planned switch-on 2026-12-03 (T0-51) + 5 weeks (35 days); reset to the real launch + 35 days when start_date is set at the real switch-on time. About 60 couples a week (T4-7) = ~125 per arm in 4-5 weeks: only drops of ~16 points (or more) in PDF opens are visible. Ships with REC_COMPARE_ANY_CATEGORY (T0-51, same day): log it in changes[] and read with EXP-2026-11-planner-compare in mind (they share couples).",
       "results": [
         {
           "date": "2026-11-27",
           "note": "Planned. Pass bar (PASS_BAR.md, written before the build) judged by independent QA on 30 held-out questions, rounds 4-10; data issues on the live pricing panel are on a separate fix list. Not live: no start_date until the switch is read back on /rec/status."
+        },
+        {
+          "date": "2026-11-27",
+          "note": "QA fixes (independent QA 2026-11-27): salt/switch no longer 'assumed' (match the shipped split code); primary metric reworded to what the engine measures, with the card-answer gap noted; detectable drop corrected from ~15 to ~16 points (mde_rel 0.48 -> 0.52)."
         }
       ],
       "decision": "",
