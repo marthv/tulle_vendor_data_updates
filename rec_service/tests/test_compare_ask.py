@@ -133,7 +133,7 @@ def test_fewer_than_two_says_so_and_offers_find_or_look_up(api):
     w = j["widgets"][0]
     assert w["type"] == "compare_picker" and w["enough"] is False and len(w["venues"]) == 1
     assert j["text"] == _mods()[2].FEW_TEXT
-    assert _mods()[2].picker_chips(w) == ["Find venues", "Look up a venue"]
+    assert j["chips"] == [] and _mods()[2].picker_chips(w) == []      # the picker's own buttons, not chips
 
 
 def test_tools_menu_compare_venues_returns_the_picker(api):

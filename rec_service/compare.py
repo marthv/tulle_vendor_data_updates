@@ -605,7 +605,9 @@ def picker_text(w):
 
 
 def picker_chips(w):
-    return [] if (w or {}).get("enough") else ["Find venues", "Look up a venue"]
+    """None: the picker carries its own Find venues / Look up a venue buttons (QA 11-27: chips repeated them, and a
+    "Look up a venue" chip went to the model instead of the name search)."""
+    return []
 
 
 def chat_cards(history):
