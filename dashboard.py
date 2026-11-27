@@ -52,8 +52,8 @@ from cohorts import render_cohorts_tab
 from endpoint_health import render_endpoint_health
 from perf_digest import render_perf_digest, render_health_report
 from drive_protect import render_drive_protect_panel
-from experiments_tab import (EXP_QUERY_KEY, clean_exp_id, exp_from_state, exp_to_state,
-                             focus_exp_id, render_experiments_tab)
+from experiments_tab import (auth_url_params, callback_keep, focus_exp_id, render_experiments_tab,
+                             tab_order)
 import theme
 
 
@@ -391,17 +391,14 @@ def _build_google_auth_url(exp_id: str | None = None) -> str:
     exp_id: the ?exp= experiment deep link (2026-11-27). redirect_uri must match the
     registered one exactly, so the id rides in `state`, which Google hands back unchanged."""
     from urllib.parse import urlencode
-    params = {
+    params = auth_url_params({
         "client_id":     _GOOGLE_CLIENT_ID,
         "redirect_uri":  _APP_URL,
         "response_type": "code",
         "scope":         "openid email profile",
         "access_type":   "online",
         "prompt":        "select_account",
-    }
-    _state = exp_to_state(exp_id)
-    if _state:
-        params["state"] = _state
+    }, exp_id)
     return f"{_GOOGLE_AUTH_URI}?{urlencode(params)}"
 
 
@@ -462,7 +459,7 @@ if _USE_GOOGLE_AUTH and not st.session_state.authenticated:
     qp = st.query_params
     if "code" in qp:
         # ?exp= deep link: back from Google it is in `state` (or still on the URL); keep it past the clears
-        _keep = {EXP_QUERY_KEY: clean_exp_id(qp.get(EXP_QUERY_KEY)) or exp_from_state(qp.get("state"))}
+        _keep = callback_keep(qp)
         try:
             id_info = _exchange_google_code(qp["code"])
             email   = id_info.get("email", "").lower()
@@ -758,7 +755,7 @@ _TAB_LABELS = ["📈 Cohorts", "🧪 Experiments",
 # ?exp=<EXPERIMENT_ID> (2026-11-27, Slack links): Streamlit can't pick the open tab, so the
 # Experiments tab goes first (st.tabs opens the first one) and opens that experiment.
 _exp_focus = focus_exp_id()
-_tab_order = (["🧪 Experiments"] + [t for t in _TAB_LABELS if t != "🧪 Experiments"]) if _exp_focus else _TAB_LABELS
+_tab_order = tab_order(_TAB_LABELS, _exp_focus)
 _tabs_by_label = dict(zip(_tab_order, st.tabs(_tab_order)))
 tab_co, tab_exp, tab_vp, tab2, tab5, tab_health = (_tabs_by_label[t] for t in _TAB_LABELS)
 

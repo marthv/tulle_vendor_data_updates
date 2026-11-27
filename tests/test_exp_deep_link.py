@@ -83,3 +83,103 @@ def test_preserve_on_clear_keeps_exp(monkeypatch):
     qp.update(code="x")
     theme.preserve_on_clear({"exp": None})
     assert dict(qp) == {"theme": "dark"}
+
+
+# ── dashboard.py wiring (QA 2026-11-27: 4 planted wiring bugs went uncaught) ────────────────────────
+import ast  # noqa: E402
+
+DASH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dashboard.py")
+BASE = {"client_id": "cid", "redirect_uri": "https://dash.example/", "response_type": "code"}
+LABELS = ["📈 Cohorts", "🧪 Experiments", "💰 Venue Pricing", "🔍 Google Data & Images", "📄 PDF Extraction", "🩺 Health"]
+
+
+def test_auth_params_carry_the_id_in_state_only():
+    p = et.auth_url_params(BASE, "EXP-2026-12-photo-first")
+    assert p["state"] == "exp:EXP-2026-12-photo-first" and p["redirect_uri"] == BASE["redirect_uri"]
+    assert {k: v for k, v in p.items() if k != "state"} == BASE and "state" not in BASE
+    for bad in (None, "", "<x>", "../etc"):
+        assert "state" not in et.auth_url_params(BASE, bad)
+
+
+@pytest.mark.parametrize("qp,want", [
+    ({"code": "c", "state": "exp:EXP-2026-11-a"}, "EXP-2026-11-a"),      # back from Google: from state
+    ({"code": "c", "exp": "EXP-2026-11-b"}, "EXP-2026-11-b"),              # still on the URL
+    ({"code": "c", "exp": "EXP-2026-11-b", "state": "exp:EXP-2026-11-a"}, "EXP-2026-11-b"),
+    ({"code": "c"}, None), ({"code": "c", "state": "csrf"}, None), ({"code": "c", "state": "exp:<x>"}, None), (None, None),
+])
+def test_callback_keeps_the_id_past_the_clears(qp, want):
+    assert et.callback_keep(qp) == {"exp": want}
+
+
+def test_tab_order_unchanged_without_a_valid_exp():
+    for f in (None, "", "<bad>"):
+        assert et.tab_order(LABELS, f) == LABELS
+    got = et.tab_order(LABELS, "EXP-2026-11-a")
+    assert got[0] == "🧪 Experiments" and sorted(got) == sorted(LABELS) and len(got) == len(LABELS)
+    assert [t for t in got if t != "🧪 Experiments"] == [t for t in LABELS if t != "🧪 Experiments"]
+
+
+def test_resolve_focus_drops_unknown_ids():
+    ids = {"EXP-a": "A"}
+    assert et.resolve_focus("EXP-a", ids) == "EXP-a"
+    assert et.resolve_focus("EXP-zzz", ids) is None and et.resolve_focus("<x>", ids) is None
+    assert et.resolve_focus("EXP-a", None) is None
+
+
+@pytest.mark.parametrize("v2", ["1", "0"])
+def test_render_tab_drops_an_unknown_id_before_rendering(monkeypatch, v2):
+    seen = {}
+    monkeypatch.setenv("EXP_TAB_V2", v2)
+    monkeypatch.setattr(et, "_load", lambda: {"experiments": [{"id": "EXP-a", "name": "A"}]})
+    monkeypatch.setattr(et, "_show_focus_note", lambda f, ids: None)
+    monkeypatch.setattr(et, "_render_legacy", lambda focus=None: seen.setdefault("focus", focus))
+    monkeypatch.setattr(et, "_engine_snapshot", lambda u, k: (None, "engine not configured"))
+    monkeypatch.setattr(render, "render_experiments_tab_v2", lambda *a, **kw: seen.setdefault("focus", kw.get("focus")))
+    et.render_experiments_tab(focus="EXP-zzz")
+    assert seen["focus"] is None
+    seen.clear()
+    et.render_experiments_tab(focus="EXP-a")
+    assert seen["focus"] == "EXP-a"
+
+
+def _dash_tree():
+    with open(DASH, encoding="utf-8") as f:
+        return ast.parse(f.read())
+
+
+def _calls(node, name):
+    return [n for n in ast.walk(node) if isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", None)) == name]
+
+
+def test_dashboard_sends_the_id_to_google():
+    tree = _dash_tree()
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_build_google_auth_url")
+    c = _calls(fn, "auth_url_params")
+    assert c and isinstance(c[0].args[1], ast.Name) and c[0].args[1].id == "exp_id"
+    assert any("params" in ast.unparse(r) for r in ast.walk(fn) if isinstance(r, ast.Return))
+    login = [c for c in _calls(tree, "_build_google_auth_url") if c.args]
+    assert login and all(ast.unparse(c.args[0]) == "focus_exp_id()" for c in login)
+    assert not [c for c in _calls(tree, "_build_google_auth_url") if not c.args]
+
+
+def test_dashboard_callback_keeps_the_id_on_every_clear():
+    src = open(DASH, encoding="utf-8").read()
+    tree = ast.parse(src)
+    keep = [n for n in ast.walk(tree) if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "_keep" for t in n.targets)]
+    assert len(keep) == 1 and ast.unparse(keep[0].value) == "callback_keep(qp)"
+    cb = next(n for n in ast.walk(tree) if isinstance(n, ast.If) and ast.unparse(n.test) == "'code' in qp")
+    clears = _calls(cb, "preserve_on_clear")
+    assert len(clears) >= 3 and all(len(c.args) == 1 and ast.unparse(c.args[0]) == "_keep" for c in clears)
+    assert not [c for c in _calls(cb, "clear")]                 # no blanket query_params.clear() in the callback
+
+
+def test_dashboard_tab_order_goes_through_tab_order():
+    tree = _dash_tree()
+    order = [n for n in ast.walk(tree) if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "_tab_order" for t in n.targets)]
+    assert len(order) == 1 and ast.unparse(order[0].value) == "tab_order(_TAB_LABELS, _exp_focus)"
+    labels = next(n for n in ast.walk(tree) if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "_TAB_LABELS" for t in n.targets))
+    assert ast.literal_eval(labels.value) == LABELS
+    tabs = _calls(tree, "tabs")
+    assert len(tabs) == 1 and ast.unparse(tabs[0].args[0]) == "_tab_order"
+    src = ast.unparse(tree)
+    assert "_tabs_by_label[t] for t in _TAB_LABELS" in src

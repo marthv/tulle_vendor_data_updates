@@ -60,6 +60,43 @@ def focus_exp_id() -> str | None:
         return None
 
 
+# Pure helpers dashboard.py uses for the ?exp= wiring (QA 2026-11-27: the wiring had no tests; each of
+# these is tested in tests/test_exp_deep_link.py so a lost id or a reordered tab bar fails a test).
+EXP_TAB_LABEL = "🧪 Experiments"
+
+
+def auth_url_params(base: dict, exp_id) -> dict:
+    """Google OAuth params: `base` plus state=exp:<id> when exp_id is a valid id (redirect_uri untouched)."""
+    params = dict(base)
+    state = exp_to_state(exp_id)
+    if state:
+        params["state"] = state
+    return params
+
+
+def callback_keep(query_params) -> dict:
+    """{exp: id} to put back on the URL after the OAuth callback clears it: the id still on the
+    URL, else the one Google hands back in `state`. {exp: None} when there is none."""
+    qp = query_params or {}
+    getter = qp.get if hasattr(qp, "get") else (lambda k: None)
+    return {EXP_QUERY_KEY: clean_exp_id(getter(EXP_QUERY_KEY)) or exp_from_state(getter("state"))}
+
+
+def tab_order(labels, focus) -> list:
+    """Tab labels in display order: unchanged without a focus; Experiments first with one
+    (st.tabs opens the first tab, and Streamlit can't pick the open tab otherwise)."""
+    labels = list(labels)
+    if not clean_exp_id(focus) or EXP_TAB_LABEL not in labels:
+        return labels
+    return [EXP_TAB_LABEL] + [t for t in labels if t != EXP_TAB_LABEL]
+
+
+def resolve_focus(focus, ids) -> str | None:
+    """The deep-linked id when it is a valid id in `ids` ({id: name}), else None (unknown ids are dropped)."""
+    f = clean_exp_id(focus)
+    return f if f and f in (ids or {}) else None
+
+
 def known_ids(registry=None, snapshot=None) -> dict:
     """{id: name} of every experiment in the registry and the engine snapshot."""
     out = {}
@@ -333,8 +370,7 @@ def render_experiments_tab(focus=None):
             except (OSError, ValueError):
                 ids = {}
             _show_focus_note(focus, ids)
-            if focus not in ids:
-                focus = None
+            focus = resolve_focus(focus, ids)
         return _render_legacy(focus)
     from experiments_ui.render import render_experiments_tab_v2
     snap, note = _engine_snapshot(ENGINE_URL, ENGINE_KEY)
@@ -349,8 +385,7 @@ def render_experiments_tab(focus=None):
     if focus:
         ids = known_ids(reg, snap if isinstance(snap, dict) else None)
         _show_focus_note(focus, ids)
-        if focus not in ids:
-            focus = None
+        focus = resolve_focus(focus, ids)
     render_experiments_tab_v2(dict(snap) if snap else None, reg, history_by_id=history,
                               degraded_reason=None if snap else reason,
                               on_note=_post_note if snap else None, author=_dash_author(), focus=focus)
