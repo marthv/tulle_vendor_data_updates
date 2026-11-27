@@ -5498,8 +5498,8 @@
       ],
       "bucket": "planner_engagement",
       "in_rotation": false,
-      "tldr": "'Compare these' under Planner venue cards opens a side by side (members: totals; free couples: Below/Typical/Above words). Redesigned 11-23 on the Hotels.com phone shape: two venues plus a sliver, photo, total, seats, Open pricing PDF, the venue cards' own heart; details folded. Question: do more couples save a venue, without fewer PDF opens?",
-      "what_changed": "rec-engine /rec/tool compare_picked + ww-planner-chat VenueCompare v3: Compare button and checkboxes on venue cards, 'Compare with another venue' under a single result, add or swap any venue by name, hearts on the photos (same as venue cards), 'N saved in My wedding' link, itemised details folded. Arm 'compare' only. Launch (owner 2026-11-27 'turn that on'): REC_COMPARE_AB_PCT=50 at the production WeWeb publish that ships ww-planner-chat 506015f.",
+      "tldr": "'Compare these' under Planner venue cards opens a side by side (members: totals; free couples: Below/Typical/Above words). Redesigned 11-23 on the Hotels.com phone shape: two venues plus a sliver, photo, total, seats, Open pricing PDF, the venue cards' own heart; details folded. Goes to every couple at the production publish (owner 2026-11-27). Question, read before vs after: do more couples save or pick a venue, without fewer PDF opens?",
+      "what_changed": "rec-engine /rec/tool compare_picked + ww-planner-chat VenueCompare v3: Compare button and checkboxes on venue cards, 'Compare with another venue' under a single result, add or swap any venue by name, hearts on the photos (same as venue cards), 'N saved in My wedding' link, itemised details folded. 100% rollout (owner 2026-11-27: every couple, not 50/50). REC_COMPARE_AB_PCT=100 set on rec-engine 18:39 UTC 2026-11-27 (rec-engine deploy 51d125fb); the live production component (2958c5a) has no Compare UI, so couples see it only from the production WeWeb publish that ships ww-planner-chat 506015f or later (editor/staging accounts see it now).",
       "surfaces": [
         "rec-engine",
         "weweb:planner",
@@ -5510,7 +5510,7 @@
         "est_daily_exposed": 8,
         "est_note": "39-70 couples/week: 141 in 14 days from the sheet (11-08..21), 102 from Mixpanel; not measured inside the new build"
       },
-      "hypothesis": "If couples can line up 2-3 venues from a Planner answer and save from there, then the share saving a venue within 24h of seeing 2+ cards rises from 3% to 12%, because choosing between a few beats hearting one card at a time.",
+      "hypothesis": "If every Planner couple can line up 2-3 venues from an answer and save from there, then after the publish more couples save or pick a venue within 24 h of an answer with venue cards than in the 14 days before, without free couples opening fewer pricing PDFs per answer with venue cards, because choosing between a few beats hearting one card at a time.",
       "tests": "Does a side by side with Save on it get more Planner couples to save a venue?",
       "goal": "Owner ask 2026-11-22: make the Planner useful for comparing and deciding, and push couples to save venues to My Wedding.",
       "metric": {
@@ -5518,11 +5518,11 @@
         "params": {},
         "direction": "increase",
         "baseline": 0.03,
-        "baseline_note": "3% of the 141 couples who saw 2+ cards in a Planner answer saved one (sheet, 11-08..11-21; free phone 3% of 79, free desktop 0 of 29, paid phone 7% of 14, paid desktop 5% of 19)",
+        "baseline_note": "3% of the 141 couples who saw 2+ cards in a Planner answer saved one (sheet, 11-08..11-21; free phone 3% of 79, free desktop 0 of 29, paid phone 7% of 14, paid desktop 5% of 19). Baseline to re-measure for the 14 days before the publish, members only, same definition as the after window; mde_rel kept from the 11-22 3% -> 12% bar.",
         "mde_rel": 3.0,
-        "label": "saved 1+ venue within 24h of first seeing 2+ venue cards in a Planner answer"
+        "label": "members: saved or picked 1+ venue within 24 h of an Assistant answer with venue cards (14 days before vs 14 days after the publish)"
       },
-      "primary_metric": "Mixpanel: first rec_compare_eligible (both arms, carries arm) -> rec_vendor_saved saved=true within 24h, unique couples, internal excluded",
+      "primary_metric": "Before/after, 14 days before the production publish vs 14 days after, unique couples, internal excluded (Mixpanel 3963130 + table 79): (1) free couples: Open pricing PDF taps per Assistant answer with venue cards - not lower after than before; (2) members: share who save (rec_vendor_saved saved=true) or pick (compare_picked) a venue within 24 h of an answer with venue cards - higher after than before. Not a test: other launches in the same publish (onboarding, the rename, the PDF-limit popup) also move these, so a change is a hint, not proof.",
       "guardrails": [
         {
           "key": "planner_pdf_open_rate",
@@ -5539,23 +5539,25 @@
       ],
       "guardrail": "PDF opens (27% baseline) not down 10+ points at 4 weeks; purchases watched only (too few to test)",
       "assignment": {
-        "type": "split",
-        "rule": "hash_pct",
-        "salt": "compare-2026-11",
-        "pct": 50,
-        "note": "PROVISIONAL: mirrors compare.arm: sha256('compare-2026-11:<user_id>') first 8 hex digits % 100 < REC_COMPARE_AB_PCT; testers in REC_COMPARE_USER_IDS are internal and excluded. Independent of the parity split of planner-context-first."
+        "type": "pre_post",
+        "pre": [
+          "2026-11-20",
+          "2026-12-03"
+        ],
+        "post_start": "2026-12-04T15:00Z",
+        "note": "100% of couples from the production publish that ships ww-planner-chat 506015f+ (owner 2026-11-27). PROVISIONAL dates: pre = the 14 days before the publish and post_start = the publish time; both reset to the real publish (read back live) when it ships. REC_COMPARE_AB_PCT=100 since 18:39 UTC 11-27 exposes no couple until then. Testers in REC_COMPARE_USER_IDS are internal and excluded."
       },
       "decision_rule": {
         "ship_p": 0.9,
         "stop_p": 0.1
       },
       "start_date": null,
-      "planned_days": 35,
-      "max_days": 49,
-      "review_date": "2027-01-04",
+      "planned_days": 14,
+      "max_days": 28,
+      "review_date": "2026-12-18",
       "reporting": "manual",
       "rollback": "REC_COMPARE_AB_PCT=0 or REC_COMPARE_PICK=0 on rec-engine (~2 min); the component then shows nothing.",
-      "dates_note": "About 133 couples per arm for 3% -> 12% (about 5 weeks). Kill early if, after 100 exposed test couples, under 10% open a comparison or under 10% of openers save. Best started after planner-context-first is called (12-01) and after the old page's unseen openings are removed, so the sheet is readable. PRECONDITION before REC_COMPARE_AB_PCT=50 (2026-11-27): one tester compare event (rec_compare_shown / rec_compare_eligible) confirmed landing in Mixpanel project 3963130. In the last 30 days rec_compare_shown/_picked/_fold/_pdf/_season = 0 rows AND rec_source_clicked (sent the same way, through the component's track()) = 0, while planner_bubble_opened = 167, so the tracking is UNPROVEN; without it the primary metric can't be read.",
+      "dates_note": "Read 14 days after the production publish (review_date PROVISIONAL = 12-04 + 14 days; reset to the real publish + 14). CONFOUNDED: the same publish ships onboarding (EXP-2026-11-onboarding-try-it), the rename and the PDF-limit popup, which all move PDF opens and saves; read the before/after as a hint, by tier and device. Kill early if, after 100 exposed couples, under 10% open a comparison or under 10% of openers save. PRECONDITION (kept): one tester compare event (rec_compare_shown / rec_compare_eligible) confirmed landing in Mixpanel project 3963130 before the publish is counted as the start. In the last 30 days rec_compare_shown/_picked/_fold/_pdf/_season = 0 rows AND rec_source_clicked (sent the same way, through the component's track()) = 0, while planner_bubble_opened = 167, so the tracking is UNPROVEN; without it the metric can't be read.",
       "results": [
         {
           "date": "2026-11-22",
@@ -5564,6 +5566,10 @@
         {
           "date": "2026-11-27",
           "note": "Owner 'turn that on': arm at the production publish of ww-planner-chat 506015f with REC_COMPARE_AB_PCT=50, only after one tester compare event is seen in Mixpanel (tracking unproven: compare events and rec_source_clicked both 0 in 30 days). Stays planned, start_date empty, until both are read back."
+        },
+        {
+          "date": "2026-11-27",
+          "note": "Owner: Compare goes to 100% of couples when live, not 50/50. REC_COMPARE_AB_PCT=100 set 18:39 UTC (deploy 51d125fb) (no couple exposure: production component 2958c5a has no Compare UI). Entry switched to a before/after read (14 days before vs after the publish), confounded by the other launches in that publish. start_date stays empty until the publish is read back live and the Mixpanel event precondition is met."
         }
       ],
       "decision": "",
@@ -5582,7 +5588,7 @@
           "bubble"
         ]
       },
-      "goal_bar": "Bar (kept from the 11-22 entry; per-tier lines added 2026-11-27 before launch): primary = saved 1+ venue within 24 h of first seeing 2+ venue cards, 3% -> 12% (about 133 per arm, ~5 weeks). Free couples: Open pricing PDF taps per compare shown not lower than control's PDF opens per 2+-card answer. Members: pick-or-save within 24 h higher than control. Kill early if, after 100 exposed test couples, under 10% open a comparison or under 10% of openers save."
+      "goal_bar": "Bar (owner 2026-11-27, 100% rollout, before/after 14 + 14 days): members' save-or-pick within 24 h of an answer with venue cards higher after than before; free couples' Open pricing PDF taps per answer with venue cards not lower after than before. Kill early if, after 100 exposed couples, under 10% open a comparison or under 10% of openers save. Earlier 50/50 bar (3% -> 12%, ~133 per arm) replaced by the owner's 100% decision."
     },
     {
       "id": "EXP-2026-11-onboarding-try-it",
@@ -7022,6 +7028,15 @@
       "affects": "internal duplicate-merge flow only",
       "source": "github+railway",
       "ref": "tulle_vendor_data_updates a39e769; tulle-slack-qa MERGE_CARD_FAST=1"
+    },
+    {
+      "date": "2026-11-27",
+      "what": "rec-engine REC_COMPARE_AB_PCT=100 (18:39 UTC, rec-engine deploy 51d125fb created 2026-11-27T18:39:26Z; owner 2026-11-27: Compare to 100% of couples, not 50/50). No couple exposure until the production WeWeb publish ships ww-planner-chat 506015f+: live component 2958c5a has no Compare UI; editor/staging accounts see it now.",
+      "affects": [
+        "EXP-2026-11-planner-compare"
+      ],
+      "source": "railway",
+      "ref": "rec-engine REC_COMPARE_AB_PCT=100"
     }
   ]
 }
