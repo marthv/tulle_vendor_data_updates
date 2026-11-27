@@ -223,3 +223,18 @@ def test_canary_a_member_does_get_the_venue_pdf_price(tool_env, monkeypatch):
     tool_env("estimate_cost", access=True)         # access True from here on
     code, j = _post(pf.COST_TOOL, {"vendor_id": "V1"})
     assert code == 200 and "7000" in _venue_digits(j), j
+
+
+@pytest.mark.parametrize("pfq", [True, False])
+def test_rec_tool_runs_free_mode_widget_for_free_couples_only(tool_env, monkeypatch, pfq):
+    """Final QA 11-27: /rec/tool must pass a free couple's widget through free_mode.widget (photo-first or not), and a
+    member's not. Fails if that call is removed or skipped."""
+    seen = []
+    real = free_mode.widget
+    monkeypatch.setattr(app.free_mode, "widget", lambda w: (seen.append(w.get("type")), dict(real(w), _free_mode=True))[1])
+    for tool in cost_tools.TOOLS:
+        code, j = tool_env(tool, pfq=pfq)
+        assert code == 200 and j["widgets"][0].get("_free_mode") is True, (tool, j)
+    assert len(seen) == len(cost_tools.TOOLS)
+    code, j = tool_env("estimate_cost", access=True, pfq=pfq)
+    assert code == 200 and "_free_mode" not in j["widgets"][0]
