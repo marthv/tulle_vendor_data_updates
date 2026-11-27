@@ -264,6 +264,9 @@ def widget(w):
     if isinstance(w, dict) and w.get("type") == "venue_side_by_side":   # 2026-11-22: words only, rebuilt from a whitelist
         import compare
         return compare.lock(w)
+    if isinstance(w, dict) and w.get("type") == "compare_picker":   # REC_COMPARE_ASK: names + photos only, rebuilt from a whitelist
+        import compare
+        return compare.lock_picker(w)
     if isinstance(w, dict) and w.get("type") == "cost_lines":   # REC_PHOTO_FIRST: where each part is, no digits
         import photo_first
         return photo_first.lock_cost(w)

@@ -354,6 +354,11 @@ def on_for(flag, user_id):
     except (TypeError, ValueError):
         return False
 COMPARE_VENUES_PER_DAY = max(3, int(os.environ.get("REC_COMPARE_VENUES_PER_DAY", "30") or 30))
+# COMPARE ASKS FIRST (owner 2026-11-27: "it should ask you which venues you want to compare, then show the version we just
+# developed"): for a couple in the compare arm, "compare venues" typed / the "Compare my saved venues" chip / the Tools
+# compare item / the model's compare_venues tool answer with a picker (compare.picker) whose Compare button runs
+# compare_picked - never the old ranked "Your venues, compared" table. ON by default (owner instruction); "0" = as before.
+COMPARE_ASK = os.environ.get("REC_COMPARE_ASK", "1").strip() != "0"
 # PHOTO-FIRST ASSISTANT (owner 2026-11-26, "more pictures, less wording"; photo_first.py): the answer text becomes one
 # short line, each card carries icon facts (seats, setting tags held for the WHOLE venue) and, for members, one price line
 # naming its source; the response also says what was understood (place, guests, date). Adds the "cost_lines" quick action.

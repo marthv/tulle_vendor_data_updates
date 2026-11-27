@@ -590,6 +590,11 @@ def apply(out, level, profile=None, reopened=False, card_totals=False):
         res.pop("pf_stored", None)
         res.pop("last_user", None)
         return res
+    if ws and not out.get("cards") and any(w.get("type") == "compare_picker" for w in ws):
+        res = dict(out, photo_first=True, understood=None)   # REC_COMPARE_ASK: the picker's own question, as asked
+        res.pop("pf_stored", None)
+        res.pop("last_user", None)
+        return res
     hid = free and any(isinstance(w, dict) and w.get("type") in FREE_HIDDEN_WIDGETS for w in out.get("widgets") or [])
     if hid:
         # Owner rulings 2026-11-26 / T0-53: in a photo-first answer a free couple does not see a cost widget (market-

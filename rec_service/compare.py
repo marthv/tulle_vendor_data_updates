@@ -523,6 +523,94 @@ def lock(w):
     return out
 
 
+# ---------------------------------------------------------------- ask first (REC_COMPARE_ASK, owner 2026-11-27)
+
+PICKER = "compare_picker"
+PICKER_MAX_OPTIONS = 12
+ASK_TEXT = "Which venues do you want to compare? Pick 2 or 3."
+FEW_TEXT = ("You need at least 2 venues to compare. Save a couple you like, or look one up by name, "
+            "and they'll show up here to pick.")
+# A general request to compare, with no venue named: "compare venues", "compare my saved venues", the Tools item's
+# "Compare my venues and quotes", the agent's "Yes, compare my saved venues". "Compare The Plaza and Oheka" is NOT one
+# (the model / the card buttons answer that).
+_ASK_RE = re.compile(
+    r"^\s*(?:yes[,!. ]*|ok(?:ay)?[,!. ]*|sure[,!. ]*)?(?:please\s+|can you\s+|could you\s+|let'?s\s+|i want to\s+|help me\s+)?"
+    r"(?:compare|comparing)\s+(?:all\s+)?(?:of\s+)?(?:my|our|the|these|those|some)?\s*"
+    r"(?:last\s+)?(?:saved|favou?rite[sd]?|liked|hearted|shortlisted)?\s*(?:venues?|options|places|picks|ones)?"
+    r"(?:\s+(?:and|&)\s+(?:my\s+|our\s+)?quotes)?(?:\s+side\s+by\s+side)?(?:\s+(?:please|for me))?\s*[.!?]*\s*$", re.I)
+_ASK_BARE = re.compile(r"^\s*(?:compare|compare saved|side by side|venue compare|compare tool)\s*[.!?]*\s*$", re.I)
+
+
+def ask_on(user):
+    return bool(config.COMPARE_ASK) and arm((user or {}).get("id")) == "compare"
+
+
+def is_ask(text):
+    t = str(text or "").strip()
+    if not t or len(t) > 80:
+        return False
+    if _ASK_BARE.match(t):
+        return True
+    m = _ASK_RE.match(t)
+    # "compare" alone with a trailing word we did not list (a venue name) never matches the anchored pattern
+    return bool(m) and bool(re.search(r"venue|saved|favou?rite|liked|hearted|option|place|pick|quote|ones|side by side", t, re.I))
+
+
+def _option(card, saved):
+    return {"vendor_id": str(card.get("vendor_id")), "vendor_idx": card.get("vendor_idx"),
+            "name": _clean_words(card.get("name") or "", 80), "place": _place(card), "image": _image(card.get("image")),
+            "category": _cat(card), "saved": bool(saved)}
+
+
+def picker(xano, user, chat_cards=()):
+    """The question + the couple's venues to pick from: saved venues (newest first) then venues shown in this chat.
+    Names, places and photos only - no price of any kind, so it is the same for every plan."""
+    recent = list(dict.fromkeys(str(v).strip() for v in reversed((user or {}).get("favorited_vendors") or [])
+                                if str(v or "").strip()))[:PICKER_MAX_OPTIONS * 2]
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        cards = [c for c in pool.map(lambda v: _safe(xano.cached_vendor_card, v), recent) if c and c.get("vendor_id")]
+    opts, seen = [], set()
+    for c, saved in [(c, True) for c in cards] + [(c, False) for c in chat_cards or [] if isinstance(c, dict)]:
+        vid = str(c.get("vendor_id") or "")
+        if not vid or vid in seen or _cat(c) != "Venue" or not c.get("name"):
+            continue
+        seen.add(vid)
+        opts.append(_option(c, saved))
+    opts = opts[:PICKER_MAX_OPTIONS]
+    return {"type": PICKER, "v": 1, "venues": opts, "min": MIN_VENUES, "max": MAX_VENUES,
+            "enough": len(opts) >= MIN_VENUES}
+
+
+_PICK_KEEP = ("vendor_id", "vendor_idx", "name", "place", "image", "category", "saved")
+
+
+def lock_picker(w):
+    """Whitelist rebuild for free couples (free_mode.widget): nothing but names, places and photos."""
+    vs = [{k: v.get(k) for k in _PICK_KEEP} for v in (w or {}).get("venues") or [] if isinstance(v, dict)]
+    for v in vs:
+        for k in ("name", "place"):
+            if "$" in str(v.get(k) or ""):
+                v[k] = re.sub(r"\$\s?[\d,.]+[kKmM]?", "", str(v[k])).strip()
+    return {"type": PICKER, "v": 1, "venues": vs, "min": MIN_VENUES, "max": MAX_VENUES, "enough": len(vs) >= MIN_VENUES}
+
+
+def picker_text(w):
+    return ASK_TEXT if (w or {}).get("enough") else FEW_TEXT
+
+
+def picker_chips(w):
+    return [] if (w or {}).get("enough") else ["Find venues", "Look up a venue"]
+
+
+def chat_cards(history):
+    """Venue cards shown in this chat, newest answer first (for the picker)."""
+    out = []
+    for t in reversed(list(history or [])):
+        if (t or {}).get("role") == "assistant":
+            out += [c for c in (t.get("cards") or []) if isinstance(c, dict) and not c.get("meta")]
+    return out
+
+
 def summary_text(w):
     """The line stored with the widget (no model); later turns of the chat read it."""
     names = [v["name"] for v in w["venues"]]

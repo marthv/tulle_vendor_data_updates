@@ -301,6 +301,9 @@ def budget_status(user, *, packages):
 def summary_text(widget):
     """The assistant line stored with a quick-action widget (no model): it is what later turns of the chat read."""
     t = widget.get("type")
+    if t == "compare_picker":   # REC_COMPARE_ASK
+        import compare
+        return compare.picker_text(widget)
     if t == "cost_estimate":
         if widget.get("missing"):
             need = {"state": "your wedding state", "guests": "your guest count"}
@@ -356,6 +359,13 @@ def run_tool(name, args, token, user, *, access, xano):
     profile defaults. access = any active plan (has_paid_access); False -> compare is locked."""
     if name not in TOOLS:
         raise ValueError("unknown tool")
+    if name == "compare_venues":
+        import compare   # REC_COMPARE_ASK (owner 2026-11-27): ask which venues first, then the side by side
+        if compare.ask_on(user):
+            w = compare.picker(xano, user)
+            return {"widget": w, "facts": {"shown": "a picker of the couple's venues", "venues_to_pick": len(w["venues"]),
+                                           "note": "Ask in one short line which 2 or 3 venues they want side by side; "
+                                                   "no figures, no ranking. Tapping Compare shows them."}}
     a = dict(args or {})
     d = profile_defaults(user)
     def pick(k):   # None / "" / a numeric 0 = "use the profile"; an explicit False (no peak season) is kept

@@ -1072,6 +1072,29 @@ def _state1(st):
     return st[0] if isinstance(st, list) and st else st
 
 
+def _compare_ask(user, text, history=(), chat_id=0):
+    """REC_COMPARE_ASK (owner 2026-11-27): "compare venues", "Compare my saved venues"... typed or tapped as a chip ->
+    ask which venues, with a picker of their saved venues and this chat's venues; its Compare button runs compare_picked
+    (the side by side). No model, no question used (like /rec/tool). None = not that request (or the switch is off)."""
+    if config.KILL_SWITCH or not compare.ask_on(user) or not compare.is_ask(text):
+        return None
+    t0 = time.time()
+    access, paid = xano.has_paid_access(user), xano.beta_member(user)
+    w = compare.picker(xano, user, compare.chat_cards(history))
+    if not access:
+        w = free_mode.widget(w)
+    text_out = compare.picker_text(w)
+    base = {"user_id": user["id"], "kind": "tool_compare_ask", "chat_id": int(chat_id or 0), "model": "none",
+            "tier": "paid" if paid else "free", "counted_as_free": False, "input_tokens": 0, "cache_read_tokens": 0,
+            "cache_write_tokens": 0, "output_tokens": 0, "tool_calls": 0, "cost_usd": 0}
+    _submit_usage(dict(base, status="ok", latency_ms=int((time.time() - t0) * 1000)))
+    _POOL.submit(xano.mp_track, user["id"], "rec_compare_ask", {"options": len(w["venues"]), "enough": w["enough"],
+                                                                "has_access": access, "chat_id": int(chat_id or 0)})
+    return {"text": text_out, "cards": [], "chips": compare.picker_chips(w), "more_cards": [], "search_filters": {},
+            "notes_saved": [], "widgets": [w], "dropped_unverified_ids": [], "paid": paid, "has_access": access,
+            "price_locked": not access, "compare_ask": True}
+
+
 def _lookup_fast(token, user, text, last_assistant="", chat_id=0, tracker=None, repeat=False, fit_chip=False,
                  chat_states=()):
     """The fast answer for "look up <venue>", or None (not a lookup, or unsure -> the model answers as before).
@@ -1598,7 +1621,9 @@ def _refine_in_chat(token, user, chat, text, background, tracker=None, quote=Non
     last_u = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "user"), "")
     repeat = bool(last_u) and last_u.strip().lower() == text.strip().lower()
     # "oheka castle": no model (2026-10-26). Never for an answer to our own profile question ("Near Dallas").
-    out = None if (answered or is_chip or quote) else _lookup_fast(
+    out = None if (answered or quote) else _compare_ask(user, text, history, chat["id"])
+    if out is None and not (answered or is_chip or quote):
+        out = _lookup_fast(
         token, user, text, last_a, chat["id"], tracker, repeat=repeat, fit_chip=fit_chip,
         chat_states=(_active_filters(history).get("states") or ()) if config.DID_YOU_MEAN else ())
     if out is None:
@@ -1782,7 +1807,9 @@ def _refine(token, user, body, background, tracker):
     # New conversation: the client's turns are the history this once. Create the chat only AFTER the guard
     # allowed and the model answered, so a blocked or failed question leaves no empty conversation behind.
     last_a = next((m["content"] for m in reversed(msgs[:-1]) if m["role"] == "assistant"), "")
-    out = None if body.quote else _lookup_fast(token, user, text, last_a, 0, tracker, fit_chip=body.ctx_arm == "context")   # venue by name: no model (2026-10-26)
+    out = None if body.quote else _compare_ask(user, text)
+    if out is None and not body.quote:
+        out = _lookup_fast(token, user, text, last_a, 0, tracker, fit_chip=body.ctx_arm == "context")   # venue by name: no model (2026-10-26)
     if out is None:
         if body.quote:
             msgs = msgs[:-1] + [{"role": "user", "content": text + quote_block(body.quote, str(body.quote.get("_file_name") or ""))}]
@@ -2080,7 +2107,8 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
             else cost_tools.summary_text(widget))
     # Next-step chips (owner 2026-10-25), computed in code like the widget - flag-independent, as /rec/tool is.
     # No chat history is read here (one more Xano call per tap); the next typed reply's de-dupe sees these chips.
-    chips = tool_chips(name, free=not access, widget=widget)
+    chips = (compare.picker_chips(widget) if widget.get("type") == compare.PICKER
+             else tool_chips(name, free=not access, widget=widget))
     ms = int((dt.datetime.now(dt.timezone.utc) - t0).total_seconds() * 1000)
     _submit_usage(dict(base, status="ok", latency_ms=ms))
     _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
