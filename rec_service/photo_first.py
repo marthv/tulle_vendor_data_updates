@@ -674,12 +674,22 @@ def build_cost_lines(xano, token, user, vendor_id, *, access, guests=0, default_
     # QA round 8: the total is marked the way Compare's total is (VenueCompare subLine): "food may be more" when the food
     # is only the PDF's minimum, "est." when any row with an amount is an estimate.
     marks = (", food may be more" if any(r.get("minimum_only") for r in lines) else "") + (", est." if est else "")
-    return dict(base, level="full", room=e.get("space") or None, lines=lines, total=c["total"], estimated=est,
-                total_note="%s%d guests, before tax and tip%s" % ((e.get("space") + ", ") if e.get("space") else "", g, marks))
+    # QA round 9 (Wainwright House, 60 asked, PDF "80 - 240 guests"): the total is priced at the count estimate.compute
+    # used, so that is the count shown; below the venue's guest minimum it is worded as Compare's subLine words it
+    # (VenueCompare: c.at_minimum -> "for <c.guests>, its minimum", c = compare._cost, same at_minimum/guests).
+    pg, at_min = _int(c.get("guests") or e.get("guests")) or g, bool(c.get("at_minimum"))
+    count = ("for %d, its minimum" % pg) if at_min else ("%d guests" % pg)
+    out = dict(base, guests=pg, level="full", room=e.get("space") or None, lines=lines, total=c["total"], estimated=est,
+               total_note="%s%s, before tax and tip%s" % ((e.get("space") + ", ") if e.get("space") else "", count, marks))
+    if at_min:
+        out["at_minimum"] = True
+    return out
 
 
 def cost_summary(w):
-    """The line stored with the widget (no model)."""
+    """The line stored with the widget (no model). Compare's words (compare.summary_text): " Estimated parts are marked."
+    and, below the guest minimum, "for <n>, its minimum"."""
     if w.get("level") == "full":
-        return "What %s costs for %d guests%s." % (w["name"], w["guests"], ", some parts estimated" if w.get("estimated") else "")
+        count = ("for %d, its minimum" % w["guests"]) if w.get("at_minimum") else ("for %d guests" % w["guests"])
+        return "What %s costs %s.%s" % (w["name"], count, " Estimated parts are marked." if w.get("estimated") else "")
     return "Where each part of %s's price is. The numbers are in its pricing PDF." % w["name"]
