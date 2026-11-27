@@ -718,6 +718,30 @@ details.seven>summary:hover{color:var(--ink)}
 .nw-det>summary b{font-size:17px;font-weight:600;color:var(--ink-2)}
 .nw-det>summary span{font-size:14px;color:var(--ink-3)}
 .nw-tech{font-size:13px;color:var(--ink-3);margin:0 0 10px}
+/* -- Four-item view (owner 2026-11-27) -- */
+.f4s{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.f4{background:var(--surface);border:1px solid var(--line);border-radius:var(--r16);box-shadow:var(--sh1);padding:18px 22px;cursor:pointer;min-width:0;transition:border-color .15s,box-shadow .15s}
+.f4:hover{border-color:var(--line-2);box-shadow:var(--sh2)}
+.f4:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.f4 h3{font-family:var(--font-d);font-weight:600;font-size:19px;line-height:1.35;margin:0 0 10px;color:var(--ink);overflow-wrap:anywhere}
+.f4-l{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 16px;margin:0}
+.f4-l dt{font-size:13px;font-weight:600;color:var(--ink-3);padding-top:2px}
+.f4-l dd{margin:0;font-size:15px;line-height:1.5;color:var(--ink-2);overflow-wrap:anywhere;min-width:0}
+.f4-t{color:var(--ink)}
+.f4-m{font-size:13px;color:var(--ink-3);margin-bottom:2px}
+.f4-nums{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.f4-arm .k{font-size:13px;color:var(--ink-3)}
+.f4-arm b{font-weight:600;color:var(--ink)}
+.f4 .c{font-size:13px;color:var(--ink-3)}
+.f4-arw{color:var(--ink-4)}
+.f4-none{color:var(--ink-3)}
+.f4-more{font-size:14px;font-weight:600;color:var(--brand);margin-top:10px}
+.f4-rest{margin-top:12px}
+.f4-rest>summary{cursor:pointer;font-size:15px;font-weight:600;color:var(--brand);padding:6px 0;width:max-content}
+.f4-rest .f4s{margin-top:8px}
+.f4-det>summary b{font-size:18px}
+.f4-det .jump{margin-top:4px}
+@media (max-width:620px){.f4{padding:16px}.f4-l{grid-template-columns:minmax(0,1fr);gap:2px}.f4-l dt{margin-top:8px}.f4-l dt:first-child{margin-top:0}}
 </style>
 </head>
 <body>
@@ -1503,6 +1527,87 @@ function runningNow(){
   if (PLANNED.length) h += '<p class="nw-planned">Planned, not started yet: ' + PLANNED.map(function(e){ return '<button class="linkbtn" data-xopen="' + esc(e.id) + '">' + esc(plainName(e)) + '</button>'; }).join(", ") + '</p>';
   return h + '</section>';
 }
+/* ── Four-item view (owner 2026-11-27: "too complicated ... we only need 1) what's being tested
+   2) timeline 3) before and after metrics for what we're testing 4) what the conclusion is. the
+   side panel can show more information"). Every experiment on the main page is one card with
+   exactly those four rows; everything else (chance it's better, guardrails, notes, overlaps,
+   the timeline chart, filters, scorecard, raw results) is in the side panel or under "More detail".
+   Nothing is computed here that the engine/registry doesn't already carry. Numbers are plain ink:
+   a before/after is never coloured good/bad. */
+function testedOf(e){
+  // most plain-language field first: tests (a one-line question) > hypothesis > goal > what changed
+  var t = e.tests || e.hypothesis || e.goal || obj(e.success_metric).goal_v1 || whatChanged(e) || e.description || "";
+  return String(t).trim();
+}
+function fourTimeline(e){
+  var s = startOf(e), dec = isDecidedRow(e), sg = statusOf(e);
+  if (dec) {
+    var en = decidedOn(e), ran = s && en ? daysBetween(s, en) : null;
+    return (s ? "Launched " + fd(s, true) : "Launch date not recorded") + " · decided " + (en ? fd(en, true) : "(date not recorded)") + (ran != null && ran >= 0 ? " · ran " + ran + " day" + (ran === 1 ? "" : "s") : "");
+  }
+  var rv = reviewDate(e), left = rv ? daysBetween(TODAY, rv) : null;
+  var dl = rv ? "decide on " + fd(rv, true) : "no decision date set";
+  if (sg === "planned" || !s || s > TODAY) return "Not launched yet" + (s && s > TODAY ? " (planned start " + fd(s, true) + ")" : "") + " · " + dl;
+  var dr = daysRunning(e);
+  var tail = left == null ? "" : left > 0 ? left + " day" + (left === 1 ? "" : "s") + " left" : left === 0 ? "decision due today" : (-left) + " day" + (left === -1 ? "" : "s") + " past the decision date";
+  return "Launched " + fd(s, true) + " · " + dl + (dr != null ? " · " + dr + " day" + (dr === 1 ? "" : "s") + " running" : "") + (tail ? ", " + tail : "");
+}
+function fourNumbers(e){
+  var m = metricOf(e), lbl = m.label ? '<div class="f4-m">' + esc(m.label) + '</div>' : "";
+  if (e.result_hidden) return lbl + '<div class="f4-none">' + esc(e.result_text || "Result hidden until its read date") + '</div>';
+  if (atypeOf(e) === "rollout") return lbl + '<div class="f4-none">Rolled out to everyone, so there is no before/after comparison.</div>';
+  var sp = beforeNow(e);
+  if (!sp.hasB && !sp.hasA) return lbl + '<div class="f4-none">' + (isDecidedRow(e) ? "No before/after numbers were recorded" : "No data yet: " + esc(noStartWhy(e))) + '</div>';
+  var side = function(label, has, val, cnt, extra){
+    return '<span class="f4-arm"><span class="k">' + esc(label) + '</span> ' + (has ? '<b class="num">' + esc(val) + '</b>' + (cnt ? ' <span class="c num">(' + esc(cnt) + ')</span>' : "") : '<span class="c">no data yet</span>') + (extra ? ' <span class="c">' + esc(extra) + '</span>' : "") + '</span>';
+  };
+  return lbl + '<div class="f4-nums">' +
+    side(sp.bLabel || "Before", sp.hasB, sp.bShow, sp.bCnt, sp.baselineOnly && !sp.bCnt ? "from the plan, not measured" : "") +
+    '<span class="f4-arw" aria-hidden="true">→</span>' +
+    side(sp.aLabel || (isDecidedRow(e) ? "After" : "Now"), sp.hasA, sp.aShow, sp.aCnt, "") + '</div>';
+}
+var OUT_WORD = {shipped: "Keep", reverted: "Undo", shelved: "Shelved", inconclusive: "No clear answer", unknown: "Finished"};
+function firstSentence(s, n){ s = String(s || "").replace(/\s+/g, " ").trim(); var m = s.match(/^(.{20,}?[.!?])(\s|$)/); return trunc(m ? m[1] : s, n || 180); }
+function fourConclusion(e){
+  if (isDecidedRow(e)) {
+    var why = firstSentence(learningOf(e) || finalLine(e));
+    return '<b>Decided: ' + esc(OUT_WORD[outcomeOf(e)] || "Finished") + '</b>' + (why ? " - " + esc(why) : "");
+  }
+  var p = pendingDec(e);
+  if (p) return '<b>Decided in the dash: ' + esc(CALL_LABEL[callKey(p.call)] || cap(String(p.call).replace(/_/g, " "))) + '</b>' + (p.text ? " - " + esc(firstSentence(p.text)) : "") + ' <span class="c">(registry update pending)</span>';
+  var rv = reviewDate(e);
+  return "Not called yet - " + (rv ? (rv < TODAY ? "decision was due " + esc(fd(rv, true)) : "decide on " + esc(fd(rv, true))) : "no decision date set");
+}
+function fourCard(e){
+  var tested = testedOf(e);
+  return '<article class="f4" role="button" tabindex="0" data-open="' + esc(e.id) + '" aria-label="' + esc(plainName(e)) + '. Open for more detail.">' +
+    '<h3>' + esc(plainName(e)) + '</h3><dl class="f4-l">' +
+    '<dt>What’s being tested</dt><dd class="f4-t">' + (tested ? esc(tested) : '<span class="c">Not written down yet.</span>') + '</dd>' +
+    '<dt>Timeline</dt><dd class="num">' + esc(fourTimeline(e)) + '</dd>' +
+    '<dt>Before vs after</dt><dd>' + fourNumbers(e) + '</dd>' +
+    '<dt>Conclusion</dt><dd>' + fourConclusion(e) + '</dd>' +
+    '</dl><div class="f4-more">More detail →</div></article>';
+}
+function fourSection(id, title, sub, list, keepKey, first){
+  if (!list.length) return "";
+  var head = list.slice(0, first), rest = list.slice(first);
+  return '<section class="nw-sec" aria-labelledby="' + id + '"><div class="nw-h"><h2 id="' + id + '">' + esc(title) + '</h2><span>' + esc(sub) + '</span></div>' +
+    (head.length ? '<div class="f4s">' + head.map(fourCard).join("") + '</div>' : "") +
+    (rest.length ? '<details class="f4-rest" id="' + id + '-rest"' + (KEEP[keepKey] ? " open" : "") + ' data-keep="' + keepKey + '"><summary>' + (head.length ? "Show " + rest.length + " more" : "Show " + rest.length) + '</summary><div class="f4s">' + rest.map(fourCard).join("") + '</div></details>' : "") + '</section>';
+}
+function fourView(){
+  var live = LIVE.slice().sort(function(a, b){ return String(reviewDate(a) || "9").localeCompare(String(reviewDate(b) || "9")); });
+  var planned = PLANNED.slice().sort(function(a, b){ return String(startOf(a) || reviewDate(a) || "9").localeCompare(String(startOf(b) || reviewDate(b) || "9")); });
+  var dec = DECIDED.slice().sort(function(a, b){ return String(decidedOn(b) || "").localeCompare(String(decidedOn(a) || "")); });
+  return (live.length ? fourSection("f4-run", "Running now", live.length + " test" + (live.length === 1 ? "" : "s"), live, "f4RunOpen", live.length)
+           : '<section class="nw-sec"><div class="nw-h"><h2>Running now</h2></div><div class="nw-empty">Nothing is running right now.</div></section>') +
+    fourSection("f4-plan", "Planned", planned.length + " not launched yet", planned, "f4PlanOpen", 0) +
+    fourSection("f4-dec", "Decided", dec.length + " so far · newest first", dec, "f4DecOpen", 5);
+}
+function moreDetail(){
+  return '<details class="nw-det f4-det" id="nwmore"' + (KEEP.moreOpen ? " open" : "") + '><summary><b>More detail</b><span>timeline chart, the earlier running-now cards, decided list, filters, Planner numbers, engine notes</span></summary>' +
+    jumpRow() + runningNow() + timeline() + decidedList() + detailsBox() + '</details>';
+}
 function decidedOn(d){ var x = d.decided_on || d.end_date; return x ? String(x).slice(0, 10) : null; }
 /* timeline: names in their own column (never cut off), bars to the right on one date scale */
 function timeline(){
@@ -1572,7 +1677,7 @@ function render(){
   if (ST.view === "changes" || ST.view === "rules") {
     app.innerHTML = renderHeader() + '<div class="back"><button class="linkbtn" data-view="grid">← All experiments</button></div>' + (ST.view === "changes" ? renderChanges() : renderRules()) + toTopLink();
   } else {
-    app.innerHTML = renderHeader() + jumpRow() + runningNow() + toTopLink() + timeline() + toTopLink() + decidedList() + toTopLink() + detailsBox() + toTopLink();
+    app.innerHTML = renderHeader() + fourView() + toTopLink() + moreDetail() + toTopLink();
   }
   wire();
   if (CUR.fitFrame) CUR.fitFrame();
@@ -1596,10 +1701,10 @@ function wireResults(root){
 }
 function wire(){
   app.querySelectorAll("[data-view]").forEach(function(b){ b.addEventListener("click", function(){ ST.view = b.getAttribute("data-view"); render(); toTop(false); }); });
-  app.querySelectorAll("[data-jump]").forEach(function(b){ b.addEventListener("click", function(){ var t = document.getElementById(b.getAttribute("data-jump")); if (!t) return; if (t.tagName === "DETAILS") { t.open = true; KEEP.detOpen = true; } else t = t.closest("section") || t; scrollToEl(t); }); });
+  app.querySelectorAll("[data-jump]").forEach(function(b){ b.addEventListener("click", function(){ var t = document.getElementById(b.getAttribute("data-jump")); if (!t) return; if (t.tagName === "DETAILS") { t.open = true; KEEP.detOpen = true; } else t = t.closest("section") || t; var pd0 = t.parentElement && t.parentElement.closest("details"); while (pd0) { pd0.open = true; pd0 = pd0.parentElement && pd0.parentElement.closest("details"); } scrollToEl(t); }); });
   app.querySelectorAll("[data-totop]").forEach(function(b){ b.addEventListener("click", function(){ toTop(true); }); });
   app.querySelectorAll("[data-copy-backlog]").forEach(function(b){ b.addEventListener("click", function(){ copyText(backlogText(), b, document.getElementById("backlog-box")); var d = b.closest("details"); if (d) setTimeout(function(){ d.open = false; }, 900); }); });
-  app.querySelectorAll("[data-status-go]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status-go"); ST.view = "grid"; KEEP.detOpen = true; saveST(); render(); var dt = document.getElementById("nwdet"); if (dt) scrollToEl(dt); }); });
+  app.querySelectorAll("[data-status-go]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status-go"); ST.view = "grid"; KEEP.detOpen = true; KEEP.moreOpen = true; saveST(); render(); var dt = document.getElementById("nwdet"); if (dt) scrollToEl(dt); }); });
   app.querySelectorAll("[data-status]").forEach(function(b){ b.addEventListener("click", function(){ ST.status = b.getAttribute("data-status"); saveST(); app.querySelectorAll("[data-status]").forEach(function(x){ x.setAttribute("aria-pressed", x === b); }); rerenderResults(); }); });
   app.querySelectorAll("[data-rot]").forEach(function(b){ b.addEventListener("click", function(){ ST.rot = !ST.rot; saveST(); b.setAttribute("aria-pressed", ST.rot); rerenderResults(); }); });
   var xq = document.getElementById("xq"); if (xq) xq.addEventListener("input", function(){ ST.q = xq.value; rerenderResults(); });
@@ -1615,6 +1720,8 @@ function wire(){
   var ndt = document.getElementById("nwdet"); if (ndt) ndt.addEventListener("toggle", function(){ KEEP.detOpen = ndt.open; });
   var tlm = document.getElementById("tlmore"); if (tlm) tlm.addEventListener("toggle", function(){ KEEP.tlOpen = tlm.open; });
   var dlm = document.getElementById("dlmore"); if (dlm) dlm.addEventListener("toggle", function(){ KEEP.dlOpen = dlm.open; });
+  var nmo = document.getElementById("nwmore"); if (nmo) nmo.addEventListener("toggle", function(){ KEEP.moreOpen = nmo.open; });
+  app.querySelectorAll("details[data-keep]").forEach(function(d){ d.addEventListener("toggle", function(){ KEEP[d.getAttribute("data-keep")] = d.open; }); });
 }
 function closeMenus(ev){ app.querySelectorAll("details.ovf[open]").forEach(function(d){ if (!d.contains(ev.target)) d.open = false; }); }
 

@@ -163,7 +163,9 @@ def test_card_per_experiment_grid_kept_under_details():
 def test_simple_view_running_timeline_decided():
     # owner 2026-11-21: "very, very simple to read" for a non-technical reader
     html = _page()
+    # owner 2026-11-27: these all moved under "More detail" (moreDetail), nothing deleted
     assert re.search(r"runningNow\(\)[^;]*timeline\(\)[^;]*decidedList\(\)[^;]*detailsBox\(\)", html)
+    assert "jumpRow() + runningNow() + timeline() + decidedList() + detailsBox()" in html
     for s in ("Running now", "What we changed", "Decide on", "Chance it’s better", "So far:",
               "No starting point recorded – can’t judge this yet", "Measuring"):
         assert s in html, s
@@ -215,8 +217,10 @@ def test_frame_is_content_height_not_one_screen():
 
 def test_jump_links_and_back_to_top():
     html = _page()
-    assert "renderHeader() + jumpRow() + runningNow()" in html
+    # owner 2026-11-27: main page = four-item cards; the jump row lives inside "More detail"
+    assert "renderHeader() + fourView() + toTopLink() + moreDetail()" in html
+    assert "jumpRow() + runningNow()" in html
     for target in ("nw-run-h", "nw-tl-h", "nw-dec-h", "nwdet"):
         assert '"' + target + '"' in html.split("function jumpRow()", 1)[1].split(chr(10) + "}", 1)[0], target
         assert 'id="' + target + '"' in html, target
-    assert html.count("toTopLink()") >= 5 and "data-totop" in html
+    assert html.count("toTopLink()") >= 3 and "data-totop" in html

@@ -217,6 +217,29 @@ def attach_history(snapshot, history_by_id):
     return snapshot
 
 
+PLAIN_FIELDS = ("tests", "hypothesis", "goal", "what_changed")
+
+
+def attach_plain_fields(snapshot, registry):
+    """Copy the registry's plain-language fields (tests / hypothesis / goal / what_changed) onto
+    snapshot rows that lack them, by id. The engine's decided[] rows carry none of them, and the
+    four-item view (owner 2026-11-27) leads every card with "What's being tested". Fills blanks
+    only (never overrides the engine), reads nothing new (the registry is already loaded)."""
+    if not isinstance(snapshot, dict) or not isinstance(registry, dict):
+        return snapshot
+    by_id = {str(e.get("id")): e for e in registry.get("experiments") or [] if isinstance(e, dict) and e.get("id")}
+    for key in ("experiments", "decided"):
+        for row in snapshot.get(key) or []:
+            src = by_id.get(str(row.get("id"))) if isinstance(row, dict) else None
+            if not src:
+                continue
+            for f in PLAIN_FIELDS:
+                v = src.get(f)
+                if isinstance(v, str) and v.strip() and not row.get(f):
+                    row[f] = v
+    return snapshot
+
+
 def snapshot_sig(snapshot):
     """Short content hash: the page re-renders only when the snapshot really changed."""
     import hashlib
@@ -327,6 +350,11 @@ def render_experiments_tab_v2(snapshot_or_none=None, registry_fallback=None, the
         return cards.render(snap, theme_mode, on_note=on_note, author=author, focus=focus)
     if history_by_id:
         snap = attach_history(dict(snap), history_by_id)
+    try:
+        snap = attach_plain_fields(dict(snap), registry_fallback if isinstance(registry_fallback, dict)
+                                   else _load_registry_file())
+    except Exception:  # noqa: BLE001 - a missing field must never break the tab
+        pass
     degraded = bool(snap.get("degraded"))
     if os.environ.get("EXP_TAB_COMPONENT", "1") != "0":
         try:
