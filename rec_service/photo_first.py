@@ -100,6 +100,11 @@ def strip(out):
 # carry figures (market tiers, their own budget split, their own quotes): members only here. Their place: UPGRADE_LINE + the
 # product's existing upgrade card (upsell.prompt(): "See the exact prices" / "See plans").
 FREE_HIDDEN_WIDGETS = ("cost_estimate", "budget_split", "budget_status", "venue_compare")
+# Owner 2026-11-27: the free cost-tool TAPS (POST /rec/tool) answer free couples on photo-first as everywhere else. Their
+# widget is market averages or the couple's own budget, never a venue's PDF price (compare_venues is not one of them), and
+# carries market_only so a reopened chat shows it as it was tapped. Typed answers keep the T0-53 rule above.
+MARKET_TOOLS = ("estimate_cost", "split_budget", "budget_status")
+MARKET_WIDGETS = ("cost_estimate", "budget_split", "budget_status")
 UPGRADE_LINE = "See real prices with full access"
 COST_TOOL = "cost_lines"
 COST_TYPE = "cost_lines"
@@ -540,13 +545,6 @@ def upgrade_prompt():
     return upsell.prompt(has_plan=False)
 
 
-def tool_upgrade(name, chips=()):
-    """POST /rec/tool for a free couple on a photo-first page (T0-53): a cost tool whose widget carries figures is not run;
-    the answer is the upgrade line and the existing upgrade card. Chips: only ones with no price talk."""
-    return {"tool": name, "text": UPGRADE_LINE, "widgets": [], "photo_first": True, "upsell_prompt": upgrade_prompt(),
-            "chips": [c for c in chips or [] if not price_answer(c if isinstance(c, str) else json.dumps(c))]}
-
-
 def _free_safe(text):
     """A line a free couple may read: no price talk; guest counts are fine."""
     return not free_mode.has_price_talk(text or "")
@@ -586,6 +584,12 @@ def apply(out, level, profile=None, reopened=False, card_totals=False):
     if not isinstance(out, dict) or out.get("stopped"):
         return out
     free = level == "free" or bool(out.get("price_locked"))
+    ws = [w for w in out.get("widgets") or [] if isinstance(w, dict)]
+    if free and ws and not out.get("cards") and all(w.get("market_only") and w.get("type") in MARKET_WIDGETS for w in ws):
+        res = dict(out, photo_first=True, understood=None)   # a stored free cost-tool tap: its own words and widget, as tapped
+        res.pop("pf_stored", None)
+        res.pop("last_user", None)
+        return res
     hid = free and any(isinstance(w, dict) and w.get("type") in FREE_HIDDEN_WIDGETS for w in out.get("widgets") or [])
     if hid:
         # Owner rulings 2026-11-26 / T0-53: in a photo-first answer a free couple does not see a cost widget (market-

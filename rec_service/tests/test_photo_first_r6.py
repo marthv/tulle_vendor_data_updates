@@ -40,6 +40,10 @@ def tool_env(monkeypatch):
     monkeypatch.setattr(xano, "has_forever", lambda u: False)
     monkeypatch.setattr(xano, "state_average_rows", lambda t: [{"State": "Pennsylvania", "Cost_of_Average_Wedding": 34000}])
     monkeypatch.setattr(xano, "guest_modifier", lambda t, n: 1.0)
+    monkeypatch.setattr(xano, "budget_categories", lambda t: [{"id": 1, "Category": "Venue", "Budget_Focus_Normal": 40}])
+    monkeypatch.setattr(xano, "user_packages", lambda t, uid: [])
+    monkeypatch.setattr(xano, "venue_quotes", lambda t, e: [])
+    monkeypatch.setattr(xano, "saved_vendor_ids", lambda u: [])
     monkeypatch.setattr(xano, "get_chat", lambda u, c: {"id": c, "title": "t"})
     monkeypatch.setattr(xano, "add_message", lambda cid, role, content, cards=None, chips=None: stored.append(
         {"role": role, "content": content, "cards": cards or [], "chips": chips or []}))
@@ -55,16 +59,24 @@ def tool_env(monkeypatch):
     return run
 
 
+# Owner 2026-11-27 reversed T0-53 for the cost-tool TAPS: a free couple on a photo-first page gets exactly today's free answer
+# (market averages / their own budget; compare_venues locked by free_mode). These two tests replace the T0-53 pins that said
+# "upgrade line, no widget" - changed deliberately, not loosened. Typed answers keep T0-53 (tests further down).
 @pytest.mark.parametrize("tool", cost_tools.TOOLS)
-def test_free_couple_photo_first_cost_tool_response_has_no_price_like_string(tool_env, tool):
+def test_free_couple_photo_first_cost_tool_gets_the_same_free_answer_as_switch_off(tool_env, monkeypatch, tool):
     code, j = tool_env(tool)
-    assert code == 200
-    assert _price_like(j) == [], _price_like(j)                      # the WHOLE response JSON
-    assert j["text"] == pf.UPGRADE_LINE and j["widgets"] == [] and j["price_locked"] is True
-    assert j["upsell_prompt"] == upsell.prompt(has_plan=False)       # the product's existing upgrade card and wording
-    assert j["upsell_prompt"]["cta"] == "See plans"
-    # what is stored is the same words: a reopened chat cannot bring the figures back
-    assert tool_env.stored[-1]["content"] == pf.UPGRADE_LINE and tool_env.stored[-1]["cards"] == []
+    assert code == 200 and j["price_locked"] is True and "upsell_prompt" not in j and j["text"] != pf.UPGRADE_LINE
+    assert j["widgets"] and j["widgets"][0].get("type")
+    monkeypatch.setattr(config, "PHOTO_FIRST", False)
+    code2, off = tool_env(tool, pfq=False)
+    assert code2 == 200 and j == off                       # byte for byte the non-photo-first free answer
+    assert tool_env.stored[-1]["cards"] == [{"meta": "widget", "widget": j["widgets"][0]}]
+
+
+def test_free_market_tools_are_marked_and_compare_is_not(tool_env):
+    for tool in pf.MARKET_TOOLS:
+        assert tool_env(tool)[1]["widgets"][0].get("market_only") is True
+    assert "market_only" not in tool_env("compare_venues")[1]["widgets"][0]   # vendor pricing: never exempt from hiding
 
 
 def test_canary_the_check_fails_on_todays_free_estimate_cost(tool_env):
@@ -83,9 +95,10 @@ def test_members_and_switch_off_keep_the_cost_tools(tool_env, monkeypatch):
     assert [w.get("type") for w in j["widgets"]] == ["cost_estimate"] and "upsell_prompt" not in j
 
 
-def test_reopened_upgrade_turn_and_old_estimate_turn_read_as_the_upgrade(tool_env, monkeypatch):
-    tool_env("estimate_cost", access=True)                    # a member's stored estimate (the figures are in the store)
-    tool_env("estimate_cost")                                 # the free upgrade turn
+def test_reopened_free_tool_turns_show_as_tapped(tool_env, monkeypatch):
+    """Owner 2026-11-27: a stored free cost-tool tap reads back as it was tapped (was: the upgrade line, T0-53)."""
+    tool_env("estimate_cost", access=True)                    # a member's stored estimate (market averages, market_only)
+    tool_env("estimate_cost")                                 # a free couple's stored estimate
     rows = [{"id": 900 + i, "chat_id": 5, "role": m["role"], "content": m["content"], "cards": m["cards"],
              "created_at": 1 + i, "chips": []} for i, m in enumerate(tool_env.stored)]
     turns = [xano.parse_message_row(r) for r in rows]
@@ -95,9 +108,17 @@ def test_reopened_upgrade_turn_and_old_estimate_turn_read_as_the_upgrade(tool_en
         monkeypatch.setattr(xano, n, lambda u: False)
     got = TestClient(app.app).get("/rec/chats/5?photo_first=1", headers=H).json()
     a = [t for t in got["turns"] if t["role"] == "assistant"]
-    assert [t["text"] for t in a] == [pf.UPGRADE_LINE, pf.UPGRADE_LINE]
-    assert all(t.get("upsell_prompt", {}).get("cta") == "See plans" for t in a)
-    assert _price_like(a) == [], _price_like(a)
+    assert [[w.get("type") for w in t["widgets"]] for t in a] == [["cost_estimate"], ["cost_estimate"]]
+    assert all(t["text"] != pf.UPGRADE_LINE and not t.get("upsell_prompt") for t in a)
+
+
+def test_canary_an_unmarked_stored_estimate_is_still_held_back_for_free(tool_env):
+    """A cost widget without market_only (a typed answer's, or anything older) keeps the T0-53 rule on reopen."""
+    w = dict(TYPICAL)
+    w.pop("market_only", None)
+    got = pf.apply(answer(cards=[], text="A typical wedding here is about $37,400.", widgets=[w], paid=False, has_access=False,
+                          price_locked=True), "free", {})
+    assert got["widgets"] == [] and got["text"] == pf.UPGRADE_LINE
 
 
 # ---------------------------------------------------------------- T0-53: a typed price question (no cards)
@@ -161,3 +182,44 @@ def test_canary_the_headline_check_sees_the_mismatch():
 def test_listed_vendor_follows_the_tests_listed_venue(monkeypatch):
     monkeypatch.setattr(xano, "listed_venue", lambda v: {"vendor_id": v, "category": "Venue"} if v == "V1" else None)
     assert xano.listed_vendor("V1") == {"vendor_id": "V1", "category": "Venue"} and xano.listed_vendor("V5") is None
+
+
+# ---------------------------------------------------------------- 2026-11-27: venue PDF prices stay locked for free couples
+
+def _venue_priced(monkeypatch):
+    """A saved venue whose PDF says rental $7,000 (CostXano's figures), reachable from every tool path."""
+    from test_photo_first import CostXano
+    cx = CostXano()
+    monkeypatch.setattr(xano, "saved_vendor_ids", lambda u: ["V1"])
+    monkeypatch.setattr(xano, "vendor_card", lambda v: cx.cached_vendor_card(v))
+    monkeypatch.setattr(xano, "cached_vendor_card", lambda v, *a, **k: cx.cached_vendor_card(v))
+    monkeypatch.setattr(xano, "venue_pricing", lambda t, v, paid, *a, **k: cx.cached_venue_pricing(t, v, paid))
+    monkeypatch.setattr(xano, "cached_venue_pricing", lambda t, v, paid, *a, **k: cx.cached_venue_pricing(t, v, paid))
+    monkeypatch.setattr(xano, "user_packages", lambda t, uid: [])
+
+
+def _venue_digits(j):
+    s = json.dumps(j)
+    return [d for d in ("7000", "7,000", "Lily Pool Terrace") if d in s]
+
+
+def _post(tool, args=None, chat=0):
+    r = TestClient(app.app).post("/rec/tool?photo_first=1", json={"tool": tool, "args": args or {}, "chat_id": chat}, headers=H)
+    return r.status_code, r.json()
+
+
+@pytest.mark.parametrize("tool", list(cost_tools.TOOLS) + [pf.COST_TOOL])
+def test_free_couple_never_gets_a_venue_pdf_price_from_any_tool(tool_env, monkeypatch, tool):
+    _venue_priced(monkeypatch)
+    tool_env("estimate_cost")                      # sets access False in the fixture
+    code, j = _post(tool, {"vendor_id": "V1"} if tool == pf.COST_TOOL else {})
+    assert code == 200, j
+    assert _venue_digits(j) == [], _venue_digits(j)
+
+
+def test_canary_a_member_does_get_the_venue_pdf_price(tool_env, monkeypatch):
+    """Proves the digit check above can see a venue's PDF figure: a member's "What it costs" carries it."""
+    _venue_priced(monkeypatch)
+    tool_env("estimate_cost", access=True)         # access True from here on
+    code, j = _post(pf.COST_TOOL, {"vendor_id": "V1"})
+    assert code == 200 and "7000" in _venue_digits(j), j

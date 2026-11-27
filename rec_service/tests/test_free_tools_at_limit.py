@@ -1,8 +1,7 @@
 """Owner 2026-11-27: "make sure it does show and anyone is allowed to use it whenever (estimate my wedding, check my
 budget)". A signed-in couple with no plan who has used today's free question (free daily mode, the first 3 starter
 questions long gone) still gets both free cost tools from POST /rec/tool, and a tap never changes questions_left.
-Photo-first free couples still get the upgrade line instead of figures (T0-53); outside photo-first the widget comes
-back with free-mode pricing as today. The kill switch still stops the tools. Canary: a question-limit gate planted in
+Photo-first free couples get the same free widget as outside photo-first (owner 2026-11-27, reverses T0-53 for taps). The kill switch still stops the tools. Canary: a question-limit gate planted in
 the tool path must make the check fail."""
 import pytest
 from fastapi.testclient import TestClient
@@ -94,15 +93,16 @@ def test_widget_still_comes_back_outside_photo_first(env):
         assert w.get("type") == typ, w
 
 
-def test_photo_first_free_couple_at_the_limit_gets_the_upgrade_line_not_a_refusal(env, monkeypatch):
+def test_photo_first_free_couple_at_the_limit_gets_the_free_widget(env, monkeypatch):
+    """Owner 2026-11-27 (reverses T0-53 for taps): photo-first free = the same market-average widget as anywhere else."""
     import app, photo_first
     monkeypatch.setattr(photo_first, "on", lambda user: True)
     c = TestClient(app.app)
-    for tool in TOOLS:
+    for tool, typ in (("estimate_cost", "cost_estimate"), ("budget_status", "budget_status")):
         r = c.post("/rec/tool", json={"tool": tool})
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d["price_locked"] is True and d["text"] and not d.get("widgets")
+        assert d["price_locked"] is True and d["text"] and d["widgets"][0]["type"] == typ and not d.get("upsell_prompt")
     _drain()
     assert _questions_left(c) == 0
 

@@ -2046,18 +2046,15 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         _chat_used(body.chat_id)
     access = xano.has_paid_access(user)
     paid = xano.beta_member(user)
-    # T0-53 (owner 2026-11-26): on a photo-first page a couple with no plan sees no dollar figure. The cost tools' widgets
-    # carry figures (estimate_cost's market tiers, the budget split...), so they are not run: the upgrade line and the
-    # existing upgrade card instead. "What it costs" (cost_lines) and the side by side are words-only for them already.
-    pf_upgrade = photo_first.on(user) and not access and name in cost_tools.TOOLS
+    # Owner 2026-11-27 (reverses T0-53 for these taps): a couple with no plan gets the same free answer on a photo-first
+    # page as anywhere else - market averages for their state and guests, their own budget - via free_mode.widget, which
+    # never carries a venue's own PDF price. "What it costs" for a venue (cost_lines) and the side by side stay words-only.
     base = {"user_id": user["id"], "kind": "tool_" + name, "chat_id": int(body.chat_id or 0), "model": "none",
             "tier": "paid" if paid else "free", "counted_as_free": False, "input_tokens": 0, "cache_read_tokens": 0,
             "cache_write_tokens": 0, "output_tokens": 0, "tool_calls": 0, "cost_usd": 0}
     t0 = dt.datetime.now(dt.timezone.utc)
     try:
-        if pf_upgrade:
-            out = {"widget": None}
-        elif picked:
+        if picked:
             d = cost_tools.profile_defaults(user)
             out = {"widget": compare.build(xano, token, user, ids, access=access, guests=(body.args or {}).get("guests"),
                                            default_guests=d["guests"], budget=d["budget"])}
@@ -2076,9 +2073,9 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     if picked and not out["widget"]:
         _submit_usage(dict(base, status="error", error="compare: fewer than two venues found"))
         raise HTTPException(404, {"status": "venues_not_found"})
-    if pf_upgrade:
-        return _tool_upgrade(name, body, user, chat, base, background)
     widget = out["widget"] if access else free_mode.widget(out["widget"])
+    if name in photo_first.MARKET_TOOLS and isinstance(widget, dict):
+        widget = dict(widget, market_only=True)   # a reopened photo-first chat shows it as tapped (photo_first.apply)
     text = (compare.summary_text(widget) if picked else photo_first.cost_summary(widget) if pf_cost
             else cost_tools.summary_text(widget))
     # Next-step chips (owner 2026-10-25), computed in code like the widget - flag-independent, as /rec/tool is.
@@ -2103,25 +2100,6 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         background.add_task(persist)
     return {"tool": name, "text": text, "widgets": [widget], "chips": [] if config.OPEN_ENDED else chips, "chat_id": chat["id"] if chat else None,
             "price_locked": not access}
-
-
-def _tool_upgrade(name, body, user, chat, base, background):
-    """/rec/tool for a free couple on a photo-first page, cost tool (T0-53): no widget, no figure; logged like any tap."""
-    res = photo_first.tool_upgrade(name, tool_chips(name, free=True, widget={}))
-    _submit_usage(dict(base, status="ok", latency_ms=0))
-    _POOL.submit(xano.mp_track, user["id"], "rec_server_request", {
-        "kind": "tool_" + name, "status": "ok", "forever": xano.has_forever(user), "beta_member": False,
-        "has_access": False, "source": "rec_service", "cost_usd": 0, "latency_s": 0, "widget": None, "locked": True,
-        "pf_upgrade": True, "chat_id": int(body.chat_id or 0), "search_arm": railway_search.arm(user.get("id"))})
-    label = TOOL_LABELS[name]
-    sheet_log.event(user, "Used a quick action", label, res["text"], int(body.chat_id or 0))
-    if chat:
-        def persist():   # stored words only: a reopened chat shows the same upgrade line (photo_first.apply)
-            xano.add_message(chat["id"], "user", label)
-            xano.add_message(chat["id"], "assistant", res["text"], [], res["chips"])
-            xano.touch_chat(chat)
-        background.add_task(persist)
-    return dict(res, chips=[] if config.OPEN_ENDED else res["chips"], chat_id=chat["id"] if chat else None, price_locked=True)
 
 
 class PickBody(BaseModel):
