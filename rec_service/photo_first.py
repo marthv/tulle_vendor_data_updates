@@ -21,6 +21,7 @@ lines (Rental, Food and drink, Ceremony, Service charge - the design's "Admin fe
 everyone else only WHERE each part is ("In the PDF" / "Not in this PDF") with no digits.
 Pure except build_cost_lines (xano is passed in)."""
 import contextvars
+import hashlib
 import json
 import re
 
@@ -34,8 +35,50 @@ PF_ONLY_KEYS = ("setting_tags", "rental_source", "rental_when")   # card keys on
 PF_ONLY_TOP = ("unmatched_name",)                   # response keys only photo-first adds
 
 
-def on():
-    return bool(config.PHOTO_FIRST and REQ.get())
+# The signed-in account of this request, for the 50/50 (REC_PHOTO_FIRST_AB_PCT). The middleware sets a fresh box per request
+# and app._auth fills it, so the endpoint and its background tasks (copies of the request context) all read the same id.
+WHO = contextvars.ContextVar("rec_photo_first_who", default=None)
+
+
+def seen(user):
+    box = WHO.get()
+    if isinstance(box, dict) and isinstance(user, dict):
+        box["uid"] = user.get("id")
+
+
+def arm(user_id):
+    """'photo_first' | 'control' | 'off'. Same shape as compare.arm: stable per account (sha256(salt:id) % 100 < pct),
+    internal testers (REC_PHOTO_FIRST_USER_IDS) always in. 'off' = the switch is off, no account, or pct 0."""
+    if not config.PHOTO_FIRST:
+        return "off"
+    try:
+        uid = int(user_id or 0)
+    except (TypeError, ValueError):
+        return "off"
+    if uid <= 0:
+        return "off"
+    if uid in config.PHOTO_FIRST_USER_IDS:
+        return "photo_first"
+    if config.PHOTO_FIRST_AB_PCT <= 0:
+        return "off"
+    h = int(hashlib.sha256(("%s:%d" % (config.PHOTO_FIRST_AB_SALT, uid)).encode()).hexdigest()[:8], 16) % 100
+    return "photo_first" if h < config.PHOTO_FIRST_AB_PCT else "control"
+
+
+def _uid(user=None):
+    if isinstance(user, dict):
+        return user.get("id")
+    box = WHO.get()
+    return box.get("uid") if isinstance(box, dict) else None
+
+
+def on(user=None):
+    """This request gets photo-first: the switch is on, the page asked, and (with the 50/50 set) the account is in the
+    'photo_first' arm. pct 0: a page asking gets it, as before. pct > 0 and no known account: no (control's answer)."""
+    if not (config.PHOTO_FIRST and REQ.get()):
+        return False
+    a = arm(_uid(user))
+    return a == "photo_first" or (a == "off" and config.PHOTO_FIRST_AB_PCT <= 0)
 
 
 def strip_cards(cards):

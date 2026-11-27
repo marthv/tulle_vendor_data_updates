@@ -359,6 +359,12 @@ COMPARE_VENUES_PER_DAY = max(3, int(os.environ.get("REC_COMPARE_VENUES_PER_DAY",
 # naming its source; the response also says what was understood (place, guests, date). Adds the "cost_lines" quick action.
 # OFF by default: with REC_PHOTO_FIRST=0 every response is exactly as before and the tool answers unknown_tool.
 PHOTO_FIRST = os.environ.get("REC_PHOTO_FIRST", "0").strip() == "1"
+# PHOTO-FIRST 50/50 BY ACCOUNT (owner 2026-11-27; photo_first.arm, same shape as compare.arm): with PCT > 0 the SERVER
+# decides - a page asking (?photo_first=1) gets photo-first only for an account in the 'photo_first' arm; a 'control'
+# account gets exactly what a page not asking gets. PCT 0 (default) = today: a page asking gets it. Testers always in.
+PHOTO_FIRST_AB_PCT = _pct(os.environ.get("REC_PHOTO_FIRST_AB_PCT", "0"))
+PHOTO_FIRST_AB_SALT = os.environ.get("REC_PHOTO_FIRST_AB_SALT", "photo-first-2026-11")
+PHOTO_FIRST_USER_IDS = _int_set(os.environ.get("REC_PHOTO_FIRST_USER_IDS", ""))
 # COMPARE ANY CATEGORY (owner 2026-11-26): Compare and Our pick work within ANY one category (photographers with
 # photographers, florists with florists...), never mixed. Needs the compare arm like the rest. 0 = venues only, as before.
 COMPARE_ANY_CATEGORY = os.environ.get("REC_COMPARE_ANY_CATEGORY", "0").strip() == "1"

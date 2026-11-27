@@ -1558,6 +1558,8 @@ def mp_track(user_id, event, props):
         if str(event).startswith("rec_"):
             import plan as _plan     # 2026-11-07: every Planner event carries the plan A/B arm
             props = dict(props, ab_plan=_plan.arm(user_id))
+            import photo_first as _pf  # 2026-11-27: and the photo-first 50/50 arm ('photo_first' | 'control' | 'off')
+            props = dict(props, pf_arm=_pf.arm(user_id))
         body = [{"event": event, "properties": dict(props, token=config.MIXPANEL_TOKEN,
                                                     distinct_id=str(user_id), ip="0",
                                                     time=int(dt.datetime.now(dt.timezone.utc).timestamp()))}]

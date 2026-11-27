@@ -1,0 +1,3226 @@
+{
+ "http/free/40213/chat": {
+  "chat_id": 5,
+  "title": "t",
+  "turns": [
+   {
+    "cards": [],
+    "chips": [],
+    "id": 1,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "user",
+    "sources": [],
+    "text": "garden venues in Brooklyn",
+    "widgets": []
+   },
+   {
+    "cards": [
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_locked": true,
+      "reason": "",
+      "state": "New York",
+      "vendor_id": "V1",
+      "vendor_idx": 1,
+      "venue_type": "Garden / Botanical Garden"
+     },
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_locked": true,
+      "reason": "",
+      "state": "New York",
+      "vendor_id": "V2",
+      "vendor_idx": 1,
+      "venue_type": "Garden / Botanical Garden"
+     }
+    ],
+    "chips": [],
+    "id": 2,
+    "is_more": false,
+    "more_available": 0,
+    "price_locked": true,
+    "questions": [],
+    "role": "assistant",
+    "sources": [],
+    "text": "Here are picks that fit what you've told me so far. Exact pricing lives in each vendor's PDF (and on Tulle plans), so open the pricing PDF on a card to see exactly what they charge.",
+    "widgets": []
+   }
+  ]
+ },
+ "http/free/40213/chat?photo_first=1": {
+  "chat_id": 5,
+  "title": "t",
+  "turns": [
+   {
+    "cards": [],
+    "chips": [],
+    "id": 1,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "user",
+    "sources": [],
+    "text": "garden venues in Brooklyn",
+    "widgets": []
+   },
+   {
+    "cards": [
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "facts": [
+       {
+        "icon": "seat",
+        "label": "Seats 220"
+       },
+       {
+        "icon": "leaf",
+        "label": "Garden"
+       }
+      ],
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_locked": true,
+      "reason": "",
+      "setting_tags": [
+       "Garden / Botanical Garden"
+      ],
+      "state": "New York",
+      "vendor_id": "V1",
+      "vendor_idx": 1,
+      "venue_type": "Garden / Botanical Garden"
+     },
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "facts": [
+       {
+        "icon": "seat",
+        "label": "Seats 220"
+       },
+       {
+        "icon": "leaf",
+        "label": "Garden"
+       }
+      ],
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_locked": true,
+      "reason": "",
+      "setting_tags": [
+       "Garden / Botanical Garden"
+      ],
+      "state": "New York",
+      "vendor_id": "V2",
+      "vendor_idx": 1,
+      "venue_type": "Garden / Botanical Garden"
+     }
+    ],
+    "chips": [],
+    "id": 2,
+    "is_more": false,
+    "more_available": 0,
+    "photo_first": true,
+    "price_locked": true,
+    "questions": [],
+    "role": "assistant",
+    "sources": [],
+    "text": "The one you asked about, and close matches",
+    "understood": {
+     "guests": 100,
+     "place": "Brooklyn"
+    },
+    "widgets": []
+   }
+  ]
+ },
+ "http/free/40213/more": {
+  "attach_open": true,
+  "beta_feedback_after": 5,
+  "beta_questions_left": null,
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "the largest here, seats 220; Garden / Botanical Garden; Brooklyn",
+    "state": "New York",
+    "vendor_id": "V0",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "seats 220; Garden / Botanical Garden; Brooklyn",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "seats 220; Garden / Botanical Garden; Brooklyn",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chat_id": 3,
+  "chips": [
+   "All-inclusive venues",
+   "Bring-your-own-caterer venues"
+  ],
+  "feedback_done": true,
+  "feedback_required": false,
+  "feedback_suggested": false,
+  "forever_daily_limit": 40,
+  "forever_left_today": null,
+  "free_daily_limit": null,
+  "free_daily_mode": false,
+  "free_feedback_bonus": 0,
+  "free_feedback_required": false,
+  "free_initial_limit": null,
+  "free_limit": 1,
+  "free_phase": null,
+  "free_refines_left": 1,
+  "has_access": false,
+  "more_available": 0,
+  "paid": false,
+  "paywall": false,
+  "price_locked": true,
+  "questions": [],
+  "questions_left": 1,
+  "text": "3 more from the same search (Brooklyn, 150 guests), none shown before. Brooklyn Botanic Garden is the most intimate (seats 220). Open the pricing PDF on each card to see exactly what they charge.",
+  "tier": "free",
+  "upsell": "forever",
+  "upsell_prompt": null,
+  "widgets": []
+ },
+ "http/free/40213/more?photo_first=1": {
+  "attach_open": true,
+  "beta_feedback_after": 5,
+  "beta_questions_left": null,
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "the largest here, seats 220; Garden / Botanical Garden; Brooklyn",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V0",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "seats 220; Garden / Botanical Garden; Brooklyn",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "seats 220; Garden / Botanical Garden; Brooklyn",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chat_id": 3,
+  "chips": [
+   "All-inclusive venues",
+   "Bring-your-own-caterer venues"
+  ],
+  "feedback_done": true,
+  "feedback_required": false,
+  "feedback_suggested": false,
+  "forever_daily_limit": 40,
+  "forever_left_today": null,
+  "free_daily_limit": null,
+  "free_daily_mode": false,
+  "free_feedback_bonus": 0,
+  "free_feedback_required": false,
+  "free_initial_limit": null,
+  "free_limit": 1,
+  "free_phase": null,
+  "free_refines_left": 1,
+  "has_access": false,
+  "more_available": 0,
+  "paid": false,
+  "paywall": false,
+  "photo_first": true,
+  "price_locked": true,
+  "questions": [],
+  "questions_left": 1,
+  "text": "3 in Brooklyn for 150 guests",
+  "tier": "free",
+  "understood": {
+   "guests": 150,
+   "place": "Brooklyn"
+  },
+  "upsell": "forever",
+  "upsell_prompt": null,
+  "widgets": []
+ },
+ "http/free/7/chat": {
+  "chat_id": 5,
+  "title": "t",
+  "turns": [
+   {
+    "cards": [],
+    "chips": [],
+    "id": 1,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "user",
+    "sources": [],
+    "text": "garden venues in Brooklyn",
+    "widgets": []
+   },
+   {
+    "cards": [
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_locked": true,
+      "reason": "",
+      "state": "New York",
+      "vendor_id": "V1",
+      "vendor_idx": 1,
+      "venue_type": "Garden / Botanical Garden"
+     },
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_locked": true,
+      "reason": "",
+      "state": "New York",
+      "vendor_id": "V2",
+      "vendor_idx": 1,
+      "venue_type": "Garden / Botanical Garden"
+     }
+    ],
+    "chips": [],
+    "id": 2,
+    "is_more": false,
+    "more_available": 0,
+    "price_locked": true,
+    "questions": [],
+    "role": "assistant",
+    "sources": [],
+    "text": "Here are picks that fit what you've told me so far. Exact pricing lives in each vendor's PDF (and on Tulle plans), so open the pricing PDF on a card to see exactly what they charge.",
+    "widgets": []
+   }
+  ]
+ },
+ "http/free/7/chat?photo_first=1": {
+  "chat_id": 5,
+  "title": "t",
+  "turns": [
+   {
+    "cards": [],
+    "chips": [],
+    "id": 1,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "user",
+    "sources": [],
+    "text": "garden venues in Brooklyn",
+    "widgets": []
+   },
+   {
+    "cards": [
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "facts": [
+       {
+        "icon": "seat",
+        "label": "Seats 220"
+       },
+       {
+        "icon": "leaf",
+        "label": "Garden"
+       }
+      ],
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_locked": true,
+      "reason": "",
+      "setting_tags": [
+       "Garden / Botanical Garden"
+      ],
+      "state": "New York",
+      "vendor_id": "V1",
+      "vendor_idx": 1,
+      "venue_type": "Garden / Botanical Garden"
+     },
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "facts": [
+       {
+        "icon": "seat",
+        "label": "Seats 220"
+       },
+       {
+        "icon": "leaf",
+        "label": "Garden"
+       }
+      ],
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_locked": true,
+      "reason": "",
+      "setting_tags": [
+       "Garden / Botanical Garden"
+      ],
+      "state": "New York",
+      "vendor_id": "V2",
+      "vendor_idx": 1,
+      "venue_type": "Garden / Botanical Garden"
+     }
+    ],
+    "chips": [],
+    "id": 2,
+    "is_more": false,
+    "more_available": 0,
+    "photo_first": true,
+    "price_locked": true,
+    "questions": [],
+    "role": "assistant",
+    "sources": [],
+    "text": "The one you asked about, and close matches",
+    "understood": {
+     "guests": 100,
+     "place": "Brooklyn"
+    },
+    "widgets": []
+   }
+  ]
+ },
+ "http/free/7/more": {
+  "attach_open": true,
+  "beta_feedback_after": 5,
+  "beta_questions_left": null,
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "the largest here, seats 220; Garden / Botanical Garden; Brooklyn",
+    "state": "New York",
+    "vendor_id": "V0",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "seats 220; Garden / Botanical Garden; Brooklyn",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "seats 220; Garden / Botanical Garden; Brooklyn",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chat_id": 3,
+  "chips": [
+   "All-inclusive venues",
+   "Bring-your-own-caterer venues"
+  ],
+  "feedback_done": true,
+  "feedback_required": false,
+  "feedback_suggested": false,
+  "forever_daily_limit": 40,
+  "forever_left_today": null,
+  "free_daily_limit": null,
+  "free_daily_mode": false,
+  "free_feedback_bonus": 0,
+  "free_feedback_required": false,
+  "free_initial_limit": null,
+  "free_limit": 1,
+  "free_phase": null,
+  "free_refines_left": 1,
+  "has_access": false,
+  "more_available": 0,
+  "paid": false,
+  "paywall": false,
+  "price_locked": true,
+  "questions": [],
+  "questions_left": 1,
+  "text": "3 more from the same search (Brooklyn, 150 guests), none shown before. Brooklyn Botanic Garden is the most intimate (seats 220). Open the pricing PDF on each card to see exactly what they charge.",
+  "tier": "free",
+  "upsell": "forever",
+  "upsell_prompt": null,
+  "widgets": []
+ },
+ "http/free/7/more?photo_first=1": {
+  "attach_open": true,
+  "beta_feedback_after": 5,
+  "beta_questions_left": null,
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "the largest here, seats 220; Garden / Botanical Garden; Brooklyn",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V0",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "seats 220; Garden / Botanical Garden; Brooklyn",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_locked": true,
+    "reason": "seats 220; Garden / Botanical Garden; Brooklyn",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chat_id": 3,
+  "chips": [
+   "All-inclusive venues",
+   "Bring-your-own-caterer venues"
+  ],
+  "feedback_done": true,
+  "feedback_required": false,
+  "feedback_suggested": false,
+  "forever_daily_limit": 40,
+  "forever_left_today": null,
+  "free_daily_limit": null,
+  "free_daily_mode": false,
+  "free_feedback_bonus": 0,
+  "free_feedback_required": false,
+  "free_initial_limit": null,
+  "free_limit": 1,
+  "free_phase": null,
+  "free_refines_left": 1,
+  "has_access": false,
+  "more_available": 0,
+  "paid": false,
+  "paywall": false,
+  "photo_first": true,
+  "price_locked": true,
+  "questions": [],
+  "questions_left": 1,
+  "text": "3 in Brooklyn for 150 guests",
+  "tier": "free",
+  "understood": {
+   "guests": 150,
+   "place": "Brooklyn"
+  },
+  "upsell": "forever",
+  "upsell_prompt": null,
+  "widgets": []
+ },
+ "http/member/40213/chat": {
+  "chat_id": 5,
+  "title": "t",
+  "turns": [
+   {
+    "cards": [],
+    "chips": [],
+    "id": 1,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "user",
+    "sources": [],
+    "text": "garden venues in Brooklyn",
+    "widgets": []
+   },
+   {
+    "cards": [
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "estimate_guests": 100,
+      "estimate_label": "About $38,115 for 100 guests",
+      "estimate_total": 38115,
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "state": "New York",
+      "vendor_id": "V1",
+      "vendor_idx": 1,
+      "venue_fee_range": [
+       7000,
+       7000
+      ],
+      "venue_type": "Garden / Botanical Garden"
+     },
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "estimate_guests": 100,
+      "estimate_label": "About $38,115 for 100 guests",
+      "estimate_total": 38115,
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "state": "New York",
+      "vendor_id": "V2",
+      "vendor_idx": 1,
+      "venue_fee_range": [
+       7000,
+       7000
+      ],
+      "venue_type": "Garden / Botanical Garden"
+     }
+    ],
+    "chips": [],
+    "id": 2,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "assistant",
+    "sources": [],
+    "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF.",
+    "widgets": []
+   }
+  ]
+ },
+ "http/member/40213/chat?photo_first=1": {
+  "chat_id": 5,
+  "title": "t",
+  "turns": [
+   {
+    "cards": [],
+    "chips": [],
+    "id": 1,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "user",
+    "sources": [],
+    "text": "garden venues in Brooklyn",
+    "widgets": []
+   },
+   {
+    "cards": [
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "estimate_guests": 100,
+      "estimate_label": "About $38,115 for 100 guests",
+      "estimate_total": 38115,
+      "facts": [
+       {
+        "icon": "seat",
+        "label": "Seats 220"
+       },
+       {
+        "icon": "leaf",
+        "label": "Garden"
+       }
+      ],
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_line": {
+       "source": "estimate",
+       "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+      },
+      "rental_source": "pdf",
+      "rental_when": "peak_saturday",
+      "setting_tags": [
+       "Garden / Botanical Garden"
+      ],
+      "state": "New York",
+      "vendor_id": "V1",
+      "vendor_idx": 1,
+      "venue_fee_range": [
+       7000,
+       7000
+      ],
+      "venue_type": "Garden / Botanical Garden"
+     },
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "estimate_guests": 100,
+      "estimate_label": "About $38,115 for 100 guests",
+      "estimate_total": 38115,
+      "facts": [
+       {
+        "icon": "seat",
+        "label": "Seats 220"
+       },
+       {
+        "icon": "leaf",
+        "label": "Garden"
+       }
+      ],
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_line": {
+       "source": "estimate",
+       "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+      },
+      "rental_source": "pdf",
+      "rental_when": "peak_saturday",
+      "setting_tags": [
+       "Garden / Botanical Garden"
+      ],
+      "state": "New York",
+      "vendor_id": "V2",
+      "vendor_idx": 1,
+      "venue_fee_range": [
+       7000,
+       7000
+      ],
+      "venue_type": "Garden / Botanical Garden"
+     }
+    ],
+    "chips": [],
+    "id": 2,
+    "is_more": false,
+    "more_available": 0,
+    "photo_first": true,
+    "questions": [],
+    "role": "assistant",
+    "sources": [],
+    "text": "The one you asked about, and close matches",
+    "understood": {
+     "guests": 100,
+     "place": "Brooklyn"
+    },
+    "widgets": []
+   }
+  ]
+ },
+ "http/member/40213/more": {
+  "attach_open": true,
+  "beta_feedback_after": 5,
+  "beta_questions_left": null,
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "lowest rental here, $7,000 rental; the largest here, seats 220; Garden / Botanical Garden",
+    "state": "New York",
+    "vendor_id": "V0",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "$7,000 rental; seats 220; Garden / Botanical Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "$7,000 rental; seats 220; Garden / Botanical Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chat_id": 3,
+  "chips": [
+   "Cheaper options",
+   "All-inclusive venues"
+  ],
+  "feedback_done": true,
+  "feedback_required": false,
+  "feedback_suggested": false,
+  "forever_daily_limit": 40,
+  "forever_left_today": 39,
+  "free_daily_limit": null,
+  "free_daily_mode": false,
+  "free_feedback_bonus": 0,
+  "free_feedback_required": false,
+  "free_initial_limit": null,
+  "free_limit": 1,
+  "free_phase": null,
+  "free_refines_left": null,
+  "has_access": true,
+  "more_available": 0,
+  "paid": true,
+  "paywall": false,
+  "price_locked": false,
+  "questions": [],
+  "questions_left": 39,
+  "text": "3 more from the same search (Brooklyn, 150 guests), none shown before. Brooklyn Botanic Garden has the lowest rental of these ($7,000).",
+  "tier": "paid",
+  "upsell": "forever",
+  "upsell_prompt": null,
+  "widgets": []
+ },
+ "http/member/40213/more?photo_first=1": {
+  "attach_open": true,
+  "beta_feedback_after": 5,
+  "beta_questions_left": null,
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "lowest rental here, $7,000 rental; the largest here, seats 220; Garden / Botanical Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V0",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "$7,000 rental; seats 220; Garden / Botanical Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "$7,000 rental; seats 220; Garden / Botanical Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chat_id": 3,
+  "chips": [
+   "Cheaper options",
+   "All-inclusive venues"
+  ],
+  "feedback_done": true,
+  "feedback_required": false,
+  "feedback_suggested": false,
+  "forever_daily_limit": 40,
+  "forever_left_today": 39,
+  "free_daily_limit": null,
+  "free_daily_mode": false,
+  "free_feedback_bonus": 0,
+  "free_feedback_required": false,
+  "free_initial_limit": null,
+  "free_limit": 1,
+  "free_phase": null,
+  "free_refines_left": null,
+  "has_access": true,
+  "more_available": 0,
+  "paid": true,
+  "paywall": false,
+  "photo_first": true,
+  "price_locked": false,
+  "questions": [],
+  "questions_left": 39,
+  "text": "3 in Brooklyn for 150 guests",
+  "tier": "paid",
+  "understood": {
+   "guests": 150,
+   "place": "Brooklyn"
+  },
+  "upsell": "forever",
+  "upsell_prompt": null,
+  "widgets": []
+ },
+ "http/member/7/chat": {
+  "chat_id": 5,
+  "title": "t",
+  "turns": [
+   {
+    "cards": [],
+    "chips": [],
+    "id": 1,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "user",
+    "sources": [],
+    "text": "garden venues in Brooklyn",
+    "widgets": []
+   },
+   {
+    "cards": [
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "estimate_guests": 100,
+      "estimate_label": "About $38,115 for 100 guests",
+      "estimate_total": 38115,
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "state": "New York",
+      "vendor_id": "V1",
+      "vendor_idx": 1,
+      "venue_fee_range": [
+       7000,
+       7000
+      ],
+      "venue_type": "Garden / Botanical Garden"
+     },
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "estimate_guests": 100,
+      "estimate_label": "About $38,115 for 100 guests",
+      "estimate_total": 38115,
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "state": "New York",
+      "vendor_id": "V2",
+      "vendor_idx": 1,
+      "venue_fee_range": [
+       7000,
+       7000
+      ],
+      "venue_type": "Garden / Botanical Garden"
+     }
+    ],
+    "chips": [],
+    "id": 2,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "assistant",
+    "sources": [],
+    "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF.",
+    "widgets": []
+   }
+  ]
+ },
+ "http/member/7/chat?photo_first=1": {
+  "chat_id": 5,
+  "title": "t",
+  "turns": [
+   {
+    "cards": [],
+    "chips": [],
+    "id": 1,
+    "is_more": false,
+    "more_available": 0,
+    "questions": [],
+    "role": "user",
+    "sources": [],
+    "text": "garden venues in Brooklyn",
+    "widgets": []
+   },
+   {
+    "cards": [
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "estimate_guests": 100,
+      "estimate_label": "About $38,115 for 100 guests",
+      "estimate_total": 38115,
+      "facts": [
+       {
+        "icon": "seat",
+        "label": "Seats 220"
+       },
+       {
+        "icon": "leaf",
+        "label": "Garden"
+       }
+      ],
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_line": {
+       "source": "estimate",
+       "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+      },
+      "rental_source": "pdf",
+      "rental_when": "peak_saturday",
+      "setting_tags": [
+       "Garden / Botanical Garden"
+      ],
+      "state": "New York",
+      "vendor_id": "V1",
+      "vendor_idx": 1,
+      "venue_fee_range": [
+       7000,
+       7000
+      ],
+      "venue_type": "Garden / Botanical Garden"
+     },
+     {
+      "address": "990 Washington Ave, Brooklyn, NY 11225",
+      "estimate_guests": 100,
+      "estimate_label": "About $38,115 for 100 guests",
+      "estimate_total": 38115,
+      "facts": [
+       {
+        "icon": "seat",
+        "label": "Seats 220"
+       },
+       {
+        "icon": "leaf",
+        "label": "Garden"
+       }
+      ],
+      "image": "https://x/1.jpg",
+      "max_capacity_seated": 220,
+      "name": "Brooklyn Botanic Garden",
+      "price_line": {
+       "source": "estimate",
+       "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+      },
+      "rental_source": "pdf",
+      "rental_when": "peak_saturday",
+      "setting_tags": [
+       "Garden / Botanical Garden"
+      ],
+      "state": "New York",
+      "vendor_id": "V2",
+      "vendor_idx": 1,
+      "venue_fee_range": [
+       7000,
+       7000
+      ],
+      "venue_type": "Garden / Botanical Garden"
+     }
+    ],
+    "chips": [],
+    "id": 2,
+    "is_more": false,
+    "more_available": 0,
+    "photo_first": true,
+    "questions": [],
+    "role": "assistant",
+    "sources": [],
+    "text": "The one you asked about, and close matches",
+    "understood": {
+     "guests": 100,
+     "place": "Brooklyn"
+    },
+    "widgets": []
+   }
+  ]
+ },
+ "http/member/7/more": {
+  "attach_open": true,
+  "beta_feedback_after": 5,
+  "beta_questions_left": null,
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "lowest rental here, $7,000 rental; the largest here, seats 220; Garden / Botanical Garden",
+    "state": "New York",
+    "vendor_id": "V0",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "$7,000 rental; seats 220; Garden / Botanical Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "$7,000 rental; seats 220; Garden / Botanical Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chat_id": 3,
+  "chips": [
+   "Cheaper options",
+   "All-inclusive venues"
+  ],
+  "feedback_done": true,
+  "feedback_required": false,
+  "feedback_suggested": false,
+  "forever_daily_limit": 40,
+  "forever_left_today": 39,
+  "free_daily_limit": null,
+  "free_daily_mode": false,
+  "free_feedback_bonus": 0,
+  "free_feedback_required": false,
+  "free_initial_limit": null,
+  "free_limit": 1,
+  "free_phase": null,
+  "free_refines_left": null,
+  "has_access": true,
+  "more_available": 0,
+  "paid": true,
+  "paywall": false,
+  "price_locked": false,
+  "questions": [],
+  "questions_left": 39,
+  "text": "3 more from the same search (Brooklyn, 150 guests), none shown before. Brooklyn Botanic Garden has the lowest rental of these ($7,000).",
+  "tier": "paid",
+  "upsell": "forever",
+  "upsell_prompt": null,
+  "widgets": []
+ },
+ "http/member/7/more?photo_first=1": {
+  "attach_open": true,
+  "beta_feedback_after": 5,
+  "beta_questions_left": null,
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "lowest rental here, $7,000 rental; the largest here, seats 220; Garden / Botanical Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V0",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "$7,000 rental; seats 220; Garden / Botanical Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 150,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "reason": "$7,000 rental; seats 220; Garden / Botanical Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chat_id": 3,
+  "chips": [
+   "Cheaper options",
+   "All-inclusive venues"
+  ],
+  "feedback_done": true,
+  "feedback_required": false,
+  "feedback_suggested": false,
+  "forever_daily_limit": 40,
+  "forever_left_today": 39,
+  "free_daily_limit": null,
+  "free_daily_mode": false,
+  "free_feedback_bonus": 0,
+  "free_feedback_required": false,
+  "free_initial_limit": null,
+  "free_limit": 1,
+  "free_phase": null,
+  "free_refines_left": null,
+  "has_access": true,
+  "more_available": 0,
+  "paid": true,
+  "paywall": false,
+  "photo_first": true,
+  "price_locked": false,
+  "questions": [],
+  "questions_left": 39,
+  "text": "3 in Brooklyn for 150 guests",
+  "tier": "paid",
+  "understood": {
+   "guests": 150,
+   "place": "Brooklyn"
+  },
+  "upsell": "forever",
+  "upsell_prompt": null,
+  "widgets": []
+ },
+ "pf/elsewhere/40213/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "lookup": {
+   "query": "bbg",
+   "status": "elsewhere"
+  },
+  "paid": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/elsewhere/40213/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_line": {
+     "source": "estimate",
+     "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+    },
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "lookup": {
+   "query": "bbg",
+   "status": "elsewhere"
+  },
+  "paid": true,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "The one you asked about",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/elsewhere/7/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "lookup": {
+   "query": "bbg",
+   "status": "elsewhere"
+  },
+  "paid": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/elsewhere/7/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_line": {
+     "source": "estimate",
+     "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+    },
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "lookup": {
+   "query": "bbg",
+   "status": "elsewhere"
+  },
+  "paid": true,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "The one you asked about",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/free/40213/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": false,
+  "paid": false,
+  "price_locked": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/free/40213/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": false,
+  "paid": false,
+  "photo_first": true,
+  "price_locked": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "3 in Brooklyn for 100 guests",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/free/7/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": false,
+  "paid": false,
+  "price_locked": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/free/7/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": false,
+  "paid": false,
+  "photo_first": true,
+  "price_locked": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "3 in Brooklyn for 100 guests",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/full/40213/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "paid": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/full/40213/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_line": {
+     "source": "estimate",
+     "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+    },
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_line": {
+     "source": "estimate",
+     "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+    },
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_line": {
+     "source": "estimate",
+     "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+    },
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "paid": true,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "3 in Brooklyn for 100 guests",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/full/7/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "paid": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/full/7/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_line": {
+     "source": "estimate",
+     "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+    },
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_line": {
+     "source": "estimate",
+     "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+    },
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "price_line": {
+     "source": "estimate",
+     "text": "About $38,100 for 100 guests before tax and tip, an estimate"
+    },
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "paid": true,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "3 in Brooklyn for 100 guests",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/light/40213/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "paid": false,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/light/40213/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "paid": false,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "3 in Brooklyn for 100 guests",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/light/7/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "paid": false,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/light/7/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "paid": false,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "3 in Brooklyn for 100 guests",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/more/40213/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "is_more": true,
+  "paid": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/more/40213/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "is_more": true,
+  "paid": true,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "3 in Brooklyn for 100 guests",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/more/7/asked=False": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "is_more": true,
+  "paid": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "99 Scott is a Brooklyn fit: about $36,900 for 100 guests. Prospect Park follows. Open the PDF."
+ },
+ "pf/more/7/asked=True": {
+  "cards": [
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V1",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V2",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   },
+   {
+    "address": "990 Washington Ave, Brooklyn, NY 11225",
+    "estimate_guests": 100,
+    "estimate_label": "About $38,115 for 100 guests",
+    "estimate_total": 38115,
+    "facts": [
+     {
+      "icon": "seat",
+      "label": "Seats 220"
+     },
+     {
+      "icon": "leaf",
+      "label": "Garden"
+     }
+    ],
+    "image": "https://x/1.jpg",
+    "max_capacity_seated": 220,
+    "name": "Brooklyn Botanic Garden",
+    "rental_source": "pdf",
+    "rental_when": "peak_saturday",
+    "setting_tags": [
+     "Garden / Botanical Garden"
+    ],
+    "state": "New York",
+    "vendor_id": "V3",
+    "vendor_idx": 1,
+    "venue_fee_range": [
+     7000,
+     7000
+    ],
+    "venue_type": "Garden / Botanical Garden"
+   }
+  ],
+  "chips": [],
+  "has_access": true,
+  "is_more": true,
+  "paid": true,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "3 in Brooklyn for 100 guests",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  }
+ },
+ "pf/no_cards/40213/asked=False": {
+  "cards": [],
+  "chips": [],
+  "has_access": true,
+  "paid": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "We don't have Foo Hall in Tulle yet. Want similar venues near Brooklyn?"
+ },
+ "pf/no_cards/40213/asked=True": {
+  "cards": [],
+  "chips": [],
+  "has_access": true,
+  "paid": true,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "We don't have Foo Hall.",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  },
+  "unmatched_name": "Foo Hall"
+ },
+ "pf/no_cards/7/asked=False": {
+  "cards": [],
+  "chips": [],
+  "has_access": true,
+  "paid": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "We don't have Foo Hall in Tulle yet. Want similar venues near Brooklyn?"
+ },
+ "pf/no_cards/7/asked=True": {
+  "cards": [],
+  "chips": [],
+  "has_access": true,
+  "paid": true,
+  "photo_first": true,
+  "search_filters": {
+   "city": "Brooklyn",
+   "guests": 100,
+   "states": [
+    "New York"
+   ]
+  },
+  "text": "We don't have Foo Hall.",
+  "understood": {
+   "guests": 100,
+   "place": "Brooklyn"
+  },
+  "unmatched_name": "Foo Hall"
+ }
+}

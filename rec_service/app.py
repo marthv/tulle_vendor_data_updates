@@ -130,12 +130,14 @@ class _UserAgentToSheetLog:
         tok = sheet_log.UA.set(ua)
         stok = xano.SURFACE.set(surface)
         ptok = photo_first.REQ.set(pf)
+        wtok = photo_first.WHO.set({})   # filled by _auth: the account for the photo-first 50/50
         try:
             await self.asgi(scope, receive, send)
         finally:
             sheet_log.UA.reset(tok)
             xano.SURFACE.reset(stok)
             photo_first.REQ.reset(ptok)
+            photo_first.WHO.reset(wtok)
 
 
 app.add_middleware(_UserAgentToSheetLog)
@@ -231,7 +233,7 @@ def _pf(out, user):
     A new dict: the full answer (out["text"]) is still what is stored and what the model reads back."""
     if not config.PHOTO_FIRST or not isinstance(out, dict):
         return out
-    if not photo_first.REQ.get() or _is_ww(out):   # not asked for (the bubble...) or a whole-wedding answer: today's response
+    if not photo_first.on(user) or _is_ww(out):   # not asked for (the bubble...), the 50/50's control arm, or a whole-wedding answer: today's response
         return photo_first.strip(out)
     try:
         profile = xano.profile_of(user or {})
@@ -415,6 +417,7 @@ def _auth(authorization):
     user = xano.verify_user(token)
     if not user or not user.get("id"):
         raise HTTPException(401, "sign in required")
+    photo_first.seen(user)   # REC_PHOTO_FIRST_AB_PCT: photo_first.on() reads this request's account
     return token, user
 
 
@@ -1871,14 +1874,14 @@ def chat_detail(chat_id: int, authorization: str = Header(None)):
                 t["text"] = free_mode.sanitize_text(t.get("text") or "")[0]
     left = _more_left(turns)
     last = max((i for i, t in enumerate(turns) if t["role"] == "assistant"), default=None)
-    if not photo_first.on():   # a row stored with the switch on, read with it off: its photo-first marks never go out
+    if not photo_first.on(user):   # a row stored with the switch on, read with it off: its photo-first marks never go out
         for t in turns:
             t.pop("pf_meta", None)
-    if config.PHOTO_FIRST and not photo_first.on():   # not asked for: today's turns
+    if config.PHOTO_FIRST and not photo_first.on(user):   # not asked for: today's turns
         for t in turns:
             if t.get("cards"):
                 t["cards"] = photo_first.strip_cards(t["cards"])
-    if photo_first.on():   # a reopened chat looks like a new answer: short line + card facts
+    if photo_first.on(user):   # a reopened chat looks like a new answer: short line + card facts
         access = xano.has_paid_access(user)
         lvl = "free" if not access else _detail(xano.beta_member(user), True)
         try:
@@ -2022,7 +2025,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
         raise HTTPException(503, {"status": "killed"})
     name = (body.tool or "").strip()
     picked = name == compare.TOOL and compare.arm(user.get("id")) == "compare"
-    pf_cost = name == photo_first.COST_TOOL and photo_first.on()   # "What it costs" (REC_PHOTO_FIRST + a photo-first page)
+    pf_cost = name == photo_first.COST_TOOL and photo_first.on(user)   # "What it costs" (REC_PHOTO_FIRST + a photo-first page)
     if name not in cost_tools.TOOLS and not picked and not pf_cost:
         raise HTTPException(400, {"status": "unknown_tool", "tools": list(cost_tools.TOOLS)})
     if picked:
@@ -2046,7 +2049,7 @@ def run_tool(body: ToolBody, background: BackgroundTasks, authorization: str = H
     # T0-53 (owner 2026-11-26): on a photo-first page a couple with no plan sees no dollar figure. The cost tools' widgets
     # carry figures (estimate_cost's market tiers, the budget split...), so they are not run: the upgrade line and the
     # existing upgrade card instead. "What it costs" (cost_lines) and the side by side are words-only for them already.
-    pf_upgrade = photo_first.on() and not access and name in cost_tools.TOOLS
+    pf_upgrade = photo_first.on(user) and not access and name in cost_tools.TOOLS
     base = {"user_id": user["id"], "kind": "tool_" + name, "chat_id": int(body.chat_id or 0), "model": "none",
             "tier": "paid" if paid else "free", "counted_as_free": False, "input_tokens": 0, "cache_read_tokens": 0,
             "cache_write_tokens": 0, "output_tokens": 0, "tool_calls": 0, "cost_usd": 0}
@@ -3416,7 +3419,9 @@ def status(authorization: str = Header(None)):
             "card_totals": bool(paid and xano.pi_entitled(user) and config.on_for(config.CARD_TOTALS, user.get("id"))),
             "prefs_asked": prefs.asked(_memory_row(user["id"]).get("notes") or []),
             # Photo-first Assistant + compare in any category (2026-11-26): keys present only when the switch is on.
-            **({"photo_first": True} if photo_first.on() else {}),
+            **({"photo_first": True} if photo_first.on(user) else {}),
+            # Photo-first 50/50 (2026-11-27): this account's arm, 'photo_first' | 'control' | 'off' (switch off or pct 0).
+            "photo_first_arm": photo_first.arm(user.get("id")),
             **({"compare_any_category": True, "saved_by_category": _saved_by_category(user)}
                if config.COMPARE_ANY_CATEGORY and compare.arm(user.get("id")) == "compare" else {})}
 
