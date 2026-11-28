@@ -6554,8 +6554,8 @@
       ],
       "bucket": "search",
       "in_rotation": false,
-      "tldr": "On phones, Discovery shows a row of filter chips (Location, Venue type, Saved, All filters) under the search pill, so a filter is one tap instead of two (expand pill, then Filters). Guests left out (member-only; owner 2026-11-28). Question: do more phone visitors apply a filter?",
-      "what_changed": "Mobile Discovery (WeWeb): a chip row under the search pill - Location, Venue type, Saved, All filters - replacing the two-tap path (expand the search pill, then Filters). Guests chip left out (member-only filter; owner choice 2026-11-28). New Mixpanel tracking in the same publish: discovery_filter_panel_opened, discovery_search_pill_toggled, discovery_filter_chip_tapped. Live at the production publish.",
+      "tldr": "On phones, Discovery shows a row of 5 filter chips under the search pill: Location, Guests, Venue type, Saved, All filters, so a filter is one tap instead of two (expand pill, then Filters). Guests and Venue type are member-only: free couples see a lock and tapping opens the upsell popup (48be8a6c); members get a bottom sheet per filter. Design changed by the owner 2026-11-28 before launch; pass bar unchanged. Question: do more phone visitors apply a filter?",
+      "what_changed": "Mobile Discovery (WeWeb): a chip row under the search pill - Location, Guests, Venue type, Saved, All filters - replacing the two-tap path (expand the search pill, then Filters). Guests and Venue type are member-only: for free couples they show a lock and tapping opens the upsell popup 48be8a6c (filter_popup_triggered). Members get a bottom sheet per filter (Location: state picker; Guests: range + presets; Venue type: chips) with Clear + \"Show venues\". All filters opens the full filter panel as a bottom sheet. Saved opens the saved venues list. New Mixpanel tracking in the same publish: discovery_filter_chip_tapped {chip, action open|clear|paywall, locked, platform}; discovery_filter_sheet_applied {chip}; discovery_filter_sheet_cleared {chip}; discovery_filter_panel_opened with surface=chip_row; view_favorited_vendors with source=mobile_pill, entry=chip_row; plus discovery_search_pill_toggled. Owner changed the design 2026-11-28 after this entry was first written (was 4 chips with Guests left out; now 5 chips, locked chips open the paywall); the pass bar below was NOT changed. Live at the production publish.",
       "surfaces": [
         "weweb:discovery",
         "mixpanel"
@@ -6574,7 +6574,7 @@
       },
       "hypothesis": "If phone Discovery shows filter chips under the search pill instead of hiding filters behind two taps, then the share of phone Discovery visitors who apply at least one filter rises from 2.0% to at least 3.0%, because 25.0% already touch the filters but few get through the two-tap path, and the old URL-based filters (Oct 13-31) reached 3.0%.",
       "tests": "Does a one-tap chip row raise the share of phone Discovery visitors who apply a filter?",
-      "goal": "Pass bar written BEFORE the build (2026-11-28), owner-approved sequential design. PASS if, over the 6 weeks (42 days) after the production publish, >= 3.0% of phone Discovery visitors apply >= 1 filter (before: 2.0% = 30 of 1,487, 2026-11-09..11-26, QA-verified). Guardrails must not fall vs before: vendor-page opens per visitor, % opening a PDF, % paying within 7 days (payments can only detect a large fall at this volume). Read by tulle-qa-verifier, not the builder (owner rule: builder never writes the answer key).",
+      "goal": "Pass bar written BEFORE the build (2026-11-28), owner-approved sequential design. PASS if, over the 6 weeks (42 days) after the production publish, >= 3.0% of phone Discovery visitors apply >= 1 filter (before: 2.0% = 30 of 1,487, 2026-11-09..11-26, QA-verified). Guardrails must not fall vs before: vendor-page opens per visitor, % opening a PDF, % paying within 7 days (payments can only detect a large fall at this volume). Read by tulle-qa-verifier, not the builder (owner rule: builder never writes the answer key). Pass bar UNCHANGED by the owner's 2026-11-28 design change (5 chips, Guests + Venue type locked for free couples -> paywall); the change was made before launch, before any after-data existed.",
       "metric": {
         "key": "manual",
         "params": {},
@@ -6585,7 +6585,7 @@
         "label": "% of phone Discovery visitors applying >= 1 filter"
       },
       "primary_metric": "% of phone Discovery visitors (Mixpanel, internal excluded) applying >= 1 filter, 42 days after the production publish vs the before window 2026-11-09..11-26. Pass = >= 3.0%.",
-      "secondary_metrics": "discovery_filter_panel_opened, discovery_search_pill_toggled, discovery_filter_chip_tapped per phone Discovery visitor. New tracking shipping in the same publish as the chips: NO clean before for these; after-only descriptive.",
+      "secondary_metrics": "After-only descriptive (new tracking ships with the chips, NO clean before): discovery_filter_chip_tapped by chip and action, discovery_filter_sheet_applied / _cleared by chip, discovery_filter_panel_opened (surface=chip_row), view_favorited_vendors (source=mobile_pill, entry=chip_row), discovery_search_pill_toggled, per phone Discovery visitor. Added 2026-11-28 with the design change: (a) paywall views from locked chips (discovery_filter_chip_tapped action=paywall / filter_popup_triggered) per FREE phone Discovery visitor; (b) 7-day pay rate of free couples who hit a locked chip vs free phone Discovery visitors who did not - correlation only (self-selected, not causal; not a pass/fail input).",
       "guardrails": [
         {
           "key": "manual",
@@ -6603,7 +6603,7 @@
           "max_drop_rel": 0
         }
       ],
-      "guardrail": "Vendor-page opens per visitor, % opening a PDF, % paying within 7 days must not fall vs before; payments detect only a large fall.",
+      "guardrail": "Vendor-page opens per visitor, % opening a PDF, % paying within 7 days must not fall vs before; payments detect only a large fall. Added 2026-11-28 (watch only, not pass/fail): paywall views from locked chips per free phone visitor; 7-day pay rate of free couples hitting a locked chip (correlation only).",
       "decision_rule": {
         "ship_p": 0.9,
         "stop_p": 0.1
@@ -6628,6 +6628,10 @@
         {
           "date": "2026-11-28",
           "note": "Planned. Pass bar written before the build; read will be done by tulle-qa-verifier (builder never writes the answer key)."
+        },
+        {
+          "date": "2026-11-28",
+          "note": "Owner changed the design before launch: 5 chips (Location, Guests, Venue type, Saved, All filters); Guests + Venue type locked for free couples and open the upsell popup 48be8a6c; member bottom sheets. Pass bar unchanged. Added secondary: locked-chip paywall views per free phone visitor, 7-day pay rate of free couples hitting a locked chip (correlation only)."
         }
       ],
       "decision": "",
@@ -7258,6 +7262,13 @@
       ],
       "source": "railway",
       "ref": "rec-engine REC_COMPARE_AB_PCT=100"
+    },
+    {
+      "date": "2026-11-28",
+      "what": "Mobile filter chips design changed by the owner BEFORE launch (no couple exposure yet): now 5 chips - Location, Guests, Venue type, Saved, All filters (was 4, Guests left out). Guests and Venue type are member-only: free couples see a lock and tapping opens the upsell popup 48be8a6c (filter_popup_triggered); members get per-filter bottom sheets with Clear + Show venues; All filters opens the full panel as a bottom sheet. New events discovery_filter_chip_tapped / _sheet_applied / _sheet_cleared; discovery_filter_panel_opened surface=chip_row; view_favorited_vendors source=mobile_pill entry=chip_row. Pass bar (>= 3.0% applying a filter, 42 days) unchanged.",
+      "affects": [
+        "EXP-2026-11-mobile-filter-chips"
+      ]
     }
   ]
 }
