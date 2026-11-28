@@ -6530,6 +6530,13 @@
         "tulletogether .claude/ops_2026-11-25/t4_visuals/DECISION_CARD.md",
         "tulletogether .claude/ops_2026-11-25/photo_first/PASS_BAR.md",
         "tulle_vendor_data_updates branch photo-first-server"
+      ],
+      "changes": [
+        {
+          "date": "2026-11-28",
+          "what": "ww-planner-chat ea645d4: photo-first venue cards lose the secondary 'What it costs' button (owner 11-28); 'Open pricing PDF' is now the only card button (rec_pf_pdf_tapped unchanged; rec_pf_cost_tapped removed). Live only once the owner activates ea645d4 and publishes. May raise PDF opens from Planner cards (this experiment's metric) - read before/after this change separately.",
+          "by": "T0"
+        }
       ]
     },
     {
