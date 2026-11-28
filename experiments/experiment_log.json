@@ -6301,6 +6301,11 @@
           "date": "2026-11-27",
           "what": "Design changed from 50/50 split to everyone-on-v2 before/after (owner). testMode='v2' set in the WeWeb editor; not live until the production publish.",
           "by": "T0"
+        },
+        {
+          "date": "2026-11-28",
+          "what": "ww-price-report 9176a64 (pushed; live on staging/production only after owner activates + publishes): every room with a rankable fee now shows a score (min 5 comparable rooms, small groups rounded, single server-ranked fee stands in when no fair all-in comparison; per-guest-only and no-fee rooms 'Estimate only'); quieter design (smaller headline, no 'About typical' pill, row tags removed, neutral bar instead of green-red, explanation below table); 'Rooms - each has its own score'; minimum-based scores read 'or higher'. Changes what free couples see in the locked view -> read before/after separately.",
+          "by": "T0"
         }
       ],
       "exposure": {
