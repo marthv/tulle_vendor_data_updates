@@ -2970,7 +2970,14 @@
       },
       "in_rotation": false,
       "outcome": "shipped",
-      "decided_on": "2026-11-21"
+      "decided_on": "2026-11-21",
+      "changes": [
+        {
+          "date": "2026-11-28T00:37Z",
+          "what": "ep313 v5: the save offer's anchor (the Forever link the 60% code applies to) now matches each couple's Forever card by location. California: $149->$59.60 became $135->$54. Texas-only: $135->$54 became $89->$35.60 (Texas-only code minimum $100->$70). NY/International/rest unchanged. Offers minted before the deploy keep their old link. Owner-approved pricing fix B (2026-11-27). Confounds this experiment's read for CA and TX-only from this time.",
+          "by": "T0"
+        }
+      ]
     },
     {
       "id": "EXP-2026-11-nps-optional-comment-high-stars",
