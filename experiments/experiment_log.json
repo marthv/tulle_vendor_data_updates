@@ -6531,6 +6531,105 @@
         "tulletogether .claude/ops_2026-11-25/photo_first/PASS_BAR.md",
         "tulle_vendor_data_updates branch photo-first-server"
       ]
+    },
+    {
+      "id": "EXP-2026-11-mobile-filter-chips",
+      "category": "Search & Discovery",
+      "name": "Mobile Discovery: filter chips under the search pill",
+      "status": "planned",
+      "framework_version": 2,
+      "owner": "Vivek",
+      "launched_by": null,
+      "tier": "ux",
+      "themes": [
+        "search",
+        "filters"
+      ],
+      "bucket": "search",
+      "in_rotation": false,
+      "tldr": "On phones, Discovery shows a row of filter chips (Location, Venue type, Saved, All filters) under the search pill, so a filter is one tap instead of two (expand pill, then Filters). Guests left out (member-only; owner 2026-11-28). Question: do more phone visitors apply a filter?",
+      "what_changed": "Mobile Discovery (WeWeb): a chip row under the search pill - Location, Venue type, Saved, All filters - replacing the two-tap path (expand the search pill, then Filters). Guests chip left out (member-only filter; owner choice 2026-11-28). New Mixpanel tracking in the same publish: discovery_filter_panel_opened, discovery_search_pill_toggled, discovery_filter_chip_tapped. Live at the production publish.",
+      "surfaces": [
+        "weweb:discovery",
+        "mixpanel"
+      ],
+      "audience": {
+        "segment": "phone visitors to Discovery (free and paid)",
+        "est_daily_exposed": 83,
+        "est_note": "1,487 phone Discovery visitors 2026-11-09..11-26 (18 days) = ~83/day"
+      },
+      "exposure": {
+        "source": "mixpanel:viewed_page",
+        "surfaces": [
+          "discovery"
+        ],
+        "note": "Phone Discovery visitors = Mixpanel viewed_page on the Discovery page from a phone (device/screen filter as in the QA-verified before read), internal accounts excluded."
+      },
+      "hypothesis": "If phone Discovery shows filter chips under the search pill instead of hiding filters behind two taps, then the share of phone Discovery visitors who apply at least one filter rises from 2.0% to at least 3.0%, because 25.0% already touch the filters but few get through the two-tap path, and the old URL-based filters (Oct 13-31) reached 3.0%.",
+      "tests": "Does a one-tap chip row raise the share of phone Discovery visitors who apply a filter?",
+      "goal": "Pass bar written BEFORE the build (2026-11-28), owner-approved sequential design. PASS if, over the 6 weeks (42 days) after the production publish, >= 3.0% of phone Discovery visitors apply >= 1 filter (before: 2.0% = 30 of 1,487, 2026-11-09..11-26, QA-verified). Guardrails must not fall vs before: vendor-page opens per visitor, % opening a PDF, % paying within 7 days (payments can only detect a large fall at this volume). Read by tulle-qa-verifier, not the builder (owner rule: builder never writes the answer key).",
+      "metric": {
+        "key": "manual",
+        "params": {},
+        "direction": "increase",
+        "baseline": 0.02,
+        "baseline_note": "Applied >= 1 filter: 30 of 1,487 phone Discovery visitors = 2.0%, 2026-11-09..11-26 (QA-verified). Context: touched filters 25.0% same window; old-URL filters 2026-10-13..10-31 reached 3.0%. Mixpanel, not Xano: manual read.",
+        "mde_rel": 0.5,
+        "label": "% of phone Discovery visitors applying >= 1 filter"
+      },
+      "primary_metric": "% of phone Discovery visitors (Mixpanel, internal excluded) applying >= 1 filter, 42 days after the production publish vs the before window 2026-11-09..11-26. Pass = >= 3.0%.",
+      "secondary_metrics": "discovery_filter_panel_opened, discovery_search_pill_toggled, discovery_filter_chip_tapped per phone Discovery visitor. New tracking shipping in the same publish as the chips: NO clean before for these; after-only descriptive.",
+      "guardrails": [
+        {
+          "key": "manual",
+          "label": "vendor-page opens per phone Discovery visitor (must not fall)",
+          "max_drop_rel": 0
+        },
+        {
+          "key": "manual",
+          "label": "% of phone Discovery visitors opening a PDF (must not fall)",
+          "max_drop_rel": 0
+        },
+        {
+          "key": "manual",
+          "label": "% of phone Discovery visitors paying within 7 days (must not fall; only a large fall is detectable at ~5-6 purchases/day)",
+          "max_drop_rel": 0
+        }
+      ],
+      "guardrail": "Vendor-page opens per visitor, % opening a PDF, % paying within 7 days must not fall vs before; payments detect only a large fall.",
+      "decision_rule": {
+        "ship_p": 0.9,
+        "stop_p": 0.1
+      },
+      "assignment": {
+        "type": "pre_post",
+        "pre": [
+          "2026-11-09",
+          "2026-11-26"
+        ],
+        "post_start": "2026-11-28T15:00Z",
+        "note": "Sequential (before vs after), owner-approved. PROVISIONAL post_start = expected production publish; reset to the real publish time at launch. Confounds: Thanksgiving week excluded from the read; onboarding changes and the Discovery Ask bar ship in the same publish (log each in changes[] at publish), so a change cannot be credited to the chips alone."
+      },
+      "start_date": null,
+      "planned_days": 42,
+      "max_days": 56,
+      "review_date": "2027-01-09",
+      "reporting": "manual",
+      "rollback": "WeWeb: hide the mobile chip row (restore the pre-chip Discovery mobile header from backup) and publish; the two-tap path is unchanged underneath.",
+      "dates_note": "review_date is PROVISIONAL (validator requires a date): intended = production publish + 42 days, i.e. null until the publish; 2027-01-09 assumes a 2026-11-28 publish. Reset start_date, assignment.post_start and review_date to the real publish when it ships.",
+      "results": [
+        {
+          "date": "2026-11-28",
+          "note": "Planned. Pass bar written before the build; read will be done by tulle-qa-verifier (builder never writes the answer key)."
+        }
+      ],
+      "decision": "",
+      "decided_on": null,
+      "outcome": null,
+      "spec_gaps": [],
+      "links": [
+        "tulletogether mobile Discovery filter chips (WeWeb, 2026-11-28 publish)"
+      ]
     }
   ],
   "changes": [
